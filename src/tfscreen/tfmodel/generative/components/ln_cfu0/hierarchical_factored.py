@@ -465,12 +465,8 @@ def get_guesses(name: str, data: GrowthData,
 
 
 def get_extract_specs(ctx):
-    if "map_ln_cfu0" not in ctx.growth_tm.df.columns:
-        return []
-    return [dict(
-        input_df=ctx.growth_tm.df,
-        params_to_get=["ln_cfu0"],
-        map_column="map_ln_cfu0",
-        get_columns=["replicate", "condition_pre", "genotype"],
-        in_run_prefix="",
-    )]
+    # same array layout as hierarchical; see its ln_cfu0_extract_spec
+    from tfscreen.tfmodel.generative.components.ln_cfu0.hierarchical import (
+        ln_cfu0_extract_spec,
+    )
+    return ln_cfu0_extract_spec(ctx)

@@ -485,3 +485,136 @@ two_stage, 8 runs.
 tfs-setup-sim-grid grid_noclip.yaml --out_prefix svi_overconfidence_noclip
 for d in svi_overconfidence_noclip/run_*/; do (cd "$d" && sbatch run.srun); done
 ```
+
+### Unclipped-binding grid (2026-09-29)
+
+`svi_overconfidence_noclip`, seeds 1, 3 and 7 scored (seed 8 still
+copying). Clipping is not the cause. Median error of the two plateaus
+for genotypes above 1000 reads, clipped (fix grid) against unclipped:
+
+| seed | inference | high-IPTG plateau | low-IPTG plateau |
+|---|---|---|---|
+| 1 | component | -0.0102 / -0.0102 | -0.0106 / -0.0100 |
+| 1 | two_stage | -0.0095 / -0.0093 | -0.0089 / -0.0109 |
+| 3 | component | -0.0066 / -0.0068 | -0.0170 / -0.0132 |
+| 3 | two_stage | -0.0055 / -0.0059 | -0.0119 / -0.0089 |
+| 7 | component | -0.0087 / -0.0088 | -0.0106 / -0.0097 |
+| 7 | two_stage | -0.0076 / -0.0076 | -0.0095 / -0.0090 |
+
+Unclipped binding stays the simulator default: it matches the fit's
+likelihood and real anisotropy-derived theta.
+
+**Truth-pinned fit** (seed 1, joint, local, k and m pinned at their true
+values, component guide, 40,000 steps). The simulator's growth follows
+k + dk + m A theta exactly (to 2e-16) and its theta is the Hill truth
+(to 1.4e-5), so this is not a simulator-model mismatch. Above 1000
+reads:
+
+- low-IPTG plateau (theta about 0.99): error -0.003, z -1.1, 95%
+  coverage 0.85. Its bias came mostly from k and m.
+- high-IPTG plateau (theta about 0.01): error -0.010, SD 0.002, z -4.9,
+  coverage 0.04. It stays biased with k and m exact.
+- log_hill_K covers 0.96.
+
+So the high plateau is a separate problem. Near theta = 0 growth barely
+sees theta: with |m| about 0.01 per min, 0.01 of theta is about 0.02 ln
+units over a whole selection. Yet the fit reports an SD of 0.002, which
+must come from the logit-scale hierarchy (theta_high = sigmoid(logit_low +
+logit_delta), pooled across genotypes), not from the data. This is the
+saturated regime `in_regime` already treats as model-conditional.
+
+**Full noclip grid (8 of 8).** Joint theta coverage above 1000 reads:
+component 0.39 (fix grid 0.37), two_stage 0.57 (0.46). k and m in
+two_stage cover 0.63 and 0.81.
+
+**Split by true theta** (points above 1000 reads, seeds 1, 3, 7, 8;
+saturated = true theta below 0.02 or above 0.98, 46% of the points):
+
+| regime | grid | inference | 95% coverage | RMSE |
+|---|---|---|---|---|
+| resolvable | v2 | component | 0.56 | 0.012 |
+| resolvable | fix | component | 0.59 | 0.012 |
+| resolvable | fix | two_stage | 0.68 | 0.010 |
+| resolvable | noclip | component | 0.64 | 0.011 |
+| resolvable | noclip | two_stage | 0.80 | 0.009 |
+| saturated | v2 | component | 0.09 | 0.014 |
+| saturated | fix | two_stage | 0.21 | 0.011 |
+| saturated | noclip | component | 0.11 | 0.011 |
+| saturated | noclip | two_stage | 0.31 | 0.010 |
+
+Where growth can see theta, the two-stage fit with the fixes covers
+0.80. The saturated plateaus, which growth barely sees, carry the
+remaining overconfidence: the logit hierarchy in `hill_geno` gives them
+intervals the data do not support. That is the next thing to fix.
+
+### High-plateau diagnosis (2026-09-29, local, seed 1 joint, k and m pinned at truth)
+
+All fits component-guide SVI from the same pre-MAP, 40,000 steps, scored
+above 1000 reads. The warm-up MAP puts every deep genotype's high-IPTG
+plateau near truth (H74S logit -4.19 against a true -4.53); every SVI
+variant slides it to about 0.0005 (logit -7 to -8) with too-narrow
+intervals:
+
+| variant | high plateau error | coverage | width |
+|---|---|---|---|
+| baseline | -0.0102 | 0.31 | 0.0076 |
+| Student-t population (df 3) on the plateau offsets | -0.0102 | 0.31 | 0.0077 |
+| no per-tube offsets (misspecified: loss 11,000 worse) | -0.0102 | 1.00 | 0.029 |
+| count noise held near the MAP by a tight prior | -0.0096 | 0.15 | 0.0065 |
+
+The fix grid's low-rank conditional guide is also low (-0.0070).
+
+Profiles of the full log density over one genotype's high plateau,
+everything else held fixed:
+
+- at the MAP: H74S's data pin it near 0.015; pushing it to 0.0001 costs
+  61 nats (K84D 31, M42Y 6).
+- at the SVI posterior median: flat from 0 to 0.003 and almost the same
+  shape for all three genotypes, so something shared has changed.
+
+SVI's shared parameters differ from the MAP's: count overdispersion
+`growth_inv_r` 5x larger (0.0005 against 0.0001; about 0 is right for
+this Poisson-only simulation), and the per-tube offsets of one condition
+shifted by about +0.006 at low IPTG and -0.005 at high IPTG, the size
+that absorbs a common shift of about 0.01 in theta. Pinning either one
+alone did not remove the slide.
+
+Ruled out: binding clipping, k and m, the population's tail, the guide
+family. Not yet tested: the plateau parameterization itself. On the
+logit scale a plateau at 0.0005 has as much prior room as one at 0.01,
+and growth, linear in theta, separates them only weakly once the shared
+parameters loosen. A plateau parameterized on the theta scale, or
+bounded away from 0, would test that. The Student-t option was reverted.
+
+Further tests, same setup (all SVI, 100,000 steps at a constant step
+size unless noted; high plateau error above 1000 reads):
+
+| variant | high plateau error | coverage |
+|---|---|---|
+| prior flat in theta for both plateaus (log-Jacobian factor) | +0.0105 | 0.23 |
+| constant step size 1e-3, no cuts | -0.0106 | 0.08 |
+| + count noise hard-pinned at the MAP values | -0.0102 | 0.04 |
+| + binding data 5x more precise (noise 0.005) | -0.0103 | 0.27 |
+
+- Flat-in-theta prior: the plateaus follow whatever prior they get
+  (the low plateau went to -0.027), so in the SVI solution they are
+  prior-dominated; the parameterization is not the cause.
+- Constant step size: the loss levels off, so this is SVI's optimum, not
+  a transient frozen by early step-size cuts. `growth_inv_r` rises to
+  0.00098 there, 10x the MAP.
+- Precise binding pins the shared level (wt's high plateau 0.0092 against
+  0.0100), yet the non-binding genotypes still collapse: H74S, 65,000
+  reads, 0.0002 against 0.0107, with its low plateau, K, n and dk_geno all
+  on truth. So it is per genotype, not a shared shift.
+
+Found along the way: `tfs-extract-params` mislabeled `ln_cfu0` rows
+whenever a genotype was missing from a block (fixed; see CHANGELOG). The
+model's own `ln_cfu0` matches the presplit data at 0.999; only the
+extraction was wrong.
+
+Open: SVI's optimum puts the high plateau of well-measured genotypes near
+0 while the MAP puts it near truth, and none of prior shape, population
+tail, tube offsets, count noise, step size or binding precision changes
+that. Next candidates: pin the tube offsets and the noise together at the
+MAP, or compare SVI with a reference that needs no guide (importance
+reweighting of the Laplace, or NUTS on a smaller library).

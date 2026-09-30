@@ -31,6 +31,22 @@ fall into two kinds:
 
 ### Added
 
+- **`tfs-sample-posterior --map_point`** writes a MAP checkpoint's point
+  itself (one sample, `RunInference.get_map_posteriors`) instead of a
+  Laplace posterior, whose full Hessian is out of reach on a full library
+  (about 2 million parameters for the dev-data screen).
+- **`tfs-sample-posterior --skip_growth_observations`** leaves the
+  per-observation growth sites (`growth_pred`, `growth_obs`) out of the
+  posterior file. They were 94% of its size on a 300-genotype subset and
+  would be about 100 GB per site at 500 draws on the full library;
+  `tfs-predict-growth` recomputes growth from the parameter draws.
+
+- **Compressed tables load by their inner extension.** `read_dataframe`
+  reads `.csv.gz`, `.tsv.bz2` and the like as CSV or TSV, with pandas
+  inferring the compression. They used to fall through to the slow
+  delimiter-sniffing reader. A full-library growth table from
+  `tfs-process-counts` is 5 GB as CSV and 0.7 GB gzipped.
+
 - **`linear` growth takes `k_pinned`.** Like `m_pinned`, it holds the
   per-condition baseline k at `k_loc` (a deterministic site with no guide
   parameters), set by `condition_growth.k_pinned` in the priors CSV. It is
@@ -39,6 +55,18 @@ fall into two kinds:
   fits.
 
 ### Fixed
+
+- **`ln_cfu0` extraction labeled rows with other genotypes' values.** The
+  model holds `ln_cfu0` as a (replicate, condition_pre, genotype) array, but
+  the extract spec indexed its flattened values with `map_ln_cfu0`, which
+  numbers only the combinations present in the data. Wherever a genotype
+  was missing from a replicate or library, every later row took another
+  cell's value: on an SVI-overconfidence run (2 of 200 cells missing) three
+  of four blocks correlated 0.09-0.25 with the presplit data they were fit
+  to, against 0.999 once labeled correctly. Fits were unaffected; the
+  `*_ln_cfu0.csv` outputs of `tfs-extract-params`, and anything downstream
+  of them, were wrong. Both `ln_cfu0` components now key rows by array
+  position (`hierarchical.ln_cfu0_extract_spec`).
 
 - **Simulated binding observations are no longer clipped to [0, 1].**
   `generate_binding_df` and `generate_library_binding_df` clipped noisy

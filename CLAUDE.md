@@ -48,7 +48,7 @@ tfs-configure-model        # Generate YAML config template (+ library compositio
 tfs-prefit-calibration     # Pre-fit linking function via MAP
 tfs-fit-model              # Main hierarchical Bayesian inference (--guide_type component|delta|auto_normal|auto_diagonal_normal|auto_multivariate_normal|auto_low_rank_multivariate_normal; --guide_rank, --guide_init_scale; convergence: --convergence_window_steps, --patience, --convergence_z, --loss_rtol, --param_tolerance, --adam_step_size -> --adam_final_step_size by --adam_step_size_cut; --adam_clip_norm opts back into elementwise gradient clipping, off by default)
 tfs-fit-genotypes          # Per-genotype MLE fits of the growth model (no congression correction)
-tfs-sample-posterior       # Draw posterior samples from fitted model
+tfs-sample-posterior       # Draw posterior samples from fitted model (--map_point: a MAP checkpoint's point, no Laplace; --skip_growth_observations: leave out growth_pred/growth_obs, most of the file on a large library)
 tfs-sample-prior           # Draw prior predictive samples
 tfs-extract-params         # Extract parameters from checkpoint
 tfs-predict-growth         # Predict growth from fitted model

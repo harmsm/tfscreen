@@ -716,13 +716,49 @@ def get_priors(data: Optional[GrowthData] = None,
     return ModelPriors(**params)
 
 
-def get_extract_specs(ctx):
-    if "map_ln_cfu0" not in ctx.growth_tm.df.columns:
+def ln_cfu0_extract_spec(ctx):
+    """
+    Extraction spec for ``ln_cfu0``, shape (replicate, condition_pre,
+    genotype) in the model.
+
+    Each row is keyed by its position in that array, computed from the
+    growth tensor's axis labels. ``map_ln_cfu0`` numbers only the
+    (replicate, library, condition_pre, genotype) combinations present in
+    the data, so where a genotype is missing from a replicate or library
+    its numbers run behind the array's positions, and every later row was
+    labeled with another genotype's value (all ln_cfu0 outputs before
+    2026-09-29 on data with such gaps).
+    """
+    tm = ctx.growth_tm
+    df = tm.df
+    if "map_ln_cfu0" not in df.columns:
         return []
+    labels = dict(zip(tm.tensor_dim_names, tm.tensor_dim_labels))
+    index = {dim: {str(v): i for i, v in enumerate(labels[dim])}
+             for dim in ("replicate", "condition_pre", "genotype")}
+    n_cp = len(labels["condition_pre"])
+    n_g = len(labels["genotype"])
+    # the growth tensor's condition_pre axis is keyed library/condition_pre
+    cp = df["condition_pre"].astype(str)
+    if "library" in df.columns:
+        cp = df["library"].astype(str) + "/" + cp
+    rep = df["replicate"].astype(str).map(index["replicate"])
+    cp = cp.map(index["condition_pre"]).fillna(
+        df["condition_pre"].astype(str).map(index["condition_pre"]))
+    geno = df["genotype"].astype(str).map(index["genotype"])
+    if rep.isna().any() or cp.isna().any() or geno.isna().any():
+        raise ValueError("ln_cfu0 extraction: growth rows whose replicate, "
+                         "library/condition_pre or genotype is not a label "
+                         "of the growth tensor.")
+    flat = (rep.astype(int) * n_cp + cp.astype(int)) * n_g + geno.astype(int)
     return [dict(
-        input_df=ctx.growth_tm.df,
+        input_df=df.assign(_ln_cfu0_flat=flat.to_numpy()),
         params_to_get=["ln_cfu0"],
-        map_column="map_ln_cfu0",
+        map_column="_ln_cfu0_flat",
         get_columns=["replicate", "condition_pre", "genotype"],
         in_run_prefix="",
     )]
+
+
+def get_extract_specs(ctx):
+    return ln_cfu0_extract_spec(ctx)

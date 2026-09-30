@@ -213,3 +213,16 @@ def test_genotype_as_index_not_categorized():
     assert result.index.name == "genotype"
     # Index should be plain strings, not categorical (dtype varies: object or StringDtype)
     assert not isinstance(result.index.dtype, pd.CategoricalDtype)
+
+def test_read_dataframe_compressed_csv_and_tsv(tmp_path):
+    """A .csv.gz or .tsv.bz2 is read by its inner extension."""
+    import pandas as pd
+    from tfscreen.util.io.read_dataframe import read_dataframe
+
+    df = pd.DataFrame({"a": [1, 2], "b": [0.5, 1.5]})
+    gz = tmp_path / "x.csv.gz"
+    df.to_csv(gz, index=False)
+    pd.testing.assert_frame_equal(read_dataframe(str(gz)), df)
+    bz = tmp_path / "x.tsv.bz2"
+    df.to_csv(bz, sep="\t", index=False)
+    pd.testing.assert_frame_equal(read_dataframe(str(bz)), df)

@@ -43,7 +43,8 @@ class TestSamplePosteriorNuts:
                 "mcmc_samples": {"activity": np.zeros((10, 4))}
             }
 
-            def fake_nuts_posteriors(samples, out_prefix, forward_batch_size):
+            def fake_nuts_posteriors(samples, out_prefix, forward_batch_size,
+                                     sites_to_save=None):
                 open(h5_src, "w").close()
 
             ri.get_nuts_posteriors.side_effect = fake_nuts_posteriors
@@ -172,6 +173,62 @@ class TestSamplePosteriorMap:
                              out_prefix=str(tmp_path / "out"))
 
         assert os.path.isfile(str(tmp_path / "out.h5"))
+
+    def test_map_point_skips_laplace(self, tmp_path):
+        """map_point writes the MAP point (no Hessian) for a MAP checkpoint."""
+        ri = self._make_map_ri(tmp_path, auto_loc=True)
+        h5_src = str(tmp_path / "out_tmp_posterior_posterior.h5")
+        ckpt_path = str(tmp_path / "map.pkl")
+        open(ckpt_path, "w").close()
+
+        with patch("tfscreen.tfmodel.scripts.sample_posterior_cli.read_configuration",
+                   return_value=(MagicMock(), {})), \
+             patch("tfscreen.tfmodel.scripts.sample_posterior_cli.RunInference",
+                   return_value=ri), \
+             patch("tfscreen.tfmodel.scripts.sample_posterior_cli.dill") as mock_dill:
+
+            mock_dill.load.return_value = {"svi_state": MagicMock()}
+            ri.get_map_posteriors.side_effect = lambda **kw: (
+                open(h5_src, "w").close()
+            )
+
+            from tfscreen.tfmodel.scripts.sample_posterior_cli import sample_posterior
+            sample_posterior("cfg.yaml", ckpt_path,
+                             out_prefix=str(tmp_path / "out"), map_point=True)
+
+        ri.get_map_posteriors.assert_called_once()
+        ri.get_laplace_posteriors.assert_not_called()
+        assert ri.get_map_posteriors.call_args.kwargs["map_params"] == \
+            {"global_p_auto_loc": np.array(0.5)}
+        assert os.path.isfile(str(tmp_path / "out.h5"))
+
+    def test_skip_growth_observations_drops_only_those_sites(self, tmp_path):
+        """skip_growth_observations passes a sites_to_save without growth_pred/obs."""
+        ri = self._make_map_ri(tmp_path, auto_loc=True)
+        h5_src = str(tmp_path / "out_tmp_posterior_posterior.h5")
+        ckpt_path = str(tmp_path / "map.pkl")
+        open(ckpt_path, "w").close()
+
+        with patch("tfscreen.tfmodel.scripts.sample_posterior_cli.read_configuration",
+                   return_value=(MagicMock(), {})), \
+             patch("tfscreen.tfmodel.scripts.sample_posterior_cli.RunInference",
+                   return_value=ri), \
+             patch("tfscreen.tfmodel.scripts.sample_posterior_cli.dill") as mock_dill:
+
+            mock_dill.load.return_value = {"svi_state": MagicMock()}
+            ri.get_map_posteriors.side_effect = lambda **kw: (
+                open(h5_src, "w").close()
+            )
+
+            from tfscreen.tfmodel.scripts.sample_posterior_cli import sample_posterior
+            sample_posterior("cfg.yaml", ckpt_path,
+                             out_prefix=str(tmp_path / "out"), map_point=True,
+                             skip_growth_observations=True)
+
+        sites = ri.get_map_posteriors.call_args.kwargs["sites_to_save"]
+        assert "growth_pred" not in sites
+        assert "growth_obs" not in sites
+        assert "theta_theta_low" in sites and "ln_cfu0" in sites
 
     def test_map_detection_requires_auto_loc_key(self, tmp_path):
         """Without '_auto_loc' keys the SVI branch must be taken, not MAP."""

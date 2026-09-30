@@ -46,7 +46,12 @@ def read_dataframe(source, index_column=None):
     # 1. Handle different source types (path vs. DataFrame)
     if isinstance(source, str):
         path = source
-        ext = path.split(".")[-1].strip().lower()
+        parts = path.strip().lower().split(".")
+        # a compressed text table (.csv.gz, .tsv.bz2, ...) is read by its
+        # inner extension; pandas infers the compression from the path
+        if len(parts) > 2 and parts[-1] in ("gz", "bz2", "xz", "zst", "zip"):
+            parts = parts[:-1]
+        ext = parts[-1]
         try:
             if ext in ["xlsx", "xls"]:
                 df = pd.read_excel(path)
