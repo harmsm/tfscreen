@@ -31,6 +31,18 @@ fall into two kinds:
 
 ### Added
 
+- **`theta: hill_geno` and `hill_relative` take
+  `theta_log_hill_n_hyper_scale_fixed`.** Above 0, the population SD of
+  log(hill_n) is held at that value (a deterministic site, no guide
+  parameters) instead of learned. Set `theta.theta_log_hill_n_hyper_scale_fixed`
+  in the priors CSV; default 0 keeps it learned. On the dev-data screen
+  the learned SD ran to about 19 in every MAP fit, joint and growth-only.
+  n spread from 0.01 to 13, and in 42% of genotypes the curve changed more
+  between 0 and the lowest nonzero IPTG (0.1 µM) than across the whole
+  measured range. The data show no such step: for the binding genotypes
+  the fit predicted a 0.4-0.55 ln-unit gain relative to wt in kanR+kan,
+  and the counts show 0.00-0.08.
+
 - **`condition_growth: linear` takes per-condition `m_scale_plus` and
   `m_scale_minus`.** Like `k_scale`, each may now be a per-condition array:
   indexed rows in the priors CSV, joined to the conditions by

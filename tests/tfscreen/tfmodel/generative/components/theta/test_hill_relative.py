@@ -146,3 +146,30 @@ def test_x_scale_growth_truth_preserves_growth():
     k_X, m_X = hr.x_scale_growth_truth(k, m, lo, hi)
     X = hr.x_scale_truth(theta, lo, hi)
     assert np.allclose(k + m * theta, k_X + m_X * X)
+
+
+@pytest.mark.parametrize("fixed", [0.0, 0.5])
+def test_log_hill_n_hyper_scale_fixed(fixed):
+    """As hill_geno: a held log(n) population SD is a deterministic site with
+    no guide parameters, and the gauge still pins wt."""
+    data = _data()
+    priors = hr.get_priors().replace(theta_log_hill_n_hyper_scale_fixed=fixed)
+    assert hr.get_hyperparameters()["theta_log_hill_n_hyper_scale_fixed"] == 0.0
+    mtr = handlers.trace(handlers.seed(hr.define_model, 0)).get_trace(
+        "theta", data, priors)
+    gtr = handlers.trace(handlers.seed(hr.guide, 0)).get_trace(
+        "theta", data, priors)
+    site = mtr["theta_log_hill_n_hyper_scale"]
+    if fixed:
+        assert site["type"] == "deterministic"
+        assert np.allclose(site["value"], fixed)
+        assert "theta_log_hill_n_hyper_scale_loc" not in gtr
+    else:
+        assert site["type"] == "sample"
+    assert ({n for n, s in mtr.items() if s["type"] == "sample"}
+            == {n for n, s in gtr.items() if s["type"] == "sample"})
+    with handlers.seed(rng_seed=3):
+        tp = hr.guide("theta", data, priors)
+    X = _X(tp, data)
+    assert X[0, 0, 1] == pytest.approx(1.0, abs=1e-5)
+    assert X[0, -1, 1] == pytest.approx(0.0, abs=1e-5)

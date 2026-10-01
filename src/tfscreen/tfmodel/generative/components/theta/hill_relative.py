@@ -33,7 +33,7 @@ import jax.numpy as jnp
 import numpy as np
 import numpyro as pyro
 import numpyro.distributions as dist
-from flax.struct import dataclass
+from flax.struct import dataclass, field
 
 from tfscreen.tfmodel.data_class import DataClass
 
@@ -69,6 +69,10 @@ class ModelPriors:
     theta_log_hill_n_hyper_loc_loc: float
     theta_log_hill_n_hyper_loc_scale: float
     theta_log_hill_n_hyper_scale: float
+    # > 0: hold the population SD of log(hill_n) here (hill_geno's field of
+    # the same name explains why)
+    theta_log_hill_n_hyper_scale_fixed: float = field(pytree_node=False,
+                                                      default=0.0)
 
 
 @dataclass(frozen=True)
@@ -135,6 +139,10 @@ _OFFSETS = ("X_low_offset", "X_delta_offset", "log_hill_K_offset",
             "log_hill_n_offset")
 
 
+def _n_fixed(priors):
+    return float(getattr(priors, "theta_log_hill_n_hyper_scale_fixed", 0.0))
+
+
 def define_model(name: str,
                  data: DataClass,
                  priors: ModelPriors) -> ThetaParam:
@@ -152,9 +160,13 @@ def define_model(name: str,
                 f"{name}_{h}_hyper_loc",
                 dist.Normal(getattr(priors, f"theta_{h}_hyper_loc_loc"),
                             getattr(priors, f"theta_{h}_hyper_loc_scale"))))
-            hyper.append(pyro.sample(
-                f"{name}_{h}_hyper_scale",
-                dist.HalfNormal(getattr(priors, f"theta_{h}_hyper_scale"))))
+            if h == "log_hill_n" and _n_fixed(priors) > 0:
+                hyper.append(pyro.deterministic(f"{name}_{h}_hyper_scale",
+                                                jnp.full(T, _n_fixed(priors))))
+            else:
+                hyper.append(pyro.sample(
+                    f"{name}_{h}_hyper_scale",
+                    dist.HalfNormal(getattr(priors, f"theta_{h}_hyper_scale"))))
 
     with pyro.plate(f"{name}_titrant_name_plate", T, dim=-2):
         with pyro.plate(f"{name}_genotype_plate", data.num_genotype, dim=-1):
@@ -188,13 +200,16 @@ def guide(name: str,
                 f"{name}_{h}_hyper_loc_scale",
                 jnp.full(T, getattr(priors, f"theta_{h}_hyper_loc_scale")),
                 constraint=dist.constraints.greater_than(1e-4))
+            hyper.append(pyro.sample(f"{name}_{h}_hyper_loc",
+                                     dist.Normal(loc_loc, loc_scale)))
+            if h == "log_hill_n" and _n_fixed(priors) > 0:
+                hyper.append(jnp.full(T, _n_fixed(priors)))
+                continue
             scale_loc = pyro.param(f"{name}_{h}_hyper_scale_loc",
                                    jnp.full(T, -1.0))
             scale_scale = pyro.param(
                 f"{name}_{h}_hyper_scale_scale", jnp.full(T, 0.1),
                 constraint=dist.constraints.greater_than(1e-4))
-            hyper.append(pyro.sample(f"{name}_{h}_hyper_loc",
-                                     dist.Normal(loc_loc, loc_scale)))
             hyper.append(pyro.sample(f"{name}_{h}_hyper_scale",
                                      dist.LogNormal(scale_loc, scale_scale)))
 
@@ -255,6 +270,7 @@ def get_hyperparameters() -> Dict[str, Any]:
         "theta_log_hill_n_hyper_loc_loc": 0.7,
         "theta_log_hill_n_hyper_loc_scale": 0.5,
         "theta_log_hill_n_hyper_scale": 1.0,
+        "theta_log_hill_n_hyper_scale_fixed": 0.0,
     }
 
 

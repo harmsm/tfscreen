@@ -633,3 +633,28 @@ def test_simulate_theta_param_compatible_with_run_model(mock_data):
     C = data.num_titrant_conc
     # simulate() always produces T=1 (no per-titrant structure); run_model reflects that
     assert result.shape == (1, C, G)
+
+
+@pytest.mark.parametrize("fixed", [0.0, 0.5])
+def test_log_hill_n_hyper_scale_fixed(mock_data, fixed):
+    """theta_log_hill_n_hyper_scale_fixed > 0 holds the log(n) population SD:
+    a deterministic model site at that value and no guide parameters for it;
+    0 keeps it learned. Model and guide sample sites match either way."""
+    name = "nfix"
+    priors = get_priors().replace(theta_log_hill_n_hyper_scale_fixed=fixed)
+    assert get_hyperparameters()["theta_log_hill_n_hyper_scale_fixed"] == 0.0
+    with seed(rng_seed=0):
+        mtr = trace(define_model).get_trace(name=name, data=mock_data, priors=priors)
+    with seed(rng_seed=0):
+        gtr = trace(guide).get_trace(name=name, data=mock_data, priors=priors)
+    site = mtr[f"{name}_log_hill_n_hyper_scale"]
+    if fixed:
+        assert site["type"] == "deterministic"
+        assert np.allclose(site["value"], fixed)
+        assert f"{name}_log_hill_n_hyper_scale_loc" not in gtr
+    else:
+        assert site["type"] == "sample"
+        assert f"{name}_log_hill_n_hyper_scale_loc" in gtr
+    model_samples = {n for n, s in mtr.items() if s["type"] == "sample"}
+    guide_samples = {n for n, s in gtr.items() if s["type"] == "sample"}
+    assert model_samples == guide_samples
