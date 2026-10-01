@@ -670,6 +670,36 @@ class TestPerConditionPriors:
         k_locs = np.asarray(gtr[f"{name}_k_locs"]["value"])
         assert np.allclose(k_locs, np.array([0.011, 0.021, 0.029]))
 
+    def test_array_m_scales_are_per_condition(self):
+        """Per-condition m_scale_plus/minus arrays: each condition takes the
+        entry its selection flag names (two '+' conditions, one tight from
+        monoculture data and one loose)."""
+        labels = ["kanR+kan", "kanR-kan", "pheS+4CP", "pheS-4CP"]
+        plus = jnp.array([0.0015, 99.0, 0.01, 99.0])     # 99: unused entries
+        minus = jnp.array([99.0, 0.004, 99.0, 0.01])
+        priors = get_priors(condition_labels=labels).replace(
+            m_scale_plus=plus, m_scale_minus=minus)
+        data = TestDefineModelSelectionAware()._make_data(num_condition_rep=4)
+        with seed(rng_seed=0):
+            tr = trace(define_model).get_trace(name="ms", data=data, priors=priors)
+        fn = tr["ms_m"]["fn"]
+        while not hasattr(fn, "scale"):
+            fn = fn.base_dist
+        assert np.allclose(np.asarray(fn.scale), [0.0015, 0.004, 0.01, 0.01])
+
+    def test_scalar_m_scales_unchanged(self):
+        """Scalar m_scale_plus/minus still give the per-class scales."""
+        labels = ["kanR+kan", "kanR-kan"]
+        priors = get_priors(condition_labels=labels)
+        data = TestDefineModelSelectionAware()._make_data(num_condition_rep=2)
+        with seed(rng_seed=0):
+            tr = trace(define_model).get_trace(name="mc", data=data, priors=priors)
+        fn = tr["mc_m"]["fn"]
+        while not hasattr(fn, "scale"):
+            fn = fn.base_dist
+        assert np.allclose(np.asarray(fn.scale),
+                           [priors.m_scale_plus, priors.m_scale_minus])
+
     def test_array_and_scalar_give_same_sites(self, mock_data):
         """Model/guide site sets are identical whether priors are scalar or array."""
         name = "ss"

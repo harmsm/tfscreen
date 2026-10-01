@@ -126,7 +126,7 @@ The hierarchical Bayesian inference engine. Key files:
 
 - **`generative/components/`** — Pluggable model components selected via the YAML config's `components:` section (registry key noted in parens where it differs from the directory name):
   - `activity/`: `fixed`, `hierarchical_geno`, `hierarchical_mut`, `horseshoe_geno`, `horseshoe_mut`
-  - `growth/` (registry key `condition_growth`): `linear`, `power`, `saturation`. Their per-condition prior loc/scale fields accept a scalar (broadcast to all conditions) **or** a per-condition array; the pre-fit calibration writes per-condition arrays to pin the baselines (see **Per-condition growth priors** below). Each declares `get_scale_bounds()`.
+  - `growth/` (registry key `condition_growth`): `linear`, `power`, `saturation`. Their per-condition prior loc/scale fields (in `linear`, `m_scale_plus`/`m_scale_minus` too) accept a scalar (broadcast to all conditions) **or** a per-condition array; the pre-fit calibration writes per-condition arrays to pin the baselines (see **Per-condition growth priors** below). Each declares `get_scale_bounds()`.
   - `growth_transition/`: `instant`, `memory`, `baranyi`, `baranyi_k`, `baranyi_tau`, `two_pop`
   - `transformation/`: `single`, `mixture` (`empirical`/`logit_norm` were removed; `ModelOrchestrator` refuses them by name with a message, `_RETIRED_TRANSFORMATIONS`). The old E[max] θ operator (`_congression.py`) is gone, along with Stage 1.5 of the empirical pipeline that used it
   - `theta/`: `categorical_geno`, `hill_geno`, `hill_relative` (wt-relative X, see **Relative-X fit** below), `hill_mut`; thermodynamic partition-function variants under `theta/thermo/` (lac dimer and MWC dimer, with/without unfolded state, PK/PnnC/PddG parameterizations)

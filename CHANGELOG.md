@@ -31,6 +31,15 @@ fall into two kinds:
 
 ### Added
 
+- **`condition_growth: linear` takes per-condition `m_scale_plus` and
+  `m_scale_minus`.** Like `k_scale`, each may now be a per-condition array:
+  indexed rows in the priors CSV, joined to the conditions by
+  `condition_rep`. Each condition takes the entry its `+`/`-` flag names.
+  Before this, every selection condition shared one m prior width. That
+  could not express a tight prior from monoculture data for kan alongside
+  a loose one for pheS, which the growth-only dev-data fits need.
+  Scalars behave as before.
+
 - **`tfs-fit-model --init_from <params.npz>`** starts a fit at a MAP
   point, the `{site}_auto_loc` arrays of an earlier fit's
   `*_params.npz`, wherever they name a site of this model. They take

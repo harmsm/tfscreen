@@ -46,14 +46,18 @@ class ModelPriors:
     m_scale : float
         Standard deviation of the Normal prior on m (used for all conditions
         when ``m_is_selection`` is ``None``).
-    m_scale_minus : float
+    m_scale_minus : float or array
         Prior scale on m for control ('-') conditions, where theta is not
         expected to meaningfully affect growth.  Applied per-condition when
-        ``m_is_selection`` is provided.
-    m_scale_plus : float
+        ``m_is_selection`` is provided.  A per-condition array (indexed rows
+        in the priors CSV) sets each condition's scale; only the entries of
+        control conditions are used.
+    m_scale_plus : float or array
         Prior scale on m for selection ('+') conditions, where theta drives
         differential growth.  Applied per-condition when ``m_is_selection``
-        is provided.
+        is provided.  Scalar or per-condition array, as ``m_scale_minus``
+        (e.g. a tight prior from monoculture data for one selection and a
+        loose one for another).
     m_is_selection : tuple of bool or None
         Length-``num_condition_rep`` tuple; ``True`` for selection ('+')
         conditions, ``False`` for control ('-') conditions.  ``None``
@@ -165,12 +169,16 @@ def define_model(name: str,
     num_cr = data.num_condition_rep
 
     if priors.m_is_selection is None:
-        m_scale_arr = jnp.full(num_cr, priors.m_scale)
+        m_scale_arr = jnp.broadcast_to(jnp.asarray(priors.m_scale, dtype=float),
+                                       (num_cr,))
     else:
-        m_scale_arr = jnp.array([
-            priors.m_scale_plus if sel else priors.m_scale_minus
-            for sel in priors.m_is_selection
-        ])
+        # m_scale_plus / m_scale_minus may be scalars or per-condition arrays
+        # (indexed rows in the priors CSV); each condition takes the one its
+        # selection flag names.
+        m_scale_arr = jnp.where(
+            jnp.asarray(priors.m_is_selection, dtype=bool),
+            jnp.broadcast_to(jnp.asarray(priors.m_scale_plus, dtype=float), (num_cr,)),
+            jnp.broadcast_to(jnp.asarray(priors.m_scale_minus, dtype=float), (num_cr,)))
 
     # Broadcast scalar-or-array priors to a per-condition array so k, m can be
     # pinned condition-by-condition (see prefit calibration).  A scalar prior
