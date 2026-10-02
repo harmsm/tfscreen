@@ -288,7 +288,7 @@ Its intervals, like every SVI fit's here, are too narrow. That is a
 separate problem shared with the joint fit, to take up before trusting
 coverage from any arm.
 
-## Run 4: post-fix guide comparison (set up 2026-10-01, not yet run)
+## Run 4: post-fix guide comparison (2026-10-01)
 
 **Question.** With the frozen-scale and Laplace-floor fixes in, which
 inference gives honest X intervals on the relative fit: the component
@@ -321,3 +321,56 @@ Compare X coverage by depth, RMSE and width across arms, k and m coverage,
 and the guide diagnostics (log-weight SD, k-hat) for the two SVI arms. The
 low-rank rank-20 arm decides whether the real-data run's rank was enough.
 
+**Results (2026-10-01).** All 30 runs finished. Every MAP and the
+Poisson two-stage MAPs hit their caps (200,000 / 100,000 epochs); every
+other SVI fit converged. Pooled into `calib/relative_fit_v4_*` (not
+committed). Means over 3 seeds per arm.
+
+X test set:
+
+| noise | arm | 95% cov | 50% cov | median 95% width | RMSE |
+|---|---|---|---|---|---|
+| poisson | component | 0.06 | 0.02 | 0.16 | 0.297 |
+| poisson | low_rank | 0.81 | 0.38 | 0.11 | 0.068 |
+| poisson | low_rank rank 20 | 0.81 | 0.38 | 0.11 | 0.065 |
+| poisson | map + Laplace | 0.98 | 0.63 | 0.22 | 0.105 |
+| poisson | two_stage | 0.91 | 0.51 | 0.13 | 0.075 |
+| realistic | component | 0.38 | 0.14 | 0.31 | 0.289 |
+| realistic | low_rank | 0.76 | 0.38 | 0.27 | 0.126 |
+| realistic | low_rank rank 20 | 0.76 | 0.38 | 0.27 | 0.119 |
+| realistic | map + Laplace | 0.94 | 0.45 | 0.64 | 0.293 |
+| realistic | two_stage | 0.78 | 0.32 | 0.27 | 0.110 |
+
+95% coverage of the shared and per-genotype parameters (Poisson /
+realistic):
+
+| arm | growth_k | growth_m | dk_geno | log_hill_K | hill_n |
+|---|---|---|---|---|---|
+| component | 0 / 0 | 0 / 0.08 | 0.20 / 0.63 | 0.81 / 0.84 | 0.87 / 0.87 |
+| low_rank | 0 / 0 | 0.25 / 0.08 | 0.41 / 0.71 | 0.80 / 0.85 | 0.83 / 0.87 |
+| low_rank rank 20 | 0 / 0 | 0.25 / 0.08 | 0.38 / 0.70 | 0.79 / 0.85 | 0.82 / 0.86 |
+| map + Laplace | 0.92 / 0.58 | 0.92 / 0.50 | 0.98 / 0.88 | 0.92 / 0.86 | 0.91 / 0.85 |
+| two_stage | 0.75 / 0.25 | 0.83 / 0.33 | 0.75 / 0.88 | 0.85 / 0.84 | 0.87 / 0.86 |
+
+- **The component guide is biased even with the fixes**: X RMSE 0.29-0.30
+  against 0.07-0.13 for the low-rank guide; 95% coverage 0.06 / 0.38. The
+  frozen scales were not the cause, and runs 2-3's guide verdict stands.
+- **Rank 20 matches numpyro's default rank** in every number, so the
+  real-data run's rank is enough.
+- **The low-rank guide undercovers X moderately** (0.81 / 0.76 at 95%,
+  0.38 at 50%).
+- **Two-stage is the best calibrated under Poisson noise** (0.91 / 0.51)
+  but no better than low-rank under realistic noise (0.78 / 0.32). It is
+  the only SVI route that covers k and m at all, and only partly under
+  realistic noise.
+- **MAP + floored Laplace now works**: it covers X (0.98 / 0.94) and k/m
+  best, but with the widest intervals and the noisiest point (RMSE 0.105 /
+  0.293). The run-2 blowups were the old floor. Every MAP hit its 200,000
+  epoch cap.
+- **Every guide collapses k and m** (coverage 0-0.25).
+
+**Decision fed.** Fit the relative model with the low-rank guide (rank 20
+is enough). Expect X 95% intervals to cover about 0.76-0.81, and treat k
+and m intervals from any guide as too narrow. A full-library Laplace is
+out of reach (about 2M parameters), so on real data the k/m uncertainty
+needs the two-stage fit with the Laplace taken on a subset.
