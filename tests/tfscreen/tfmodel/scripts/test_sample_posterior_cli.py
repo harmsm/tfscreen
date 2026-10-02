@@ -150,6 +150,37 @@ class TestSamplePosteriorMap:
                              out_prefix=str(tmp_path / "out"))
 
         ri.get_laplace_posteriors.assert_called_once()
+        kw = ri.get_laplace_posteriors.call_args.kwargs
+        assert kw["block_genotypes"] is False
+        assert kw["genotype_chunk_size"] is None
+
+    def test_laplace_blocks_forwarded(self, tmp_path):
+        """--laplace_blocks asks for the per-genotype Laplace, with its chunk
+        size."""
+        ri = self._make_map_ri(tmp_path, auto_loc=True)
+        h5_src = str(tmp_path / "out_tmp_posterior_posterior.h5")
+        ckpt_path = str(tmp_path / "map.pkl")
+        open(ckpt_path, "w").close()
+
+        with patch("tfscreen.tfmodel.scripts.sample_posterior_cli.read_configuration",
+                   return_value=(MagicMock(), {})), \
+             patch("tfscreen.tfmodel.scripts.sample_posterior_cli.RunInference",
+                   return_value=ri), \
+             patch("tfscreen.tfmodel.scripts.sample_posterior_cli.dill") as mock_dill:
+
+            mock_dill.load.return_value = {"svi_state": MagicMock()}
+            ri.get_laplace_posteriors.side_effect = lambda **kw: (
+                open(h5_src, "w").close()
+            )
+
+            from tfscreen.tfmodel.scripts.sample_posterior_cli import sample_posterior
+            sample_posterior("cfg.yaml", ckpt_path,
+                             out_prefix=str(tmp_path / "out"),
+                             laplace_blocks=True, genotype_chunk_size=500)
+
+        kw = ri.get_laplace_posteriors.call_args.kwargs
+        assert kw["block_genotypes"] is True
+        assert kw["genotype_chunk_size"] == 500
 
     def test_map_output_file_renamed(self, tmp_path):
         ri = self._make_map_ri(tmp_path, auto_loc=True)

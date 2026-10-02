@@ -31,6 +31,30 @@ fall into two kinds:
 
 ### Added
 
+- **`tfs-sample-posterior --laplace_blocks`** (`RunInference.get_laplace_posteriors(block_genotypes=True)`,
+  `block_laplace_factors`): a per-genotype Laplace at a MAP. The shared
+  parameters (growth k and m, hyperparameters, tube offsets) stay at the
+  MAP. Given them, each genotype's parameters couple to no other genotype,
+  so the Hessian splits into one small block per genotype (9-11
+  parameters). B Hessian-vector products per genotype chunk give every
+  block at once (`--genotype_chunk_size`), so it runs on a full library,
+  where the full Hessian (about 2M parameters) cannot. It checks that the
+  blocks really separate, and refuses a model where they do not. On the
+  relative-fit run-4 MAPs, X 95% coverage was 0.93 (Poisson) and 0.84
+  (realistic), against 0.98 / 0.94 for the full Laplace and 0.81 / 0.76 for
+  the low-rank guide. It leaves out the k/m uncertainty (coverage 0).
+
+### Fixed
+
+- **The Laplace path no longer applies the mini-batch likelihood scale at
+  full batch.** `scale_vector` is built for the configured batch size, so a
+  model configured with `batch_size` below the library weighted every
+  growth likelihood by `num_genotype / batch_size` (53x on the dev-data
+  screen at 4096) even when the Hessian was taken over the whole library.
+  `RunInference._unscaled_batch` removes it. The full Laplace had only run
+  on simulations with `batch_size` at or above the library, so no result
+  was affected.
+
 - **`theta: hill_geno` and `hill_relative` take
   `theta_log_hill_n_hyper_scale_fixed`.** Above 0, the population SD of
   log(hill_n) is held at that value (a deterministic site, no guide

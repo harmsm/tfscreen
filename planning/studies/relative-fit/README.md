@@ -374,3 +374,29 @@ is enough). Expect X 95% intervals to cover about 0.76-0.81, and treat k
 and m intervals from any guide as too narrow. A full-library Laplace is
 out of reach (about 2M parameters), so on real data the k/m uncertainty
 needs the two-stage fit with the Laplace taken on a subset.
+
+**Block Laplace on run 4's MAPs (2026-10-02, local).** The per-genotype
+Laplace (`tfs-sample-posterior --laplace_blocks`, new) on copies of the six
+`map` runs (500 draws each, then predict, extract and summarize; not
+committed). Given the shared parameters, run 0004's full Hessian (4,521
+parameters: 478 genotypes x 9, plus 219 shared) had every cross-genotype
+entry exactly 0, wt included. Each block's covariance matched the inverse
+of the full Hessian's diagonal block to 8e-6, except where the prior floor
+raised an eigenvalue.
+
+| noise | arm | X 95% cov | 50% cov | median 95% width | k / m cov |
+|---|---|---|---|---|---|
+| poisson | block Laplace | 0.93 | 0.49 | 0.17 | 0 / 0 |
+| poisson | full Laplace | 0.98 | 0.63 | 0.22 | 0.92 / 0.92 |
+| realistic | block Laplace | 0.84 | 0.40 | 0.55 | 0 / 0 |
+| realistic | full Laplace | 0.94 | 0.45 | 0.64 | 0.58 / 0.50 |
+
+log_hill_K, hill_n and dk_geno cover 0.80-0.91 under both. By genotype
+total reads, under realistic noise (block Laplace / low-rank X RMSE, block
+coverage): <= 100: 1.38 / 0.22, 0.99; 1e2-1e3: 0.63 / 0.24, 0.93; 1e3-1e4:
+0.23 / 0.16, 0.83; > 1e4: 0.057 / 0.091, 0.83 (low-rank covers 0.70
+there). The MAP point is poor at low depth, where nothing shrinks it, but
+its intervals cover; at high depth it beats the low-rank point. The
+missing k/m uncertainty costs coverage at high depth (0.83 against the
+full Laplace's 0.94).
+

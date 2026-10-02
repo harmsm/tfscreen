@@ -1381,3 +1381,137 @@ def test_laplace_eigenvalue_floor_minimum():
                                           np.array([0.0]))
     assert floored[0] == pytest.approx(LAPLACE_MIN_EIGENVALUE)
     assert n == 1
+
+
+# =============================================================================
+# Block (per-genotype) Laplace
+# =============================================================================
+
+@struct.dataclass
+class BlockData:
+    batch_idx: jnp.ndarray
+    y: jnp.ndarray            # (num_genotype, 2) observations
+    num_genotype: int = struct.field(pytree_node=False, default=0)
+    coupled: bool = struct.field(pytree_node=False, default=False)
+
+
+def _block_jax_model(data, priors):
+    """Shared mu; per-genotype (a, b) in a library-sized plate, sliced by
+    batch_idx; two observations per genotype that correlate a and b. With
+    ``coupled`` each observation also sees the library mean of a, so the
+    genotype blocks are not separable."""
+    mu = numpyro.sample("mu", dist.Normal(0., 1.))
+    with numpyro.plate("block_genotype_plate", data.num_genotype, dim=-1):
+        a = numpyro.sample("a", dist.Normal(mu, 1.))
+        b = numpyro.sample("b", dist.Normal(0., 1.))
+    a_b, b_b = a[data.batch_idx], b[data.batch_idx]
+    if data.coupled:
+        a_b = a_b + jnp.mean(a)
+    y = data.y[data.batch_idx]
+    with numpyro.plate("obs_genotype_plate", data.batch_idx.shape[0], dim=-1):
+        numpyro.sample("y1", dist.Normal(a_b + b_b, 0.3), obs=y[:, 0])
+        numpyro.sample("y2", dist.Normal(a_b - 2.0 * b_b, 0.2), obs=y[:, 1])
+
+
+class BlockModel:
+    def __init__(self, num_genotype=6, coupled=False, seed=3):
+        rng = np.random.default_rng(seed)
+        self.data = BlockData(num_genotype=num_genotype,
+                              batch_idx=jnp.arange(num_genotype),
+                              y=jnp.asarray(rng.normal(size=(num_genotype, 2))),
+                              coupled=coupled)
+        self.priors = {}
+        self.jax_model = _block_jax_model
+        self.jax_model_guide = lambda data, priors: None
+
+    def get_batch(self, data, indices):
+        return data.replace(batch_idx=jnp.asarray(indices))
+
+    def get_random_idx(self, key=None, num_batches=1):
+        if num_batches == 1:
+            return np.array([0])
+        return np.zeros((num_batches, 1), dtype=int)
+
+
+def _block_setup(model):
+    import jax.flatten_util
+    ri, map_params = _laplace_map_params(model)
+    unc = {k[:-len("_auto_loc")]: jnp.asarray(v) for k, v in map_params.items()
+           if k.endswith("_auto_loc")}
+    flat, unravel = jax.flatten_util.ravel_pytree(unc)
+    G = model.data.num_genotype
+    kw = {"priors": model.priors,
+          "data": ri._unscaled_batch(model.data, jnp.arange(G))}
+    return ri, map_params, unc, flat, unravel, kw
+
+
+def test_block_laplace_factors_match_full_hessian_blocks():
+    """Each block's covariance is the inverse of the matching diagonal block
+    of the full Hessian: given mu, genotypes do not couple."""
+    from numpyro.infer.util import potential_energy
+    model = BlockModel()
+    ri, _, unc, flat, unravel, kw = _block_setup(model)
+    dim_map = ri._get_genotype_dim_map()
+    elem_idx, L = ri.block_laplace_factors(unc, dim_map, model.data, flat,
+                                           unravel, kw)
+    assert elem_idx.shape == (6, 2) and L.shape == (6, 2, 2)
+    pe = lambda f: potential_energy(model.jax_model, [], kw, unravel(f))
+    H = ri._chunked_hessian(pe, flat, 64)
+    for g in range(6):
+        hb = H[np.ix_(elem_idx[g], elem_idx[g])]
+        np.testing.assert_allclose(L[g] @ L[g].T, np.linalg.inv(hb),
+                                   rtol=1e-4, atol=1e-6)
+        # the observations correlate a and b, so the blocks are not diagonal
+        assert abs(hb[0, 1]) > 1.0
+
+
+def test_block_laplace_factors_chunking_matches():
+    model = BlockModel(num_genotype=7)
+    ri, _, unc, flat, unravel, kw = _block_setup(model)
+    dim_map = ri._get_genotype_dim_map()
+    e1, L1 = ri.block_laplace_factors(unc, dim_map, model.data, flat, unravel, kw)
+    e2, L2 = ri.block_laplace_factors(unc, dim_map, model.data, flat, unravel, kw,
+                                      genotype_chunk_size=3)
+    np.testing.assert_array_equal(e1, e2)
+    np.testing.assert_allclose(np.einsum("gij,gkj->gik", L1, L1),
+                               np.einsum("gij,gkj->gik", L2, L2), rtol=1e-5)
+
+
+def test_block_laplace_factors_refuse_coupled_genotypes():
+    model = BlockModel(coupled=True)
+    ri, _, unc, flat, unravel, kw = _block_setup(model)
+    with pytest.raises(ValueError, match="coupled"):
+        ri.block_laplace_factors(unc, ri._get_genotype_dim_map(), model.data,
+                                 flat, unravel, kw)
+
+
+def test_get_laplace_posteriors_block_holds_shared_and_varies_genotypes(tmpdir):
+    model = BlockModel()
+    ri, map_params, *_ = _block_setup(model)
+    out = str(tmpdir.join("block"))
+    ri.get_laplace_posteriors(map_params, out_prefix=out,
+                              num_posterior_samples=400,
+                              sampling_batch_size=100,
+                              forward_batch_size=6,
+                              block_genotypes=True)
+    with h5py.File(f"{out}_posterior.h5", "r") as hf:
+        mu, a = hf["mu"][...], hf["a"][...]
+    np.testing.assert_allclose(mu, float(map_params["mu_auto_loc"]), atol=1e-6)
+    assert a.shape == (400, 6)
+    assert np.all(a.std(axis=0) > 0.01)
+    np.testing.assert_allclose(a.mean(axis=0),
+                               np.asarray(map_params["a_auto_loc"]), atol=0.1)
+
+
+def test_unscaled_batch_removes_minibatch_scale():
+    """A model configured with batch_size below the library weights each
+    growth likelihood by num_genotype / batch_size even at full batch;
+    the Laplace must see each observation once."""
+    orch = _smoke_orchestrator()
+    ri = RunInference(orch, seed=0)
+    G = orch.data.num_genotype
+    data = jax.device_put(orch.data)
+    scaled = orch.get_batch(data, jnp.arange(G))
+    assert float(jnp.max(scaled.growth.scale_vector)) > 1.0
+    unscaled = ri._unscaled_batch(data, jnp.arange(G))
+    np.testing.assert_array_equal(np.asarray(unscaled.growth.scale_vector), 1.0)

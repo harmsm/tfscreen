@@ -27,7 +27,9 @@ def sample_posterior(config_file,
                      forward_batch_size=512,
                      hessian_chunk_size=64,
                      map_point=False,
-                     skip_growth_observations=False):
+                     skip_growth_observations=False,
+                     laplace_blocks=False,
+                     genotype_chunk_size=None):
     """
     Draw posterior samples from an existing MAP, SVI, or NUTS checkpoint.
 
@@ -83,6 +85,17 @@ def sample_posterior(config_file,
         samples on a 200,000-genotype library), and ``tfs-predict-growth``
         recomputes growth from the parameter samples rather than reading
         them.
+    laplace_blocks : bool, optional
+        For a MAP checkpoint, a per-genotype (block-diagonal) Laplace: the
+        shared parameters (growth k and m, hyperparameters, tube offsets)
+        stay at the MAP and each genotype's own parameters get their
+        conditional Laplace (default False). It scales with the library,
+        so it runs where the full Hessian cannot, but it leaves out the
+        shared parameters' uncertainty. Ignored for SVI and NUTS
+        checkpoints and with ``map_point``.
+    genotype_chunk_size : int or None, optional
+        Genotypes per Hessian-vector-product pass with ``laplace_blocks``
+        (default None, all at once). Lower it on device OOM.
     """
     if not os.path.isfile(checkpoint_file):
         raise FileNotFoundError(
@@ -131,7 +144,9 @@ def sample_posterior(config_file,
                                   sites_to_save=sites_to_save)
         elif is_map:
             # MAP checkpoint: Hessian-based Laplace approximation.
-            print("Detected MAP checkpoint. Drawing Laplace posterior samples...", flush=True)
+            print("Detected MAP checkpoint. Drawing "
+                  f"{'per-genotype ' if laplace_blocks else ''}Laplace "
+                  "posterior samples...", flush=True)
             ri.get_laplace_posteriors(
                 map_params=chk_params,
                 out_prefix=ri_prefix,
@@ -140,6 +155,8 @@ def sample_posterior(config_file,
                 forward_batch_size=forward_batch_size,
                 hessian_chunk_size=hessian_chunk_size,
                 sites_to_save=sites_to_save,
+                block_genotypes=laplace_blocks,
+                genotype_chunk_size=genotype_chunk_size,
             )
         else:
             # SVI checkpoint: rebuild the guide object then restore the saved
@@ -168,7 +185,8 @@ def main():
                                        "num_posterior_samples": int,
                                        "sampling_batch_size": int,
                                        "forward_batch_size": int,
-                                       "hessian_chunk_size": int})
+                                       "hessian_chunk_size": int,
+                                       "genotype_chunk_size": int})
 
 
 if __name__ == "__main__":
