@@ -400,3 +400,30 @@ its intervals cover; at high depth it beats the low-rank point. The
 missing k/m uncertainty costs coverage at high depth (0.83 against the
 full Laplace's 0.94).
 
+
+**Arrowhead Laplace on run 4's MAPs (2026-10-02, local).** The block
+Laplace plus each genotype's coupling to the shared parameters and the
+shared block (`--laplace_blocks --laplace_shared`, new), on the same six
+copies (500 draws each; not committed). The shared parameters come from
+their Schur complement and each genotype from its conditional, which is
+the full Laplace. Two rules were needed. Floored genotype directions carry
+no coupling. Negative Schur directions are held at the MAP: floored at the
+prior instead, the k/dk_geno slide (`dk_geno_hyper_shift` with k,
+eigenvalue about -1e7, runs 0009 and 0024) gave k its prior SD of 0.01 and
+X widths of 1-3, and hyperscale directions (run 0004) pulled X coverage
+above 1000 reads to 0.53. With both rules, 0-6 of 219 shared directions
+were held per run, always hyperparameters or the k/dk slide.
+
+| noise | arm | X 95% cov | 50% cov | k / m 95% cov |
+|---|---|---|---|---|
+| poisson | block Laplace | 0.93 | 0.49 | 0 / 0 |
+| poisson | arrowhead Laplace | 0.97 | 0.59 | 0.92 / 1.0 |
+| poisson | full Laplace | 0.98 | 0.63 | 0.92 / 0.92 |
+| realistic | block Laplace | 0.84 | 0.40 | 0 / 0 |
+| realistic | arrowhead Laplace | 0.94 | 0.49 | 0.50 / 0.42 |
+| realistic | full Laplace | 0.94 | 0.45 | 0.58 / 0.50 |
+
+Above 1000 reads X now covers 0.95-0.98 under realistic noise (block:
+0.83). log_hill_K and hill_n are unchanged (they barely depend on k and
+m); dk_geno rises to 0.93 / 0.95. The k/m shortfall under realistic noise
+is the full Laplace's too, so it is not the arrowhead's.

@@ -29,6 +29,7 @@ def sample_posterior(config_file,
                      map_point=False,
                      skip_growth_observations=False,
                      laplace_blocks=False,
+                     laplace_shared=False,
                      genotype_chunk_size=None):
     """
     Draw posterior samples from an existing MAP, SVI, or NUTS checkpoint.
@@ -91,12 +92,20 @@ def sample_posterior(config_file,
         stay at the MAP and each genotype's own parameters get their
         conditional Laplace (default False). It scales with the library,
         so it runs where the full Hessian cannot, but it leaves out the
-        shared parameters' uncertainty. Ignored for SVI and NUTS
-        checkpoints and with ``map_point``.
+        shared parameters' uncertainty unless ``laplace_shared``. Ignored
+        for SVI and NUTS checkpoints and with ``map_point``.
+    laplace_shared : bool, optional
+        With ``laplace_blocks``, keep the shared parameters' uncertainty
+        (default False): they are drawn from their Laplace marginal and
+        each genotype from its conditional given them, which is the full
+        Laplace. One more Hessian-vector product per shared parameter per
+        genotype chunk.
     genotype_chunk_size : int or None, optional
         Genotypes per Hessian-vector-product pass with ``laplace_blocks``
         (default None, all at once). Lower it on device OOM.
     """
+    if laplace_shared and not laplace_blocks:
+        raise ValueError("--laplace_shared needs --laplace_blocks")
     if not os.path.isfile(checkpoint_file):
         raise FileNotFoundError(
             f"Checkpoint file not found: '{checkpoint_file}'. "
@@ -157,6 +166,7 @@ def sample_posterior(config_file,
                 sites_to_save=sites_to_save,
                 block_genotypes=laplace_blocks,
                 genotype_chunk_size=genotype_chunk_size,
+                block_shared=laplace_shared,
             )
         else:
             # SVI checkpoint: rebuild the guide object then restore the saved

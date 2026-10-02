@@ -69,8 +69,17 @@ class ModelPriors:
     theta_log_hill_n_hyper_loc_loc: float
     theta_log_hill_n_hyper_loc_scale: float
     theta_log_hill_n_hyper_scale: float
-    # > 0: hold the population SD of log(hill_n) here (hill_geno's field of
-    # the same name explains why)
+    # > 0: hold that population SD here instead of learning it (hill_geno's
+    # log(n) field of the same name explains why). On the dev-data MAP the
+    # learned SDs ran to 3.6 (X_low), 4.3 (X_delta) and 11 (log K), against
+    # about 0.5, 0.5 and 0.7 among well-measured genotypes, so nothing
+    # shrank the low-depth genotypes.
+    theta_X_low_hyper_scale_fixed: float = field(pytree_node=False,
+                                                 default=0.0)
+    theta_X_delta_hyper_scale_fixed: float = field(pytree_node=False,
+                                                   default=0.0)
+    theta_log_hill_K_hyper_scale_fixed: float = field(pytree_node=False,
+                                                      default=0.0)
     theta_log_hill_n_hyper_scale_fixed: float = field(pytree_node=False,
                                                       default=0.0)
 
@@ -139,8 +148,9 @@ _OFFSETS = ("X_low_offset", "X_delta_offset", "log_hill_K_offset",
             "log_hill_n_offset")
 
 
-def _n_fixed(priors):
-    return float(getattr(priors, "theta_log_hill_n_hyper_scale_fixed", 0.0))
+def _fixed(priors, h):
+    """The held population SD of hyperparameter ``h``, or 0 if learned."""
+    return float(getattr(priors, f"theta_{h}_hyper_scale_fixed", 0.0))
 
 
 def define_model(name: str,
@@ -160,9 +170,9 @@ def define_model(name: str,
                 f"{name}_{h}_hyper_loc",
                 dist.Normal(getattr(priors, f"theta_{h}_hyper_loc_loc"),
                             getattr(priors, f"theta_{h}_hyper_loc_scale"))))
-            if h == "log_hill_n" and _n_fixed(priors) > 0:
+            if _fixed(priors, h) > 0:
                 hyper.append(pyro.deterministic(f"{name}_{h}_hyper_scale",
-                                                jnp.full(T, _n_fixed(priors))))
+                                                jnp.full(T, _fixed(priors, h))))
             else:
                 hyper.append(pyro.sample(
                     f"{name}_{h}_hyper_scale",
@@ -202,8 +212,8 @@ def guide(name: str,
                 constraint=dist.constraints.greater_than(1e-4))
             hyper.append(pyro.sample(f"{name}_{h}_hyper_loc",
                                      dist.Normal(loc_loc, loc_scale)))
-            if h == "log_hill_n" and _n_fixed(priors) > 0:
-                hyper.append(jnp.full(T, _n_fixed(priors)))
+            if _fixed(priors, h) > 0:
+                hyper.append(jnp.full(T, _fixed(priors, h)))
                 continue
             scale_loc = pyro.param(f"{name}_{h}_hyper_scale_loc",
                                    jnp.full(T, -1.0))
@@ -270,6 +280,9 @@ def get_hyperparameters() -> Dict[str, Any]:
         "theta_log_hill_n_hyper_loc_loc": 0.7,
         "theta_log_hill_n_hyper_loc_scale": 0.5,
         "theta_log_hill_n_hyper_scale": 1.0,
+        "theta_X_low_hyper_scale_fixed": 0.0,
+        "theta_X_delta_hyper_scale_fixed": 0.0,
+        "theta_log_hill_K_hyper_scale_fixed": 0.0,
         "theta_log_hill_n_hyper_scale_fixed": 0.0,
     }
 

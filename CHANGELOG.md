@@ -44,6 +44,30 @@ fall into two kinds:
   (realistic), against 0.98 / 0.94 for the full Laplace and 0.81 / 0.76 for
   the low-rank guide. It leaves out the k/m uncertainty (coverage 0).
 
+- **`tfs-sample-posterior --laplace_blocks --laplace_shared`**
+  (`get_laplace_posteriors(block_shared=True)`, `arrowhead_laplace_factors`):
+  the block Laplace with the shared parameters' uncertainty. The Hessian is
+  an arrowhead: genotype blocks, each genotype's coupling to the shared
+  parameters, and the shared block. One more Hessian-vector product per
+  shared parameter per chunk gives all of it. The shared parameters are drawn
+  from their marginal (the Schur complement) and each genotype from its
+  conditional given them. That is the full Laplace, and it matched the
+  dense inverse Hessian exactly on a toy model, chunked or not. Two
+  departures, both for MAPs short of an optimum: a floored direction of a
+  genotype block carries no coupling, and a negative direction of the Schur
+  complement is held at the MAP and named in the log. On the relative-fit
+  run-4 MAPs, X 95% coverage was 0.97 (Poisson) and 0.94 (realistic), with
+  0.95-0.98 above 1000 reads. k/m coverage was 0.92 / 1.0 and 0.50 / 0.42,
+  close to the full Laplace's 0.92 / 0.92 and 0.58 / 0.50.
+
+- **`theta: hill_relative` can hold every population SD.**
+  `theta_X_low_hyper_scale_fixed`, `theta_X_delta_hyper_scale_fixed` and
+  `theta_log_hill_K_hyper_scale_fixed` join the log(n) field below (above
+  0: held, a deterministic site with no guide parameters). On the dev-data
+  growth-only MAP the learned SDs ran to 3.6, 4.3 and 11, against about
+  0.45, 0.45 and 0.7 among genotypes with more than 1e4 reads, so the MAP
+  shrank nothing and its X at 100 reads or fewer was noise.
+
 ### Fixed
 
 - **The Laplace path no longer applies the mini-batch likelihood scale at

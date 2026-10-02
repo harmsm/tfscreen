@@ -173,3 +173,30 @@ def test_log_hill_n_hyper_scale_fixed(fixed):
     X = _X(tp, data)
     assert X[0, 0, 1] == pytest.approx(1.0, abs=1e-5)
     assert X[0, -1, 1] == pytest.approx(0.0, abs=1e-5)
+
+
+@pytest.mark.parametrize("h", ["X_low", "X_delta", "log_hill_K"])
+def test_other_hyper_scales_fixed(h):
+    """Every hyperscale can be held, one at a time, without touching the
+    others or the gauge."""
+    data = _data()
+    field = f"theta_{h}_hyper_scale_fixed"
+    assert hr.get_hyperparameters()[field] == 0.0
+    priors = hr.get_priors().replace(**{field: 0.7})
+    mtr = handlers.trace(handlers.seed(hr.define_model, 0)).get_trace(
+        "theta", data, priors)
+    gtr = handlers.trace(handlers.seed(hr.guide, 0)).get_trace(
+        "theta", data, priors)
+    assert mtr[f"theta_{h}_hyper_scale"]["type"] == "deterministic"
+    assert np.allclose(mtr[f"theta_{h}_hyper_scale"]["value"], 0.7)
+    assert f"theta_{h}_hyper_scale_loc" not in gtr
+    others = {"X_low", "X_delta", "log_hill_K", "log_hill_n"} - {h}
+    for o in others:
+        assert mtr[f"theta_{o}_hyper_scale"]["type"] == "sample"
+    assert ({n for n, s in mtr.items() if s["type"] == "sample"}
+            == {n for n, s in gtr.items() if s["type"] == "sample"})
+    with handlers.seed(rng_seed=3):
+        tp = hr.guide("theta", data, priors)
+    X = _X(tp, data)
+    assert X[0, 0, 1] == pytest.approx(1.0, abs=1e-5)
+    assert X[0, -1, 1] == pytest.approx(0.0, abs=1e-5)

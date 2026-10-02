@@ -2252,6 +2252,151 @@ class RunInference:
                 scale_vector=jnp.ones_like(batch.growth.scale_vector)))
         return batch
 
+    def _genotype_hessian_parts(self, unconstrained, dim_map, data, flat_map,
+                                unravel, genotype_chunk_size=None,
+                                leak_tolerance=1e-5, include_shared=False):
+        """
+        The pieces of the Hessian the block Laplaces need, from
+        Hessian-vector products over genotype chunks.
+
+        Given the shared parameters, genotypes do not couple, so the Hessian
+        of the negative log joint is an arrowhead: block-diagonal over
+        genotypes (``B x B`` each), plus each genotype's coupling to the
+        shared parameters and the shared-shared block. Block column ``j``
+        comes from one product whose probe is 1 on slot ``j`` of every
+        genotype in a chunk. With ``include_shared``, every shared element
+        gets its own probe: its response on a chunk's genotype rows is their
+        coupling (each genotype's prior and observations sit in its own
+        chunk), and its response on the shared rows is summed over chunks.
+        Every chunk's potential also carries the terms no chunk slices (the
+        priors, and binding observations in a joint model), so the sum
+        counts them once per chunk; those are measured as
+        ``H(a) + H(b) - H(a + b)`` on two one-genotype batches and the
+        surplus removed.
+
+        Returns
+        -------
+        elem_idx : numpy.ndarray, shape (G, B)
+            Flat positions of each genotype's parameters.
+        blocks : numpy.ndarray, shape (G, B, B)
+            Symmetrized genotype blocks.
+        shared_idx : numpy.ndarray, shape (S,)
+            Flat positions of the shared parameters.
+        coupling : numpy.ndarray or None, shape (G, B, S)
+            Genotype-shared entries (``include_shared`` only; float32).
+        shared_block : numpy.ndarray or None, shape (S, S)
+            Shared-shared block (``include_shared`` only).
+        """
+        import jax.flatten_util
+        from numpyro.infer.util import potential_energy
+
+        G = self.model.data.num_genotype
+        gid = {}
+        for k, v in unconstrained.items():
+            a = np.full(np.shape(v), -1.0)
+            if k in dim_map and np.ndim(v) > 0:
+                ax = dim_map[k] % np.ndim(v)
+                if np.shape(v)[ax] == G:
+                    shape = [1] * np.ndim(v)
+                    shape[ax] = G
+                    a = np.broadcast_to(np.arange(G).reshape(shape),
+                                        np.shape(v)).astype(float)
+            gid[k] = jnp.asarray(a)
+        flat_gid = np.rint(np.asarray(
+            jax.flatten_util.ravel_pytree(gid)[0])).astype(int)
+        per = np.bincount(flat_gid[flat_gid >= 0], minlength=G)
+        if per.size == 0 or not np.all(per == per[0]) or per[0] == 0:
+            raise ValueError("block Laplace needs the same number of "
+                             "parameters for every genotype")
+        B = int(per[0])
+        order = np.argsort(np.where(flat_gid >= 0, flat_gid, G), kind="stable")
+        elem_idx = order[:G * B].reshape(G, B)
+        shared_idx = np.flatnonzero(flat_gid < 0)
+        D = flat_map.shape[0]
+        S = shared_idx.size
+        print(f"Block Laplace: {G} genotypes x {B} parameters; {S} shared "
+              f"parameters {'included' if include_shared else 'held at the MAP'}",
+              flush=True)
+
+        priors = self.model.priors
+
+        @jax.jit
+        def hvp(batch, v):
+            def pe(f):
+                return potential_energy(self.model.jax_model, [],
+                                        {"priors": priors, "data": batch},
+                                        unravel(f))
+            return jax.jvp(jax.grad(pe), (flat_map,), (v,))[1]
+
+        def probe(positions):
+            return jnp.zeros(D).at[positions].set(1.0)
+
+        chunk = G if not genotype_chunk_size else int(genotype_chunk_size)
+        blocks = np.zeros((G, B, B))
+        coupling = shared_block = None
+        if include_shared:
+            coupling = np.zeros((G, B, S), dtype=np.float32)
+            shared_block = np.zeros((S, S))
+        num_chunks = 0
+        for start in range(0, G, chunk):
+            num_chunks += 1
+            idx = np.arange(start, min(start + chunk, G))
+            batch = self._unscaled_batch(data, jnp.asarray(idx))
+            if start == 0 and idx.size > 1:
+                probed, other = idx[::2], idx[1::2]
+                hv = np.asarray(hvp(batch, probe(elem_idx[probed].ravel())))
+                on = np.max(np.abs(hv[elem_idx[probed]]))
+                leak = np.max(np.abs(hv[elem_idx[other]]))
+                if on > 0 and leak / on > leak_tolerance:
+                    raise ValueError(
+                        f"genotype blocks are coupled (response on unprobed "
+                        f"genotypes {leak / on:.2e} of the probed ones); the "
+                        f"block Laplace does not apply to this model")
+            for j in range(B):
+                hv = np.asarray(hvp(batch, probe(elem_idx[idx, j])), dtype=float)
+                blocks[idx, :, j] = hv[elem_idx[idx]]
+            if include_shared:
+                for s_i, pos in enumerate(shared_idx):
+                    hv = np.asarray(hvp(batch, probe(pos)), dtype=float)
+                    coupling[idx, :, s_i] = hv[elem_idx[idx]]
+                    shared_block[:, s_i] += hv[shared_idx]
+
+        if include_shared and num_chunks > 1:
+            one = [self._unscaled_batch(data, jnp.asarray([g])) for g in (0, 1)]
+            both = self._unscaled_batch(data, jnp.asarray([0, 1]))
+            for s_i, pos in enumerate(shared_idx):
+                v = probe(pos)
+                invariant = (np.asarray(hvp(one[0], v), dtype=float)
+                             + np.asarray(hvp(one[1], v), dtype=float)
+                             - np.asarray(hvp(both, v), dtype=float))
+                shared_block[:, s_i] -= (num_chunks - 1) * invariant[shared_idx]
+
+        blocks = 0.5 * (blocks + np.transpose(blocks, (0, 2, 1)))
+        if include_shared:
+            shared_block = 0.5 * (shared_block + shared_block.T)
+        return elem_idx, blocks, shared_idx, coupling, shared_block
+
+    @staticmethod
+    def _floored_block_factors(blocks, prec_b, return_kept=False):
+        """
+        ``L_g`` with ``L_g L_g^T`` the inverse of each block after flooring
+        its eigenvalues at the prior's curvature (as the full Laplace).
+        With ``return_kept``, also ``L_g`` with the floored eigenvectors'
+        columns zeroed (``arrowhead_laplace_factors``).
+        """
+        G, B, _ = blocks.shape
+        w, V = np.linalg.eigh(blocks)
+        curvature = np.einsum("gij,gi,gij->gj", V, prec_b, V)
+        floor = np.maximum(curvature, LAPLACE_MIN_EIGENVALUE)
+        w_f = np.maximum(w, floor)
+        print(f"  {int(np.sum(np.any(w < 0, axis=1)))} of {G} blocks had "
+              f"negative eigenvalues; {int(np.sum(w < floor))} of {G * B} "
+              f"eigenvalues raised to the prior's curvature", flush=True)
+        L = V / np.sqrt(w_f)[:, None, :]
+        if return_kept:
+            return L, L * (w >= floor)[:, None, :]
+        return L
+
     def block_laplace_factors(self, unconstrained, dim_map, data, flat_map,
                               unravel, model_kwargs, genotype_chunk_size=None,
                               leak_tolerance=1e-5):
@@ -2298,77 +2443,107 @@ class RunInference:
         L_blocks : numpy.ndarray, shape (num_genotype, B, B)
             Factors with ``L_g L_g^T`` = genotype g's conditional covariance.
         """
-        import jax.flatten_util
-        from numpyro.infer.util import potential_energy
+        elem_idx, blocks, _, _, _ = self._genotype_hessian_parts(
+            unconstrained, dim_map, data, flat_map, unravel,
+            genotype_chunk_size=genotype_chunk_size,
+            leak_tolerance=leak_tolerance)
+        prec = self._laplace_prior_precision(unconstrained, model_kwargs,
+                                             flat_map.shape[0])
+        return elem_idx, self._floored_block_factors(blocks, prec[elem_idx])
 
-        G = self.model.data.num_genotype
-        gid = {}
-        for k, v in unconstrained.items():
-            a = np.full(np.shape(v), -1.0)
-            if k in dim_map and np.ndim(v) > 0:
-                ax = dim_map[k] % np.ndim(v)
-                if np.shape(v)[ax] == G:
-                    shape = [1] * np.ndim(v)
-                    shape[ax] = G
-                    a = np.broadcast_to(np.arange(G).reshape(shape),
-                                        np.shape(v)).astype(float)
-            gid[k] = jnp.asarray(a)
-        flat_gid = np.rint(np.asarray(
-            jax.flatten_util.ravel_pytree(gid)[0])).astype(int)
-        per = np.bincount(flat_gid[flat_gid >= 0], minlength=G)
-        if per.size == 0 or not np.all(per == per[0]) or per[0] == 0:
-            raise ValueError("block Laplace needs the same number of "
-                             "parameters for every genotype")
-        B = int(per[0])
-        order = np.argsort(np.where(flat_gid >= 0, flat_gid, G), kind="stable")
-        elem_idx = order[:G * B].reshape(G, B)
-        D = flat_map.shape[0]
-        print(f"Block Laplace: {G} genotypes x {B} parameters; "
-              f"{D - G * B} shared parameters held at the MAP", flush=True)
+    def arrowhead_laplace_factors(self, unconstrained, dim_map, data, flat_map,
+                                  unravel, model_kwargs,
+                                  genotype_chunk_size=None,
+                                  leak_tolerance=1e-5):
+        """
+        Block Laplace that keeps the shared parameters' uncertainty.
 
-        priors = self.model.priors
+        The Hessian is an arrowhead (``_genotype_hessian_parts``): genotype
+        blocks ``A_g``, couplings ``C_g`` to the shared parameters and the
+        shared block ``H_ss``. Its Gaussian factorizes exactly: the shared
+        parameters have precision ``H_ss - sum_g C_g^T A_g^-1 C_g`` (the
+        Schur complement), and given them genotype g is
+        ``N(x_g* - A_g^-1 C_g (s - s*), A_g^-1)``. So this is the full
+        Laplace, at one Hessian-vector product per shared parameter beyond
+        the block Laplace's. Each ``A_g`` and the Schur complement are
+        floored at the prior's curvature, as in the full Laplace, except
+        that a negative direction of the Schur complement is held at the
+        MAP (zero variance; named in the log). The MAP is a saddle there,
+        and every genotype follows a shared direction, so the prior's width
+        along it swamps every interval: on the relative-fit run 4 MAPs the
+        k/dk_geno slide (``dk_geno_hyper_shift`` with k, eigenvalue about
+        -1e7) floored at the prior gave k its prior SD (0.01) and X 95%
+        widths of 1-3 at every depth, and floored hyperscale directions
+        pulled high-depth X coverage to 0.53.
 
-        @jax.jit
-        def hvp(batch, v):
-            def pe(f):
-                return potential_energy(self.model.jax_model, [],
-                                        {"priors": priors, "data": batch},
-                                        unravel(f))
-            return jax.jvp(jax.grad(pe), (flat_map,), (v,))[1]
+        A floored direction of ``A_g`` carries no coupling: ``C_g`` is
+        projected off it. The floor marks a direction where the MAP is not
+        at an optimum (a negative or prior-flat eigenvalue), so its coupling
+        is not a curvature either, and kept it is ruinous: with the floored
+        curvature near the prior's (about 1) and a coupling to the growth
+        slope m near 1e5, ``C^T A^-1 C`` subtracted 6e10 from m's
+        curvature of 1e10 on a short dev-data MAP (167 of 308 blocks
+        floored) and m's draws spread to its prior. Those genotypes then
+        neither inform the shared parameters nor follow them along the
+        floored directions, which widens the shared intervals a little.
 
-        chunk = G if not genotype_chunk_size else int(genotype_chunk_size)
-        blocks = np.zeros((G, B, B))
-        for start in range(0, G, chunk):
-            idx = np.arange(start, min(start + chunk, G))
-            batch = self._unscaled_batch(data, jnp.asarray(idx))
-            if start == 0 and idx.size > 1:
-                probed, other = idx[::2], idx[1::2]
-                v = jnp.zeros(D).at[elem_idx[probed].ravel()].set(1.0)
-                hv = np.asarray(hvp(batch, v))
-                on = np.max(np.abs(hv[elem_idx[probed]]))
-                leak = np.max(np.abs(hv[elem_idx[other]]))
-                if on > 0 and leak / on > leak_tolerance:
-                    raise ValueError(
-                        f"genotype blocks are coupled (response on unprobed "
-                        f"genotypes {leak / on:.2e} of the probed ones); the "
-                        f"block Laplace does not apply to this model")
-            for j in range(B):
-                v = jnp.zeros(D).at[elem_idx[idx, j]].set(1.0)
-                hv = np.asarray(hvp(batch, v), dtype=float)
-                blocks[idx, :, j] = hv[elem_idx[idx]]
+        Parameters and the first two returns as ``block_laplace_factors``.
 
-        blocks = 0.5 * (blocks + np.transpose(blocks, (0, 2, 1)))
-        w, V = np.linalg.eigh(blocks)
-        prec = self._laplace_prior_precision(unconstrained, model_kwargs, D)
-        prec_b = prec[elem_idx]
-        curvature = np.einsum("gij,gi,gij->gj", V, prec_b, V)
-        floor = np.maximum(curvature, LAPLACE_MIN_EIGENVALUE)
-        w_f = np.maximum(w, floor)
-        print(f"  {int(np.sum(np.any(w < 0, axis=1)))} of {G} blocks had "
-              f"negative eigenvalues; {int(np.sum(w < floor))} of {G * B} "
-              f"eigenvalues raised to the prior's curvature", flush=True)
-        L_blocks = V / np.sqrt(w_f)[:, None, :]
-        return elem_idx, L_blocks
+        Returns
+        -------
+        elem_idx, L_blocks
+            As ``block_laplace_factors``.
+        shared_idx : numpy.ndarray, shape (S,)
+            Flat positions of the shared parameters.
+        L_shared : numpy.ndarray, shape (S, S)
+            ``L_shared L_shared^T`` = the shared parameters' covariance.
+        response : numpy.ndarray, shape (G, B, S), float32
+            ``A_g^-1 C_g``: how far each genotype's conditional mean moves per
+            unit change in the shared parameters (subtracted).
+        """
+        elem_idx, blocks, shared_idx, coupling, shared_block = \
+            self._genotype_hessian_parts(
+                unconstrained, dim_map, data, flat_map, unravel,
+                genotype_chunk_size=genotype_chunk_size,
+                leak_tolerance=leak_tolerance, include_shared=True)
+        G, B, S = coupling.shape
+        prec = self._laplace_prior_precision(unconstrained, model_kwargs,
+                                             flat_map.shape[0])
+        L_blocks, L_kept = self._floored_block_factors(
+            blocks, prec[elem_idx], return_kept=True)
+
+        response = np.zeros((G, B, S), dtype=np.float32)
+        schur = shared_block.copy()
+        step = 4096
+        for start in range(0, G, step):
+            sl = slice(start, min(start + step, G))
+            L = L_kept[sl]
+            C = coupling[sl].astype(float)
+            M = np.einsum("gij,gkj,gks->gis", L, L, C)
+            response[sl] = M
+            schur -= np.einsum("gbs,gbt->st", C, M)
+        schur = 0.5 * (schur + schur.T)
+
+        w, V = np.linalg.eigh(schur)
+        w_f, _ = laplace_eigenvalue_floor(w, V, prec[shared_idx])
+        negative = w < 0
+        w_f = np.where(negative, np.inf, w_f)
+        print(f"  shared parameters: {int(np.sum(negative))} of {S} "
+              f"directions of the Schur complement negative, held at the MAP; "
+              f"{int(np.sum(~negative & (w_f > w)))} raised to the prior's "
+              f"curvature", flush=True)
+        # name the parameters in the negative directions (held: their
+        # uncertainty is left out)
+        names = np.array([f"{k}[{i}]" for k in sorted(unconstrained)
+                          for i in range(int(np.size(unconstrained[k])))])
+        if names.size == flat_map.shape[0]:
+            names = names[shared_idx]
+            for j in np.argsort(w)[:min(10, int(np.sum(w < 0)))]:
+                top = np.argsort(-np.abs(V[:, j]))[:3]
+                print(f"    eigenvalue {w[j]:.2e}: " + ", ".join(
+                    f"{names[t]} {V[t, j]:+.2f}" for t in top), flush=True)
+        L_shared = V / np.sqrt(w_f)[None, :]
+        return elem_idx, L_blocks, shared_idx, L_shared, response
 
     def get_laplace_posteriors(self,
                                map_params,
@@ -2379,7 +2554,8 @@ class RunInference:
                                hessian_chunk_size=64,
                                sites_to_save=None,
                                block_genotypes=False,
-                               genotype_chunk_size=None):
+                               genotype_chunk_size=None,
+                               block_shared=False):
         """
         Generate posterior samples from a MAP solution using the Laplace approximation.
 
@@ -2422,11 +2598,18 @@ class RunInference:
             genotype (``block_laplace_factors``). Memory and time scale with
             the library, not its square, so it runs on a full library where
             the full Hessian cannot. It leaves out the shared parameters'
-            uncertainty.
+            uncertainty unless ``block_shared``.
         genotype_chunk_size : int or None, optional
             Genotypes per Hessian-vector-product pass in block mode (default
             None, the whole library in one pass). Lower it if the pass runs
             out of device memory.
+        block_shared : bool, optional
+            With ``block_genotypes``, keep the shared parameters' uncertainty
+            (``arrowhead_laplace_factors``; default False): the shared
+            parameters are drawn from their Laplace marginal and each
+            genotype from its conditional given that draw, which is the full
+            Laplace. Costs one more Hessian-vector product per shared
+            parameter per genotype chunk.
 
         Notes
         -----
@@ -2463,7 +2646,32 @@ class RunInference:
         # Flatten to a single vector for Hessian computation
         flat_map, unravel = jax.flatten_util.ravel_pytree(unconstrained)
         D = flat_map.shape[0]
-        if block_genotypes:
+        if block_shared and not block_genotypes:
+            raise ValueError("block_shared needs block_genotypes")
+        if block_genotypes and block_shared:
+            elem_idx, L_blocks, shared_idx, L_shared, response = \
+                self.arrowhead_laplace_factors(
+                    unconstrained, dim_map, data_on_gpu, flat_map, unravel,
+                    model_kwargs, genotype_chunk_size=genotype_chunk_size)
+            elem_flat = jnp.asarray(elem_idx.reshape(-1))
+            shared_flat = jnp.asarray(shared_idx)
+            L_blocks = jnp.asarray(L_blocks, dtype=jnp.float32)
+            L_shared = jnp.asarray(L_shared, dtype=jnp.float32)
+            response = jnp.asarray(response)
+
+            def draw(key, n):
+                # shared parameters from their marginal; each genotype from
+                # its conditional given them
+                k_s, k_g = jax.random.split(key)
+                d_shared = jax.random.normal(
+                    k_s, shape=(n, L_shared.shape[1])) @ L_shared.T
+                z = jax.random.normal(k_g, shape=(n,) + L_blocks.shape[:2])
+                delta = (jnp.einsum("gij,ngj->ngi", L_blocks, z)
+                         - jnp.einsum("gbs,ns->ngb", response, d_shared))
+                base = jnp.broadcast_to(flat_map, (n, D))
+                base = base.at[:, shared_flat].add(d_shared)
+                return base.at[:, elem_flat].add(delta.reshape(n, -1))
+        elif block_genotypes:
             elem_idx, L_blocks = self.block_laplace_factors(
                 unconstrained, dim_map, data_on_gpu, flat_map, unravel,
                 model_kwargs, genotype_chunk_size=genotype_chunk_size)

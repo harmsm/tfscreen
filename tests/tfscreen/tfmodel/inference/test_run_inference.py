@@ -1503,6 +1503,77 @@ def test_get_laplace_posteriors_block_holds_shared_and_varies_genotypes(tmpdir):
                                np.asarray(map_params["a_auto_loc"]), atol=0.1)
 
 
+def _arrowhead_covariance(elem_idx, L_blocks, shared_idx, L_shared, response):
+    """Dense covariance implied by the arrowhead factors."""
+    G, B = elem_idx.shape
+    D = G * B + shared_idx.size
+    cov = np.zeros((D, D))
+    css = L_shared @ L_shared.T
+    cov[np.ix_(shared_idx, shared_idx)] = css
+    for g in range(G):
+        Mg = np.asarray(response[g], dtype=float)
+        cov[np.ix_(elem_idx[g], shared_idx)] = -Mg @ css
+        cov[np.ix_(shared_idx, elem_idx[g])] = -(Mg @ css).T
+        for h in range(G):
+            Mh = np.asarray(response[h], dtype=float)
+            block = Mg @ css @ Mh.T
+            if g == h:
+                block = block + L_blocks[g] @ L_blocks[g].T
+            cov[np.ix_(elem_idx[g], elem_idx[h])] = block
+    return cov
+
+
+@pytest.mark.parametrize("chunk", [None, 3])
+def test_arrowhead_laplace_matches_full_laplace(chunk):
+    """Genotype blocks plus their coupling to the shared mu reproduce the
+    inverse of the full Hessian, chunked or not (the chunked sum counts the
+    priors once per chunk and must take the surplus back out)."""
+    from numpyro.infer.util import potential_energy
+    model = BlockModel(num_genotype=7)
+    ri, _, unc, flat, unravel, kw = _block_setup(model)
+    factors = ri.arrowhead_laplace_factors(unc, ri._get_genotype_dim_map(),
+                                           model.data, flat, unravel, kw,
+                                           genotype_chunk_size=chunk)
+    elem_idx, L_blocks, shared_idx, L_shared, response = factors
+    assert shared_idx.size == 1 and response.shape == (7, 2, 1)
+    pe = lambda f: potential_energy(model.jax_model, [], kw, unravel(f))
+    H = ri._chunked_hessian(pe, flat, 64)
+    np.testing.assert_allclose(_arrowhead_covariance(*factors),
+                               np.linalg.inv(H), rtol=1e-4, atol=1e-6)
+
+
+def test_get_laplace_posteriors_block_shared_varies_shared(tmpdir):
+    model = BlockModel()
+    ri, map_params, unc, flat, unravel, kw = _block_setup(model)
+    from numpyro.infer.util import potential_energy
+    pe = lambda f: potential_energy(model.jax_model, [], kw, unravel(f))
+    cov = np.linalg.inv(ri._chunked_hessian(pe, flat, 64))
+    out = str(tmpdir.join("arrow"))
+    ri.get_laplace_posteriors(map_params, out_prefix=out,
+                              num_posterior_samples=4000,
+                              sampling_batch_size=500,
+                              forward_batch_size=6,
+                              block_genotypes=True, block_shared=True)
+    with h5py.File(f"{out}_posterior.h5", "r") as hf:
+        mu, a = hf["mu"][...], hf["a"][...]
+    # ravel_pytree orders sites a, b, mu
+    i_mu, i_a = 12, np.arange(6)
+    assert mu.std() == pytest.approx(np.sqrt(cov[i_mu, i_mu]), rel=0.1)
+    # a follows mu: its draws correlate with mu's as the full Laplace says
+    sd_a = np.sqrt(np.diag(cov)[i_a])
+    want = cov[i_mu, i_a] / (np.sqrt(cov[i_mu, i_mu]) * sd_a)
+    got = [np.corrcoef(mu, a[:, g])[0, 1] for g in range(6)]
+    np.testing.assert_allclose(got, want, atol=0.08)
+
+
+def test_block_shared_needs_block_genotypes(tmpdir):
+    model = BlockModel()
+    ri, map_params, *_ = _block_setup(model)
+    with pytest.raises(ValueError, match="block_genotypes"):
+        ri.get_laplace_posteriors(map_params, out_prefix=str(tmpdir.join("x")),
+                                  block_shared=True)
+
+
 def test_unscaled_batch_removes_minibatch_scale():
     """A model configured with batch_size below the library weights each
     growth likelihood by num_genotype / batch_size even at full batch;
