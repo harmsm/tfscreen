@@ -265,6 +265,20 @@ X test set (`theta_test`), per-arm means over 3 seeds, Poisson / realistic:
   on k and m cover (0.92-1.0). Remaining gap: the guides' variance, not
   their location.
 
+> **Caveat (2026-10-01).** Runs 2 and 3 ran with two bugs fixed on
+> 2026-09-29 (`9db28286`). From `c57d9ee5` (2026-09-27 16:48) every
+> component-guide hyperparameter scale started on its `greater_than(1e-4)`
+> bound and never moved, so the `component` arms ran crippled while the
+> `low_rank` autoguide did not; the comparison between them is lopsided.
+> The Laplace floor clamped negative eigenvalues to 1e-3 (variance 1,000),
+> which is the `map` arm's blowups; the learned log(hill_n) spread, which
+> ran away on real data, was also free here. The svi-overconfidence
+> study's relative arm, in the same window on a smaller library, found
+> component and low-rank about equal (X 95% coverage 0.68 vs 0.74, RMSE
+> 0.071 vs 0.072). So the guide recommendation below is not established.
+> The post-fix rerun is run 4 (`grid_v4.yaml`, below). The k/m collapse
+> under every guide holds after the fixes.
+
 **Decision fed (step 5).** The relative fit is sound. Its point estimates
 match the anchored joint fit's without binding data. Fit it with
 `--guide_type auto_low_rank_multivariate_normal`, not the component guide.
@@ -273,3 +287,37 @@ with real data (user, 2026-09-28).
 Its intervals, like every SVI fit's here, are too narrow. That is a
 separate problem shared with the joint fit, to take up before trusting
 coverage from any arm.
+
+## Run 4: post-fix guide comparison (set up 2026-10-01, not yet run)
+
+**Question.** With the frozen-scale and Laplace-floor fixes in, which
+inference gives honest X intervals on the relative fit: the component
+guide, the low-rank guide (numpyro's default rank, and rank 20 as on the
+real-data run `planning/dev-data/real_fit/rel_off_n05_svi`), MAP + floored
+Laplace, or the two-stage fit?
+
+**Design** ([`grid_v4.yaml`](grid_v4.yaml), template
+[`run_v4.srun`](run_v4.srun)): runs 2-3's simulations (same base config,
+noise levels and seeds 1-3), relative fit only, 5 inference arms, so 2
+noise x 3 seeds x 5 = 30 runs. Every arm holds the log(hill_n) population
+SD at 0.5, as the real-data fits now do. `run_v4.srun` is run.srun plus
+the svi-overconfidence study's two-stage path and guide diagnostics
+(`../svi-overconfidence/two_stage.py`, `guide_diagnostics.py`, staged
+into the grid's inputs) and a `guide_rank` variable. 12 h per run.
+
+```bash
+tfs-setup-sim-grid grid_v4.yaml --out_prefix relative_fit_v4
+for d in relative_fit_v4/run_*/; do (cd "$d" && sbatch run_v4.srun); done
+```
+
+Afterwards:
+
+```bash
+tfs-summarize-calibration relative_fit_v4 --out_prefix calib/relative_fit_v4 \
+    --facet_by founder_sampling
+```
+
+Compare X coverage by depth, RMSE and width across arms, k and m coverage,
+and the guide diagnostics (log-weight SD, k-hat) for the two SVI arms. The
+low-rank rank-20 arm decides whether the real-data run's rank was enough.
+
