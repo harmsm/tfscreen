@@ -119,7 +119,26 @@ and the guide diagnostics.
 
 ## Commit
 
-Not yet run on the cluster.
+Grid runs do not log a commit. Where the README did not record one, the
+commit below is inferred: the last commit before the grid's runs finished,
+from the file times of the downloaded `run.out` files (2026-10-03).
+
+- Run 1 (local, `run_local.sh`, 2026-09-27/28): factored ln_cfu0, before
+  722393cf. The current `run.srun` uses `hierarchical`, so rerunning it
+  needs `--ln_cfu0_model hierarchical_factored` and an older commit.
+- Run 2 (`svi_overconfidence_v2`, 2026-09-28): 722393cf (inferred).
+- Two-stage grid (`svi_overconfidence_two_stage`, 2026-09-28): beaab7bb
+  (inferred).
+- Fix grid (`svi_overconfidence_fix`, 2026-09-29): 9db28286 (inferred).
+- Unclipped-binding grid (`svi_overconfidence_noclip`, 2026-09-29):
+  6e2903d5 (inferred).
+- The NUTS pilots, the reference MAP and full-covariance pilots, the
+  continuation runs and the high-plateau diagnosis (Student-t population,
+  flat-in-theta prior, pinned noise, precise binding, truth-pinned fit) were
+  local one-offs with scratch scripts or temporary code edits that were not
+  committed. Their numbers here are a record, not a reproducible result.
+
+None of the result directories are committed (gitignored).
 
 ## Results
 

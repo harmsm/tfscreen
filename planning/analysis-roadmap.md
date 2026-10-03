@@ -22,6 +22,10 @@ related:
   - src/tfscreen/tfmodel/generative/components/sample_offset/normal.py
 ---
 
+**Outcome (2026-10-02):** `planning/analysis-roadmap-summary.md` records
+what this branch built, tested and found, the bugs fixed, where to go next
+and how to reproduce it. Steps 2, 6, 7b, 8 and 9 are not done.
+
 ## Why
 
 The congression plan (`planning/congression-physics-plan.md`) is close to
@@ -447,7 +451,16 @@ step 7.
    joint fit without binding data when fit with
    `--guide_type auto_low_rank_multivariate_normal`. The mean-field
    component guide is biased along the m·X ridge. Intervals from every
-   SVI arm, joint included, are too narrow; that is a separate problem.)
+   SVI arm, joint included, are too narrow; that is a separate problem.
+   Updated 2026-10-02: run 4, after the start, scale and Laplace fixes,
+   confirmed the guide verdict (component X 95% coverage 0.06 / 0.38,
+   low-rank 0.81 / 0.76, Poisson / realistic). On the real library the
+   low-rank guide slid along the ridge (3.3e5 nats worse than the MAP), so
+   the full-library route is the MAP plus the arrowhead Laplace
+   (`tfs-sample-posterior --laplace_blocks --laplace_shared`): X 0.97 /
+   0.94 and k/m close to the full Laplace on run 4. Real-data results:
+   `planning/dev-data/real_fit/README.md` (gitignored) and
+   `planning/analysis-roadmap-summary.md`.)
    - A relative Hill theta component: hill_geno's curve with real-valued
      baselines, population priors centered on wt, registry rules (C5). Gauge
      (D4): wt's curve is pinned to `X = 1` at `c_lo` and `X = 0` at `c_hi`
@@ -518,8 +531,12 @@ step 7.
    - Validation: the calibration grid with step 4's noise on, against the
      step 2 interim total: theta coverage, `k_c`/`m_c` recovery (C4), in the
      joint and the relative fit.
-7. [x] **Count likelihood** (N). (Validated 2026-09-27; whether it becomes
-   the default for real data is the user's call.)
+7. [x] **Count likelihood** (N). (Validated 2026-09-27. The fourth run,
+   2026-09-28, with `ln_cfu0: hierarchical`: theta 95% coverage 0.83 / 0.84
+   against 0.72 / 0.83 for `lncfu`, RMSE 0.035 / 0.072 against 0.100 /
+   0.109. `counts` with `sample_offset: level` is the
+   `tfs-configure-model` default since 2620a5b3, and the real-data fits use
+   it.)
    `growth_likelihood: counts` (C2): growth and presplit observers with
    `reads_{g,s} ~ NegBin(depth_s * exp(ln n_{g,s} - P_s + u_s), dispersion)`,
    `P` from step 6 (until then, the supplied `sample_ln_cfu`, D14), `u`

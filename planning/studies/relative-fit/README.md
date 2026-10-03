@@ -13,6 +13,15 @@ that hold under realistic count noise?
 - C4: whether `k_c`/`m_c` are recovered from growth alone, with totals
   supplied (step 6 later replaces the supplied totals).
 
+**Current answer (2026-10-02).** The relative fit is sound. For intervals,
+use the MAP plus the arrowhead Laplace (`--laplace_blocks
+--laplace_shared`): on run 4 it covered X 0.97 / 0.94 (Poisson /
+realistic) and k/m about as well as the full Laplace, and it runs on a full
+library. The low-rank guide is the SVI choice (X 0.81 / 0.76), but on the
+real library it slid along the m·X ridge. k and m are recovered here only
+as well as the tube totals allow (C4). The sections below are in the order
+they were run; later runs supersede earlier ones.
+
 ## Design
 
 Base config: `../congression-calibration/simulate_config.yaml` (483
@@ -98,11 +107,21 @@ Repository paths only: `grid.yaml`, `run.srun`,
 
 ## Commit
 
-Not yet run. A local smoke run of one `realistic`/`counts`/`relative` run
-(SVI stopped after 3 epochs past the pre-MAP) completed every pipeline step
-(2026-09-26): the theta test file carries `theta_scale = X` with truth on the
-gauge, and `growth_k`/`growth_m` carry X-scale truth. It checks plumbing,
-not results.
+Grid runs do not log a commit. Where the README did not record one, the
+commit below is inferred: the last commit before the grid's runs finished,
+from the file times of the downloaded `run.out` files (2026-10-03).
+
+- Run 1 (`relative_fit`, 2026-09-27): before c57d9ee5 (the SVI start fix);
+  not recorded more closely.
+- Run 2 (`relative_fit_v2`, 2026-09-28): after e29c7395 (the low-rank and
+  MAP arms), with factored ln_cfu0; not recorded more closely.
+- Run 3 (`relative_fit_v3`, 2026-09-28): 722393cf (inferred).
+- Run 4 (`relative_fit_v4`, 2026-10-01): 0e220e7b (inferred).
+- Block Laplace tables (2026-10-02, local): cd208d15. Arrowhead Laplace
+  tables (2026-10-02, local): a874ac38. Both are reproduced by
+  `laplace_blocks.sh block|arrowhead` from a finished `relative_fit_v4/`.
+
+None of the result directories are committed (gitignored).
 
 ## Results
 
@@ -374,11 +393,14 @@ is enough). Expect X 95% intervals to cover about 0.76-0.81, and treat k
 and m intervals from any guide as too narrow. A full-library Laplace is
 out of reach (about 2M parameters), so on real data the k/m uncertainty
 needs the two-stage fit with the Laplace taken on a subset.
+*Superseded 2026-10-02:* the arrowhead Laplace below covers k/m on a full
+library, and the low-rank guide failed on real data, so see "Current
+answer" at the top.
 
 **Block Laplace on run 4's MAPs (2026-10-02, local).** The per-genotype
 Laplace (`tfs-sample-posterior --laplace_blocks`, new) on copies of the six
-`map` runs (500 draws each, then predict, extract and summarize; not
-committed). Given the shared parameters, run 0004's full Hessian (4,521
+`map` runs (500 draws each, then predict, extract and summarize;
+`laplace_blocks.sh block`). Given the shared parameters, run 0004's full Hessian (4,521
 parameters: 478 genotypes x 9, plus 219 shared) had every cross-genotype
 entry exactly 0, wt included. Each block's covariance matched the inverse
 of the full Hessian's diagonal block to 8e-6, except where the prior floor
@@ -404,9 +426,9 @@ full Laplace's 0.94).
 **Arrowhead Laplace on run 4's MAPs (2026-10-02, local).** The block
 Laplace plus each genotype's coupling to the shared parameters and the
 shared block (`--laplace_blocks --laplace_shared`, new), on the same six
-copies (500 draws each; not committed). The shared parameters come from
-their Schur complement and each genotype from its conditional, which is
-the full Laplace. Two rules were needed. Floored genotype directions carry
+copies (500 draws each; `laplace_blocks.sh arrowhead`). The shared
+parameters come from their Schur complement and each genotype from its
+conditional, which is the full Laplace. Two rules were needed. Floored genotype directions carry
 no coupling. Negative Schur directions are held at the MAP: floored at the
 prior instead, the k/dk_geno slide (`dk_geno_hyper_shift` with k,
 eigenvalue about -1e7, runs 0009 and 0024) gave k its prior SD of 0.01 and

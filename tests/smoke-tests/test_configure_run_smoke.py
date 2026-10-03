@@ -99,6 +99,7 @@ def test_configure_run_pipeline_smoke(tmpdir, library_smoke_yaml):
 
     # Run configuration
     configure_model(binding_path,
+                              growth_likelihood="lncfu", sample_offset_model="zero",
                               growth_df=growth_path,
                               library_config=library_smoke_yaml,
                               out_prefix=out_prefix)
@@ -256,6 +257,7 @@ def test_configure_run_autoguide_smoke(tmpdir, guide_type, library_smoke_yaml):
 
     cfg_prefix = os.path.join(tmpdir, "test_tfs")
     configure_model(binding_path, growth_df=growth_path,
+                    growth_likelihood="lncfu", sample_offset_model="zero",
                     library_config=library_smoke_yaml, out_prefix=cfg_prefix)
     config_file = f"{cfg_prefix}_config.yaml"
 
@@ -318,6 +320,7 @@ def test_configure_run_binding_weight_smoke(tmpdir, library_smoke_yaml):
     # ── 1. Explicit binding_weight is preserved in the YAML ──────────────────
     out_explicit = os.path.join(tmpdir, "tfs_explicit")
     configure_model(binding_path,
+                    growth_likelihood="lncfu", sample_offset_model="zero",
                     growth_df=growth_path,
                     library_config=library_smoke_yaml,
                     out_prefix=out_explicit,
@@ -332,6 +335,7 @@ def test_configure_run_binding_weight_smoke(tmpdir, library_smoke_yaml):
     # ── 2. Auto-computed binding_weight is a concrete float, not None ─────────
     out_auto = os.path.join(tmpdir, "tfs_auto")
     configure_model(binding_path,
+                    growth_likelihood="lncfu", sample_offset_model="zero",
                     growth_df=growth_path,
                     library_config=library_smoke_yaml,
                     out_prefix=out_auto)

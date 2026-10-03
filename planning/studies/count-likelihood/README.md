@@ -73,8 +73,11 @@ Repository paths only: `grid.yaml`, `run.srun`,
 ## Commit
 
 First run: commit 775f8b7 (2026-09-26/27), results in `count_likelihood/`.
-Second run: commit c65390aa (2026-09-27), results in `count_likelihood_v2/`
-(neither is committed).
+Second run: commit c65390aa (2026-09-27), results in `count_likelihood_v2/`.
+Third run: commit 740ebc19 (2026-09-27), results in `count_likelihood_v3/`.
+Fourth run: 722393cf (2026-09-28, inferred from the file times of its
+`run.out` files; the runs do not log a commit), results in
+`count_likelihood_v4/`. None of the result directories are committed.
 
 ## Results
 
