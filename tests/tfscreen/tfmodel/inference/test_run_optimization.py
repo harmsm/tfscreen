@@ -15,6 +15,7 @@ import numpyro.distributions as dist
 import optax
 from flax import struct
 from numpyro import handlers
+from numpyro.distributions.distribution import validation_enabled
 
 import jax
 from numpyro.infer import SVI, Trace_ELBO
@@ -385,11 +386,14 @@ def test_invalid_checkpoint_path():
 
 
 def test_nan_explosion():
+    # numpyro >= 0.22 validates distribution arguments by default, so svi.init
+    # would refuse the NaN loc before the loop's own NaN check could see it.
     ri = RunInference(ToyModel(), seed=0)
     svi = ri.setup_svi(adam_step_size=1e-2, guide_type="component")
-    with pytest.raises(RuntimeError, match="model exploded"):
-        _fit(ri, svi, init_params={"mu_loc": jnp.array(np.nan)},
-             init_param_jitter=0.0, max_num_epochs=50)
+    with validation_enabled(False):
+        with pytest.raises(RuntimeError, match="model exploded"):
+            _fit(ri, svi, init_params={"mu_loc": jnp.array(np.nan)},
+                 init_param_jitter=0.0, max_num_epochs=50)
 
 
 def test_epoch_checkpoints(tmp_path):

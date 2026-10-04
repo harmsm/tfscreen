@@ -70,6 +70,16 @@ fall into two kinds:
 
 ### Fixed
 
+- **`test_nan_explosion` passes under numpyro 0.22.** numpyro 0.22 checks
+  distribution arguments by default (0.19 did not), so `svi.init` refused
+  the test's NaN starting loc with a `ValueError` before the optimization
+  loop's own NaN check ran. Every CI runner failed (numpyro 0.22.0, jax
+  0.11.2), while local runs on numpyro 0.19.0 passed. The test now fits
+  under `validation_enabled(False)`
+  (`tests/tfscreen/tfmodel/inference/test_run_optimization.py`). A fit run
+  on numpyro 0.22 that starts from a non-finite point now stops at init with
+  numpyro's `ValueError`, not tfscreen's "model exploded" `RuntimeError`.
+
 - **The Laplace path no longer applies the mini-batch likelihood scale at
   full batch.** `scale_vector` is built for the configured batch size, so a
   model configured with `batch_size` below the library weighted every
