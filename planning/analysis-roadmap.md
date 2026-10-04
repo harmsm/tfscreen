@@ -9,6 +9,8 @@ revisit_when: >-
   main.
 related:
   - planning/congression-physics-plan.md
+  - planning/analysis-roadmap-summary.md
+  - planning/experiment-pipeline.md
   - planning/growth-only-relative-fit.md
   - planning/count-likelihood.md
   - planning/per-sample-level-offset.md

@@ -461,8 +461,11 @@ Markdown file each with a YAML header whose `status` (`idea`/`active`/
 list current. Studies live in `planning/studies/<slug>/` (a `README.md` with
 question, decision fed, how to run, inputs, commit and results, plus the
 script); once a plan cites a study it is frozen. `dev/` is untracked scratch;
-anything a plan cites moves into `planning/studies/`. The active plan is
-`planning/congression-physics-plan.md`.
+anything a plan cites moves into `planning/studies/`. The active plans are
+`planning/congression-physics-plan.md`, `planning/analysis-roadmap.md`
+(steps 2, 6, 7b, 8 and 9 left; outcome so far in
+`planning/analysis-roadmap-summary.md`) and `planning/experiment-pipeline.md`
+(one experiment file from raw data to posterior; the next branch).
 
 ## YAML Standards
 

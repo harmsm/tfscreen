@@ -14,7 +14,8 @@ related:
   - planning/studies/noise-anatomy/README.md
   - planning/studies/od600-population/README.md
   - planning/studies/growth-binding-map/README.md
-  - planning/dev-data/real_fit/README.md
+  - planning/studies/real-data-fit/README.md
+  - planning/experiment-pipeline.md
 ---
 
 Branch `claude/physics-improvements-roadmap-03a273`, 2026-09-26 to
@@ -401,17 +402,20 @@ In rough order of payoff for the science:
    - Newton steps with the arrowhead Hessian are one route.
    - Holding the population SDs shrinks the low-depth genotypes, but only
      together with the ridge slide.
-5. **Rerun the provisional step 0 studies** on the new processing:
+5. **Run the pipeline, then simulate the real design at full size**
+   (`planning/experiment-pipeline.md`; the reviewer simulations in
+   `planning/studies/real-data-fit/README.md`).
+6. **Rerun the provisional step 0 studies** on the new processing:
    0a growth-binding map, 0b noise anatomy, 0c OD600 population. Finish
    0c's curve-form decision (roadmap D9).
-6. **Remaining roadmap steps:**
+7. **Remaining roadmap steps:**
    - 2: counts and OD600 through processing;
    - 6: the population model;
    - 7b: growth transitions, test then purge, with 4CP the likely case;
    - 8 and 9: the learned map and the joint fit;
    - the kan-vs-4CP consistency check (D5), which a shared X cannot test
      alone.
-7. **Known calibration gaps on simulations:**
+8. **Known calibration gaps on simulations:**
    - k/m undercover under realistic noise even with the full Laplace;
    - the joint fit's saturated high plateau undercovers (0.31);
    - the pre-fit under the count likelihood wrote k priors far from truth.
@@ -446,46 +450,20 @@ disk.
   tests, the truth-pinned fit) are marked in its README as records, not
   reproducible results. Scripting each one is not worth it.
 
-**The real-data fit is the harder part.** Its scripts live in the
-gitignored `planning/dev-data/`, mixed with 55 GB of data and run outputs:
-- Processing: `prep_dev_data.py`, `binding_fit.py`.
-- Run templates: `run.srun`, `run_relative.srun`, `run_blap.srun`.
-- Start points: `make_init_npz.py`, `make_warm_start.py`,
-  `make_init_hs.py`, `check_warm.py`.
-- Priors: `set_growth_priors.py`.
-- Scoring: `score_counts.py`, `residual_compare.py`.
-- Scans and figures: `scan_protein.py`, `scan_monotone.py`,
-  `plot_x_vs_binding.py`, `resid/small_offsets.py`,
-  `resid/profile_offsets.py`.
+**The real-data fit.** Its scripts are now tracked in
+`planning/studies/real-data-fit/`, in `processing/`, `fit/` and `analysis/`
+(Mike, 2026-10-03). The data, the run outputs and the full lab notebook stay
+in the gitignored `planning/dev-data/`, where the scripts are symlinks to
+the tracked copies. The study README gives the final fit's start chain as
+commands, with the commit behind each run, and lists the dead ends.
 
-The final fit's start depends on a chain of six earlier runs: `rel_loose_b`
-and `map_off_n05`, and through it `map_nooffset_n05`, `map_warm`,
-`map_sig017b` and `map_nooffset_b`. About twenty other run directories and
-the smoke tests are dead ends.
-
-Proposal:
-1. Keep the data where they are, out of the repository (C10).
-2. Collect the scripts the final results need into one place, with a
-   README that gives the chain as commands: inputs, each run's script and
-   settings, and the helper that builds the next start. Drop the dead
-   scripts: `compare_arms.py`, `resume_posterior.srun`, `fetch.sh`,
-   `local_offsets/`.
-3. Shorten the chain if possible. A recipe of no-offset relative MAP, then
-   offsets warm-started from it, then the final fit would need one rerun to
-   confirm it lands at the same point. Otherwise the chain is documented as
-   it ran.
-4. Archive the final MAP parameters and starting npz files with the lab's
-   data, since they are derived from it.
-
-Two decisions here are Mike's:
-- **Where the real-data scripts live.** They hold no raw data, but they do
-  encode the lab's protocol: library design, spike codons, tube volume,
-  presplit dilution and file names. One option is tracked, in a study
-  directory such as `planning/studies/dev-data-fit/`, reading data from the
-  gitignored `planning/dev-data/`. The other is the lab's own analysis
-  repository, pinned to a tfscreen commit.
-- **Whether to rerun the shortened chain** to make the final fit one recipe
-  long.
+The final fit's start depends on a chain of six earlier runs. We will not
+shorten it by rerunning it here. The pipeline plan
+(`planning/experiment-pipeline.md`) builds the staged start into
+`tfs-fit-model`, and its done criterion is this fit rerun from one
+experiment file. That rerun becomes the official, shortened recipe. The
+same plan makes the simulator write the raw formats, so full-size
+simulations of this design can answer reviewers.
 
 **The merge itself.** `main` has not moved since 2026-09-26, so the merge
 is mechanical. The full suite, slow and smoke tests
@@ -495,5 +473,5 @@ likelihood became the configure default (2620a5b3). They now ask for the
 `ln_cfu` likelihood their data imply, and all 44 smoke tests pass; the
 count path keeps its smoke coverage through the fixture-based tests. The
 stale entries are fixed (above).
-Still open: set the roadmap to `done`, or keep it `active` for steps 2, 6,
-7b, 8 and 9 (Mike's choice).
+The roadmap stays `active`: steps 2, 6, 7b, 8 and 9 are not done (Mike,
+2026-10-03).

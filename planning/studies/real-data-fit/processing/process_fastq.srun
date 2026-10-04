@@ -1,0 +1,19 @@
+#!/bin/bash -l
+#SBATCH --account=harmslab      ### change this to your actual account for charging
+#SBATCH --job-name=tfscreen     ### job name
+#SBATCH --output=hostname.out   ### file in which to store job stdout
+#SBATCH --error=hostname.err    ### file in which to store job stderr
+#SBATCH --partition=memory
+#SBATCH --time=00-02:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --mem=0 
+
+f1=${1}
+f2=${2}
+out_dir=${3}
+cfg=${4}
+
+mkdir ${out_dir}
+
+tfs-process-fastq ${f1} ${f2} ${out_dir} ${cfg} --phred_cutoff 10 --min_read_length 50 --allowed_num_flank_diffs 1 --allowed_diff_from_expected 2

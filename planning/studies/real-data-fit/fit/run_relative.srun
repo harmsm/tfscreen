@@ -1,0 +1,178 @@
+#!/bin/bash -l
+#SBATCH --account=harmslab
+#SBATCH --job-name=tfs_rel
+#SBATCH --output=run.out
+#SBATCH --error=run.err
+#SBATCH --partition=gpulong
+#SBATCH --time=01-00:00:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --gpus=1
+#SBATCH --mem=0
+#SBATCH --ntasks-per-node=1
+
+# Growth-only relative fit (theta: hill_relative) of the dev-data screen:
+# no binding data, MAP, tube offsets optional (OFFSET_MODEL). wt is gauged to X = 1 at 0 IPTG
+# and X = 0 at 1 mM, so the fit's X is compared with the binding theta
+# afterwards instead of being tied to it (see README, 2026-09-30).
+# Submit from a run directory next to inputs/:
+#
+#   mkdir rel_loose && cd rel_loose && sbatch --export=ALL,PRIORS=loose ../run_relative.srun
+#   mkdir rel_monokan && cd rel_monokan && sbatch --export=ALL,PRIORS=monokan ../run_relative.srun
+#   mkdir rel_loose_n05 && cd rel_loose_n05 && sbatch --export=ALL,PRIORS=loose,N_SCALE=0.5 ../run_relative.srun
+#
+# With tube offsets (2026-10-01): level offsets at SD 0.17, n held, started
+# from rel_loose_b's point plus map_off_n05's offsets (make_init_npz.py;
+# check_warm.py stops the job if the start is off):
+#   mkdir rel_off_n05 && cd rel_off_n05 && sbatch --export=ALL,PRIORS=loose,N_SCALE=0.5,OFFSET_MODEL=level,SIGMA_FIXED=0.17,INIT_FROM=../inputs/init_rel_off.npz,ADAM_STEP=1e-4 ../run_relative.srun
+#
+# SVI uncertainty from the best growth-only MAP (2026-10-01): low-rank
+# guide (rank 20; numpyro's default sqrt(D) is about 1,500 here), started
+# at rel_off_n05's MAP point (inputs/init_rel_off_n05_map.npz, a copy of its
+# tfs_fit_model_params.npz):
+#   mkdir rel_off_n05_svi && cd rel_off_n05_svi && sbatch --export=ALL,ARM=svi,PRIORS=loose,N_SCALE=0.5,OFFSET_MODEL=level,SIGMA_FIXED=0.17,INIT_FROM=../inputs/init_rel_off_n05_map.npz ../run_relative.srun
+#
+# Shrinkage (2026-10-02): hold the X_low, X_delta and log K population SDs
+# too (learned they ran to 3.6, 4.3 and 11, so the MAP shrank nothing), from
+# rel_off_n05 with its offsets re-expressed for the held SDs
+# (make_init_hs.py -> inputs/init_rel_off_hs.npz):
+#   mkdir rel_off_hs && cd rel_off_hs && sbatch --export=ALL,PRIORS=loose,N_SCALE=0.5,HS_FIXED=X_low=0.5:X_delta=0.5:log_hill_K=1.0,OFFSET_MODEL=level,SIGMA_FIXED=0.17,INIT_FROM=../inputs/init_rel_off_hs.npz,ADAM_STEP=1e-4 ../run_relative.srun
+#
+# Congression test (2026-10-02): rel_off_hs with the congression mixture
+# (max rule, the only one the relative fit allows; lambda prior from the
+# measured 0.3572, likelihood-ratio 95% CI 0.156-0.674: lognormal, median
+# 0.357, log SD 0.373, entered as linear mean 0.383, SD 0.147), started
+# from rel_off_hs's MAP. Does the IPTG pattern in
+# the tube offsets move into the mixture?
+#   mkdir rel_off_hs_mix && cd rel_off_hs_mix && sbatch --export=ALL,PRIORS=loose,N_SCALE=0.5,HS_FIXED=X_low=0.5:X_delta=0.5:log_hill_K=1.0,OFFSET_MODEL=level,SIGMA_FIXED=0.17,TRANSFORMATION=mixture,INIT_FROM=../inputs/init_rel_off_hs_map.npz,ADAM_STEP=1e-4 ../run_relative.srun
+#
+# PRIORS: per-condition k and m priors written by set_growth_priors.py
+#         (tfs-prefit-calibration refuses growth-only models).
+#         loose: every condition k ~ N(0.015, 0.01), m ~ N(0, 0.01)
+#         monokan: kan conditions from the wt monoculture rates, pheS loose
+# N_SCALE: hold the population SD of log(hill_n) at this value
+#          (theta_log_hill_n_hyper_scale_fixed). Learned, it ran to about 19
+#          and n to 0.01-13 on the first real-data fits (README, 2026-10-01).
+# TRANSFORMATION: single (default) or mixture (congression_theta_rule max,
+#                 lambda prior LAMBDA as linear "mean sd", default "0.383 0.147")
+# HS_FIXED: colon-separated name=value pairs holding the other population
+#           SDs (theta_{name}_hyper_scale_fixed), e.g. X_low=0.5:log_hill_K=1.0
+
+module load cuda/12.4.1
+
+set -e
+
+PRIORS="${PRIORS:?set PRIORS=loose or PRIORS=monokan}"
+GROWTH="${GROWTH:-../inputs/growth.csv.gz}"
+MAX_EPOCHS="${MAX_EPOCHS:-}"
+SEED="${SEED:-20260930}"
+BATCH_SIZE="${BATCH_SIZE:-4096}"
+N_SCALE="${N_SCALE:-}"
+HS_FIXED="${HS_FIXED:-}"
+TRANSFORMATION="${TRANSFORMATION:-single}"
+LAMBDA="${LAMBDA:-0.383 0.147}"
+TRANSFORM_ARGS=(--transformation_model "${TRANSFORMATION}")
+if [[ "${TRANSFORMATION}" != "single" ]]; then
+    TRANSFORM_ARGS+=(--transformation_lambda ${LAMBDA} --congression_theta_rule max)
+fi
+# per-tube offsets: zero (default) or level; SIGMA_FIXED holds their SD
+OFFSET_MODEL="${OFFSET_MODEL:-zero}"
+SIGMA_FIXED="${SIGMA_FIXED:-}"
+INIT_FROM="${INIT_FROM:-}"
+ADAM_STEP="${ADAM_STEP:-}"
+# map (default) or svi: low-rank multivariate normal guide, started at the
+# INIT_FROM point with no pre-MAP (the start is already a MAP)
+ARM="${ARM:-map}"
+GUIDE_RANK="${GUIDE_RANK:-20}"
+NUM_SAMPLES="${NUM_SAMPLES:-300}"
+EPOCH_ARGS=()
+if [[ -n "${MAX_EPOCHS}" ]]; then
+    EPOCH_ARGS=(--max_num_epochs "${MAX_EPOCHS}")
+fi
+
+echo ">>> Configure (relative, ${PRIORS}; growth ${GROWTH}) $(date)"
+tfs-configure-model \
+    --growth_df "${GROWTH}" \
+    --library_config ../inputs/library_config.yaml \
+    --growth_likelihood counts \
+    --sample_offset_model "${OFFSET_MODEL}" \
+    --batch_size "${BATCH_SIZE}" \
+    --growth_noise_model zero \
+    --condition_growth_model linear \
+    --growth_transition_model instant \
+    --ln_cfu0_model hierarchical \
+    --dk_geno_model hierarchical_geno \
+    --activity_model fixed \
+    --theta_model hill_relative \
+    --theta_rescale_model passthrough \
+    --theta_growth_noise_model zero \
+    "${TRANSFORM_ARGS[@]}" \
+    --growth_shares_replicates
+
+# the library config must carry all nine spikes (2026-09-30)
+python -c "import sys, pandas as pd; n = int(pd.read_csv('tfs_configure_library.csv').in_spiked_origin.sum()); print(f'{n} spiked genotypes in the library snapshot'); sys.exit(n != 9)"
+
+echo ">>> Growth priors (${PRIORS}) $(date)"
+python ../set_growth_priors.py "${PRIORS}"
+if [[ -n "${N_SCALE}" ]]; then
+    grep -q '^theta.theta_log_hill_n_hyper_scale_fixed,' tfs_configure_priors.csv
+    sed -i "s/^theta.theta_log_hill_n_hyper_scale_fixed,[^,]*/theta.theta_log_hill_n_hyper_scale_fixed,${N_SCALE}/" \
+        tfs_configure_priors.csv
+    echo "log hill_n population SD held at ${N_SCALE}"
+    grep '^theta.theta_log_hill_n' tfs_configure_priors.csv
+fi
+
+for pair in ${HS_FIXED//:/ }; do
+    h="${pair%%=*}"; v="${pair#*=}"
+    grep -q "^theta.theta_${h}_hyper_scale_fixed," tfs_configure_priors.csv
+    sed -i "s/^theta.theta_${h}_hyper_scale_fixed,[^,]*/theta.theta_${h}_hyper_scale_fixed,${v}/" \
+        tfs_configure_priors.csv
+    grep "^theta.theta_${h}_hyper_scale_fixed," tfs_configure_priors.csv
+done
+
+if [[ -n "${SIGMA_FIXED}" ]]; then
+    grep -q '^growth.sample_offset.sigma_fixed,' tfs_configure_priors.csv
+    sed -i "s/^growth.sample_offset.sigma_fixed,[^,]*/growth.sample_offset.sigma_fixed,${SIGMA_FIXED}/" \
+        tfs_configure_priors.csv
+    echo "sample_offset sigma held at ${SIGMA_FIXED}"
+    grep '^growth.sample_offset' tfs_configure_priors.csv
+fi
+
+case "${ARM}" in
+    map) FIT_ARGS=(--analysis_method map)
+         SAMPLE_ARGS=(--map_point) ;;
+    svi) FIT_ARGS=(--analysis_method svi
+                   --guide_type auto_low_rank_multivariate_normal
+                   --guide_rank "${GUIDE_RANK}" --pre_map_num_epoch 0)
+         SAMPLE_ARGS=(--num_posterior_samples "${NUM_SAMPLES}"
+                      --sampling_batch_size "${SAMPLING_BATCH:-25}") ;;
+    *) echo "unknown ARM '${ARM}'" >&2; exit 1 ;;
+esac
+if [[ -n "${INIT_FROM}" ]]; then
+    echo ">>> Checking the start against ${INIT_FROM} $(date)"
+    python ../check_warm.py "${INIT_FROM}"
+    FIT_ARGS+=(--init_from "${INIT_FROM}")
+fi
+if [[ -n "${ADAM_STEP}" ]]; then
+    FIT_ARGS+=(--adam_step_size "${ADAM_STEP}")
+fi
+
+echo ">>> Fit (${ARM}) $(date)"
+tfs-fit-model tfs_configure_config.yaml --seed "${SEED}" \
+    "${FIT_ARGS[@]}" "${EPOCH_ARGS[@]}"
+
+echo ">>> Sample posterior (${ARM}) $(date)"
+/usr/bin/time -v tfs-sample-posterior tfs_configure_config.yaml tfs_fit_model_checkpoint.pkl \
+    "${SAMPLE_ARGS[@]}" --skip_growth_observations
+
+echo ">>> Extract parameters $(date)"
+tfs-extract-params tfs_configure_config.yaml tfs_posterior.h5
+
+echo ">>> Predict X $(date)"
+tfs-predict-theta tfs_configure_config.yaml tfs_posterior.h5
+
+echo ">>> Predict growth (subset) $(date)"
+tfs-predict-growth tfs_configure_config.yaml tfs_posterior.h5 \
+    --num_marginal_samples=500 --subset_genotypes --genotype_batch_size 2000
+
+echo ">>> Done $(date)"
