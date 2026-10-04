@@ -31,6 +31,19 @@ fall into two kinds:
 
 ### Added
 
+- **MAP convergence on the exact loss** (`RunInference.full_batch_loss`,
+  `run_optimization(exact_loss=None)`, `ConvergenceMonitor.end_window(...,
+  exact_loss=)`). A MAP fit (and the staged MAP's stages, the SVI pre-MAP
+  and `tfs-prefit-calibration`) now computes the exact full-batch negative
+  log joint at the end of each convergence window and judges the window by
+  a line through the recent exact losses. On the dev-data screen the
+  mini-batch loss's trend SE was about 5e4 nats per window, so a descent of
+  1e5 nats per window read as a stall and every MAP was cut to its final
+  step size while still descending; the reference fit and the staged fit
+  stopped at points 6e3 nats apart that the final losses ranked the wrong
+  way round. The convergence CSV gains a `loss_exact` column. SVI keeps the
+  mini-batch test.
+
 - **Staged MAP for level tube offsets** (`tfmodel/inference/staged_map.py`,
   `tfs-fit-model --stage_offsets auto|on|off --staged_step_size`). A cold
   MAP with `sample_offset: level` could settle with the tube offsets near

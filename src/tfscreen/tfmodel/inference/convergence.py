@@ -88,6 +88,25 @@ the noise tail).  The parameters are *moving* when any summary exceeds
   Skew never forces a cut: a smaller step size does not remove rare
   penalties.
 
+**Exact loss (MAP).**  A MAP's objective is a deterministic function of the
+current point, so the noise the loss test guards against is only the
+mini-batch's.  On a full library that noise is large: at batch size 4096 of
+218,000 genotypes the per-window SE of the block-median trend was about 5e4
+nats, so a descent of 1e5 nats per window read as a stall and the step size
+was cut to its floor while the fit was still descending (staged-map study,
+2026-10-04).  When the caller passes the full-batch loss at the end of each
+window (``end_window(..., exact_loss=...)``), the loss test uses it instead.
+What noise remains is the optimizer's own jitter at the current step size:
+the point moves about the optimum, so a flat stretch of exact losses wobbles
+up and down. A least-squares line through the last ``patience + 1`` exact
+losses gives the drop per window and its SE (from the scatter about the
+line), and the window is *improving* when the drop exceeds both ``z * SE``
+and ``loss_rtol * |loss|``. A steady descent passes even when each window's
+change is small; jitter about a level does not. With fewer than three exact
+losses the drop since the last window decides. The line already pools the
+recent windows, so the separate pooled check is not run, and the skew check
+is skipped, since the exact loss is the objective itself.
+
 Because a parameter's systematic drift and its step-to-step jitter both scale
 with the step size, the significance part of the tests does not depend on the
 step size; each cut lowers the noise floor so the next stage resolves the
@@ -418,6 +437,9 @@ class ConvergenceMonitor:
         # loss_trend results of the current run of stalled windows, for the
         # pooled check before a cut or a stop.
         self._stalls = []
+        # Exact (full-batch) losses of recent windows, newest last, when the
+        # caller supplies them (MAP).
+        self._exact = []
 
     @property
     def at_floor(self):
@@ -436,7 +458,34 @@ class ConvergenceMonitor:
             return 0.0
         return MIN_STEP_COHERENCE * self.step_size * window_steps
 
-    def end_window(self, step, loss_stats, param_excess=None, param_drift=None):
+    def _exact_stats(self, exact_loss, loss_stats):
+        """Loss-test statistics from the exact loss (see the module docstring)."""
+        exact_loss = float(exact_loss)
+        prev = self._exact[-1] if self._exact else None
+        self._exact = (self._exact + [exact_loss])[-max(self.patience + 1, 3):]
+        y = np.asarray(self._exact, dtype=float)
+        if y.size >= 3:
+            slope, se = _line_fit(y, np.arange(y.size, dtype=float))
+            drop, drop_se = -float(slope), float(se)
+        elif prev is None or not np.isfinite(prev):
+            # First window: nothing to compare with yet; count it as a
+            # descent so the run does not start with a stall.
+            drop, drop_se = np.inf, 0.0
+        else:
+            drop, drop_se = prev - exact_loss, 0.0
+        if drop_se > 0:
+            t = drop / drop_se
+        else:
+            t = np.inf if drop > 0 else (-np.inf if drop < 0 else 0.0)
+        return {"level": exact_loss,
+                "mean": float(loss_stats.get("mean", np.nan)),
+                "drop": float(drop),
+                "drop_se": float(drop_se),
+                "t": float(t),
+                "skew": float(loss_stats.get("skew", 0.0))}
+
+    def end_window(self, step, loss_stats, param_excess=None, param_drift=None,
+                   exact_loss=None):
         """
         Record one finished window and return the decision.
 
@@ -450,6 +499,10 @@ class ConvergenceMonitor:
             ``{parameter name: summarized excess}`` (``summarize_excess``).
         param_drift : dict or None, optional
             ``{parameter name: summarized |drift|}``, reported only.
+        exact_loss : float or None, optional
+            The full-batch loss at the end of the window (MAP). When given,
+            the loss test and the runaway check use it instead of
+            ``loss_stats`` (see the module docstring).
 
         Returns
         -------
@@ -460,6 +513,10 @@ class ConvergenceMonitor:
 
         param_excess = dict(param_excess or {})
         param_drift = dict(param_drift or {})
+        minibatch_level = float(loss_stats["level"])
+        exact = exact_loss is not None
+        if exact:
+            loss_stats = self._exact_stats(exact_loss, loss_stats)
 
         if self.reference_loss is None:
             medians = loss_stats.get("medians")
@@ -481,7 +538,7 @@ class ConvergenceMonitor:
         # A median plateau says nothing about the mean when rare penalties
         # dominate it (see the module docstring).
         loss_skew = float(loss_stats.get("skew", 0.0))
-        loss_skewed = not loss_skew <= self.max_loss_skew
+        loss_skewed = (not exact) and not loss_skew <= self.max_loss_skew
 
         # Cuts follow the loss alone; the stop also needs the parameters and
         # an unskewed loss.
@@ -501,9 +558,14 @@ class ConvergenceMonitor:
         # Before acting on `patience` stalls, check whether they are, pooled,
         # a slow descent rather than a plateau (see the module docstring).
         pooled_t = np.nan
-        if (self.plateau_count >= self.patience
+        if exact:
+            pooled = None  # the exact loss test already pools (see above)
+        elif (self.plateau_count >= self.patience
                 and len(self._stalls) == self.patience and self.patience > 1):
             pooled = pooled_loss_trend(self._stalls)
+        else:
+            pooled = None
+        if pooled is not None:
             pooled_t = pooled["t"]
             if self.loss_improving(pooled):
                 self.plateau_count = 0
@@ -530,7 +592,8 @@ class ConvergenceMonitor:
         self.last = {
             "step": int(step),
             "step_size": step_size,
-            "loss": loss_stats["level"],
+            "loss": minibatch_level,
+            "loss_exact": float(exact_loss) if exact else np.nan,
             "loss_mean": float(loss_stats.get("mean", np.nan)),
             "loss_drop": loss_stats["drop"],
             "loss_drop_se": loss_stats["drop_se"],
@@ -555,8 +618,14 @@ class ConvergenceMonitor:
         if self.last is None:
             return "no complete convergence window yet"
         r = self.last
-        loss = (f"loss {r['loss']:.6g}, drop/window {r['loss_drop']:.4g} "
-                f"+/- {r['loss_drop_se']:.3g} (t={r['loss_t']:.3g})")
+        exact = r.get("loss_exact", np.nan)
+        if exact is not None and np.isfinite(exact):
+            loss = (f"exact loss {exact:.10g} (mini-batch {r['loss']:.6g}), "
+                    f"drop/window {r['loss_drop']:.6g} +/- "
+                    f"{r['loss_drop_se']:.3g} (t={r['loss_t']:.3g})")
+        else:
+            loss = (f"loss {r['loss']:.6g}, drop/window {r['loss_drop']:.4g} "
+                    f"+/- {r['loss_drop_se']:.3g} (t={r['loss_t']:.3g})")
         skew = r.get("loss_skew", 0.0)
         if r.get("loss_skewed"):
             loss += (f"; loss skewed ({skew:.3g} robust SDs of mean above "
@@ -588,7 +657,8 @@ class ConvergenceMonitor:
                 "reference_loss": self.reference_loss,
                 "last": self.last,
                 "stalls": [{"medians": w["medians"].tolist(),
-                            "width": w["width"]} for w in self._stalls]}
+                            "width": w["width"]} for w in self._stalls],
+                "exact": list(self._exact)}
 
     def load_state_dict(self, state):
         """
@@ -606,3 +676,4 @@ class ConvergenceMonitor:
         self._stalls = [{"medians": np.asarray(w["medians"], dtype=float),
                          "width": float(w["width"])}
                         for w in state.get("stalls", [])]
+        self._exact = [float(v) for v in state.get("exact", [])]

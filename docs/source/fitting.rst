@@ -412,6 +412,24 @@ not remove rare penalties. At the final step size the run converges after
 moved and the skew is at most 3. A still-moving parameter or a skewed loss
 keeps the run going and is named in the log.
 
+**A MAP is judged by its exact loss.** A MAP's objective is a fixed
+function of the current point, so the only noise in its window losses comes
+from the mini-batches. On a full library that noise is large: at batch size
+4096 of 218,000 genotypes the trend's SE was about 5e4 nats per window, so a
+descent of 1e5 nats per window read as a stall and the step size was cut to
+its floor while the fit was still descending. A MAP fit (``tfs-fit-model
+--analysis_method map``, every stage of the staged MAP, the SVI pre-MAP and
+``tfs-prefit-calibration``) therefore computes the exact full-batch loss,
+``-log p``, at the end of each window: one forward pass over the library,
+in chunks of the batch size, a few percent of the run's time. A line
+through the last ``--patience`` + 1 exact losses gives the drop per window
+and its SE, which now measures only the optimizer's jitter about its path.
+The window is improving when the drop exceeds both ``--convergence_z``
+times the SE and ``--loss_rtol`` times the loss. A steady descent passes
+however slow it is; jitter about a level does not. The skew check is
+skipped, since the exact loss is the objective itself. SVI keeps the
+mini-batch test: its ELBO is noisy by nature.
+
 A window whose loss falls below −1000 times the magnitude of the run's first
 block ends the run as ``diverged``. That means the objective is unbounded,
 from a density singularity or from float32 error in a dense guide's own
@@ -436,7 +454,11 @@ The record
    * - ``step``, ``epoch``, ``step_size``
      - Where the window ended and the step size it ran at.
    * - ``loss``, ``loss_mean``
-     - Median and mean loss over the window.
+     - Median and mean mini-batch loss over the window.
+   * - ``loss_exact``
+     - The exact full-batch loss at the end of the window (MAP only). The
+       loss test used it, and two MAP runs on the same model can be
+       compared by it.
    * - ``loss_drop``, ``loss_drop_se``, ``loss_t``
      - Drop per window, its standard error and their ratio.
    * - ``loss_improving``

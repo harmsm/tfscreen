@@ -32,7 +32,7 @@ flag; nothing is edited by hand.
 | `staged_auto` | `--stage_offsets auto`: the three stages. |
 
 Both then run the arrowhead Laplace, extract parameters and score the count
-likelihood (`score_counts.py`).
+likelihood exactly (`score_map.py`).
 
 **Pass criteria** (the plan's done criterion for the real fit):
 `staged_auto`'s count log-likelihood within a few thousand nats of
@@ -51,7 +51,7 @@ On the cluster, in `planning/dev-data/real_fit/` (gitignored, not pulled),
 with this repository at the commit that has `--stage_offsets`:
 
 ```bash
-cp <repo>/planning/studies/staged-map/{run_staged.srun,growth_priors_loose.csv,compare.py} .
+cp <repo>/planning/studies/staged-map/{run_staged.srun,growth_priors_loose.csv,score_map.py,compare.py} .
 ```
 
 ```bash
@@ -66,7 +66,13 @@ mkdir staged_auto && cd staged_auto && sbatch --export=ALL,STAGE=auto ../run_sta
 mkdir staged_off && cd staged_off && sbatch --export=ALL,STAGE=off ../run_staged.srun
 ```
 
-When both are done, from `real_fit/`:
+When both are done, from `real_fit/`, score the optima exactly (full
+batch, no mini-batch noise; the final losses cannot rank them) and compare
+the spike curves:
+
+```bash
+python score_map.py rel_off_n05 staged_auto staged_off
+```
 
 ```bash
 python compare.py rel_off_n05_alap staged_auto staged_off
@@ -75,8 +81,7 @@ python compare.py rel_off_n05_alap staged_auto staged_off
 ## Inputs
 
 `real_fit/inputs/growth.csv.gz` and `real_fit/inputs/library_config.yaml`
-(the nine-spike config), as for `rel_off_n05`; `score_counts.py` from
-`../real-data-fit/analysis/` (symlinked into `real_fit/`).
+(the nine-spike config), as for `rel_off_n05`.
 
 ## Commit
 
@@ -103,4 +108,60 @@ only shows that staging costs no fit (466 nats better) at about twice the
 time. Every run hit the epoch cap. Whether staging avoids the trap is the
 cluster arm's question.
 
-Cluster runs: pending.
+Cluster runs (2026-10-04, commit 8a7abbb470 plus the uncommitted staged
+MAP). Exact full-batch scores (`score_map.py`, run locally on the pulled
+runs):
+
+| run | log joint | vs rel_off_n05 | count ll | vs rel_off_n05 |
+|---|---|---|---|---|
+| rel_off_n05 (hand chain) | -61,477,486 | 0 | -58,985,729 | 0 |
+| staged_auto | -61,471,244 | +6,242 | -58,982,633 | +3,096 |
+| staged_off (cold) | -62,060,536 | -583,050 | -59,369,433 | -383,704 |
+
+The cold MAP reproduced the trap (5.8e5 nats worse; hill_n 4-9 for every
+spike, offsets to ±1.5) and the staged MAP avoided it, ending 6.2e3 nats
+better than the six-run hand chain from one command. The likelihood
+criterion passes. The final losses (`compare.py`) had said the opposite
+(staged 5.8e4 worse): they are block medians of mini-batch losses, whose
+per-window SE is about 5e4 here.
+
+The spike criterion failed (log K 3 of 9, n 1 of 9 inside
+rel_off_n05_alap's intervals; staged n about 1.2-1.4 against 0.5-1.1, wt n
+3.0). Both MAPs stopped on noise: the convergence monitor judges a window
+by its mini-batch losses, so at SE 5e4 per window a descent of about 1e5
+nats per window reads as a stall, and the step size was cut from 1e-3 to
+1e-6 by step 42,000 (stage 1), 20,000 (rel_off_n05) and 12,000 (stage 3)
+while log(n) and log K hyperparameters were still the most-moving
+parameters. Two points left on the flat n-K direction at different places
+differ there, and a Laplace at a point short of the optimum gives
+intervals too narrow to judge the other. The criterion can only be applied
+once both fits converge. Next: judge MAP windows by the exact full-batch
+loss (done, see "Run 2"), rerun both arms, and retest.
+
+### Run 2: exact-loss convergence (pending)
+
+`tfs-fit-model` now judges every MAP window by the exact full-batch loss
+(`RunInference.full_batch_loss`), so a fit stops only when it stops
+improving, not when mini-batch noise hides the descent. Three arms, in new
+directories (the run-1 directories hold run 1):
+
+```bash
+mkdir staged_auto2 && cd staged_auto2 && sbatch --export=ALL,STAGE=auto ../run_staged.srun
+```
+
+```bash
+mkdir staged_off2 && cd staged_off2 && sbatch --export=ALL,STAGE=off ../run_staged.srun
+```
+
+```bash
+mkdir ref_refit && cd ref_refit && sbatch --export=ALL,STAGE=off,INIT_FROM=../rel_off_n05/tfs_fit_model_params.npz ../run_staged.srun
+```
+
+`ref_refit` continues rel_off_n05's point under the current code at step
+size 1e-4: where it ends is the reference's optimum, against which
+`staged_auto2` is judged (and if it moves far, code changes since
+beacad0e are part of the difference). Compare with `score_map.py ref_refit
+staged_auto2 staged_off2 rel_off_n05` and, once both have converged,
+`compare.py` against `ref_refit`'s Laplace instead of rel_off_n05_alap's.
+The convergence CSVs now carry `loss_exact`, so the window-by-window paths
+can be compared too.

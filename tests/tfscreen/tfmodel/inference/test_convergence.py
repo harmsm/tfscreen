@@ -635,3 +635,98 @@ def test_reference_loss_survives_checkpoint():
     resumed = ConvergenceMonitor(1e-3, 1e-6)
     resumed.load_state_dict(m.state_dict())
     assert resumed.reference_loss == pytest.approx(m.reference_loss)
+
+
+# -----------------------------------------------------------------------------
+# exact (full-batch) loss
+# -----------------------------------------------------------------------------
+
+# Mini-batch statistics that, alone, would read as a stall (noise hides the
+# descent) or as heavily skewed.
+_NOISY = {"level": 6e7, "mean": 6e7, "drop": 1e5, "drop_se": 5e4, "t": 2.0,
+          "skew": 0.0}
+
+
+def _exact_feed(monitor, exact_losses, stats=_NOISY):
+    return [monitor.end_window(i, dict(stats), exact_loss=e)
+            for i, e in enumerate(exact_losses)]
+
+
+def test_exact_descent_hidden_by_minibatch_noise_is_not_a_stall():
+    """A 1e5-per-window descent at mini-batch SE 5e4 stalls on the noisy
+    test (t = 2 < 3) but is a descent on the exact loss."""
+    noisy = ConvergenceMonitor(1e-3, 1e-6, patience=3)
+    assert [noisy.end_window(i, dict(_NOISY)) for i in range(3)][-1] == conv.CUT
+
+    exact = ConvergenceMonitor(1e-3, 1e-6, patience=3)
+    decisions = _exact_feed(exact, 6e7 - 1e5 * np.arange(10))
+    assert all(d == conv.CONTINUE for d in decisions)
+    assert exact.step_size == 1e-3
+    assert exact.last["loss_exact"] == pytest.approx(6e7 - 9e5)
+    assert exact.last["loss_drop"] == pytest.approx(1e5)
+    assert exact.last["loss_drop_se"] == pytest.approx(0.0, abs=1e-6)
+
+
+def test_exact_first_window_counts_as_descent():
+    m = ConvergenceMonitor(1e-3, 1e-6, patience=1)
+    assert m.end_window(0, dict(_NOISY), exact_loss=6e7) == conv.CONTINUE
+
+
+def test_exact_flat_loss_cuts_then_converges():
+    m = ConvergenceMonitor(1e-3, 1e-5, patience=2, loss_rtol=1e-6)
+    # rises and falls by less than loss_rtol * |loss| (60 nats): a plateau
+    decisions = _exact_feed(m, [6e7, 6e7 + 10, 6e7 - 5, 6e7 + 3, 6e7, 6e7 - 1,
+                                6e7 + 2, 6e7])
+    assert conv.CUT in decisions
+    assert decisions[-1] == conv.CONVERGED
+    assert m.step_size == pytest.approx(1e-5)
+
+
+def test_exact_jittery_descent_is_improving_and_jitter_alone_is_not():
+    """Single windows rise under the optimizer's jitter, but the line through
+    recent windows descends; jitter about a level has no significant slope."""
+    m = ConvergenceMonitor(1e-3, 1e-6, patience=3, loss_rtol=1e-8, z=3.0)
+    series = 1000.0 - 10.0 * np.arange(12) + np.tile([0.0, 3.0, -2.0, 1.0], 3)
+    assert conv.CUT not in _exact_feed(m, series)
+
+    flat = ConvergenceMonitor(1e-3, 1e-6, patience=3, loss_rtol=1e-8, z=3.0)
+    decisions = _exact_feed(flat, [1000.0, 1001.0, 999.0, 1000.5, 999.5,
+                                   1000.0, 1001.0, 999.0])
+    assert conv.CUT in decisions
+
+
+def test_exact_small_steady_drops_below_noise_floor_count():
+    """A deterministic, steady descent of 2 nats per window is improving
+    once the floor is below it, however small."""
+    m = ConvergenceMonitor(1e-3, 1e-6, patience=3, loss_rtol=1e-6)
+    assert conv.CUT not in _exact_feed(m, 1000.0 - 2.0 * np.arange(10))
+
+
+def test_exact_ignores_minibatch_skew():
+    skewed = dict(_NOISY, skew=50.0)
+    m = ConvergenceMonitor(1e-6, 1e-6, patience=2)
+    decisions = _exact_feed(m, [100.0, 100.0, 100.0], stats=skewed)
+    assert decisions[-1] == conv.CONVERGED
+    assert not m.last["loss_skewed"]
+
+
+def test_exact_runaway_uses_exact_loss():
+    m = ConvergenceMonitor(1e-3, 1e-6, patience=3)
+    m.end_window(0, dict(_NOISY), exact_loss=100.0)
+    assert m.end_window(1, dict(_NOISY), exact_loss=-1e7) == conv.DIVERGED
+
+
+def test_exact_state_round_trip():
+    m = ConvergenceMonitor(1e-3, 1e-6, patience=3)
+    _exact_feed(m, [100.0, 90.0])
+    m2 = ConvergenceMonitor(1e-3, 1e-6, patience=3)
+    m2.load_state_dict(m.state_dict())
+    # the restored exact losses join the line: 100, 90, 85 fall 7.5 per window
+    m2.end_window(2, dict(_NOISY), exact_loss=85.0)
+    assert m2.last["loss_drop"] == pytest.approx(7.5)
+
+
+def test_exact_describe():
+    m = ConvergenceMonitor(1e-3, 1e-6, patience=3)
+    _exact_feed(m, [100.0, 90.0])
+    assert "exact loss 90" in m.describe()

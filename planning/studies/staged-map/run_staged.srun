@@ -21,7 +21,12 @@
 #   mkdir staged_auto && cd staged_auto && sbatch --export=ALL,STAGE=auto ../run_staged.srun
 #   mkdir staged_off  && cd staged_off  && sbatch --export=ALL,STAGE=off  ../run_staged.srun
 #
-# Copy run_staged.srun and growth_priors_loose.csv into real_fit/ first
+# Run 2 (exact-loss convergence): also the reference's point refit under the
+# current code, a MAP started at rel_off_n05's MAP (not staged):
+#   mkdir ref_refit && cd ref_refit && sbatch --export=ALL,STAGE=off,INIT_FROM=../rel_off_n05/tfs_fit_model_params.npz ../run_staged.srun
+#
+# Copy run_staged.srun, growth_priors_loose.csv, score_map.py and compare.py
+# into real_fit/ first
 # (planning/dev-data is gitignored and not pulled); check with
 #   grep -c stage_offsets run_staged.srun
 
@@ -32,6 +37,11 @@ set -e
 STAGE="${STAGE:?set STAGE=auto or STAGE=off}"
 GROWTH="${GROWTH:-../inputs/growth.csv.gz}"
 SEED="${SEED:-20260930}"
+INIT_FROM="${INIT_FROM:-}"
+FIT_ARGS=()
+if [[ -n "${INIT_FROM}" ]]; then
+    FIT_ARGS=(--init_from "${INIT_FROM}" --adam_step_size 1e-4)
+fi
 
 echo ">>> Configure $(date)"
 tfs-configure-model \
@@ -45,7 +55,7 @@ tfs-configure-model \
 
 echo ">>> Fit (stage_offsets ${STAGE}) $(date)"
 tfs-fit-model tfs_configure_config.yaml --seed "${SEED}" \
-    --analysis_method map --stage_offsets "${STAGE}"
+    --analysis_method map --stage_offsets "${STAGE}" "${FIT_ARGS[@]}"
 
 echo ">>> Arrowhead Laplace $(date)"
 tfs-sample-posterior tfs_configure_config.yaml tfs_fit_model_checkpoint.pkl \
@@ -54,7 +64,7 @@ tfs-sample-posterior tfs_configure_config.yaml tfs_fit_model_checkpoint.pkl \
 echo ">>> Extract parameters $(date)"
 tfs-extract-params tfs_configure_config.yaml tfs_posterior.h5
 
-echo ">>> Score $(date)"
-python ../score_counts.py .
+echo ">>> Score (exact, full batch) $(date)"
+python ../score_map.py . --params tfs_fit_model_params.npz
 
 echo ">>> Done $(date)"

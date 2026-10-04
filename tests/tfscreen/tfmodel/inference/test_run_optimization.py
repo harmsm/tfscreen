@@ -555,3 +555,48 @@ def test_delta_init_values_start_the_map():
     # sites without a value fall back to the prior median (as AutoDelta
     # does), here given the substituted mu
     assert float(params["theta_auto_loc"][0]) == pytest.approx(7.0, abs=1.0)
+
+
+# -----------------------------------------------------------------------------
+# Exact (full-batch) loss for MAP windows
+# -----------------------------------------------------------------------------
+
+def _convergence_rows(path="toy_convergence.csv"):
+    with open(path) as f:
+        rows = [line.rstrip("\n").split(",") for line in f]
+    return rows[0], rows[1:]
+
+
+def test_map_windows_use_exact_loss():
+    from numpyro.infer.util import log_density
+    model = ToyModel()
+    ri = RunInference(model, seed=0)
+    svi = ri.setup_svi(adam_step_size=1e-2, guide_type="delta")
+    state, params, converged = _fit(ri, svi, final_step_size=1e-4)
+    assert converged
+    header, rows = _convergence_rows()
+    exact = [float(r[header.index("loss_exact")]) for r in rows]
+    assert np.all(np.isfinite(exact))
+    # the last window's exact loss is -log p at the final point
+    values = {k[:-len("_auto_loc")]: v for k, v in params.items()}
+    lp = log_density(model.jax_model, (),
+                     {"data": model.data, "priors": model.priors}, values)[0]
+    assert exact[-1] == pytest.approx(-float(lp), rel=1e-5)
+
+
+def test_svi_windows_keep_minibatch_loss():
+    model = ToyModel()
+    ri = RunInference(model, seed=0)
+    svi = ri.setup_svi(adam_step_size=1e-2, guide_type="component")
+    _fit(ri, svi, final_step_size=1e-4)
+    header, rows = _convergence_rows()
+    assert all(r[header.index("loss_exact")] in ("", "nan") for r in rows)
+
+
+def test_exact_loss_can_be_turned_off():
+    model = ToyModel()
+    ri = RunInference(model, seed=0)
+    svi = ri.setup_svi(adam_step_size=1e-2, guide_type="delta")
+    _fit(ri, svi, final_step_size=1e-4, exact_loss=False)
+    header, rows = _convergence_rows()
+    assert all(r[header.index("loss_exact")] in ("", "nan") for r in rows)

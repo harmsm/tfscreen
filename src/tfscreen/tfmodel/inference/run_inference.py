@@ -418,7 +418,8 @@ class RunInference:
                          checkpoint_interval=10,
                          max_num_epochs=10000000,
                          init_param_jitter=0.0,
-                         epoch_checkpoint_interval=1000):
+                         epoch_checkpoint_interval=1000,
+                         exact_loss=None):
         """
         Run the optimization loop until convergence or ``max_num_epochs``.
 
@@ -486,6 +487,13 @@ class RunInference:
             ``checkpoints/`` subdirectory alongside ``out_prefix``. Files are
             named ``{epoch:07d}_checkpoint.pkl``. Set to None or 0 to
             disable (default 1000).
+        exact_loss : bool or None, optional
+            Judge each window by the exact full-batch loss at its end
+            (``full_batch_loss``) instead of the mini-batch losses: one
+            forward pass over the library per window, no sampling noise. None
+            (default) does so for a MAP (``AutoDelta``), whose loss is a
+            deterministic function of the point, and not for a variational
+            guide, whose ELBO is noisy anyway.
 
         Returns
         -------
@@ -512,6 +520,10 @@ class RunInference:
         # Refuse an autoguide the model cannot support before any fitting.
         if isinstance(svi.guide, autoguide.AutoGuide):
             self._check_autoguide(svi.guide)
+
+        if exact_loss is None:
+            exact_loss = isinstance(svi.guide, autoguide.AutoDelta)
+        self._use_exact_loss = bool(exact_loss)
 
         # Add jitter to the input parameters if they are specified
         if init_params is not None:
@@ -1049,6 +1061,11 @@ class RunInference:
         loss_stats = conv.loss_trend(losses)
 
         constrained = svi.get_params(svi_state)
+        exact = None
+        if getattr(self, "_use_exact_loss", False):
+            exact = self.full_batch_loss(
+                {k[:-len("_auto_loc")]: v for k, v in constrained.items()
+                 if k.endswith("_auto_loc")})
         centers = np.asarray(block_centers, dtype=float)
         floor = monitor.drift_floor(window_steps)
         excess_summary = {}
@@ -1062,7 +1079,67 @@ class RunInference:
             drift_summary[name] = conv.summarize_excess(jnp.abs(drift))
 
         return monitor.end_window(self._current_step, loss_stats,
-                                  excess_summary, drift_summary)
+                                  excess_summary, drift_summary,
+                                  exact_loss=exact)
+
+    def full_batch_loss(self, values, chunk_size=None):
+        """
+        The exact negative log joint at a point, over the whole library.
+
+        The model is evaluated on genotype chunks of the full batch with the
+        mini-batch scale removed. Each chunk's log density holds that
+        chunk's genotype-sliced terms (the growth observations) plus terms
+        every chunk repeats: the library-sized latents' priors and any data
+        not sliced by genotype (binding). The repeated part is measured as
+        ``f(a) + f(b) - f(a, b)`` on two one-genotype batches and counted
+        once, as in the arrowhead Laplace.
+
+        Parameters
+        ----------
+        values : dict
+            Constrained value of every latent site, keyed by site name (a
+            MAP's ``svi.get_params`` with ``_auto_loc`` stripped).
+        chunk_size : int or None, optional
+            Genotypes per chunk (default: the training batch size).
+
+        Returns
+        -------
+        float
+            ``-log p(data, values)``, the quantity a MAP minimizes, without
+            mini-batch noise.
+        """
+        from numpyro.infer.util import log_density
+
+        G = int(self.model.data.num_genotype)
+        if chunk_size is None:
+            chunk_size = int(np.size(self.model.get_random_idx()))
+        chunk_size = max(1, min(int(chunk_size), G))
+
+        fn = getattr(self, "_full_batch_lp", None)
+        if fn is None:
+            model, priors = self.model.jax_model, self.model.priors
+
+            def lp(batch, params):
+                return log_density(model, (), {"data": batch, "priors": priors},
+                                   params)[0]
+
+            fn = self._full_batch_lp = jax.jit(lp)
+
+        data = getattr(self, "_full_batch_data", None)
+        if data is None:
+            data = self._full_batch_data = jax.device_put(self.model.data)
+        values = {k: jnp.asarray(v) for k, v in values.items()}
+
+        def chunk_lp(idx):
+            return float(fn(self._unscaled_batch(data, jnp.asarray(idx)), values))
+
+        starts = list(range(0, G, chunk_size))
+        total = sum(chunk_lp(np.arange(s, min(s + chunk_size, G)))
+                    for s in starts)
+        if len(starts) > 1:
+            repeated = chunk_lp([0]) + chunk_lp([1]) - chunk_lp([0, 1])
+            total -= (len(starts) - 1) * repeated
+        return -total
 
     def _get_genotype_dim_map(self):
         """
@@ -1700,7 +1777,8 @@ class RunInference:
             f.flush()
             os.fsync(f.fileno())
 
-    _CONVERGENCE_COLUMNS = ("step", "epoch", "step_size", "loss", "loss_drop",
+    _CONVERGENCE_COLUMNS = ("step", "epoch", "step_size", "loss", "loss_exact",
+                            "loss_drop",
                             "loss_drop_se", "loss_t", "loss_improving",
                             "loss_mean", "loss_skew", "loss_skewed",
                             "worst_param", "worst_param_excess",
