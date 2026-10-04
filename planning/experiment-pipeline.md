@@ -137,6 +137,11 @@ orchestrator built first would wrap the hacks and freeze them.
      `check_warm.py`. Keep `--init_from` for experiments.
    - Test on a simulation: does a cold level-offset MAP reproduce the ±2.8
      offset trap, and does the staged one avoid it? Then on the real data.
+   Built after 0.5.0: `tfs-fit-model --stage_offsets` (default `auto`),
+   `inference/staged_map.py`, with unit and smoke tests. The trap was only
+   ever seen on the full dev data, so the test runs there first
+   (`planning/studies/staged-map/`); a full-size simulation waits on step
+   6. Retire the hand scripts once the study passes.
 4. [x] **Posterior defaults for large libraries.** Choose the Laplace
    automatically from the library size: the full Laplace below a
    parameter threshold, the arrowhead (`--laplace_blocks --laplace_shared`)

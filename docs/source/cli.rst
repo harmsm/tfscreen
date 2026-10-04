@@ -646,7 +646,8 @@ tfs-fit-model
                         [--nuts_target_accept_prob NUTS_TARGET_ACCEPT_PROB]
                         [--nuts_dense_mass]
                         [--epoch_checkpoint_interval EPOCH_CHECKPOINT_INTERVAL]
-                        [--init_from INIT_FROM]
+                        [--init_from INIT_FROM] [--stage_offsets STAGE_OFFSETS]
+                        [--staged_step_size STAGED_STEP_SIZE]
                         config_file
 
    Fit the joint hierarchical model using a previously generated configuration file.
@@ -790,6 +791,23 @@ tfs-fit-model
                            can carry sample_offset_offset_auto_loc to set the offsets
                            too). Refused with checkpoint_file, which sets the start
                            itself. (default: None)
+     --stage_offsets STAGE_OFFSETS
+                           'auto' (default), 'on' or 'off'. A MAP with level tube offsets
+                           (sample_offset: level) started cold can settle in a mode where
+                           the offsets carry the population's growth. Staged, it runs
+                           three MAPs: the offsets held at 0 ({out_prefix}_stage1_*), the
+                           offsets alone with everything else held there
+                           ({out_prefix}_stage2_*), and the joint MAP from that point at
+                           staged_step_size ({out_prefix}_*). A finished stage is reused
+                           when the command is rerun; an interrupted one resumes. 'auto'
+                           stages a fresh MAP of a level-offset model (no
+                           checkpoint_file, no init_from); 'on' requires one; 'off' fits
+                           it in one go.
+     --staged_step_size STAGED_STEP_SIZE
+                           Starting step size of the staged MAP's joint stage (default
+                           1e-4): Adam moves every parameter by about a step size per
+                           step, and a larger step can carry the start back into the
+                           offset mode.
 
 tfs-sample-posterior
 --------------------

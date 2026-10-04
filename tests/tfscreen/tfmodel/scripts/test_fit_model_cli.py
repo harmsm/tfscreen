@@ -387,6 +387,30 @@ class TestGuideSelection:
         fit_model(config_file="dummy.yaml", seed=1, analysis_method="map")
         assert run_map_mock.call_args.kwargs["init_values"] == {"mu": 1.0}
 
+    @pytest.mark.parametrize("stage_offsets,staged", [("auto", True),
+                                                       ("off", False)])
+    def test_level_offset_map_is_staged(self, mocker, stage_offsets, staged):
+        _patch_common(mocker)
+        self._patch_ri(mocker, guesses={"mu": 1.0})
+        orch = MagicMock(settings={"sample_offset": "level"})
+        mocker.patch(f"{_CLI}.read_configuration",
+                     return_value=(orch, {"mu": 1.0}))
+        run_map_mock = mocker.patch(f"{_CLI}._run_map",
+                                    return_value=(MagicMock(), {}, True))
+        staged_mock = mocker.patch(f"{_CLI}.run_staged_map",
+                                   return_value=(MagicMock(), {}, True))
+        fit_model(config_file="dummy.yaml", seed=1, analysis_method="map",
+                  stage_offsets=stage_offsets, staged_step_size=2e-4,
+                  epoch_checkpoint_interval=500)
+        assert staged_mock.called is staged
+        assert run_map_mock.called is not staged
+        if staged:
+            kw = staged_mock.call_args.kwargs
+            assert kw["staged_step_size"] == 2e-4
+            assert kw["map_kwargs"]["epoch_checkpoint_interval"] == 500
+            assert kw["stage_map_kwargs"]["epoch_checkpoint_interval"] is None
+            assert kw["guesses"] == {"mu": 1.0}
+
     def test_map_starts_from_init_from(self, tmp_path, mocker):
         """A MAP params npz seeds every site it names, over the guesses;
         guesses for sites it lacks are kept (a level-offset fit started from

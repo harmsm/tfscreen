@@ -21,7 +21,9 @@ def test_prediction_smoke(growth_smoke_csv,
         growth_df=growth_smoke_csv,
         binding_df=binding_smoke_csv,
         theta="hill_geno",
-        transformation="mixture"
+        transformation="mixture",
+        # plated on titrant_conc; the expansion check below relies on it
+        theta_growth_noise="logit_normal",
     )
     
     inference = RunInference(model=model, seed=42)
@@ -73,8 +75,8 @@ def test_prediction_smoke(growth_smoke_csv,
     assert "q0.975" in pred_df.columns
 
     # 3. Test expansion restriction for plated dimensions
-    # The default theta_growth_noise (logit_normal) plates on titrant_conc,
-    # so expanding it should fail.
+    # theta_growth_noise logit_normal plates on titrant_conc, so expanding
+    # it should fail.
     with pytest.raises(ValueError, match="is plated on .* and cannot be expanded"):
         predict(
             model,

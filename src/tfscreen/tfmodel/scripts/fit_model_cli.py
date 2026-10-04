@@ -9,6 +9,11 @@ from tfscreen.tfmodel.inference.run_inference import (
     resolve_guide_type,
 )
 
+from tfscreen.tfmodel.inference.staged_map import (
+    DEFAULT_STAGED_STEP_SIZE,
+    run_staged_map,
+    use_stages,
+)
 from tfscreen.util.cli.generalized_main import generalized_main
 
 from tfscreen.tfmodel.configuration_io import read_configuration
@@ -346,7 +351,9 @@ def fit_model(config_file,
               nuts_target_accept_prob=0.9,
               nuts_dense_mass=False,
               epoch_checkpoint_interval=1000,
-              init_from=None):
+              init_from=None,
+              stage_offsets="auto",
+              staged_step_size=DEFAULT_STAGED_STEP_SIZE):
     """
     Fit the joint hierarchical model using a previously generated configuration file.
 
@@ -479,6 +486,21 @@ def fit_model(config_file,
         a ``zero`` fit's point, say (the npz can carry
         ``sample_offset_offset_auto_loc`` to set the offsets too). Refused
         with ``checkpoint_file``, which sets the start itself.
+    stage_offsets : str, optional
+        'auto' (default), 'on' or 'off'. A MAP with level tube offsets
+        (``sample_offset: level``) started cold can settle in a mode where
+        the offsets carry the population's growth. Staged, it runs three
+        MAPs: the offsets held at 0 ({out_prefix}_stage1_*), the offsets
+        alone with everything else held there ({out_prefix}_stage2_*), and
+        the joint MAP from that point at ``staged_step_size``
+        ({out_prefix}_*). A finished stage is reused when the command is
+        rerun; an interrupted one resumes. 'auto' stages a fresh MAP of a
+        level-offset model (no checkpoint_file, no init_from); 'on' requires
+        one; 'off' fits it in one go.
+    staged_step_size : float, optional
+        Starting step size of the staged MAP's joint stage (default 1e-4):
+        Adam moves every parameter by about a step size per step, and a
+        larger step can carry the start back into the offset mode.
 
     Returns
     -------
@@ -615,6 +637,26 @@ def fit_model(config_file,
                             max_num_epochs=max_num_epochs,
                             init_param_jitter=init_param_jitter,
                             epoch_checkpoint_interval=epoch_checkpoint_interval))
+
+    elif analysis_method == "map" and use_stages(stage_offsets, orchestrator,
+                                                 analysis_method,
+                                                 checkpoint_file=checkpoint_file,
+                                                 init_from=init_from):
+        map_kwargs = dict(**optimizer_kwargs,
+                          **_optimization_kwargs(
+                              **convergence_kwargs,
+                              checkpoint_interval=checkpoint_interval,
+                              max_num_epochs=max_num_epochs,
+                              epoch_checkpoint_interval=epoch_checkpoint_interval))
+        stage_kwargs = dict(map_kwargs, epoch_checkpoint_interval=None)
+        return run_staged_map(orchestrator,
+                              make_ri=lambda m: RunInference(m, effective_seed),
+                              run_map=_run_map,
+                              guesses=guesses,
+                              out_prefix=out_prefix,
+                              map_kwargs=map_kwargs,
+                              stage_map_kwargs=stage_kwargs,
+                              staged_step_size=staged_step_size)
 
     elif analysis_method == "map":
         init_values = None

@@ -1,0 +1,60 @@
+#!/bin/bash -l
+#SBATCH --account=harmslab
+#SBATCH --job-name=tfs_staged
+#SBATCH --output=run.out
+#SBATCH --error=run.err
+#SBATCH --partition=gpulong
+#SBATCH --time=01-00:00:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --gpus=1
+#SBATCH --mem=0
+#SBATCH --ntasks-per-node=1
+
+# The staged level-offset MAP on the dev-data screen (planning/studies/staged-map).
+# rel_off_n05's model (growth-only relative fit, level offsets at SD 0.17,
+# log(n) population SD held at 0.5, loose k/m priors), configured with flags
+# only, fit cold (STAGE=off) or staged (STAGE=auto), then the arrowhead
+# Laplace. Submit from a new run directory next to inputs/ in
+# planning/dev-data/real_fit:
+#
+#   mkdir staged_auto && cd staged_auto && sbatch --export=ALL,STAGE=auto ../run_staged.srun
+#   mkdir staged_off  && cd staged_off  && sbatch --export=ALL,STAGE=off  ../run_staged.srun
+#
+# Copy run_staged.srun and growth_priors_loose.csv into real_fit/ first
+# (planning/dev-data is gitignored and not pulled); check with
+#   grep -c stage_offsets run_staged.srun
+
+module load cuda/12.4.1
+
+set -e
+
+STAGE="${STAGE:?set STAGE=auto or STAGE=off}"
+GROWTH="${GROWTH:-../inputs/growth.csv.gz}"
+SEED="${SEED:-20260930}"
+
+echo ">>> Configure $(date)"
+tfs-configure-model \
+    --growth_df "${GROWTH}" \
+    --library_config ../inputs/library_config.yaml \
+    --theta_model hill_relative \
+    --growth_shares_replicates \
+    --batch_size 4096 \
+    --growth_priors ../growth_priors_loose.csv \
+    --set_priors sigma_fixed=0.17 theta_log_hill_n_hyper_scale_fixed=0.5
+
+echo ">>> Fit (stage_offsets ${STAGE}) $(date)"
+tfs-fit-model tfs_configure_config.yaml --seed "${SEED}" \
+    --analysis_method map --stage_offsets "${STAGE}"
+
+echo ">>> Arrowhead Laplace $(date)"
+tfs-sample-posterior tfs_configure_config.yaml tfs_fit_model_checkpoint.pkl \
+    --laplace arrowhead --num_posterior_samples 500 --skip_growth_observations
+
+echo ">>> Extract parameters $(date)"
+tfs-extract-params tfs_configure_config.yaml tfs_posterior.h5
+
+echo ">>> Score $(date)"
+python ../score_counts.py .
+
+echo ">>> Done $(date)"

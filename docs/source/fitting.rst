@@ -50,41 +50,23 @@ per-condition growth priors come from ``--growth_priors`` or
 ran away on real data are held with ``--set_priors``.
 
 On a full library the route is a MAP fit followed by the arrowhead Laplace.
-A cold MAP with level tube offsets can settle in a mode where the offsets
-sit near ±2.8 and carry the population's growth. Until a staged start is
-built into ``tfs-fit-model``, which is planned, fit without offsets first
-and start the offset fit from that MAP:
+A MAP with level tube offsets runs in stages by default (see `Staged MAP`_
+below), which keeps the offsets from settling in a mode where they carry the
+population's growth.
 
 .. code-block:: bash
 
-   # 1. MAP without tube offsets
-   tfs-configure-model --growth_df growth.csv \
-       --library_config library_config.yaml \
-       --theta_model hill_relative \
-       --sample_offset_model zero \
-       --growth_shares_replicates \
-       --growth_priors growth_priors.csv \
-       --set_priors theta_log_hill_n_hyper_scale_fixed=0.5 \
-       --out_prefix no_offset
-   tfs-fit-model no_offset_config.yaml --seed 1 --analysis_method map \
-       --out_prefix no_offset_fit
-
-   # 2. MAP with level tube offsets, started at the first MAP
    tfs-configure-model --growth_df growth.csv \
        --library_config library_config.yaml \
        --theta_model hill_relative \
        --growth_shares_replicates \
        --growth_priors growth_priors.csv \
        --set_priors theta_log_hill_n_hyper_scale_fixed=0.5 sigma_fixed=0.17
-   tfs-fit-model tfs_configure_config.yaml --seed 1 --analysis_method map \
-       --init_from no_offset_fit_params.npz --adam_step_size 1e-4
+   tfs-fit-model tfs_configure_config.yaml --seed 1 --analysis_method map
    tfs-sample-posterior tfs_configure_config.yaml tfs_fit_model_checkpoint.pkl \
        --laplace arrowhead --skip_growth_observations
 
-``sigma_fixed`` names a prior of the ``level`` offset, so it can only be set
-on the second configuration. The second fit starts at a small step size
-because Adam moves every parameter by about one step size per step; at the
-default 1e-3 the first window can carry the offsets back into the ±2.8 mode. On a small library the low-rank guide also
+On a small library the low-rank guide also
 recovers *X*:
 
 .. code-block:: bash
@@ -327,12 +309,36 @@ prefix. ``--pre_map_num_epoch 0`` skips it.
 ``--init_from params.npz`` starts the fit at the point saved by an earlier
 MAP fit, its ``{out_prefix}_params.npz``. Every site that file names starts
 there, and every other site starts at its guess. The earlier fit may be of a
-different model. The growth-only route above uses this to start a fit with
-tube offsets from one without them. The starting point matters because Adam
-moves every parameter by about one step size per step. On real data a cold
-level-offset MAP carried the offsets and *k* and *m* by whole units in its
-first window, and the step-size cuts then froze them there. Starting from the
-no-offset MAP was 1.2e5 nats better.
+different model, such as a fit without tube offsets.
+
+Staged MAP
+^^^^^^^^^^
+
+The starting point matters because Adam moves every parameter by about one
+step size per step. On real data a cold MAP with level tube offsets carried
+the offsets and *k* and *m* by whole units in its first window, the
+step-size cuts then froze them there, and the offsets settled near ±2.8.
+Starting from a MAP without offsets plus each tube's best offset was 1.2e5
+nats better. ``tfs-fit-model`` builds that start itself. A fresh MAP of a
+model with ``sample_offset: level`` runs three MAPs:
+
+1. The tube offsets held at 0 (and a learned offset SD held at its prior
+   scale, since with every offset at 0 its MAP is 0). Files
+   ``{out_prefix}_stage1_*``.
+2. Every other site held at stage 1's MAP, so the offsets are the only
+   latents. Given the rest the tubes do not couple, so this is each tube's
+   best offset. Files ``{out_prefix}_stage2_*``.
+3. The joint MAP, started at stage 1's point plus stage 2's offsets, at
+   ``--staged_step_size`` (default 1e-4). This writes the run's own
+   ``{out_prefix}_*`` files.
+
+Each stage writes its own checkpoint and convergence record. Rerunning the
+same command reuses a stage whose ``_params.npz`` exists and resumes one
+that was interrupted, so to redo a stage delete its files. To resume the
+joint stage, pass its checkpoint with ``--checkpoint_file``.
+``--stage_offsets`` is ``auto`` by default: it stages a fresh level-offset
+MAP and nothing else (not SVI, not a resumed fit, not ``--init_from``).
+``off`` fits in one go; ``on`` insists on staging.
 
 ``--checkpoint_file`` resumes a fit from its ``{out_prefix}_checkpoint.pkl``
 at the checkpoint's step size and convergence state. It cannot be combined

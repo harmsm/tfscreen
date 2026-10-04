@@ -29,6 +29,21 @@ fall into two kinds:
 
 ## [Unreleased]
 
+### Added
+
+- **Staged MAP for level tube offsets** (`tfmodel/inference/staged_map.py`,
+  `tfs-fit-model --stage_offsets auto|on|off --staged_step_size`). A cold
+  MAP with `sample_offset: level` could settle with the tube offsets near
+  ±2.8, carrying the population's growth; the real-data fit avoided that by
+  hand over six runs. A fresh level-offset MAP now runs three MAPs itself:
+  the offsets held at 0, the offsets alone with everything else held there,
+  and the joint MAP from that point at step size 1e-4. Each stage writes its
+  own checkpoint, convergence record and `_params.npz`
+  (`{out_prefix}_stage1_*`, `{out_prefix}_stage2_*`); a finished stage is
+  reused and an interrupted one resumes. `HeldModel` wraps a model with
+  sites held at fixed values (a `numpyro.handlers.condition`). Dev-data
+  validation: `planning/studies/staged-map/`.
+
 ## [0.5.0] - 2026-10-03
 
 A modeling release and an interface release. The model changes (the

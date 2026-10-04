@@ -124,11 +124,9 @@ it.
    tfs-fit-model tfs_configure_config.yaml --seed 1 --analysis_method map
 
 On a full library, MAP is the route that has worked; the SVI guides slid
-along the growth slope and X ridge of the growth-only model. A cold MAP with
-level tube offsets can settle in a mode with offsets near ±2.8. Until the
-staged start planned for ``tfs-fit-model`` exists, fit without offsets first
-(``--sample_offset_model zero`` at configure) and start the offset fit from
-that MAP with ``--init_from``. See :doc:`fitting`.
+along the growth slope and X ridge of the growth-only model. A MAP with level
+tube offsets runs in three stages by default, so the offsets cannot settle in
+a mode where they carry the population's growth. See :doc:`fitting`.
 
 5. Posterior
 ------------
