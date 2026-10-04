@@ -42,3 +42,40 @@ jobs:
         run: >
           pytest tests/tfscreen
           ${{ (github.event_name == 'workflow_dispatch' && inputs.run_slow_tests) && '--runslow' || '' }}
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # diff-cover compares against main, so it needs the full history.
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install package and test dependencies
+        run: pip install -e ".[test]"
+
+      # Slow tests are included so code tested only by them counts as covered.
+      - name: Run unit tests under coverage
+        env:
+          NUMBA_DISABLE_JIT: "1"
+        run: coverage run -m pytest tests/tfscreen --runslow
+
+      - name: Report total coverage
+        run: |
+          coverage xml
+          coverage report --fail-under=90
+
+      # Every line and branch a pull request adds or changes must be covered.
+      - name: Check coverage of changed lines
+        if: github.event_name == 'pull_request'
+        run: >
+          diff-cover coverage.xml
+          --compare-branch=origin/${{ github.base_ref }}
+          --fail-under=100

@@ -60,13 +60,21 @@ classifiers = [
 Repository = "https://github.com/harmslab/tfscreen.git"
 "Bug Tracker" = "https://github.com/harmslab/tfscreen/issues"
 
+[tool.coverage.run]
+branch = true
+source = ["tfscreen"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+
 [tool.pytest.ini_options]
 markers = [
     "slow: mark test as slow to run",
 ]
 
 [project.optional-dependencies]
-test = ["coverage", "flake8", "pytest", "genbadge", "pytest-mock"]
+test = ["coverage", "diff-cover", "flake8", "pytest", "genbadge", "pytest-mock"]
 docs = ["pydata-sphinx-theme"]
 
 [project.scripts]
