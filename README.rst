@@ -2,8 +2,8 @@
 tfscreen
 ========
 
-.. image:: https://github.com/harmsm/tfscreen/actions/workflows/tests.yml/badge.svg?branch=main
-   :target: https://github.com/harmsm/tfscreen/actions/workflows/tests.yml
+.. image:: https://github.com/harmslab/tfscreen/actions/workflows/tests.yml/badge.svg?branch=main
+   :target: https://github.com/harmslab/tfscreen/actions/workflows/tests.yml
    :alt: Tests
 
 `tfscreen` is a Python library for simulating and analyzing high-throughput screens of transcription

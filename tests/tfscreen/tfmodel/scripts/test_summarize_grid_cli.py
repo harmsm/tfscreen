@@ -41,7 +41,7 @@ def _make_fit_summary(subdir, training_rmse=0.05, test_rmse=None,
                       "r_squared": 0.90, "mean_error": 0.001,
                       "pct_success": 1.0, "normalized_rmse": 0.1,
                       "residual_corr": 0.02, "residual_corr_p_value": 0.4,
-                      "bp_p_value": 0.3, "coverage_prob": None}
+                      "bp_p_value": 0.3}
     theta_test = None
     if test_rmse is not None:
         theta_test = dict(theta_training)

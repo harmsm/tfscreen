@@ -59,7 +59,7 @@ expected_5p: cgcgtggtgaaccag
 expected_3p: gtagaacgaagcggc
 tile_combos: ["single-1", "single-2", "double-1-2"]
 spiked_seqs:
-- gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgatggcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctggcggcgccgtcgcaaattgtcgcggcgattctgtctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg  # k84l
+- gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgatggcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctgcacgcgccgtcgcaaattgtcgcggcgattctgtctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg  # k84l
 - gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgattgcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctgcacgcgccgtcgcaaattgtcgcggcgattctgtctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg  # m42i/k84l
 
 # ---------------------------------------------------------------------------

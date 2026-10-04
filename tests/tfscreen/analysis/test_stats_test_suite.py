@@ -6,10 +6,9 @@ from tfscreen.analysis.stats_test_suite import stats_test_suite
 def test_stats_test_suite_perfect_fit():
     param_real = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
     param_est = param_real.copy()
-    param_std = np.array([0.1, 0.1, 0.1, 0.1, 0.1]) # Small std
     
     # Perfect fit
-    res = stats_test_suite(param_est, param_real, param_std)
+    res = stats_test_suite(param_est, param_real)
     
     assert res["pct_success"] == 1.0
     assert res["rmse"] == 0.0
@@ -17,10 +16,7 @@ def test_stats_test_suite_perfect_fit():
     assert res["pearson_r"] == 1.0
     assert res["r_squared"] == 1.0
     assert res["mean_error"] == 0.0
-    # In perfect fit, estimates == real. 
-    # real >= estimate - 1.96*std ? real >= real - 1.96*std (True, since std > 0)
-    # real <= estimate + 1.96*std ? real <= real + 1.96*std (True)
-    assert res["coverage_prob"] == 1.0 
+    assert "coverage_prob" not in res
     
     # Residuals are all 0. Correlation undefined?
     # pearsonr of constant input issues warning and returns nan usually.
@@ -33,16 +29,13 @@ def test_stats_test_suite_with_noise():
     param_real = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
     # Add small bias
     param_est = param_real + 0.1
-    # param_std big enough to cover bias (0.1 < 1.96 * 0.1) -> 0.1 < 0.196. Yes.
-    param_std = np.ones(5) * 0.1
     
-    res = stats_test_suite(param_est, param_real, param_std)
+    res = stats_test_suite(param_est, param_real)
 
     assert res["pct_success"] == 1.0
     assert np.isclose(res["mean_error"], 0.1)
     # RMSE: sqrt(mean(0.1^2)) = 0.1
     assert np.isclose(res["rmse"], 0.1)
-    assert np.isclose(res["coverage_prob"], 1.0) # Bias small enough to be covered
     
     # Signal range: 97.5 percentile of [1..5] - 2.5 percentile of [1..5]
     # np.percentile([1,2,3,4,5], [2.5, 97.5])
@@ -53,9 +46,8 @@ def test_stats_test_suite_with_noise():
 def test_stats_test_suite_nans():
     param_real = np.array([1.0, 2.0, 3.0])
     param_est = np.array([1.0, np.nan, 3.0])
-    param_std = np.array([0.1, 0.1, 0.1])
     
-    res = stats_test_suite(param_est, param_real, param_std)
+    res = stats_test_suite(param_est, param_real)
 
     assert res["pct_success"] == 2/3
     # Metrics should be calculated on the 2 valid points
@@ -64,21 +56,18 @@ def test_stats_test_suite_nans():
 def test_zero_signal_range():
     param_real = np.array([1.0, 1.0, 1.0])
     param_est = np.array([1.1, 1.1, 1.1])
-    param_std = np.array([0.1, 0.1, 0.1])
     
-    res = stats_test_suite(param_est, param_real, param_std)
+    res = stats_test_suite(param_est, param_real)
 
     # Signal range is 0
     assert res["normalized_rmse"] == np.inf
 
-def test_stats_test_suite_no_std():
+def test_stats_test_suite_metrics():
     param_real = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
     param_est = param_real + 0.1
 
     res = stats_test_suite(param_est, param_real)
 
-    assert np.isnan(res["coverage_prob"])
-    # All other metrics should still be computed
     assert np.isclose(res["rmse"], 0.1)
     assert np.isclose(res["mean_error"], 0.1)
     assert np.isfinite(res["pearson_r"])
@@ -90,10 +79,9 @@ def test_het_breuschpagan_linalg_error(mocker):
     
     param_real = np.array([1.0, 2.0, 3.0])
     param_est = np.array([1.1, 2.2, 3.3])
-    param_std = np.array([0.1, 0.1, 0.1])
     
     with pytest.warns(UserWarning, match="het_breuschpagan test did not converge"):
-         res = stats_test_suite(param_est, param_real, param_std)
+         res = stats_test_suite(param_est, param_real)
     
     assert np.isnan(res["bp_p_value"])
 

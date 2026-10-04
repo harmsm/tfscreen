@@ -5,12 +5,12 @@ from statsmodels.stats.diagnostic import het_breuschpagan
 
 import warnings
 
-def stats_test_suite(param_est,param_real,param_std=None):
+def stats_test_suite(param_est,param_real):
     """
     Run a test suite comparing parameter estimates against true values.
 
-    This function takes arrays of estimated parameters, their standard errors,
-    and the corresponding true (known) values from a simulation. It computes
+    This function takes arrays of estimated parameters and the corresponding
+    true (known) values from a simulation. It computes
     a dictionary of key metrics to evaluate the performance, accuracy, and
     robustness of the estimation method.
 
@@ -19,9 +19,6 @@ def stats_test_suite(param_est,param_real,param_std=None):
     param_est : np.ndarray
         A 1D array of the parameter estimates from a model. May contain NaNs
         for failed fits.
-    param_std : np.ndarray, optional
-        A 1D array of the standard errors associated with each parameter
-        estimate. If not provided, ``coverage_prob`` is returned as NaN.
     param_real : np.ndarray
         A 1D array of the true, known parameter values used to generate the
         simulated data.
@@ -58,12 +55,6 @@ def stats_test_suite(param_est,param_real,param_std=None):
             The average difference between estimated and real values (bias).
             A value close to zero indicates the model is unbiased on
             average.
-        coverage_prob : float
-            The fraction of times the true parameter value falls within the
-            estimated 95% confidence interval. For a perfectly calibrated
-            model, this value should be close to 0.95. If this is higher than
-            0.95, the model *overestimates* error; if this value is lower than
-            0.95, the model *underestimates* error. 
         residual_corr : float
             The Pearson correlation coefficient between the estimation errors
             and the true parameter values. A value near zero is ideal,
@@ -86,8 +77,6 @@ def stats_test_suite(param_est,param_real,param_std=None):
     # Filter out bad fits for this analysis
     param_est = param_est[not_nan_mask]
     param_real = param_real[not_nan_mask]
-    if param_std is not None:
-        param_std = param_std[not_nan_mask]
     
     # Get RMSE and mean error
     diff = param_est - param_real
@@ -114,17 +103,6 @@ def stats_test_suite(param_est,param_real,param_std=None):
     r_squared = r_val**2
 
     mean_error = np.mean(diff)
-
-    # Get coverage probability (probability real values fall in the 95% CI).
-    # This will be 95% for perfectly calibrated error estimator.
-    if param_std is not None:
-        lower_ci = param_est - param_std*1.96
-        upper_ci = param_est + param_std*1.96
-        in_ci = np.logical_and(param_real >= lower_ci,
-                               param_real <= upper_ci)
-        coverage_prob = np.sum(in_ci)/param_est.shape[0]
-    else:
-        coverage_prob = np.nan
 
     # Look for correlation in residuals
     if np.var(diff) < 1e-12 or np.var(param_real) < 1e-12:
@@ -153,7 +131,6 @@ def stats_test_suite(param_est,param_real,param_std=None):
         "spearman_r": spearman_r,
         "r_squared": r_squared,
         "mean_error":mean_error,
-        "coverage_prob":coverage_prob,
         "residual_corr":residual_corr,
         "residual_corr_p_value":residual_corr_p_value,
         "bp_p_value":bp_p_value

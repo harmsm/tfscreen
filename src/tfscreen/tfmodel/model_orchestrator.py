@@ -989,7 +989,7 @@ class ModelOrchestrator:
         placeholder.
     theta_growth_noise : str, optional
         Model name for noise on theta in the growth model ('zero', 'beta',
-        or 'logit_normal'). Default 'logit_normal'.
+        or 'logit_normal'). Default 'zero', as in tfs-configure-model.
     theta_binding_noise : str, optional
         Model name for noise on theta in the binding model ('zero' or 'beta').
     spiked_genotypes : list or str, optional
@@ -1067,7 +1067,7 @@ class ModelOrchestrator:
                  transformation="single",
                  transformation_lambda=None,
                  theta_rescale="passthrough",
-                 theta_growth_noise="logit_normal",
+                 theta_growth_noise="zero",
                  theta_binding_noise="zero",
                  growth_noise="zero",
                  sample_offset="zero",

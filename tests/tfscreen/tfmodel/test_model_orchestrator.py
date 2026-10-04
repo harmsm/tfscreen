@@ -815,7 +815,7 @@ def test_transformation_control_kwargs_carry_needs_population_flag(
         "theta": {"hill_geno": MagicMock()},
         "transformation": {transformation_key: real_transformation_module},
         "theta_rescale": {"passthrough": MagicMock()},
-        "theta_growth_noise": {"logit_normal": MagicMock()},
+        "theta_growth_noise": {"zero": MagicMock(), "logit_normal": MagicMock()},
         "theta_binding_noise": {"zero": MagicMock()},
         "growth_noise": {"zero": MagicMock()},
         "sample_offset": {"zero": MagicMock()},

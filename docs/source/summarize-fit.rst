@@ -180,7 +180,6 @@ growth-only run: there is no binding data, so ``theta.training`` is null.
          "spearman_r": 0.951,
          "r_squared": 0.937,
          "mean_error": -0.004,
-         "coverage_prob": null,
          "residual_corr": -0.12,
          "residual_corr_p_value": 1.3e-13,
          "bp_p_value": 0.002
@@ -195,7 +194,6 @@ growth-only run: there is no binding data, so ``theta.training`` is null.
          "spearman_r": 0.987,
          "r_squared": 0.982,
          "mean_error": 0.002,
-         "coverage_prob": null,
          "residual_corr": -0.05,
          "residual_corr_p_value": 1.1e-31,
          "bp_p_value": 0.0
@@ -233,8 +231,8 @@ Each statistics block compares the ``q0.5`` prediction with its reference:
 * ``bp_p_value`` is the Breusch-Pagan test. A small value means the error
   variance changes with the true value.
 * ``pct_success`` is the fraction of predictions that are not NaN.
-* ``coverage_prob`` is always null here, because the summary does not pass
-  uncertainties to this suite. Use the calibration outputs for coverage.
+* Coverage of the reference by the posterior intervals is in the
+  calibration outputs below, not in these blocks.
 
 The three blocks mean different things. ``theta.training`` compares
 predictions with the binding observations the model was fit to, so it should

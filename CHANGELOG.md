@@ -120,6 +120,10 @@ their arguments; old scripts and run templates need updating.
 - `tfs-fit-genotypes growth_df growth_calibration_file`, default prefix
   `tfs_fit_genotypes` (was `growth_file calibration_file`, `tfs_mle`).
 - `tfs-predict-growth --seed` (was `--subset_seed`).
+- `ModelOrchestrator`'s `theta_growth_noise` defaults to `zero`, as
+  `tfs-configure-model` does (was `logit_normal`), so the Python API and the
+  CLI build the same model by default. Saved configs record the component,
+  so they read back unchanged.
 - `tfs-setup-grid` and `tfs-setup-sim-grid` take `--out_dir` (was
   `--out_prefix`, which named a directory); `grid_summary.json` records
   `out_dir`.
@@ -137,9 +141,19 @@ their arguments; old scripts and run templates need updating.
   fit flow), `tfs-report-cfu0` and `tfs-summarize-sbc` (superseded by
   `tfs-summarize-calibration`; `error_calibration.summarize_sbc` remains as a
   library function).
+- `coverage_prob` and the `param_std` argument of
+  `analysis.stats_test_suite`. Its only caller, `tfs-summarize-fit`, never
+  passed uncertainties, so the statistic was always null; coverage is in
+  the summary's calibration outputs.
 
 ### Fixed
 
+- The first spiked sequence in the example library configs
+  (`examples/process_raw/library_config.yaml`,
+  `examples/simulate/simulate_config.yaml`,
+  `examples/simulate-empirical/simulate_config.yaml`) carried a stray H74A
+  codon, so it decoded to H74A/K84L instead of the K84L its comment names.
+  The `examples/process_raw` count files were regenerated.
 - The presplit table now carries `library`. `tfs-process-presplit` wrote
   `replicate, condition_pre, genotype, ln_cfu, ln_cfu_std`, and
   `tfs-configure-model --presplit_df` refused it ("Missing columns:
@@ -1706,7 +1720,8 @@ genotypes are handled.
 - **Fitting routines** (`tfscreen.fitting`): OLS, WLS, GLS, GEE, GLM, NLS, matrix NLS/WLS, and Kalman / unscented Kalman filter estimators.
 - Walkthrough notebook (`notebooks/tfscreen-walkthrough/`).
 
-[Unreleased]: https://github.com/harmslab/tfscreen/compare/v0.4.4...HEAD
+[Unreleased]: https://github.com/harmslab/tfscreen/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/harmslab/tfscreen/compare/v0.4.4...v0.5.0
 [0.4.4]: https://github.com/harmslab/tfscreen/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/harmslab/tfscreen/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/harmslab/tfscreen/compare/v0.4.1...v0.4.2
