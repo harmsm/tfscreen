@@ -98,7 +98,7 @@ def test_resolve_paths_unknown_key_unchanged(tmp_path):
 
 def test_setup_sim_grid_creates_subdirs(tmp_path, minimal_grid_yaml):
     out = str(tmp_path / "grid_out")
-    runs = setup_sim_grid(minimal_grid_yaml, out_prefix=out)
+    runs = setup_sim_grid(minimal_grid_yaml, out_dir=out)
     assert len(runs) == 1
     run_dir = os.path.join(out, runs[0]["run"])
     assert os.path.isdir(run_dir)
@@ -106,7 +106,7 @@ def test_setup_sim_grid_creates_subdirs(tmp_path, minimal_grid_yaml):
 
 def test_setup_sim_grid_writes_config(tmp_path, minimal_grid_yaml):
     out = str(tmp_path / "grid_out")
-    runs = setup_sim_grid(minimal_grid_yaml, out_prefix=out)
+    runs = setup_sim_grid(minimal_grid_yaml, out_dir=out)
     cfg_path = os.path.join(out, runs[0]["run"], "tfs_sim_config.yaml")
     assert os.path.isfile(cfg_path)
     with open(cfg_path) as fh:
@@ -116,7 +116,7 @@ def test_setup_sim_grid_writes_config(tmp_path, minimal_grid_yaml):
 
 def test_setup_sim_grid_writes_combo_json(tmp_path, minimal_grid_yaml):
     out = str(tmp_path / "grid_out")
-    runs = setup_sim_grid(minimal_grid_yaml, out_prefix=out)
+    runs = setup_sim_grid(minimal_grid_yaml, out_dir=out)
     combo_path = os.path.join(out, runs[0]["run"], "combo.json")
     assert os.path.isfile(combo_path)
     with open(combo_path) as fh:
@@ -127,7 +127,7 @@ def test_setup_sim_grid_writes_combo_json(tmp_path, minimal_grid_yaml):
 
 def test_setup_sim_grid_writes_summary(tmp_path, minimal_grid_yaml):
     out = str(tmp_path / "grid_out")
-    setup_sim_grid(minimal_grid_yaml, out_prefix=out)
+    setup_sim_grid(minimal_grid_yaml, out_dir=out)
     summary_path = os.path.join(out, "grid_summary.json")
     assert os.path.isfile(summary_path)
     with open(summary_path) as fh:
@@ -159,7 +159,7 @@ simulate:
     grid_path.write_text(grid)
 
     out = str(tmp_path / "grid_out")
-    runs = setup_sim_grid(str(grid_path), out_prefix=out)
+    runs = setup_sim_grid(str(grid_path), out_dir=out)
     assert len(runs) == 4
 
 
@@ -190,7 +190,7 @@ template:
     grid_path.write_text(grid)
 
     out = str(tmp_path / "grid_out")
-    runs = setup_sim_grid(str(grid_path), out_prefix=out)
+    runs = setup_sim_grid(str(grid_path), out_dir=out)
     rendered = open(os.path.join(out, runs[0]["run"], "run.sh")).read()
     assert "NUM_REPLICATES=5" in rendered
 
@@ -244,7 +244,7 @@ simulate:
     grid_path = tmp_path / "grid.yaml"
     grid_path.write_text(grid)
     out = str(tmp_path / "grid_out")
-    runs = setup_sim_grid(str(grid_path), out_prefix=out)
+    runs = setup_sim_grid(str(grid_path), out_dir=out)
 
     cfg_path = os.path.join(out, runs[0]["run"], "tfs_sim_config.yaml")
     with open(cfg_path) as fh:
@@ -319,7 +319,7 @@ def test_setup_sim_grid_base_config_choose_by_file(tmp_path):
                                                  "num": 3}}}
     grid_path = _write_study(tmp_path, base, _SEED_BLOCK)
     out = str(tmp_path / "elsewhere" / "grid_out")
-    runs = setup_sim_grid(grid_path, out_prefix=out)
+    runs = setup_sim_grid(grid_path, out_dir=out)
     assert len(runs) == 2
     assert os.listdir(os.path.join(out, "inputs")) == ["hill_params.csv"]
     for run in runs:
@@ -352,7 +352,7 @@ template:
       - extra: extra.txt
 """)
     out = tmp_path / "grid_out"
-    runs = setup_sim_grid(grid_path, out_prefix=str(out))
+    runs = setup_sim_grid(grid_path, out_dir=str(out))
 
     moved = tmp_path / "far" / "away" / "grid_out"
     moved.parent.mkdir(parents=True)
@@ -390,7 +390,7 @@ simulate:
             choose_by: a/params.csv
 """)
     out = str(tmp_path / "grid_out")
-    runs = setup_sim_grid(grid_path, out_prefix=out)
+    runs = setup_sim_grid(grid_path, out_dir=out)
     got = [_read_run_config(out, r)["binding_data"]["spiked_binding"]["choose_by"]
            for r in runs]
     assert got == [os.path.join("..", "inputs", "params.csv"),
@@ -409,12 +409,12 @@ def test_setup_sim_grid_rerun_changed_input_not_overwritten(tmp_path):
     base = {"binding_data": {"spiked_binding": {"choose_by": "hill_params.csv"}}}
     grid_path = _write_study(tmp_path, base, _SEED_BLOCK)
     out = str(tmp_path / "grid_out")
-    setup_sim_grid(grid_path, out_prefix=out)
-    runs = setup_sim_grid(grid_path, out_prefix=out)  # unchanged: reused
+    setup_sim_grid(grid_path, out_dir=out)
+    runs = setup_sim_grid(grid_path, out_dir=out)  # unchanged: reused
     assert os.listdir(os.path.join(out, "inputs")) == ["hill_params.csv"]
 
     (study / "hill_params.csv").write_text("v2")
-    runs = setup_sim_grid(grid_path, out_prefix=out)
+    runs = setup_sim_grid(grid_path, out_dir=out)
     cfg = _read_run_config(out, runs[0])
     assert (cfg["binding_data"]["spiked_binding"]["choose_by"]
             == os.path.join("..", "inputs", "hill_params_2.csv"))
@@ -429,7 +429,7 @@ def test_setup_sim_grid_phenotype_model_prefix(tmp_path):
     base = {"empirical": {"phenotype_model": "emp"}}
     grid_path = _write_study(tmp_path, base, _SEED_BLOCK)
     out = str(tmp_path / "grid_out")
-    runs = setup_sim_grid(grid_path, out_prefix=out)
+    runs = setup_sim_grid(grid_path, out_dir=out)
     cfg = _read_run_config(out, runs[0])
     assert (cfg["empirical"]["phenotype_model"]
             == os.path.join("..", "inputs", "emp_phenotype_model.json"))
@@ -440,7 +440,7 @@ def test_setup_sim_grid_missing_input_file_raises(tmp_path):
     grid_path = _write_study(tmp_path, base, _SEED_BLOCK)
     out = tmp_path / "grid_out"
     with pytest.raises(FileNotFoundError, match="binding_data.spiked_binding.choose_by"):
-        setup_sim_grid(grid_path, out_prefix=str(out))
+        setup_sim_grid(grid_path, out_dir=str(out))
     assert not out.exists()
 
 
@@ -449,7 +449,7 @@ def test_setup_sim_grid_directory_input_raises(tmp_path):
     (study / "structs").mkdir(parents=True)
     grid_path = _write_study(tmp_path, {"thermo_data": "structs"}, _SEED_BLOCK)
     with pytest.raises(ValueError, match="directory"):
-        setup_sim_grid(grid_path, out_prefix=str(tmp_path / "grid_out"))
+        setup_sim_grid(grid_path, out_dir=str(tmp_path / "grid_out"))
 
 
 def test_setup_sim_grid_unknown_path_key_raises(tmp_path):
@@ -461,14 +461,14 @@ def test_setup_sim_grid_unknown_path_key_raises(tmp_path):
     grid_path = _write_study(tmp_path, base, _SEED_BLOCK)
     out = tmp_path / "grid_out"
     with pytest.raises(ValueError, match="presplit_data.source.*_SIM_PATH_KEYS"):
-        setup_sim_grid(grid_path, out_prefix=str(out))
+        setup_sim_grid(grid_path, out_dir=str(out))
     assert not out.exists()
 
 
 def test_setup_sim_grid_unknown_absolute_path_raises(tmp_path):
     grid_path = _write_study(tmp_path, {"some_dir": str(tmp_path)}, _SEED_BLOCK)
     with pytest.raises(ValueError, match="some_dir"):
-        setup_sim_grid(grid_path, out_prefix=str(tmp_path / "grid_out"))
+        setup_sim_grid(grid_path, out_dir=str(tmp_path / "grid_out"))
 
 
 def test_setup_sim_grid_template_directory_raises(tmp_path):
@@ -483,7 +483,7 @@ template:
       - d: data
 """)
     with pytest.raises(ValueError, match="Template variable 'd'.*directory"):
-        setup_sim_grid(grid_path, out_prefix=str(tmp_path / "grid_out"))
+        setup_sim_grid(grid_path, out_dir=str(tmp_path / "grid_out"))
 
 
 def test_setup_sim_grid_keyword_choose_by_unchanged(tmp_path):
@@ -499,7 +499,7 @@ simulate:
       - seed: 1
 """)
     out = str(tmp_path / "grid_out")
-    runs = setup_sim_grid(str(tmp_path / "grid.yaml"), out_prefix=out)
+    runs = setup_sim_grid(str(tmp_path / "grid.yaml"), out_dir=out)
     cfg = _read_run_config(out, runs[0])
     assert cfg["binding_data"]["spiked_binding"]["choose_by"] == "stratified"
 
@@ -523,7 +523,7 @@ simulate:
             choose_by: measured.csv
 """)
     out = str(tmp_path / "grid_out")
-    runs = setup_sim_grid(str(grid_dir / "grid.yaml"), out_prefix=out)
+    runs = setup_sim_grid(str(grid_dir / "grid.yaml"), out_dir=out)
     cfg = _read_run_config(out, runs[0])
     assert (cfg["binding_data"]["spiked_binding"]["choose_by"]
             == os.path.join("..", "inputs", "measured.csv"))

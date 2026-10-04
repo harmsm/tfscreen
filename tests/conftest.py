@@ -112,3 +112,26 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if "slow" in item.keywords:
             item.add_marker(skip_slow)
+
+
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+
+
+@pytest.fixture(autouse=True)
+def _no_provenance_files_in_repo(monkeypatch):
+    """
+    Tests that call a command's main() with its default --out_prefix would
+    leave {out_prefix}_provenance.json in the working directory (usually the
+    repository). Skip provenance files that would land inside the
+    repository; ones under a test's tmp_path are written as usual.
+    """
+    from tfscreen.util import provenance
+
+    real = provenance.write_provenance
+
+    def guarded(path, prov=None):
+        if os.path.realpath(path).startswith(_REPO_ROOT + os.sep):
+            return path
+        return real(path, prov)
+
+    monkeypatch.setattr(provenance, "write_provenance", guarded)

@@ -1,0 +1,30 @@
+So let's add a few more experimental details. So another detail is that we
+spiked in an additional four genotypes that we did not include measured values
+of theta four, but we did have the measured theta so we can basically check
+the quality of our inference by asking whether or not these values had good
+estimates. So those genotypes that we included with measured theta but we
+didn't include it in the fit were double mutants of M42I H74A, H74I M40, sorry, H74A M42I, sorry, let's
+start with this. So we've got M42I H74A, M42I K84L, and then H74A K84L, and then the
+triple mutant with all three. So those were included as spiked samples where
+we knew their binding constants or their K values but we didn't actually put them
+into the estimate. Another control that we did was making sure that we measured
+lambda with some frequency and the way that we did that is we transformed
+bacteria with eight different plasmids that differed slightly in size but all
+shared a single shared restriction enzyme. We then transformed using exactly the
+same transformation protocol that we did by even mixture of these plasmids,
+extracted plasmids from single colonies, digested the resulting plasmids using the
+restriction enzyme, and then random on a gel allowing us to just count how many
+plasmids were present by the number of bands that came out on the gel. We did
+this for 107 different transformations allowing us to estimate our lambda. We
+did that estimate using a maximum likelihood fit of a truncated Poisson
+distribution to these values, these data, allowing us to estimate both the lambda
+which ended up being 0.4 and the uncertainty on the lambda. So lambda
+basically had ranged from 0.1 up to about 0.6. So we used those as priors,
+those values from the experiment as priors on our lambda that we
+estimated from the actual experiment itself. We had to use zero truncated
+Poisson because we're not able to observe cells that don't pick up plasmids,
+right? So if a cell doesn't pick up a plasmid, it would die in our selection.
+And further, there's a whole bunch of reasons that a cell would have zero
+plasmids. So it's actually two different processes. So all we can see are cells
+that pick up one, two, three, etc. or more plasmids. Okay, so that's information
+about different genotypes about the lambda. I think that's all I'm going to include in this book.

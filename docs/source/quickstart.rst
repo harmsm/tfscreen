@@ -1,33 +1,34 @@
 ===========
-Quick Start
+Quick start
 ===========
 
-This page walks through a complete simulate-and-analyze run using the
-bundled example in ``examples/simulate-and-analyze/``.  By the end you
-will have simulated a synthetic high-throughput TF-library screen, fitted
-the hierarchical Bayesian model, and produced a full set of diagnostic
-plots and statistics.
+This page runs the bundled example in ``examples/simulate-and-analyze/``
+from start to finish. It simulates a small TF-library screen, fits the
+hierarchical Bayesian model to the simulated data, and compares the fit with
+the known truth.
 
-The example uses a small library (~600 genotypes across three tiles)
-so the full pipeline finishes in roughly 20–60 minutes on a laptop CPU or a
-few minutes on a GPU.
+The example library has 483 genotypes: wild type, the single mutants at
+three NNT sites (M42 in tile 1, H74 and K84 in tile 2), the double mutants
+between the two tiles, and nine spiked control sequences, three of which
+are not in the bulk library.
+It is grown under kanR and pheS selection at eight IPTG concentrations in
+two replicates. The fit is the slow step. Expect tens of minutes on a
+laptop CPU and a few minutes on a GPU.
 
 Prerequisites
 -------------
 
-Install ``tfscreen`` and verify the entry points are on your PATH:
+Install ``tfscreen`` and check that the commands are on your PATH:
 
 .. code-block:: bash
 
     git clone https://github.com/harmslab/tfscreen
     cd tfscreen
     pip install -e .
-    tfs-simulate --help   # should print usage
+    tfs-simulate --help
 
-The example requires JAX and Numpyro, which are installed as dependencies.
-On Apple Silicon you may need to install the Metal-accelerated ``jax-metal``
-package separately; on a Linux cluster with a GPU, install the appropriate
-``jaxlib`` wheel for your CUDA version.
+JAX and Numpyro are installed as dependencies. On a Linux machine with a
+GPU, install the ``jaxlib`` wheel for your CUDA version.
 
 Getting the example
 -------------------
@@ -39,118 +40,151 @@ Copy the example directory to a working location:
     cp -r examples/simulate-and-analyze/ ~/tfscreen-example
     cd ~/tfscreen-example
 
-The directory contains:
-
-* ``simulate_config.yaml`` — simulation parameters (library genetics,
-  growth conditions, binding data).
-* ``hill_params.csv`` — per-genotype Hill binding parameters that set the
-  ground-truth θ values used during simulation.
-* ``run.sh`` — the pipeline script.
+It holds three files. ``simulate_config.yaml`` sets up the simulation:
+library genetics, conditions, growth parameters, binding and presplit data.
+It also serves as the library description for ``tfs-configure-model``.
+``hill_params.csv`` holds the Hill parameters of wild type and three spiked
+single mutants, which become their true *θ* curves and their binding data.
+``run.sh`` is the pipeline.
 
 Running the pipeline
 --------------------
 
+Run it from the example directory, since the config names
+``hill_params.csv`` by a relative path:
+
 .. code-block:: bash
 
-    bash run.sh simulate_config.yaml out/ 1
+    bash run.sh simulate_config.yaml out 1
 
-The three positional arguments are:
+The arguments are the simulate config, the output directory (created if
+needed) and the random seed (default 1). The seed goes to the simulation,
+the pre-fit and the fit.
 
-1. The simulation config file.
-2. The output directory (created automatically).
-3. The random seed (``1`` reproduces the documented example outputs).
+On a laptop the script has JAX spread work over eight CPU devices
+(``XLA_FLAGS="--xla_force_host_platform_device_count=8"``). On a cluster
+with a GPU, comment that line out and uncomment ``module load cuda/...``.
+The ``#SBATCH`` lines at the top let you submit the same script with
+``sbatch``.
 
-On a local machine the script uses JAX's CPU parallelism
-(``XLA_FLAGS="--xla_force_host_platform_device_count=8"``).  On a
-cluster, comment that line out and uncomment ``module load cuda/...``
-instead.
+The script runs nine steps and prints a ``>>>`` header before each one.
 
-The script runs nine steps in sequence, printing a ``>>>`` header before
-each one:
+1. ``tfs-simulate simulate_config.yaml --out_prefix out/tfs_sim --seed 1``
+   builds the library, draws every genotype's *θ* curve from the
+   ``hill_mut`` model with sparse epistasis, grows two replicates and
+   sequences them. It writes the growth, binding and presplit tables plus
+   the ground truth. The script then moves into ``out/``.
 
-.. list-table::
-   :header-rows: 1
-   :widths: 5 30 65
+2. ``tfs-configure-model`` picks the model. The script passes the binding,
+   growth and presplit tables and the simulate config as
+   ``--library_config``, and chooses components that match how the data
+   were simulated: ``linear`` condition growth, an ``instant`` growth
+   transition, ``hierarchical`` ln_cfu0, ``hierarchical_geno`` dk_geno,
+   ``fixed`` activity, ``hill_mut`` theta with ``--epistasis``, the
+   ``single`` transformation (the simulation puts one plasmid in each
+   cell), ``passthrough`` theta rescaling, ``logit_normal`` growth-side
+   theta noise and ``zero`` binding-side noise. Growth is observed through
+   the ``counts`` likelihood with a ``level`` offset per tube and ``zero``
+   growth noise, the recommended default. ``--growth_shares_replicates``
+   gives both replicates the same growth parameters.
 
-   * - Step
-     - Command
-     - What it does
-   * - 1
-     - ``tfs-simulate``
-     - Builds the genotype library, draws per-genotype θ from the Hill
-       model, converts θ to growth rates, and writes simulated sequencing
-       data.
-   * - 2
-     - ``tfs-configure-model``
-     - Validates inputs, selects model components, writes
-       ``tfs_configure_config.yaml``.
-   * - 3
-     - ``tfs-prefit-calibration``
-     - Fast MAP fit to calibrate the growth-linking-function priors.
-   * - 4
-     - ``tfs-fit-model``
-     - Main SVI inference; writes ``tfs_fit_model_checkpoint.pkl``.
-   * - 5
-     - ``tfs-sample-posterior``
-     - Draws posterior samples; writes ``tfs_posterior.h5`` (~5 GB).
-   * - 6
-     - ``tfs-extract-params``
-     - Summarises the posterior into per-parameter CSV files.
-   * - 7
-     - ``tfs-predict-theta``
-     - Predicts θ at every (genotype, titrant concentration) in the
-       training data.
-   * - 8
-     - ``tfs-predict-growth``
-     - Predicts ln(CFU) with posterior quantiles for all training
-       observations.
-   * - 9
-     - ``tfs-summarize-fit``
-     - Computes fit statistics and writes diagnostic plots and CSVs to
-       ``out/summary/``.
+3. ``tfs-prefit-calibration`` runs a MAP fit on a simplified model of the
+   genotypes with binding data and writes each condition's growth baseline
+   *k* and slope *m* into the priors and guesses CSVs.
+
+4. ``tfs-fit-model --analysis_method svi`` runs a MAP warm-up, then fits the
+   variational guide. This is the long step.
+
+5. ``tfs-sample-posterior --skip_growth_observations`` draws 10,000
+   posterior samples from the guide. The flag leaves the stored
+   per-observation growth sites out of the file. They would be several GB
+   here, and the later steps recompute growth from the parameter samples.
+
+6. ``tfs-extract-params`` writes posterior quantiles for each parameter
+   group.
+
+7. ``tfs-predict-theta`` predicts *θ* at every genotype and concentration in
+   the training data.
+
+8. ``tfs-predict-growth --num_marginal_samples 500`` predicts every
+   training ln_cfu from 500 posterior samples.
+
+9. ``tfs-summarize-fit .`` compares the predictions with the simulated
+   truth and writes plots and statistics to ``out/summary/``.
+
+:doc:`pipeline` explains each step and :doc:`cli` lists every flag.
 
 Expected outputs
 ----------------
 
-After the run completes, ``out/`` will contain:
+Every command writes a ``*_provenance.json`` next to its outputs with the
+tfscreen version, git commit and command line. After the run, ``out/``
+holds:
 
 .. list-table::
    :header-rows: 1
-   :widths: 38 62
+   :widths: 40 60
 
-   * - File / directory
+   * - File
      - Contents
-   * - ``tfs_sim_library.csv``
-     - All genotypes in the simulated library.
    * - ``tfs_sim_growth.csv``
-     - Simulated ln(CFU) data (same format as ``tfs-process-counts`` output).
+     - Simulated growth table, the format ``tfs-process-counts`` writes,
+       with each row's true values.
    * - ``tfs_sim_binding.csv``
-     - Simulated binding curve observations.
+     - Simulated binding curves for the four genotypes in
+       ``hill_params.csv``.
+   * - ``tfs_sim_presplit.csv``
+     - Simulated presplit abundances.
+   * - ``tfs_sim_library.csv``
+     - Every genotype in the library and its origin.
    * - ``tfs_sim_parameters.csv``
-     - Ground-truth per-genotype parameters (θ, dk_geno, etc.).
+     - True per-genotype parameters (Hill parameters, ``dk_geno``,
+       activity).
+   * - ``tfs_sim_genotype_theta.csv``
+     - True *θ* for every genotype and concentration.
+   * - ``tfs_sim_growth_parameters.csv``
+     - True growth *k* and *m* for each condition.
+   * - ``tfs_sim_transformation_lam.csv``
+     - The simulated congression rate.
+   * - ``tfs_sim_input-config.yaml``
+     - The simulate config as run.
    * - ``tfs_configure_config.yaml``
-     - Model configuration read by all downstream steps.
+     - Model configuration read by every later step.
+   * - ``tfs_configure_priors.csv``, ``tfs_configure_guesses.csv``
+     - Priors and starting values, updated by the pre-fit (the originals
+       are kept as ``.bak``).
+   * - ``tfs_configure_library.csv``
+     - Library composition resolved from the simulate config.
+   * - ``tfs_configure_model_stats.csv``, ``tfs_configure_model_stats.json``
+     - Parameter and observation census of the configured model.
+   * - ``tfs_prefit_*``
+     - Pre-fit diagnostics: checkpoint, parameters, losses, convergence.
    * - ``tfs_fit_model_checkpoint.pkl``
      - Fitted model checkpoint.
+   * - ``tfs_fit_model_params.npz``
+     - Fitted guide parameters.
+   * - ``tfs_fit_model_losses.txt``, ``tfs_fit_model_convergence.csv``
+     - Loss trace and one row per convergence window.
+   * - ``tfs_fit_model_premap_*``
+     - The MAP warm-up's checkpoint, parameters, losses and convergence.
+   * - ``checkpoints/``
+     - Numbered checkpoints written during the fit.
    * - ``tfs_posterior.h5``
-     - Posterior samples (~5 GB; not committed to the repo).
+     - Posterior samples.
    * - ``tfs_params_*.csv``
-     - Posterior summaries (quantiles) for each parameter group.
+     - Posterior quantiles for each parameter group.
    * - ``tfs_pred_theta.csv``
-     - Predicted θ with posterior quantiles.
+     - Predicted *θ* with posterior quantiles.
    * - ``tfs_pred_growth.csv``
-     - Predicted ln(CFU) with posterior quantiles.
+     - Predicted ln_cfu with posterior quantiles.
    * - ``summary/``
-     - Diagnostic plots and statistics from ``tfs-summarize-fit``.
+     - Plots and statistics from ``tfs-summarize-fit``.
 
 Next steps
 ----------
 
-* **Understand each analysis step** — see :doc:`analysis` for the full CLI
-  reference covering every ``tfs-*`` command in the pipeline.
-* **Interpret the diagnostic outputs** — see :doc:`summarize-fit` for a
-  guided walkthrough of every plot and statistic in ``out/summary/``.
-* **Simulate a parameter sweep** — see :doc:`grid` for how to run a
-  Cartesian grid of configurations.
-* **Use real data** — see :doc:`process-raw` for converting FASTQ reads
-  into the ``growth.csv`` format that ``tfs-configure-model`` accepts.
+:doc:`summarize-fit` walks through every plot and statistic in
+``out/summary/``. :doc:`simulation` documents the simulate config, so you
+can change the library, the conditions or the noise. :doc:`grid` runs a
+sweep of settings. :doc:`process-raw` turns real FASTQ files into the growth
+table that ``tfs-configure-model`` reads.

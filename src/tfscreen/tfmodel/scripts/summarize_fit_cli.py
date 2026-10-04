@@ -21,13 +21,21 @@ from tfscreen.util.cli.generalized_main import generalized_main
 def _find_params_or_posterior(run_dir):
     """Return (kind, path) for the best available prediction source in run_dir.
 
-    Preference order: ``*_posterior.h5`` first (richer uncertainty), then
-    ``*_params.npz`` (MAP fallback).  Returns ``(None, None)`` when neither
-    is found.  Warns when multiple files of the same type are present and
-    uses the first alphabetically.
+    Preference order: a posterior ``.h5`` first (richer uncertainty), then
+    ``*_params.npz`` (MAP fallback).  A posterior is ``*_posterior.h5`` or,
+    since ``tfs-sample-posterior`` writes ``{out_prefix}.h5``, any other
+    ``.h5`` that is not a ``tfs-sample-prior`` ground truth
+    (``*_ground_truth.h5``).  Returns ``(None, None)`` when nothing is found.
+    Warns when several candidates of the same kind are present and uses the
+    first alphabetically.
     """
-    for suffix, kind in (("_posterior.h5", "posterior"), ("_params.npz", "params")):
-        matches = sorted(glob.glob(os.path.join(run_dir, f"*{suffix}")))
+    h5 = sorted(glob.glob(os.path.join(run_dir, "*.h5")))
+    named = [p for p in h5 if p.endswith("_posterior.h5")]
+    other = [p for p in h5 if p not in named
+             and not p.endswith("_ground_truth.h5")]
+    candidates = (("posterior", named or other),
+                  ("params", sorted(glob.glob(os.path.join(run_dir, "*_params.npz")))))
+    for kind, matches in candidates:
         if not matches:
             continue
         if len(matches) > 1:
@@ -117,7 +125,7 @@ def _try_plot_trajectories(config_file, config_yaml, run_dir, out_prefix, bindin
     kind, pred_path = _find_params_or_posterior(run_dir)
     if pred_path is None:
         warnings.warn(
-            "No *_posterior.h5 or *_params.npz found in "
+            "No posterior .h5 or *_params.npz found in "
             f"{run_dir}; skipping trajectory plots."
         )
         return
@@ -932,8 +940,9 @@ def summarize_fit(run_dir,
       written when a ref theta file is resolved and has matching rows).
     - ``{out_prefix}_theta_corr.pdf`` — two-panel correlation plot for theta
       (training left, test right).
-    - ``{out_prefix}_growth_corr.csv`` — relative symlink to the
-      *_pred_growth.csv in run_dir (only created when that file is present).
+    - ``{out_prefix}_growth_corr.csv`` — a copy of the *_pred_growth.csv in
+      run_dir with ``ln_cfu``/``ln_cfu_std`` renamed ``ref``/``ref_std``
+      (only written when that file is present).
     - ``{out_prefix}_growth_corr.pdf`` — correlation plot for ln_cfu (only
       written when *_pred_growth.csv is present).
     - ``{out_prefix}_{genotype}_theta_fits.csv`` / ``.pdf`` — per-genotype
@@ -961,7 +970,7 @@ def summarize_fit(run_dir,
         argument explicitly to use a theta reference from outside *run_dir*
         or with a non-standard name.
     out_prefix : str, optional
-        Prefix for output files.  Defaults to {run_dir}/tfs_summarize.
+        Prefix for output files.  Defaults to {run_dir}/summary/tfs_summarize.
     """
     run_dir = os.path.abspath(run_dir)
     if out_prefix is None:

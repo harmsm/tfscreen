@@ -130,7 +130,10 @@ most likely to need:
   component", including registration and mini-batch safety.
 - **CLI scripts:** the "CLI standards" section. Every `tfs-*` script uses
   `generalized_main`, lives in `<name>_cli.py`, writes with `--out_prefix`
-  and is registered in `pyproject.toml`.
+  and is registered in `pyproject.toml`. Its docstring is its `--help`, one
+  entry per parameter. After changing any CLI signature or docstring,
+  regenerate the reference page with `python docs/scripts/make_cli_reference.py`;
+  `tests/tfscreen/util/cli/test_cli_reference.py` fails until you do.
 - **YAML files:** the "YAML standards" section.
 - **Quantile outputs:** bare `q<level>` column names, no feature prefix.
 

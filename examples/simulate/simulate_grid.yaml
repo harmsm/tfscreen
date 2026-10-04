@@ -2,12 +2,12 @@
 # Example grid YAML for tfs-setup-sim-grid
 #
 # Usage:
-#   tfs-setup-sim-grid simulate_grid.yaml --out_prefix my_sim_grid
+#   tfs-setup-sim-grid simulate_grid.yaml --out_dir my_sim_grid
 #
-# This creates one subdirectory per combination, writes a tfs_sim_config.yaml
-# in each (base config + overrides), and renders run.sh with the template
-# variables.  Run all simulations with:
-#   for d in my_sim_grid/run_*/; do cd "$d" && bash run.sh && cd -; done
+# This creates one subdirectory per combination (run_<index>_<run_name>),
+# writes a tfs_sim_config.yaml in each (base config + overrides), and renders
+# run.sh with the template variables.  Run all simulations with:
+#   for d in my_sim_grid/run_*/; do (cd "$d" && bash run.sh); done
 # ---------------------------------------------------------------------------
 
 # Base simulate config.  Each run inherits all settings from this file; the
@@ -28,7 +28,7 @@ output_file: run.sh    # in the same examples/simulate/ directory
 #
 # Variables here override top-level keys in the base config.  They are NOT
 # injected into the Jinja2 template.  Relative file paths are resolved against
-# this YAML; every input file is copied into <out_prefix>/inputs/ and each run
+# this YAML; every input file is copied into <out_dir>/inputs/ and each run
 # refers to it as ../inputs/<name>, so the grid directory can be moved.
 #
 # Multi-key variants always move together and are never split by the Cartesian
@@ -45,7 +45,8 @@ simulate:
 
   # --- Theta component (thermodynamic model) --------------------------------
   #
-  # Any key in model_registry["theta"] except "_simple" is valid.
+  # hill_geno, hill_mut or a thermo.* partition-function key (PnnC and PddG
+  # variants also need thermo_data).
   # Uncomment additional variants to compare thermodynamic models.
 
   - name: thermodynamic_model
@@ -62,7 +63,8 @@ simulate:
 
   # --- Random seed ---------------------------------------------------------
   #
-  # Varying the seed with the same other settings tests reproducibility.
+  # 'seed' is the simulate config's seed key. Varying it with the other
+  # settings fixed gives independent simulated data sets.
 
   - name: seed
     variants:

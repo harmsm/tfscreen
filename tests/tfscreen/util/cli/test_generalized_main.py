@@ -58,10 +58,14 @@ class TestGeneralizedMain:
         assert result['flag'] is False
         assert result['inverse'] is True
         
-        # Toggle
-        generalized_main(target_func, argv=['--flag', '--inverse'])
+        # Toggle: a True default is turned off by --no_<name>
+        generalized_main(target_func, argv=['--flag', '--no_inverse'])
         assert result['flag'] is True
         assert result['inverse'] is False
+
+        # --<name> on a True default keeps it on (never inverts)
+        generalized_main(target_func, argv=['--inverse'])
+        assert result['inverse'] is True
 
     def test_manual_overrides(self):
         result = {}
@@ -113,9 +117,11 @@ class TestGeneralizedMain:
         def target_func(v: bool = True):
             result['v'] = v
             
-        # Should be store_false
-        generalized_main(target_func, argv=['--v'])
+        generalized_main(target_func, argv=['--no_v'])
         assert result['v'] is False
+
+        generalized_main(target_func, argv=['--v'])
+        assert result['v'] is True
         
         generalized_main(target_func, argv=[])
         assert result['v'] is True
@@ -155,6 +161,72 @@ class TestGeneralizedMain:
                          argv=['--items', '1', '2'], 
                          manual_arg_nargs={'items': '+'})
         assert result2['items'] == ['1', '2'] # Stay as strings by default
+
+    def test_none_default_reads_string(self):
+        result = {}
+        def target_func(path=None):
+            result['path'] = path
+
+        generalized_main(target_func, argv=['--path', 'x.csv'])
+        assert result['path'] == 'x.csv'
+        generalized_main(target_func, argv=[])
+        assert result['path'] is None
+
+    def test_returns_none_for_sys_exit(self):
+        # console scripts run sys.exit(main()); a returned value would exit 1
+        def target_func(a=1):
+            return a * 2
+        assert generalized_main(target_func, argv=['--a', '4']) is None
+
+    def test_help_from_docstring(self, capsys):
+        def target_func(data_file, alpha=0.05, quiet=False):
+            """
+            Do a thing to a file.
+
+            Parameters
+            ----------
+            data_file : str
+                The input table.
+            alpha : float
+                Significance
+                level.
+            quiet : bool
+                Print less.
+            """
+
+        with pytest.raises(SystemExit):
+            generalized_main(target_func, argv=['--help'], prog='tfs-thing')
+        out = capsys.readouterr().out
+        assert out.startswith('usage: tfs-thing')
+        assert 'Do a thing to a file.' in out
+        assert 'The input table.' in out
+        assert 'Significance level. (default: 0.05)' in out
+        assert 'Print less.' in out
+        # The parameter section is not repeated in the description
+        assert '----------' not in out
+
+    def test_provenance_written_for_out_prefix(self, tmp_path, capsys):
+        import json
+        def target_func(out_prefix='x'):
+            pass
+
+        prefix = str(tmp_path / 'sub' / 'run')
+        generalized_main(target_func, argv=['--out_prefix', prefix])
+        prov = json.load(open(prefix + '_provenance.json'))
+        assert 'tfscreen_version' in prov
+        assert 'commit' in prov
+        assert '--out_prefix' in prov['command']
+        assert 'tfscreen' in capsys.readouterr().err
+
+    def test_provenance_can_be_skipped(self, tmp_path):
+        def target_func(out_prefix='x'):
+            pass
+
+        prefix = str(tmp_path / 'run')
+        generalized_main(target_func, argv=['--out_prefix', prefix],
+                         write_provenance=False)
+        assert not (tmp_path / 'run_provenance.json').exists()
+
 
 from unittest.mock import patch
 

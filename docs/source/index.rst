@@ -9,13 +9,17 @@ tfscreen
    :caption: Contents:
 
    quickstart
-   simulation
+   pipeline
    process-raw
    model-inputs
-   analysis
+   fitting
+   model
+   downstream
    summarize-fit
+   simulation
    grid
    ligandmpnn-features
+   cli
 
 Goal
 ----
@@ -33,32 +37,24 @@ The thermodynamic observable is operator occupancy (*θ*), inferred from *E. col
 
 The model in ``tfscreen.tfmodel`` is designed to jointly capture high-throughput growth data and low-throughput binding data, learning the quantitative relationship between operator occupancy and growth rate in the process.
 
-Quick Start
------------
-New to ``tfscreen``?  The :doc:`quickstart` page walks through a complete
-simulate-and-analyze run using the bundled example in
-``examples/simulate-and-analyze/``.
+Using tfscreen
+--------------
 
-Simulation
-----------
-`tfscreen` allows you to simulate high-throughput screens starting from thermodynamic models of transcription factor binding and activity. See the :doc:`simulation` page for more details.
+:doc:`quickstart` runs the bundled simulate-and-fit example. :doc:`pipeline`
+walks through every step from sequencing reads to a posterior, with the
+command for each. The pages after it cover each part in detail:
 
-Raw Data Processing
--------------------
-`tfscreen` includes utilities to convert raw sequencing data into quantitative inputs for analysis. See the :doc:`process-raw` page for more details.
-
-Model Input Data
------------------
-The hierarchical model accepts binding, growth, base-growth, pre-split, and congression-calibration data. See the :doc:`model-inputs` page for what each contributes, how much is useful, and how to pass it in.
-
-Analysis
---------
-`tfscreen` provides robust statistical tools, including Bayesian hierarchical models, to extract biochemical parameters from screen data. See the :doc:`analysis` page for more details.
-
-Grid Setup
-----------
-Both the simulation and model-fitting workflows support parameter sweeps via a grid mechanism. See the :doc:`grid` page for the grid YAML format and the ``tfs-setup-grid``, ``tfs-setup-sim-grid``, and ``tfs-summarize-grid`` commands.
-
+- :doc:`process-raw`: reads to counts, OD600 to tube totals, counts to the
+  growth table.
+- :doc:`model-inputs`: what each data file and prior input gives the model.
+- :doc:`fitting`: configuring, fitting, convergence and posteriors.
+- :doc:`model`: the generative model and its components.
+- :doc:`downstream`: parameters, predictions, epistasis, curve classes and
+  cross-run comparison.
+- :doc:`summarize-fit`: diagnostics for one run.
+- :doc:`simulation` and :doc:`grid`: simulated experiments and parameter
+  sweeps.
+- :doc:`cli`: every command and flag, generated from the code.
 
 Indices and tables
 ==================

@@ -3,6 +3,10 @@
 # Library genetic information
 # ---------------------------------------------------------------------------
 
+# These keys, plus library_mixture below, describe the library. Hand this same
+# file to tfs-process-fastq and to tfs-configure-model --library_config; each
+# tool ignores the keys it does not use.
+
 # Reading frame 0, 1, 2. No reverse (negative) strand allowed.
 reading_frame: 0
 
@@ -42,8 +46,7 @@ spiked_seqs:
 # Phenotype calculation
 # ---------------------------------------------------------------------------
 
-# Registered theta component name.  Any key in model_registry["theta"] is
-# valid except "_simple" (calibration-only).
+# Theta component: hill_geno, hill_mut or a thermo.* partition-function key.
 #
 # Thermodynamic components (physics-based operator-occupancy model):
 #   "thermo.O2_C12_K5_U0_a.PK"   — dimer with operator architecture O2, 12-mer
@@ -63,9 +66,11 @@ spiked_seqs:
 #                   exact reference curve.
 #
 # Perturbation-based components ignore theta_priors and instead use
-# theta_sim_priors (see below).  They do not call define_model; tfs-simulate
-# will fall back to prior-predictive sampling only for components that lack a
-# simulate() function.
+# theta_sim_priors (see below). Components without their own simulation
+# routine draw theta from the component's prior instead.
+#
+# theta_rescale (optional): 'passthrough' (default) or 'logit', applied to
+# theta before it enters the growth model, as the fit-side component.
 theta_component: "thermo.O2_C12_K5_U0_a.PK"
 
 # Optional: path to structural/thermodynamic data file required by PnnC and
@@ -165,9 +170,12 @@ condition_blocks:
 # Growth rate parameters
 # ---------------------------------------------------------------------------
 
-# Linear mapping from operator occupancy (theta) to growth rate k for each
-# condition:  k = m * theta + b.  Every condition_pre and condition_sel that
-# appears in condition_blocks must have an entry here, and vice versa.
+# Mapping from operator occupancy (theta) to growth rate for each condition,
+# in units of 1/minute (times are in minutes). The default linear model is
+#   k = b + A * m * theta + dk_geno
+# An entry can instead set model: power (keys b, a, n) or
+# model: saturation (keys kmin, kmax). Every condition_pre and condition_sel
+# that appears in condition_blocks must have an entry here, and vice versa.
 growth:
   kanR+kan: {m: -0.009933, b: 0.000000}
   kanR-kan: {m:  0.000808, b: 0.004670}
@@ -190,7 +198,10 @@ dk_geno_hyper_shift: 0.02
 # by inference convention.  Set activity_mut_scale > 0 to draw each mutant
 # genotype's log(A) independently from Normal(log(activity_wt), activity_mut_scale).
 # activity_mut_scale=0 (default) gives all genotypes identical activity, matching
-# the 'fixed' activity inference component.
+# the 'fixed' activity inference component. activity_component (default
+# 'fixed') can instead be 'hierarchical_geno' or 'horseshoe_geno', numpy
+# versions of the fit's priors, tuned by an activity_priors dict; both ignore
+# activity_wt and activity_mut_scale.
 activity_wt: 1.0
 activity_mut_scale: 0.0
 
@@ -237,14 +248,13 @@ transformation_poisson_lambda: 1.5
 congression_theta_rule: homodimer
 congression_dk_rule: dilution
 
-# Colony-forming units per mL at the start of pre-growth.
+# Cells in each tube at the start of pre-growth.
 cfu0: 65_000_000.0
 
-# Per-tube environmental growth-rate noise (hr⁻¹).  Each physical tube gets its
-# own delta_k ~ Normal(0, tube_noise_sigma); the kt contribution per tube is
-# delta_k * (t_pre + t_sel), shared by all genotypes in that tube.  A value of
-# ~0.001–0.002 hr⁻¹ is typical for well-controlled liquid cultures.
-# Set to 0 or null to disable.
+# Per-tube environmental growth-rate noise, in growth-rate units (1/minute
+# here).  Each physical tube gets its own delta_k ~ Normal(0, tube_noise_sigma);
+# the kt contribution per tube is delta_k * (t_pre + t_sel), shared by all
+# genotypes in that tube.  Set to 0 or null to disable.
 tube_noise_sigma: 0.002
 
 # ---------------------------------------------------------------------------
@@ -259,6 +269,9 @@ tube_noise_sigma: 0.002
 #   tau0 = baseline lag (minutes)
 #   k1   = occupancy-dependence of lag (higher = more effect)
 #   k2   = curvature constant (> 0; prevents division by zero)
+# "baranyi" model: rate switches smoothly from k_pre to k_sel around
+#   tau_lag (minutes) with sharpness k_sharp (> 0)
+# "two_pop" model: cells switch irreversibly to k_sel at rate k_trans (> 0)
 growth_transition:
   - condition_pre: "pheS-4CP"
     model: "memory"
@@ -283,7 +296,8 @@ total_num_reads: 25_000_000
 # Set to 0 or null to disable.
 prob_index_hop: 0.05
 
-# Random seed for reproducibility.  Set to null for a random seed each run.
+# Random seed for reproducibility.  Set to null for a random seed each run;
+# tfs-simulate --seed overrides it.
 seed: null
 
 # ---------------------------------------------------------------------------
@@ -336,8 +350,12 @@ seed: null
 # Binding data simulation (optional)
 # ---------------------------------------------------------------------------
 
-# If present, tfs-simulate also writes a binding CSV with per-genotype theta
-# curves.  titrant_name must match e_name in observable_calc_kwargs.
+# If present, tfs-simulate also writes a binding CSV (tfs_sim_binding.csv)
+# for tfs-configure-model --binding_df.  noise is the Gaussian SD on
+# theta_obs, not clipped to [0, 1] (clip_theta_obs: true restores clipping).
+# choose_by can also be the path to a CSV of Hill parameters (genotype,
+# theta_low, theta_high, log_hill_K, hill_n) that become those genotypes'
+# true phenotypes; it needs a Hill theta component.
 #
 # binding_data:
 #   titrant_name: iptg
@@ -362,8 +380,7 @@ seed: null
 # reference-condition growth-rate "measurements" for a subset of genotypes,
 # tied to the per-genotype dk_geno already assigned above and a shared
 # reference rate k_ref. Feeds tfs-configure-model's --base_growth_df, which
-# anchors the hierarchical model's dk_geno/condition_growth identifiability
-# (see CLAUDE.md).
+# anchors the hierarchical model's dk_geno/condition_growth identifiability.
 #
 # k_ref (required): the reference (wt) growth rate, hr^-1.
 # genotypes (optional, default ["wt"]): genotypes to include. Every genotype
@@ -407,8 +424,8 @@ seed: null
 #   presplit_data:
 #
 # ---- What the presplit CSV represents -------------------------------------
-# This simulates the sequencing aliquot taken at t = -t_pre, just before
-# the culture is split into titrant-concentration conditions.  Because it is
+# This simulates the sequencing sample taken at t = -t_pre, just before
+# the culture is split into tubes.  Because it is
 # taken before any pre-selection growth, each ln_cfu value directly
 # constrains ln_cfu0 in the hierarchical model.
 #

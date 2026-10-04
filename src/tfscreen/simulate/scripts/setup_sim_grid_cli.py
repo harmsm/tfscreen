@@ -10,7 +10,7 @@ GRID YAML FORMAT
 
     base_config: ../simulate_config.yaml   # base config to override
 
-    run_name: "{{ theta_component }}__noise{{ growth_rate_noise }}"
+    run_name: "{{ theta_component }}__noise{{ tube_noise_sigma }}__seed{{ seed }}"
     output_file: run.sh   # Jinja2 template; looked up next to this YAML
 
     simulate:              # key-value overrides applied to the base config
@@ -20,8 +20,12 @@ GRID YAML FORMAT
           - theta_component: hill_geno
       - name: noise
         variants:
-          - growth_rate_noise: 0.01
-          - growth_rate_noise: 0.05
+          - tube_noise_sigma: 0.001
+          - tube_noise_sigma: 0.005
+      - name: seed
+        variants:
+          - seed: 0
+          - seed: 42
 
     template:              # variables injected into the Jinja2 template only
       - name: num_replicates
@@ -35,15 +39,19 @@ NOTES
   keys are not supported — override the entire top-level key if needed.
 - ``simulate`` variables are NOT injected into the template; ``template``
   variables are NOT written to the config.  To share a variable, list it in both.
-- ``run_name`` may reference variables from either section.
+- ``run_name`` may reference variables from either section. Each run
+  directory is named ``run_{index:04d}_<rendered run_name>``.
+- ``simulate`` keys must be valid simulate-config keys
+  (``selection_experiment.SIMULATE_KNOWN_KEYS``); the random seed is ``seed``.
+  Setup does not check them, but tfs-simulate refuses an unknown key.
 - Use the ``basename`` Jinja2 filter to strip path info from filenames:
-      run_name: "{{ thermo_data | basename }}__noise{{ growth_rate_noise }}"
+      run_name: "{{ thermo_data | basename }}__noise{{ tube_noise_sigma }}"
 
 INPUT FILES
 -----------
 The grid directory is self-contained and can be moved as a unit (on and off a
 cluster, onto another partition). Every input file a run needs is copied into
-``<out_prefix>/inputs/`` once, and each run's config and rendered template
+``<out_dir>/inputs/`` once, and each run's config and rendered template
 refer to it as ``../inputs/<name>``. Nothing in a run points outside the grid.
 
 - Config file paths are the keys listed in ``_SIM_PATH_KEYS``, nested ones
@@ -181,31 +189,31 @@ def _stage_config_files(run_cfg, stager):
 # Public entry point
 # ---------------------------------------------------------------------------
 
-def setup_sim_grid(grid_yaml, out_prefix="sim_grid"):
+def setup_sim_grid(grid_yaml, out_dir="sim_grid"):
     """
     Set up a directory grid for simulation runs.
 
     Reads a grid YAML file, loads a base simulate config, expands all simulate
     and template blocks into their Cartesian product, and for each combination:
 
-    1. Creates a subdirectory under *out_prefix*.
+    1. Creates a subdirectory under *out_dir*.
     2. Merges the simulate-block overrides into the base config and writes
        ``tfs_sim_config.yaml`` inside that subdirectory.
     3. Renders the Jinja2 template (``output_file``) with the template
        variables and writes the result to the subdirectory.
     4. Writes ``combo.json`` recording the variable assignments for that run.
 
-    A ``grid_summary.json`` is written to *out_prefix* listing all created runs.
+    A ``grid_summary.json`` is written to *out_dir* listing all created runs.
     Input files named by the configs or template variables are copied into
-    ``<out_prefix>/inputs/`` and referenced as ``../inputs/<name>``, so the
-    *out_prefix* directory can be moved as a unit. Every run is validated
+    ``<out_dir>/inputs/`` and referenced as ``../inputs/<name>``, so the
+    *out_dir* directory can be moved as a unit. Every run is validated
     before anything is written.
 
     Parameters
     ----------
     grid_yaml : str
         Path to the grid YAML file.
-    out_prefix : str, optional
+    out_dir : str, optional
         Root directory for the grid.  Created if it does not exist.
         Default ``"sim_grid"``.
 
@@ -282,7 +290,7 @@ def setup_sim_grid(grid_yaml, out_prefix="sim_grid"):
     # (including rendering the template) before writing anything, so a bad input
     # cannot leave a half-built grid.
     runs_to_write = []
-    checker = _InputStager(out_prefix, _TOOL, dry_run=True)
+    checker = _InputStager(out_dir, _TOOL, dry_run=True)
     for i, (sim_vars, tmpl_vars) in enumerate(all_combos, start=1):
         all_vars = {**sim_vars, **tmpl_vars}
         run_name = _make_run_name(run_name_template, all_vars, i)
@@ -305,16 +313,16 @@ def setup_sim_grid(grid_yaml, out_prefix="sim_grid"):
 
         runs_to_write.append((run_name, run_cfg, sim_vars, tmpl_vars))
 
-    os.makedirs(out_prefix, exist_ok=True)
-    stager = _InputStager(out_prefix, _TOOL)
+    os.makedirs(out_dir, exist_ok=True)
+    stager = _InputStager(out_dir, _TOOL)
 
     all_runs = []
 
     for run_name, run_cfg, sim_vars, tmpl_vars in runs_to_write:
-        subdir = os.path.abspath(os.path.join(out_prefix, run_name))
+        subdir = os.path.abspath(os.path.join(out_dir, run_name))
         os.makedirs(subdir, exist_ok=True)
 
-        # Copy input files into <out_prefix>/inputs/; the config refers to them
+        # Copy input files into <out_dir>/inputs/; the config refers to them
         # as ../inputs/<name>.
         _stage_config_files(run_cfg, stager)
         cfg_path = os.path.join(subdir, _SIM_CONFIG_FILENAME)
@@ -339,17 +347,17 @@ def setup_sim_grid(grid_yaml, out_prefix="sim_grid"):
 
     summary = {
         "grid_yaml": grid_yaml,
-        "out_prefix": os.path.abspath(out_prefix),
+        "out_dir": os.path.abspath(out_dir),
         "runs": all_runs,
     }
-    summary_path = os.path.join(out_prefix, "grid_summary.json")
+    summary_path = os.path.join(out_dir, "grid_summary.json")
     with open(summary_path, "w") as fh:
         json.dump(summary, fh, indent=2)
         fh.write("\n")
 
     n_ok = len(all_runs)
     print(
-        f"\n{n_ok} run{'s' if n_ok != 1 else ''} created under {out_prefix}/",
+        f"\n{n_ok} run{'s' if n_ok != 1 else ''} created under {out_dir}/",
         flush=True,
     )
 
@@ -359,7 +367,7 @@ def setup_sim_grid(grid_yaml, out_prefix="sim_grid"):
 def main():
     generalized_main(
         setup_sim_grid,
-        manual_arg_types={"grid_yaml": str, "out_prefix": str},
+        manual_arg_types={"grid_yaml": str, "out_dir": str},
     )
 
 

@@ -29,6 +29,126 @@ fall into two kinds:
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-03
+
+A modeling release and an interface release. The model changes (the
+congression mixture, the count likelihood, the growth-only relative fit, tube
+offsets, OD600 tube totals, the convergence monitor and the block and
+arrowhead Laplace) are listed from "Added" onward below the interface
+entries. The interface entries come first: the command-line tools were made
+consistent, three hand-edited steps of the real-data fit became flags, and
+the documentation was rewritten to match the code. Many commands changed
+their arguments; old scripts and run templates need updating.
+
+### Added
+
+- **Provenance on every run** (`tfscreen.util.provenance`). Every `tfs-*`
+  command prints the tfscreen version, git commit (with a flag for
+  uncommitted changes) and command line when it starts, and writes them to
+  `{out_prefix}_provenance.json` when it takes `--out_prefix`. The
+  `tfs-configure-model` YAML has a `provenance:` block and fit checkpoints a
+  `provenance` entry. Study READMEs no longer need to infer commits from file
+  times.
+- **`tfs-process-counts` reads OD600.** `--od600_file` (one reading per
+  tube), `--od600_calibration_file` (a `tfs-calibrate-od600` calibration) and
+  `--tube_volume_mL` give each tube's `sample_cfu` and SD
+  (`od600.tube_totals_from_od600`), with the calibration curve's shared error
+  (`sample_cfu_curve_std`) kept apart from the reading's own
+  (`sample_cfu_reading_std`). A reading below the detection threshold is an
+  error. Supplied `sample_cfu` still works. Several libraries go through in
+  one call, as before, now tested against separate runs.
+- **`tfs-configure-model --set_priors name=value ...`** sets any scalar prior
+  by full row name or unique dotted suffix (`sigma_fixed=0.17`,
+  `theta_log_hill_n_hyper_scale_fixed=0.5`); unknown or ambiguous names are
+  errors. Replaces `sed` on the priors CSV.
+- **`tfs-configure-model --growth_priors`** (per-condition linear k/m priors
+  from a table) and **`--growth_priors_wt_rates`** (k and m from wt
+  monoculture rates on the relative-X gauge, SD floored by
+  `--growth_priors_sd_floor`), for models the pre-fit does not calibrate.
+  Replaces `set_growth_priors.py`. Shared helpers in
+  `tfscreen.tfmodel.priors_edit`, which `tfs-prefit-calibration` now uses too.
+- **`tfs-sample-posterior --laplace auto|full|arrowhead|blocks|point`** and
+  `--laplace_max_params` (default 20,000). `auto` uses the full Laplace up
+  to that many MAP parameters and the arrowhead Laplace above. The arrowhead
+  writes the Schur-complement directions it held at the MAP to
+  `{out_prefix}_held_directions.csv` (`RunInference.held_shared_directions`).
+- **CLI reference page** `docs/source/cli.rst`, generated from the commands'
+  own parsers by `docs/scripts/make_cli_reference.py`;
+  `tests/tfscreen/util/cli/test_cli_reference.py` fails when it is stale.
+  `generalized_main.capture_parser` returns a command's parser without
+  running it.
+- **Per-argument `--help`.** `generalized_main` takes each argument's help
+  from the function's numpydoc `Parameters` entry and shows defaults; the
+  program name is the command's own.
+- `examples/process_raw/`: a synthetic tube table, OD600 table and per-tube
+  count files (`make_example_data.py`) in the formats `tfs-process-counts`
+  reads.
+- Documentation: a pipeline page (reads to posterior, one command per step),
+  and the old analysis page split into fitting, model and downstream pages.
+
+### Changed
+
+- **A switch that defaults to on is turned off with `--no_<name>`.**
+  Previously `--<name>` silently inverted it: `tfs-sample-prior --noise`
+  turned noise off, `tfs-build-empirical --drop_railed` stopped dropping and
+  `tfs-process-counts --verbose` made it quiet. `--<name>` now does nothing.
+- **A flag whose default is None reads a string** unless the command types
+  it. `tfs-summarize-fit --out_prefix` and `tfs-process-fastq
+  --max_num_reads` crashed with "invalid NoneType value" whenever they were
+  passed.
+- `tfs-process-fastq library_config f1_fastq f2_fastq [--out_dir counts]`:
+  the library YAML comes first and the output directory is a flag (was
+  `f1 f2 out_dir run_config`). `--num_workers` defaults to -1.
+- `tfs-process-counts sample_file counts_dir [--out_prefix]` writes
+  `{out_prefix}.csv` (default `tfs_growth`, or `tfs_presplit` with
+  `--presplit`); the output path was a positional. A missing `library`
+  column defaults to `default`. The `obs_file` column is no longer written.
+- `tfs-simulate config_file [--out_prefix tfs_sim]` writes
+  `{out_prefix}_{name}.csv` (was positional `output_dir` and
+  `--output_prefix tfs_sim_`). Default file names are unchanged.
+- `tfs-configure-model` refuses a library whose spiked genotype has no growth
+  data (`check_spikes_in_data`); `--allow_missing_spikes` restores the old
+  report-only behavior.
+- `tfs-sample-posterior`: `--laplace` replaces `--map_point`,
+  `--laplace_blocks` and `--laplace_shared`. A small MAP is unchanged (full
+  Laplace); a MAP above 20,000 parameters now gets the arrowhead Laplace by
+  default instead of a dense Hessian that does not fit in memory.
+- `tfs-build-empirical growth_df [--binding_df] [--seed]
+  [--growth_calibration_file] [--base_growth_df]` (was `growth_file seed
+  --binding_file --calibration_file --base_growth_file`); `--seed` is
+  required only when the pre-fit runs.
+- `tfs-fit-genotypes growth_df growth_calibration_file`, default prefix
+  `tfs_fit_genotypes` (was `growth_file calibration_file`, `tfs_mle`).
+- `tfs-predict-growth --seed` (was `--subset_seed`).
+- `tfs-setup-grid` and `tfs-setup-sim-grid` take `--out_dir` (was
+  `--out_prefix`, which named a directory); `grid_summary.json` records
+  `out_dir`.
+- Docstrings corrected where they described old behavior: MAP predictions
+  give a `q0.5` column, not `point_est`; default quantiles are the bare
+  `q<level>` ladder; `tfs-build-empirical` writes
+  `<prefix>_phenotype_model.json`; `tfs-summarize-fit`'s default prefix is
+  `{run_dir}/summary/tfs_summarize`.
+
+### Removed
+
+- `tfs-process-presplit`: use `tfs-process-counts --presplit`.
+- `tfs-diagnose-nan` (SVI component guide only, the one hand-written argparse
+  CLI), `tfs-subset-genotypes` (its output no longer fit the configure and
+  fit flow), `tfs-report-cfu0` and `tfs-summarize-sbc` (superseded by
+  `tfs-summarize-calibration`; `error_calibration.summarize_sbc` remains as a
+  library function).
+
+### Fixed
+
+- The presplit table now carries `library`. `tfs-process-presplit` wrote
+  `replicate, condition_pre, genotype, ln_cfu, ln_cfu_std`, and
+  `tfs-configure-model --presplit_df` refused it ("Missing columns:
+  library"), so processed presplit data could not enter the model.
+- `tfs-summarize-fit` finds a posterior written as `{out_prefix}.h5`, the
+  name `tfs-sample-posterior` uses. It looked only for `*_posterior.h5`, so
+  any prefix other than the default `tfs_posterior` lost the trajectory
+  plots. `*_ground_truth.h5` prior draws are not taken for a posterior.
+
 ### Added
 
 - **`tfs-sample-posterior --laplace_blocks`** (`RunInference.get_laplace_posteriors(block_genotypes=True)`,

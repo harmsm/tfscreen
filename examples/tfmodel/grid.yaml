@@ -2,12 +2,16 @@
 # Example grid YAML for tfs-setup-grid
 #
 # Usage:
-#   tfs-setup-grid grid.yaml --out_prefix my_grid
+#   tfs-setup-grid grid.yaml --out_dir my_grid
 #
-# This creates one subdirectory per combination, calls tfs-configure-model
-# inside each, and renders run.srun with the template variables.
+# This creates one subdirectory per combination, named
+# run_<index>_<run_name> (run_0001_linear__instant__hill_geno__seed0, ...),
+# calls tfs-configure-model inside each, and renders run.srun with the
+# template variables. The data paths below are placeholders: point them at
+# your own tfs-process-counts / binding tables and library YAML first, since
+# setup fails on a missing input file.
 # Run all jobs with:
-#   for d in my_grid/run_*/; do cd "$d" && sbatch run.srun && cd -; done
+#   for d in my_grid/run_*/; do (cd "$d" && sbatch run.srun); done
 # ---------------------------------------------------------------------------
 
 # Directory name for each run.  Variables from both configure_model and
@@ -24,7 +28,7 @@ output_file: run.srun
 #
 # Variables here are forwarded to tfs-configure-model.  They are NOT
 # injected into the Jinja2 template.  Paths are resolved relative to this
-# YAML; each input file is copied into <out_prefix>/inputs/ and the written
+# YAML; each input file is copied into <out_dir>/inputs/ and the written
 # config refers to the copy, so the grid directory can be moved as a unit.
 # ---------------------------------------------------------------------------
 
@@ -38,11 +42,15 @@ configure_model:
         growth_df:  ../data/growth.csv
         # The library description -- the same YAML used for tfs-process-fastq.
         # Required whenever growth_df is given.
-        library_config: ../data/run_config.yaml
+        library_config: ../data/library_config.yaml
 
   - name: fixed_components
     variants:
-      - activity: horseshoe_geno
+      # The mixture's default congression_theta_rule, homodimer, needs
+      # activity 'fixed' (activity 1 for every genotype); a learned activity
+      # (hierarchical_geno, horseshoe_geno, ...) needs
+      # congression_theta_rule: max.
+      - activity: fixed
         dk_geno: hierarchical_geno
         transformation: mixture
         # (mean, std) of the experimentally measured congression lambda, in
@@ -56,9 +64,10 @@ configure_model:
   #
   # 'auto: condition_growth' expands to one variant per entry in the
   # model_registry["condition_growth"] registry (currently: linear,
-  # power, saturation).  Incompatible combinations (e.g.
-  # power + logit theta_rescale) are caught by tfs-configure-model,
-  # skipped automatically, and logged in grid_summary.json.
+  # power, saturation).  Incompatible combinations are caught by
+  # tfs-configure-model, skipped automatically, and logged in
+  # grid_summary.json.  'auto: theta' would include the private '_simple'
+  # component used only by the pre-fit; list theta variants by hand.
 
   - name: condition_growth
     auto: condition_growth
@@ -106,7 +115,7 @@ template:
       - seed: 1
 
   # Path to the genotypes file for tfs-predict-theta (absolute, or relative
-  # to this YAML).  It is copied into <out_prefix>/inputs/ like any input.
+  # to this YAML).  It is copied into <out_dir>/inputs/ like any input.
   - name: predict_genotypes
     variants:
       - predict_genotypes_file: /path/to/predict_genotypes.txt

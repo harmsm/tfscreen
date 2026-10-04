@@ -99,7 +99,7 @@ def cat_response(data_file,
     x_obs : str
         Name of the column holding the independent variable (e.g. 'titrant_conc').
     y_obs : str or None, optional
-        Name of the column holding the observable (e.g. 'q0.5', 'point_est'). If
+        Name of the column holding the observable (e.g. 'q0.5'). If
         None (default) and the input has a 'q0.5' column (as written by
         tfs-predict-theta), 'q0.5' is used.
     out_prefix : str, optional

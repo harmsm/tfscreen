@@ -266,3 +266,23 @@ class TestSummarizeGridFitSummary:
         assert len(df) == 3
         rmse_vals = sorted(df["theta_training_rmse"].tolist())
         assert rmse_vals == pytest.approx([0.03, 0.07, 0.12])
+
+
+def test_fit_summary_found_in_summary_subdir(tmp_path):
+    # tfs-summarize-fit's default output is {run_dir}/summary/tfs_summarize
+    sub = tmp_path / "run_0001_a"
+    (sub / "summary").mkdir(parents=True)
+    _make_combo(str(sub))
+    _make_fit_summary(str(sub / "summary"), training_rmse=0.07)
+    df = summarize_grid(str(tmp_path))
+    assert df.loc[0, "theta_training_rmse"] == 0.07
+
+
+def test_simulate_variables_included(tmp_path):
+    sub = tmp_path / "run_0001_a"
+    sub.mkdir()
+    with open(sub / "combo.json", "w") as fh:
+        json.dump({"simulate": {"seed": 3}, "template": {"arm": "map"}}, fh)
+    df = summarize_grid(str(tmp_path))
+    assert df.loc[0, "seed"] == 3
+    assert df.loc[0, "arm"] == "map"

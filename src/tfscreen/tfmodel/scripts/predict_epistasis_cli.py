@@ -56,7 +56,7 @@ def predict_epistasis(config_file,
     param_file : str
         Path to a posterior .h5 file produced by tfs-sample-posterior, or a MAP
         checkpoint .pkl file produced by tfs-fit-model.  A .pkl provides a
-        single point estimate, so every ep_<quantile> column collapses to that
+        single point estimate, so every q<level> column collapses to that
         value (no uncertainty); run tfs-sample-posterior first to obtain a
         Laplace posterior and real quantiles.
     out_prefix : str, optional

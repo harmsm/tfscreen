@@ -769,6 +769,28 @@ class TestFindParamsOrPosterior:
         assert kind == "posterior"
         assert path == str(tmp_path / "run_posterior.h5")
 
+    def test_finds_sample_posterior_default_name(self, tmp_path):
+        # tfs-sample-posterior writes {out_prefix}.h5; a prior ground truth
+        # in the same directory is not a posterior
+        (tmp_path / "run1.h5").touch()
+        (tmp_path / "tfs_prior_000_ground_truth.h5").touch()
+        (tmp_path / "run_params.npz").touch()
+        kind, path = _find_params_or_posterior(str(tmp_path))
+        assert kind == "posterior"
+        assert path == str(tmp_path / "run1.h5")
+
+    def test_named_posterior_preferred_over_other_h5(self, tmp_path):
+        (tmp_path / "a.h5").touch()
+        (tmp_path / "z_posterior.h5").touch()
+        kind, path = _find_params_or_posterior(str(tmp_path))
+        assert path == str(tmp_path / "z_posterior.h5")
+
+    def test_ground_truth_only_falls_back_to_params(self, tmp_path):
+        (tmp_path / "x_ground_truth.h5").touch()
+        (tmp_path / "run_params.npz").touch()
+        kind, path = _find_params_or_posterior(str(tmp_path))
+        assert kind == "params"
+
     def test_finds_params_npz(self, tmp_path):
         (tmp_path / "run_params.npz").touch()
         kind, path = _find_params_or_posterior(str(tmp_path))

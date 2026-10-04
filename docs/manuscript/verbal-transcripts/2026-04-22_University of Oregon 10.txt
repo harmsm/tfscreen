@@ -1,0 +1,7 @@
+Actually one more clarification. We used simple priors for log CFU0 for wild type
+and for spiked genotypes and then we used hierarchical priors in two
+different classes. One set of hierarchical priors for single mutants and
+a separate set of hierarchical priors for double mutants. That's
+because the single mutants by design had a higher initial frequency in the
+library than the double mutants so we wanted to capture that in our main
+analysis.

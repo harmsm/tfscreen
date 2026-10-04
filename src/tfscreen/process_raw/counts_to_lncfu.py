@@ -31,7 +31,7 @@ def get_sample_ln_cfu(sample_df: pd.DataFrame) -> pd.DataFrame:
                                    prefix="sample_")
     except ValueError as e:
         raise ValueError(
-            "sample_df must give each sample's cfu/mL and its uncertainty "
+            "sample_df must give each tube's total cells (cfu in the tube) and its uncertainty "
             "as 'sample_ln_cfu' with 'sample_ln_cfu_std' (or "
             "'sample_ln_cfu_var'), or as 'sample_cfu' with 'sample_cfu_std' "
             f"(or 'sample_cfu_var'). ({e})"
@@ -142,7 +142,7 @@ def _calculate_concentrations_and_variance(
         df: pd.DataFrame,
         total_counts_per_sample: pd.Series) -> pd.DataFrame:
     """
-    Calculate ln(cfu/mL) for each genotype and propagate the variance.
+    Calculate ln(cfu) (cells in the tube) for each genotype and propagate the variance.
 
     The calculation is done in log space: ln_cfu = ln(frequency) +
     sample_ln_cfu, with ln_cfu_var = var(frequency)/frequency**2 +
@@ -176,7 +176,7 @@ def _calculate_concentrations_and_variance(
     df['ln_cfu'] = ln_freq + df['sample_ln_cfu']
     df['ln_cfu_var'] = ln_freq_var + df['sample_ln_cfu_std']**2
 
-    # Linear-space genotype cfu/mL and its variance
+    # Linear-space genotype cfu and its variance
     df['cfu'] = df['frequency'] * np.exp(df['sample_ln_cfu'])
     df['cfu_var'] = (df['cfu']**2) * df['ln_cfu_var']
 
@@ -198,7 +198,7 @@ def counts_to_lncfu(
 
     This function takes sample metadata and genotype counts, merges them,
     filters out low-observation genotypes, and then calculates the frequency
-    and concentration (cfu/mL) for each genotype in each sample. It also
+    and number of cells (cfu in the tube) for each genotype in each sample. It also
     propagates experimental variance to estimate the variance of the
     genotype-specific concentrations.
 
@@ -207,7 +207,7 @@ def counts_to_lncfu(
     sample_df : pd.DataFrame
         DataFrame indexed by a unique 'sample' string. Must contain metadata
         for each sample. Requires a 'library' column plus the total
-        cfu/mL in each sample tube and its uncertainty, given either in log
+        cells (cfu) in each sample tube and its uncertainty, given either in log
         space ('sample_ln_cfu' with 'sample_ln_cfu_std' or
         'sample_ln_cfu_var') or in linear space ('sample_cfu' with
         'sample_cfu_std' or 'sample_cfu_var'). Log-space columns are used
@@ -227,7 +227,7 @@ def counts_to_lncfu(
     -------
     pd.DataFrame
         A new DataFrame containing the combined data, with calculated
-        frequencies, genotype-specific cfu/mL, and propagated variances.
+        frequencies, genotype-specific cfu, and propagated variances.
         ``sample_reads`` is each sample's total reads (``__unknown__``
         included, no pseudocounts), the depth the count likelihood uses.
         The DataFrame is sorted, and the 'genotype' column is cast as a
@@ -300,7 +300,7 @@ def counts_to_lncfu(
                                      pseudocount,
                                      total_counts_per_sample)
 
-    # Calculate genotype cfu/mL and propagate variance
+    # Calculate genotype cfu and propagate variance
     final_df = _calculate_concentrations_and_variance(freq_df,
                                                       total_counts_per_sample)
 

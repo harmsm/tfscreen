@@ -172,10 +172,11 @@ selecting a ``PnnC`` theta component:
 
     tfs-configure-model --binding_df binding.csv --growth_df growth.csv \
         --theta_model thermo.O2_C4_K3_U0_a.PnnC \
-        --thermo_data ensemble.h5
+        --thermo_data ensemble.h5 \
+        --library_config library_config.yaml
 
-The path is saved into ``tfs_configure_config.yaml`` as the top-level
-``thermo_data`` key and read by ``tfscreen.tfmodel.generative.components.theta.thermo.io.load_struct_ensemble``
+The path is saved into ``tfs_configure_config.yaml`` under
+``components.thermo_data`` and read by ``tfscreen.tfmodel.generative.components.theta.thermo.io.load_struct_ensemble``
 at model-build time; you do not need to edit the config by hand. See
 ``configure_model_cli.py``'s ``thermo_data`` docstring for the full set of
 registry keys and their structure-name requirements (``PddG`` models instead

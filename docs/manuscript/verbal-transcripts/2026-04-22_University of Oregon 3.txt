@@ -1,0 +1,50 @@
+So I'm thinking through how to write up the computational methods section for an upcoming
+paper we're writing about the lack repressor and lack repressor high throughput screen.
+So I'm going to just give some random texts, thinking out loud, blathering, talking, and
+then let's turn this into a rough draft of the method.
+So the output from our experiment is a collection of measured log CFU as a function of IPTG
+concentration and as a function of different selective conditions.
+Our two selective conditions are phi s and canamycin.
+The phi s condition is scans, measures repression because cells will grow best when the lack
+repressor is bound to the operator and the canamycin selector measures induction because
+cells will grow best when they're inducing the repressor or they're making the repressor
+come off the operator.
+The goal is to use this combined data to infer the fractional occupancy of the transcription
+factor bound to the operator that's in front of both can and sorry can r and phi s.
+The way that we go about this is by defining a linking function.
+The linking function maps allows us to predict the fractional sorry the log CFU as a function
+of time given the occupancy of the transcription factor.
+So the core idea of the linking function is that it consists of a map between growth rate
+and fractional occupancy that can then be fit using a hierarchical Bayesian approach.
+And so overall the math looks like this, we'll see how good the math transcription is here
+for Claude, it's the log CFU goes like the log CFU not so the initial CFU for that genotype
+plus parentheses, the fractional occupancy which is theta times the slope plus the intercept
+plus delta k geno that whole block is in parentheses times the time for the precondition plus tau
+at another term that's going to be theta times the slope under selection plus the intercept
+under selection plus delta k geno again and parentheses on that and then parentheses
+t selection minus tau and parentheses.
+This is our core linking model, you'll notice there are theta terms, those are the fractional
+occupancies that map to the growth rate in a linear sense.
+So basically the slope times theta is how much does increasing theta between zero and
+one change the growth rate and then the intercept terms here are just the growth rate when the
+operator is completely unoccupied.
+Finally delta k geno is the pleiotropic effect of mutations, so if a mutation occurs how
+does that affect growth rate independent of fractional occupancy, this captures the fact
+that say a mutation that causes the protein to become destabilized might incur a metabolic
+fitness effect just because it's a poorly folded protein.
+The tau term is the latency or the lag when we're going from our pre-growth conditions
+to our selective conditions, sorry call them our pre-selection conditions to our pre-growth
+conditions, well sorry let's try that again.
+T pre is the time that our cells spend in the pre-selection conditions, T cell is the
+amount of time the protein spent in our selective conditions, we're going to measure the log
+CFU at different T cell.
+The tau term describes the lag in the growth rate going from the pre-condition to the selective
+condition.
+We tried a number of different models for tau here, we ended up with the following that
+tau, the lag, equals tau naught plus k1 over parenthesis k2 plus theta in parenthesis,
+so this tau is basically saying that the amount of time that it takes to lag actually depends
+on the occupancy, so if something is very tightly occupied, it is repressing expression,
+the change will be relatively rapid because you have a larger number on the bottom, whereas
+if tau is very zero, it's going to be as fast as possible because there's a large amount
+of the product that was expressed.
+So that defines the whole linking function, letting us link theta to log CFU.

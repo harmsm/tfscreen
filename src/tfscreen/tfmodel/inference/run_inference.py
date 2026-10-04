@@ -19,6 +19,9 @@ from numpyro.infer.initialization import (
 from numpyro.distributions.transforms import IdentityTransform
 from numpyro.optim import Adam, ClippedAdam
 import numpy as np
+import pandas as pd
+
+from tfscreen.util.provenance import get_provenance
 import dill
 from functools import partial
 from tqdm.auto import tqdm
@@ -1504,7 +1507,8 @@ class RunInference:
                     "convergence": self._convergence_state(),
                     "guide_type":self._guide_type,
                     "guide_kwargs":self._guide_kwargs,
-                    "adam_clip_norm":self._adam_clip_norm}
+                    "adam_clip_norm":self._adam_clip_norm,
+                    "provenance": get_provenance()}
 
         tmp_checkpoint_file = f"{out_prefix}_checkpoint.tmp.pkl"
 
@@ -1550,7 +1554,8 @@ class RunInference:
                     "convergence": self._convergence_state(),
                     "guide_type": self._guide_type,
                     "guide_kwargs": self._guide_kwargs,
-                    "adam_clip_norm": self._adam_clip_norm}
+                    "adam_clip_norm": self._adam_clip_norm,
+                    "provenance": get_provenance()}
 
         tmp_file = f"{epoch_file}.tmp"
         with open(tmp_file, "wb") as f:
@@ -2536,12 +2541,24 @@ class RunInference:
         # uncertainty is left out)
         names = np.array([f"{k}[{i}]" for k in sorted(unconstrained)
                           for i in range(int(np.size(unconstrained[k])))])
+        held_rows = []
         if names.size == flat_map.shape[0]:
             names = names[shared_idx]
-            for j in np.argsort(w)[:min(10, int(np.sum(w < 0)))]:
-                top = np.argsort(-np.abs(V[:, j]))[:3]
-                print(f"    eigenvalue {w[j]:.2e}: " + ", ".join(
-                    f"{names[t]} {V[t, j]:+.2f}" for t in top), flush=True)
+            for rank, j in enumerate(np.argsort(w)[:int(np.sum(negative))]):
+                top = np.argsort(-np.abs(V[:, j]))[:5]
+                if rank < 10:
+                    print(f"    eigenvalue {w[j]:.2e}: " + ", ".join(
+                        f"{names[t]} {V[t, j]:+.2f}" for t in top[:3]),
+                        flush=True)
+                for t in top:
+                    held_rows.append({"direction": rank,
+                                      "eigenvalue": float(w[j]),
+                                      "parameter": str(names[t]),
+                                      "loading": float(V[t, j])})
+        # The held directions have no interval; tfs-sample-posterior writes
+        # them to {out_prefix}_held_directions.csv.
+        self.held_shared_directions = pd.DataFrame(
+            held_rows, columns=["direction", "eigenvalue", "parameter", "loading"])
         L_shared = V / np.sqrt(w_f)[None, :]
         return elem_idx, L_blocks, shared_idx, L_shared, response
 

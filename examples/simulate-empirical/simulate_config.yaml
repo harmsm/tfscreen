@@ -10,13 +10,13 @@
 #
 # Workflow:
 #   # 1. real data -> empirical generating distribution (writes emp_phenotype_model.json)
-#   tfs-build-empirical growth.csv 42 \
-#       --binding_file binding.csv --library_config library_config.yaml \
+#   tfs-build-empirical growth.csv --seed 42 \
+#       --binding_df binding.csv --library_config library_config.yaml \
 #       --out_prefix emp
-#   # 2. simulate from it
-#   tfs-simulate simulate_config.yaml out_dir/
+#   # 2. simulate from it (writes out/tfs_sim_*.csv)
+#   tfs-simulate simulate_config.yaml --out_prefix out/tfs_sim
 #
-# See the "Empirical phenotype pipeline" section of CLAUDE.md for the full story.
+# See docs/source/simulation.rst ("Empirical phenotypes") for the full story.
 
 # ---------------------------------------------------------------------------
 # Empirical phenotype source   (the only empirical-specific keys)
@@ -103,11 +103,13 @@ condition_blocks:
 # Growth rate parameters
 # ---------------------------------------------------------------------------
 
-# Linear growth linkage per condition:  k = m * theta + b.
+# Linear growth linkage per condition:  k = b + A * m * theta + dk_geno
+# (A = 1 here).
 #
 # IMPORTANT: for a self-consistent empirical simulation these MUST be the same
-# calibrated values the phenotype fit used -- i.e. the per-condition values the
-# pre-fit wrote into <emp>_configure_priors.csv.  For each condition_rep:
+# calibrated values the phenotype fit used, i.e. the per-condition values the
+# pre-fit wrote into <emp>_configure_priors.csv (or the values in the file you
+# passed as --growth_calibration_file).  For each condition_rep:
 #     b  =  value of parameter  growth.condition_growth.k_loc   (baseline)
 #     m  =  value of parameter  growth.condition_growth.m_loc   (slope)
 # (The numbers below are placeholders -- replace them with your calibration.)

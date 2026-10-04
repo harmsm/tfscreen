@@ -1487,7 +1487,7 @@ def _simulate_library_group(
 
     # Add per-tube environmental noise: one delta_k per condition, shared across
     # all genotypes (and cells) in that tube.  tube_noise_sigma is in
-    # growth-rate units (hr⁻¹); the kt contribution is delta_k * t_total.
+    # growth-rate units (per minute, like every time in the simulator); the kt contribution is delta_k * t_total.
     tube_kt = np.zeros(genotype_vs_kt.shape[1], dtype=float)
     if tube_noise_sigma is not None and tube_noise_sigma > 0:
         t_total = (condition_info["t_pre"].to_numpy(dtype=float)

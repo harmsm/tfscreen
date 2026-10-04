@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import jax.numpy as jnp
 import warnings
+from tfscreen.util.provenance import get_provenance
 from tfscreen.__version__ import __version__
 from tfscreen.util.validation import check_unknown_keys
 
@@ -16,6 +17,7 @@ TFMODEL_KNOWN_KEYS = frozenset({
     "guesses_file",
     "library_file",
     "library",
+    "provenance",
 })
 
 def _extract_scalars(obj, prefix=""):
@@ -332,6 +334,7 @@ def write_configuration(orchestrator,
 
     config = {
         "tfscreen_version": __version__,
+        "provenance": get_provenance(),
         "data": data_paths,
         "components": settings,
         "priors_file": os.path.basename(priors_path),

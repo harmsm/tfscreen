@@ -32,13 +32,13 @@ def test_seed_cli_parsed_as_int():
     """--seed is registered with type=int so integer strings are accepted."""
     captured = {}
 
-    def fake_run(config_file, output_dir, output_prefix="tfs_sim_",
+    def fake_run(config_file, out_prefix="tfs_sim",
                  num_replicates=2, seed=None):
         captured["seed"] = seed
 
     generalized_main(
         fake_run,
-        argv=["config.yaml", "out_dir", "--seed", "42"],
+        argv=["config.yaml", "--seed", "42"],
         manual_arg_types={"seed": int},
     )
     assert captured["seed"] == 42
@@ -49,13 +49,13 @@ def test_seed_cli_defaults_to_none():
     """Omitting --seed leaves seed as None."""
     captured = {}
 
-    def fake_run(config_file, output_dir, output_prefix="tfs_sim_",
+    def fake_run(config_file, out_prefix="tfs_sim",
                  num_replicates=2, seed=None):
         captured["seed"] = seed
 
     generalized_main(
         fake_run,
-        argv=["config.yaml", "out_dir"],
+        argv=["config.yaml"],
         manual_arg_types={"seed": int},
     )
     assert captured["seed"] is None
@@ -87,7 +87,7 @@ def test_seed_overrides_config(patched_simulation):
 
     with patch("tfscreen.simulate.scripts.simulate_cli.np.random.default_rng",
                wraps=lambda s: MagicMock()) as mock_rng:
-        run_simulation_from_config("config.yaml", str(tmp_path), seed=7)
+        run_simulation_from_config("config.yaml", out_prefix=str(tmp_path / "tfs_sim"), seed=7)
 
     mock_rng.assert_called_once_with(7)
 
@@ -98,7 +98,7 @@ def test_seed_none_preserves_config(patched_simulation):
 
     with patch("tfscreen.simulate.scripts.simulate_cli.np.random.default_rng",
                wraps=lambda s: MagicMock()) as mock_rng:
-        run_simulation_from_config("config.yaml", str(tmp_path), seed=None)
+        run_simulation_from_config("config.yaml", out_prefix=str(tmp_path / "tfs_sim"), seed=None)
 
     mock_rng.assert_called_once_with(99)
 
@@ -124,7 +124,7 @@ def test_writes_parameters_not_phenotype(tmp_path):
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
                return_value=growth_df), \
          patch.object(pd.DataFrame, "to_csv", capture_csv):
-        run_simulation_from_config("config.yaml", str(tmp_path))
+        run_simulation_from_config("config.yaml", out_prefix=str(tmp_path / "tfs_sim"))
 
     written = "\n".join(written_paths)
     assert "parameters" in written, "parameters.csv must be written"
@@ -148,7 +148,7 @@ def test_output_file_names_include_expected_stems(tmp_path):
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
                return_value=growth_df), \
          patch.object(pd.DataFrame, "to_csv", capture_csv):
-        run_simulation_from_config("config.yaml", str(tmp_path))
+        run_simulation_from_config("config.yaml", out_prefix=str(tmp_path / "tfs_sim"))
 
     written = "\n".join(written_paths)
     for stem in ("library", "parameters", "genotype_theta", "growth"):
@@ -179,7 +179,7 @@ def test_growth_parameters_csv_always_written(tmp_path):
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
                return_value=growth_df), \
          patch.object(pd.DataFrame, "to_csv", capture_csv):
-        run_simulation_from_config("config.yaml", str(tmp_path))
+        run_simulation_from_config("config.yaml", out_prefix=str(tmp_path / "tfs_sim"))
 
     matches = [p for p in written if "growth_parameters" in os.path.basename(p)]
     assert len(matches) == 1
@@ -202,7 +202,7 @@ def test_growth_parameters_csv_written_for_real(tmp_path):
                return_value=(sample_df, counts_df)), \
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
                return_value=growth_df):
-        run_simulation_from_config("config.yaml", str(tmp_path))
+        run_simulation_from_config("config.yaml", out_prefix=str(tmp_path / "tfs_sim"))
 
     growth_params_path = tmp_path / "tfs_sim_growth_parameters.csv"
     assert growth_params_path.exists()
@@ -238,7 +238,7 @@ def test_transformation_lam_csv_always_written(tmp_path):
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
                return_value=growth_df), \
          patch.object(pd.DataFrame, "to_csv", capture_csv):
-        run_simulation_from_config("config.yaml", str(tmp_path))
+        run_simulation_from_config("config.yaml", out_prefix=str(tmp_path / "tfs_sim"))
 
     matches = [p for p in written if "transformation_lam" in os.path.basename(p)]
     assert len(matches) == 1
@@ -260,7 +260,7 @@ def test_transformation_lam_csv_written_for_real(tmp_path):
                return_value=(sample_df, counts_df)), \
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
                return_value=growth_df):
-        run_simulation_from_config("config.yaml", str(tmp_path))
+        run_simulation_from_config("config.yaml", out_prefix=str(tmp_path / "tfs_sim"))
 
     lam_path = tmp_path / "tfs_sim_transformation_lam.csv"
     assert lam_path.exists()
@@ -277,7 +277,7 @@ def test_transformation_lam_participates_in_existence_guard(tmp_path):
     cfg = {"seed": 0, "growth": {}, "transformation_poisson_lambda": 1.5}
     with patch("tfscreen.util.read_yaml", return_value=cfg):
         with pytest.raises(FileExistsError, match="transformation_lam"):
-            run_simulation_from_config("config.yaml", str(tmp_path))
+            run_simulation_from_config("config.yaml", out_prefix=str(tmp_path / "tfs_sim"))
 
 
 # ---------------------------------------------------------------------------
@@ -301,7 +301,7 @@ def test_base_growth_not_written_without_config(tmp_path):
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
                return_value=growth_df), \
          patch.object(pd.DataFrame, "to_csv", capture_csv):
-        run_simulation_from_config("config.yaml", str(tmp_path))
+        run_simulation_from_config("config.yaml", out_prefix=str(tmp_path / "tfs_sim"))
 
     basenames = "\n".join(os.path.basename(p) for p in written_paths)
     assert "base_growth" not in basenames
@@ -327,7 +327,7 @@ def test_base_growth_written_when_configured(tmp_path):
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
                return_value=growth_df), \
          patch.object(pd.DataFrame, "to_csv", capture_csv):
-        run_simulation_from_config("config.yaml", str(tmp_path))
+        run_simulation_from_config("config.yaml", out_prefix=str(tmp_path / "tfs_sim"))
 
     base_growth_paths = [p for p in written if "base_growth" in os.path.basename(p)]
     assert len(base_growth_paths) == 1
@@ -357,7 +357,7 @@ def test_k_ref_not_written_without_base_growth_config(tmp_path):
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
                return_value=growth_df), \
          patch.object(pd.DataFrame, "to_csv", capture_csv):
-        run_simulation_from_config("config.yaml", str(tmp_path))
+        run_simulation_from_config("config.yaml", out_prefix=str(tmp_path / "tfs_sim"))
 
     basenames = "\n".join(os.path.basename(p) for p in written_paths)
     assert "k_ref" not in basenames
@@ -383,7 +383,7 @@ def test_k_ref_written_when_base_growth_configured(tmp_path):
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
                return_value=growth_df), \
          patch.object(pd.DataFrame, "to_csv", capture_csv):
-        run_simulation_from_config("config.yaml", str(tmp_path))
+        run_simulation_from_config("config.yaml", out_prefix=str(tmp_path / "tfs_sim"))
 
     k_ref_paths = [p for p in written if "k_ref" in os.path.basename(p)]
     assert len(k_ref_paths) == 1
@@ -433,7 +433,7 @@ def test_run_simulation_writes_presplit_csv(tmp_path):
                return_value=(sample_df, counts_df)), \
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
                return_value=growth_df):
-        run_simulation_from_config("fake_config.yaml", str(tmp_path))
+        run_simulation_from_config("fake_config.yaml", out_prefix=str(tmp_path / "tfs_sim"))
 
     presplit_path = tmp_path / "tfs_sim_presplit.csv"
     assert presplit_path.exists(), "presplit CSV was not written"
@@ -467,7 +467,7 @@ def test_run_simulation_no_presplit_without_config(tmp_path):
                return_value=(sample_df, counts_df)), \
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
                return_value=growth_df):
-        run_simulation_from_config("fake_config.yaml", str(tmp_path))
+        run_simulation_from_config("fake_config.yaml", out_prefix=str(tmp_path / "tfs_sim"))
 
     presplit_path = tmp_path / "tfs_sim_presplit.csv"
     assert not presplit_path.exists(), "presplit CSV should not be written without config block"
@@ -525,7 +525,7 @@ def test_writes_input_config_yaml(tmp_path):
                return_value=growth_df), \
          patch.object(pd.DataFrame, "to_csv"), \
          patch("tfscreen.simulate.scripts.simulate_cli.yaml.dump", capture_dump):
-        run_simulation_from_config("config.yaml", str(tmp_path), output_prefix="test_")
+        run_simulation_from_config("config.yaml", out_prefix=str(tmp_path / "test"))
 
     assert "data" in dumped, "yaml.dump was not called"
     assert dumped["data"]["seed"] == 5
@@ -542,7 +542,7 @@ def test_input_config_yaml_existence_check(tmp_path):
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
                return_value=(lib_df, pheno_df, theta_df, params_df, None)) as mock_lib:
         with pytest.raises(FileExistsError, match="input-config.yaml"):
-            run_simulation_from_config("config.yaml", str(tmp_path))
+            run_simulation_from_config("config.yaml", out_prefix=str(tmp_path / "tfs_sim"))
 
     mock_lib.assert_not_called()
 
@@ -579,7 +579,7 @@ def _od_run(tmp_path, cf):
                side_effect=fake_selection), \
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
                return_value=pd.DataFrame({"genotype": ["wt"]})):
-        run_simulation_from_config("fake_config.yaml", str(tmp_path),
+        run_simulation_from_config("fake_config.yaml", out_prefix=str(tmp_path / "tfs_sim"),
                                    num_replicates=2)
     return calls
 

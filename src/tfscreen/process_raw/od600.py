@@ -396,3 +396,71 @@ def cfu_per_mL_to_od600(cfu_per_mL, cal, od_max=None):
     od = 0.5 * (lo + hi)
     od[y <= _poly(coef, np.zeros(1))[0]] = 0.0
     return od
+
+
+TUBE_OD600_COLUMNS = ("sample", "od600")
+
+
+def tube_totals_from_od600(od600_df, cal, tube_volume_mL):
+    """
+    Each tube's total CFU from its OD600 reading.
+
+    Parameters
+    ----------
+    od600_df : pandas.DataFrame
+        One row per sequenced tube, with columns ``sample`` and ``od600``.
+    cal : dict or str
+        A ``tfs-calibrate-od600`` calibration, or the path to one.
+    tube_volume_mL : float
+        Culture volume of a tube in mL. The calibration gives CFU/mL; the
+        model's ``sample_cfu`` is the cells in the whole tube.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Indexed by ``sample``: ``od600``, ``sample_cfu``, ``sample_cfu_std``
+        (curve and reading errors combined), ``sample_cfu_curve_std`` (the
+        curve's error, shared by every tube read through this calibration;
+        C11), ``sample_cfu_reading_std`` (the reading's own noise, independent
+        per tube) and ``od600_in_calibrated_range``.
+
+    Raises
+    ------
+    ValueError
+        On missing columns, a duplicated or missing sample, a non-positive
+        volume, or a reading below the calibration's detection threshold.
+    """
+    _require_columns(od600_df, TUBE_OD600_COLUMNS, "OD600 table")
+    if not tube_volume_mL or tube_volume_mL <= 0:
+        raise ValueError("tube_volume_mL must be a positive volume in mL.")
+
+    df = od600_df[list(TUBE_OD600_COLUMNS)].copy()
+    df["sample"] = df["sample"].astype(str)
+    dups = df["sample"][df["sample"].duplicated()].unique().tolist()
+    if dups:
+        raise ValueError(f"OD600 table has more than one reading for: {dups}")
+    od = pd.to_numeric(df["od600"], errors="coerce").to_numpy(dtype=float)
+    if np.any(~np.isfinite(od)):
+        bad = df["sample"][~np.isfinite(od)].tolist()
+        raise ValueError(f"OD600 table has no numeric reading for: {bad}")
+
+    cal = as_calibration(cal)
+    cfu, cfu_sd, detectable = od600_to_cfu_per_mL(od, cal)
+    if not np.all(detectable):
+        bad = df["sample"][~detectable].tolist()
+        raise ValueError(
+            f"OD600 below the calibration's detection threshold "
+            f"({cal['detection_threshold']:g}) for {bad}. Their totals are "
+            "only upper bounds; drop these tubes from the tube table."
+        )
+    curve_sd, reading_sd = cfu_per_mL_error_components(od, cal)
+
+    out = pd.DataFrame({
+        "od600": od,
+        "sample_cfu": cfu * tube_volume_mL,
+        "sample_cfu_std": cfu_sd * tube_volume_mL,
+        "sample_cfu_curve_std": curve_sd * tube_volume_mL,
+        "sample_cfu_reading_std": reading_sd * tube_volume_mL,
+        "od600_in_calibrated_range": in_calibrated_range(od, cal),
+    }, index=pd.Index(df["sample"].to_numpy(), name="sample"))
+    return out

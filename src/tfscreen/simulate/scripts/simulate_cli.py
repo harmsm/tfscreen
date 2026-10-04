@@ -17,8 +17,7 @@ from tfscreen.util.cli.generalized_main import generalized_main
 
 def run_simulation_from_config(
     config_file,
-    output_dir,
-    output_prefix="tfs_sim_",
+    out_prefix="tfs_sim",
     num_replicates=2,
     seed=None,
 ):
@@ -52,10 +51,9 @@ def run_simulation_from_config(
     ----------
     config_file : str
         Path to the YAML run configuration file.
-    output_dir : str
-        Directory to write output CSV files into (created if absent).
-    output_prefix : str
-        Prefix for all output filenames. Default 'tfs_sim_'.
+    out_prefix : str
+        Output prefix: files are written as ``{out_prefix}_{name}.csv``. A
+        directory part (``sim/tfs_sim``) is created if absent.
     num_replicates : int
         Number of independent experimental replicates to simulate. Default 2.
     seed : int, optional
@@ -65,12 +63,14 @@ def run_simulation_from_config(
     if seed is not None:
         cf["seed"] = seed
 
-    os.makedirs(output_dir, exist_ok=True)
+    out_dir = os.path.dirname(out_prefix)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
 
     def out_path(name):
-        return os.path.join(output_dir, f"{output_prefix}{name}.csv")
+        return f"{out_prefix}_{name}.csv"
 
-    config_out = os.path.join(output_dir, f"{output_prefix}input-config.yaml")
+    config_out = f"{out_prefix}_input-config.yaml"
 
     output_names = ["library", "parameters", "genotype_theta", "growth",
                     "growth_parameters", "transformation_lam"]
@@ -93,7 +93,7 @@ def run_simulation_from_config(
         paths = ", ".join(existing)
         raise FileExistsError(
             f"Output files already exist: {paths}\n"
-            f"Delete them or choose a different output_dir / output_prefix "
+            f"Delete them or choose a different out_prefix "
             f"before re-running."
         )
 

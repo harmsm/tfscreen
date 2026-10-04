@@ -120,8 +120,9 @@ def extract_parameters(orchestrator, posteriors, q_to_get=None):
     q_to_get : dict, optional
         Dictionary mapping output column names to quantile values (between 0 and 1)
         to extract from the posterior samples. If None, a default set of quantiles
-        is used (min, lower_95, lower_std, lower_quartile, median, upper_std,
-        upper_quartile, upper_95, max).
+        is used: the 17 levels of
+        ``tfscreen.tfmodel.inference.posteriors._DEFAULT_QUANTILE_LEVELS``
+        (0.001 to 0.999), written as bare ``q<level>`` columns.
 
     Returns
     -------
@@ -213,8 +214,9 @@ def extract_theta_curves(orchestrator, posteriors, q_to_get=None, manual_titrant
     q_to_get : dict, optional
         Dictionary mapping output column names to quantile values (between 0 and 1)
         to extract from the posterior samples. If None, a default set of quantiles
-        is used (min, lower_95, lower_std, lower_quartile, median, upper_std,
-        upper_quartile, upper_95, max).
+        is used: the 17 levels of
+        ``tfscreen.tfmodel.inference.posteriors._DEFAULT_QUANTILE_LEVELS``
+        (0.001 to 0.999), written as bare ``q<level>`` columns.
     manual_titrant_df : pd.DataFrame, optional
         A DataFrame specifying 'titrant_name' and 'titrant_conc' values
         at which to calculate theta. If provided, it overrides the default
@@ -601,8 +603,9 @@ def extract_growth_predictions(orchestrator,
     q_to_get : dict, optional
         Dictionary mapping output column names to quantile values (between 0 and 1)
         to extract from the posterior samples. If None, a default set of quantiles
-        is used (min, lower_95, lower_std, lower_quartile, median, upper_std,
-        upper_quartile, upper_95, max).
+        is used: the 17 levels of
+        ``tfscreen.tfmodel.inference.posteriors._DEFAULT_QUANTILE_LEVELS``
+        (0.001 to 0.999), written as bare ``q<level>`` columns.
     num_samples : int or None, optional
         Randomly select this many joint posterior samples and return them as
         columns ``sample_0``, ``sample_1``, ... alongside the quantile

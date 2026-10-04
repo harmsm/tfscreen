@@ -9,7 +9,7 @@ Input staging
 -------------
 A grid output directory must be movable as a unit (on and off a cluster, onto
 another partition), so a run may not refer to anything outside it.
-``InputStager`` copies each input file into ``<out_prefix>/inputs/`` once and
+``InputStager`` copies each input file into ``<out_dir>/inputs/`` once and
 returns the path a run subdirectory uses to reach it (``../inputs/<name>``);
 ``check_no_outside_paths`` fails on a config value that names a file but is not
 one of the keys the caller stages.
@@ -22,7 +22,7 @@ import shutil
 
 import jinja2
 
-# Directory under out_prefix holding the input files shared by all runs.
+# Directory under out_dir holding the input files shared by all runs.
 INPUTS_DIRNAME = "inputs"
 
 
@@ -61,7 +61,7 @@ def make_run_name(name_template, all_vars, index):
 # ---------------------------------------------------------------------------
 
 class InputStager:
-    """Copy input files into ``<out_prefix>/inputs/`` once each.
+    """Copy input files into ``<out_dir>/inputs/`` once each.
 
     ``stage(path, what)`` returns the path a run subdirectory uses to reach the
     copy (``../inputs/<name>``). The same source file always maps to the same
@@ -74,7 +74,7 @@ class InputStager:
 
     Parameters
     ----------
-    out_prefix : str
+    out_dir : str
         Root directory of the grid.
     tool : str
         Name of the calling CLI, used in error messages.
@@ -82,8 +82,8 @@ class InputStager:
         Validate only; copy nothing. Default False.
     """
 
-    def __init__(self, out_prefix, tool, dry_run=False):
-        self.inputs_dir = os.path.join(os.path.abspath(out_prefix), INPUTS_DIRNAME)
+    def __init__(self, out_dir, tool, dry_run=False):
+        self.inputs_dir = os.path.join(os.path.abspath(out_dir), INPUTS_DIRNAME)
         self.tool = tool
         self.dry_run = dry_run
         self._by_source = {}

@@ -30,9 +30,9 @@ from tfscreen.util.io import read_dataframe
 from tfscreen.util.cli.generalized_main import generalized_main
 
 
-def fit_genotypes(growth_file,
-                  calibration_file,
-                  out_prefix="tfs_mle",
+def fit_genotypes(growth_df,
+                  growth_calibration_file,
+                  out_prefix="tfs_fit_genotypes",
                   intercept_cols="replicate",
                   dk_geno_prior_sd=1.0,
                   min_obs=None,
@@ -42,9 +42,9 @@ def fit_genotypes(growth_file,
 
     Parameters
     ----------
-    growth_file : str
-        Processed ``ln_cfu`` CSV (``tfs-process-counts`` output).
-    calibration_file : str
+    growth_df : str
+        Processed growth CSV (``tfs-process-counts`` output).
+    growth_calibration_file : str
         Frozen per-condition growth calibration: a ``tfs-prefit-calibration``
         priors CSV, or a wide ``condition_rep,growth_k,growth_m`` CSV.
     out_prefix : str
@@ -60,7 +60,8 @@ def fit_genotypes(growth_file,
         Parallelize the per-genotype fits over a process pool: ``1`` (default)
         serial; ``-1`` uses ``os.cpu_count() - 1``; ``N`` uses ``N``.
     """
-    growth_df = read_dataframe(growth_file)
+    growth_df = read_dataframe(growth_df)
+    calibration_file = growth_calibration_file
 
     icols = [c.strip() for c in str(intercept_cols).split(",") if c.strip()]
 

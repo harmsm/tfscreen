@@ -69,6 +69,10 @@ import yaml
 from numpyro.handlers import seed, trace
 
 import tfscreen
+from tfscreen.tfmodel.priors_edit import (
+    apply_priors_updates,
+    condition_rep_labels,
+)
 from tfscreen.util.cli.generalized_main import generalized_main
 from tfscreen.tfmodel.inference.run_inference import RunInference
 from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
@@ -889,111 +893,9 @@ def _resolve_scale_bounds(condition_growth_choice,
     return bounds
 
 
-def _condition_rep_labels(orchestrator):
-    """
-    Per-condition label frame (``condition_rep`` and, when present,
-    ``replicate``) ordered by ``map_condition_rep`` — i.e. the same order as
-    the per-condition MAP arrays.  Returns ``None`` when no condition_rep map
-    is available.  Used to tag per-condition prior rows so the loader can
-    name-join them back to the production condition order.
-    """
-    growth_tm = getattr(orchestrator, "growth_tm", None)
-    if growth_tm is None:
-        return None
-    crm = growth_tm.map_groups.get("condition_rep")
-    if crm is None or getattr(crm, "empty", True):
-        return None
-    sorted_map = crm.sort_values("map_condition_rep").reset_index(drop=True)
-    cols = [c for c in ("replicate", "condition_rep") if c in sorted_map.columns]
-    if not cols:
-        return None
-    return sorted_map[cols].reset_index(drop=True)
-
-
-def _apply_priors_updates(priors_path, prior_updates, cond_rep_labels=None):
-    """
-    Apply prior updates to the production priors CSV.  Writes a ``.bak`` copy
-    first.  Rows whose ``parameter`` is not in ``prior_updates`` are preserved.
-
-    Two kinds of update value are supported:
-
-    * **scalar** (float) — overwrites the ``value`` of the matching
-      ``parameter`` row in place (unchanged behaviour).  A warning is logged
-      if no row matches.
-    * **array** (1-D ``np.ndarray``) — a per-condition prior (e.g.
-      ``condition_growth.k_loc``).  Any existing rows for that parameter are
-      dropped and replaced with one indexed row per condition, tagged with the
-      ``condition_rep`` (and ``replicate``) labels from ``cond_rep_labels`` so
-      the loader can name-join them back to the model's condition order.
-
-    Parameters
-    ----------
-    priors_path : str
-        Path to the production priors CSV.
-    prior_updates : dict[str, float | np.ndarray]
-        Update values keyed by dotted parameter name.
-    cond_rep_labels : pandas.DataFrame or None
-        Per-condition label columns (``condition_rep`` and, when present,
-        ``replicate``) ordered by ``map_condition_rep`` — i.e. matching the
-        order of the per-condition MAP arrays.  Required to label array
-        updates; when absent, array rows carry only ``flat_index``.
-    """
-    if not prior_updates:
-        return
-    df = pd.read_csv(priors_path)
-    if "parameter" not in df.columns or "value" not in df.columns:
-        raise ValueError(
-            f"Priors CSV {priors_path} is missing required 'parameter' / "
-            "'value' columns."
-        )
-
-    scalar_updates = {}
-    array_updates = {}
-    for row_name, new_val in prior_updates.items():
-        arr = np.asarray(new_val)
-        if arr.ndim == 0:
-            scalar_updates[row_name] = float(arr)
-        else:
-            array_updates[row_name] = arr
-
-    matched = set()
-
-    # Scalar overwrites (in place).
-    for row_name, new_val in scalar_updates.items():
-        mask = df["parameter"] == row_name
-        if mask.any():
-            df.loc[mask, "value"] = new_val
-            matched.add(row_name)
-
-    missing = sorted(set(scalar_updates) - matched)
-    if missing:
-        print(
-            f"  warning: {len(missing)} prior update(s) had no matching row "
-            f"in {priors_path}: {missing}",
-            file=sys.stderr,
-        )
-
-    # Array updates: drop existing rows for the parameter, append indexed rows.
-    if array_updates:
-        new_frames = []
-        for row_name, arr in array_updates.items():
-            flat_val = np.asarray(arr).flatten()
-            df = df[df["parameter"] != row_name]
-            row_df = pd.DataFrame({"parameter": row_name,
-                                   "value": flat_val,
-                                   "flat_index": range(len(flat_val))})
-            if (cond_rep_labels is not None
-                    and len(cond_rep_labels) == len(flat_val)):
-                for col in ("replicate", "condition_rep"):
-                    if col in cond_rep_labels.columns:
-                        row_df[col] = cond_rep_labels[col].to_numpy()
-            new_frames.append(row_df)
-            matched.add(row_name)
-        df = pd.concat([df] + new_frames, ignore_index=True)
-
-    shutil.copy2(priors_path, priors_path + ".bak")
-    df.to_csv(priors_path, index=False)
-    print(f"Updated {len(matched)} priors row(s) in {priors_path}")
+# Shared with tfs-configure-model (--growth_priors, --set_priors).
+_condition_rep_labels = condition_rep_labels
+_apply_priors_updates = apply_priors_updates
 
 
 def _apply_guesses_updates(guesses_path, guess_updates):

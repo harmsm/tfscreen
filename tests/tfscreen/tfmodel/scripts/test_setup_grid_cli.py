@@ -205,7 +205,7 @@ def test_grid_survives_move_and_deleting_inputs(project, monkeypatch):
     """Move the grid, delete the original inputs: every run still resolves."""
     grid_yaml = _write_grid(project, _default_cm_blocks())
     out = project / "grid_out"
-    runs = setup_grid(grid_yaml, out_prefix=str(out))
+    runs = setup_grid(grid_yaml, out_dir=str(out))
     assert len(runs) == 2
 
     moved = project / "elsewhere" / "deeper" / "grid_moved"
@@ -251,7 +251,7 @@ def test_inputs_copied_once(project):
     """Runs sharing an input share one copy under inputs/."""
     grid_yaml = _write_grid(project, _default_cm_blocks())
     out = project / "grid_out"
-    setup_grid(grid_yaml, out_prefix=str(out))
+    setup_grid(grid_yaml, out_dir=str(out))
     assert sorted(os.listdir(out / INPUTS_DIRNAME)) == [
         "binding.csv", "genotypes.txt", "growth.csv", "library.yaml"]
 
@@ -273,7 +273,7 @@ def test_same_name_different_files_kept_apart(project):
         {"name": "predict", "variants": [
             {"predict_genotypes_file": "../data/genotypes.txt"}]}])
     out = project / "grid_out"
-    runs = setup_grid(grid_yaml, out_prefix=str(out))
+    runs = setup_grid(grid_yaml, out_dir=str(out))
     assert len(runs) == 2
 
     growth_refs = []
@@ -293,11 +293,11 @@ def test_changed_input_never_overwrites_existing_copy(project):
     """Re-running setup with a changed input leaves earlier runs' copy intact."""
     grid_yaml = _write_grid(project, _default_cm_blocks())
     out = project / "grid_out"
-    setup_grid(grid_yaml, out_prefix=str(out))
+    setup_grid(grid_yaml, out_dir=str(out))
     before = (out / INPUTS_DIRNAME / "growth.csv").read_text()
 
     _write_growth(project / "data" / "growth.csv", ln_cfu=3.0)
-    runs = setup_grid(grid_yaml, out_prefix=str(out))
+    runs = setup_grid(grid_yaml, out_dir=str(out))
 
     assert (out / INPUTS_DIRNAME / "growth.csv").read_text() == before
     cfg = yaml.safe_load(
@@ -312,7 +312,7 @@ def test_missing_input_fails_before_writing(project):
                "variants": [{"condition_growth": "linear"}]}]
     out = project / "grid_out"
     with pytest.raises(FileNotFoundError, match="presplit_df"):
-        setup_grid(_write_grid(project, blocks), out_prefix=str(out))
+        setup_grid(_write_grid(project, blocks), out_dir=str(out))
     assert not out.exists()
 
 
@@ -323,7 +323,7 @@ def test_directory_input_fails_before_writing(project):
                "variants": [{"condition_growth": "linear"}]}]
     out = project / "grid_out"
     with pytest.raises(ValueError, match="directory"):
-        setup_grid(_write_grid(project, blocks), out_prefix=str(out))
+        setup_grid(_write_grid(project, blocks), out_dir=str(out))
     assert not out.exists()
 
 
@@ -334,7 +334,7 @@ def test_unknown_file_argument_fails_before_writing(project):
                "variants": [{"mystery_file": "../data/genotypes.txt"}]}]
     out = project / "grid_out"
     with pytest.raises(ValueError, match="mystery_file.*_PATH_KEYS"):
-        setup_grid(_write_grid(project, blocks), out_prefix=str(out))
+        setup_grid(_write_grid(project, blocks), out_dir=str(out))
     assert not out.exists()
 
 
@@ -343,14 +343,14 @@ def test_template_errors_fail_before_writing(project):
     grid_yaml = _write_grid(project, _default_cm_blocks(), tmpl_blocks=[
         {"name": "seed", "variants": [{"seed": 0}]}])  # predict_genotypes_file undefined
     with pytest.raises(ValueError, match="Undefined template variable"):
-        setup_grid(grid_yaml, out_prefix=str(out))
+        setup_grid(grid_yaml, out_dir=str(out))
     assert not out.exists()
 
     grid_yaml = _write_grid(project, _default_cm_blocks(), tmpl_blocks=[
         {"name": "seed", "variants": [{"seed": 0}]},
         {"name": "predict", "variants": [{"predict_genotypes_file": "../data"}]}])
     with pytest.raises(ValueError, match="directory"):
-        setup_grid(grid_yaml, out_prefix=str(out))
+        setup_grid(grid_yaml, out_dir=str(out))
     assert not out.exists()
 
 
@@ -360,7 +360,7 @@ def test_skipped_combination_copies_nothing(project):
               {"name": "combo", "variants": [
                   {"condition_growth": "power", "theta_rescale": "logit"}]}]
     out = project / "grid_out"
-    runs = setup_grid(_write_grid(project, blocks), out_prefix=str(out))
+    runs = setup_grid(_write_grid(project, blocks), out_dir=str(out))
     assert runs == []
     assert not (out / INPUTS_DIRNAME).exists()
 
@@ -387,3 +387,12 @@ def test_stage_written_config_refuses_unknown_outside_path(tmp_path):
     cfg = {"components": {"dk_geno_pins_file": stray}}
     with pytest.raises(ValueError, match="dk_geno_pins_file"):
         _stage_written_config(cfg, {}, str(tmp_path / "run"))
+
+
+def test_stage_written_config_ignores_provenance(tmp_path):
+    # tfs-configure-model records its cwd; that directory exists outside
+    # the run directory but is a record, not an input
+    cfg = {"provenance": {"cwd": str(tmp_path), "command": "tfs-configure-model"},
+           "components": {"theta": "hill_geno"}}
+    out = _stage_written_config(cfg, {}, str(tmp_path / "run"))
+    assert out["provenance"]["cwd"] == str(tmp_path)

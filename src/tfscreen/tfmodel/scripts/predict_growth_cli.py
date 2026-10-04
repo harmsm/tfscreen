@@ -73,7 +73,7 @@ def predict_growth(config_file,
                    num_marginal_samples=None,
                    genotype_batch_size=None,
                    subset_genotypes=False,
-                   subset_seed=None):
+                   seed=None):
     """
     Predict growth signal (ln_cfu) from a fitted hierarchical model.
 
@@ -99,14 +99,14 @@ def predict_growth(config_file,
         Path to a posterior .h5 file produced by tfs-sample-posterior, or a
         MAP checkpoint .pkl file produced by tfs-fit-model.
 
-        When a .pkl file is supplied the output contains a single ``point_est``
-        column with no uncertainty information.
+        When a .pkl file is supplied the output has a single ``q0.5`` column
+        (the MAP point) and no uncertainty.
 
         To obtain uncertainty estimates from a MAP fit, first run
-        tfs-sample-posterior on the .pkl checkpoint; it will construct a
-        Laplace (Hessian-based) posterior approximation and write a .h5 file.
-        Passing that .h5 here produces the full quantile columns (median,
-        lower_95, upper_95, etc.).
+        tfs-sample-posterior on the .pkl checkpoint; it builds a Laplace
+        approximation and writes a .h5 file. Passing that .h5 here gives the
+        full ladder of bare ``q<level>`` quantile columns (``q0.025``,
+        ``q0.5``, ``q0.975``, ...).
 
         NUTS and SVI checkpoints are not supported directly; run
         tfs-sample-posterior first.
@@ -130,8 +130,8 @@ def predict_growth(config_file,
         file arguments, ignoring training-data combinations. Default False.
     num_samples : int or None, optional
         Number of joint posterior samples to include as sample_0 … sample_N-1
-        columns alongside the quantile columns. Set to None for quantiles only.
-        Default 0.
+        columns alongside the quantile columns. 0 (default) writes quantiles
+        only.
     num_marginal_samples : int or None, optional
         Number of posterior samples to run through the model when computing
         quantiles. If None, all available samples are used.
@@ -150,7 +150,7 @@ def predict_growth(config_file,
         with the remainder of the block filled by a random sample of the other
         genotypes. Intended for quickly assessing the input/output ln_cfu
         correlation without paying for a full prediction sweep. Default False.
-    subset_seed : int or None, optional
+    seed : int or None, optional
         Seed for the random draw used by subset_genotypes, making the sampled
         block reproducible. Ignored unless subset_genotypes is True. Default
         None (non-deterministic draw).
@@ -229,7 +229,7 @@ def predict_growth(config_file,
 
         block = genotype_batch_size
         n_random = max(0, block - len(keep))
-        rng = np.random.default_rng(subset_seed)
+        rng = np.random.default_rng(seed)
         if n_random < len(remaining):
             idx = rng.choice(len(remaining), size=n_random, replace=False)
             sampled = [remaining[i] for i in sorted(idx)]
@@ -310,7 +310,7 @@ def main():
                                        "titrant_concs_file": str,
                                        "num_marginal_samples": int,
                                        "genotype_batch_size": int,
-                                       "subset_seed": int,
+                                       "seed": int,
                                        "only_files": bool,
                                        "subset_genotypes": bool})
 

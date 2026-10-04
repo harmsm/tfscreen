@@ -92,7 +92,7 @@ def test_cli_writes_model_with_wt_ref(tmp_path):
 
     out_prefix = str(tmp_path / "emp")
     build_empirical(str(growth_csv), seed=0,
-                             calibration_file=str(calib_csv),
+                             growth_calibration_file=str(calib_csv),
                              out_prefix=out_prefix)
 
     # Both artifacts written (model is a single self-contained JSON).
@@ -114,7 +114,7 @@ def test_cli_writes_model_with_wt_ref(tmp_path):
 
 
 def test_cli_orchestrates_configure_and_prefit(mocker, tmp_path):
-    """Without --calibration_file, the CLI runs configure_model + prefit."""
+    """Without --growth_calibration_file, the CLI runs configure_model + prefit."""
     growth_csv = tmp_path / "growth.csv"
     binding_csv = tmp_path / "binding.csv"
     _build_growth_df().to_csv(growth_csv, index=False)
@@ -152,7 +152,7 @@ def test_cli_orchestrates_configure_and_prefit(mocker, tmp_path):
         }, f)
 
     build_empirical(
-        str(growth_csv), binding_file=str(binding_csv), out_prefix=out_prefix,
+        str(growth_csv), binding_df=str(binding_csv), out_prefix=out_prefix,
         library_config=str(library_config), seed=5)
 
     # configure_model wired with the experimental inputs and fixed prefix.

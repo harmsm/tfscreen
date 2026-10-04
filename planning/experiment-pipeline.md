@@ -84,10 +84,14 @@ orchestrator built first would wrap the hacks and freeze them.
 
 ## Steps
 
-0. [ ] **Provenance in every CLI** (P5). `generalized_main` prints, and
+0. [x] **Provenance in every CLI** (P5). `generalized_main` prints, and
    each writer records, the version, the commit (with a dirty flag) and the
    command line. Do this first and small; it pays off at once.
-1. [ ] **Processing takes OD600 directly** (seam 1).
+   Done in 0.5.0 (`util/provenance.py`): every run prints it and writes
+   `{out_prefix}_provenance.json`; the configure YAML and fit checkpoints
+   embed it. Posterior `.h5` files do not yet; their run's JSON sits
+   beside them.
+1. [x] **Processing takes OD600 directly** (seam 1).
    - `tfs-process-counts` takes the per-tube OD600 table and a
      `tfs-calibrate-od600` file. It computes `sample_cfu` and its SD
      itself, keeping the shared curve error apart from the per-reading
@@ -99,6 +103,12 @@ orchestrator built first would wrap the hacks and freeze them.
    - The spike list and the M42I codon problem came from a processing
      config that disagreed with the real spikes. Check at configure time
      that every spike named in the library YAML is present in the counts.
+   Done in 0.5.0: `--od600_file`, `--od600_calibration_file`,
+   `--tube_volume_mL` (`od600.tube_totals_from_od600`); several libraries
+   already worked in one call (per-library filter and fill), now tested;
+   `examples/process_raw/`; `tfs-configure-model` refuses a missing spike
+   unless `--allow_missing_spikes`. `tfs-process-presplit` became
+   `tfs-process-counts --presplit`.
 2. [ ] **Configure exposes everything that was hand-edited** (seam 2).
    - Flags for `sigma_fixed` on level offsets and for every
      `theta_*_hyper_scale_fixed`.
@@ -111,6 +121,11 @@ orchestrator built first would wrap the hacks and freeze them.
      X_delta and log K held, offsets at 0.17. The real fit and the
      sensitivity runs say how much each matters
      (`planning/analysis-roadmap-summary.md`).
+   Flags done in 0.5.0: `--set_priors name=value ...` (any scalar prior,
+   by full name or unique suffix), `--growth_priors` (per-condition table)
+   and `--growth_priors_wt_rates` (the monokan rule, hill_relative only),
+   in `tfmodel/priors_edit.py`. The defaults decision is still open: the
+   defaults did not change.
 3. [ ] **The staged MAP inside `tfs-fit-model`** (seam 3).
    - With level offsets on, the fit stages itself. First a MAP with the
      offsets held at 0. Then each tube's offset alone, with everything else
@@ -122,11 +137,16 @@ orchestrator built first would wrap the hacks and freeze them.
      `check_warm.py`. Keep `--init_from` for experiments.
    - Test on a simulation: does a cold level-offset MAP reproduce the ±2.8
      offset trap, and does the staged one avoid it? Then on the real data.
-4. [ ] **Posterior defaults for large libraries.** Choose the Laplace
+4. [x] **Posterior defaults for large libraries.** Choose the Laplace
    automatically from the library size: the full Laplace below a
    parameter threshold, the arrowhead (`--laplace_blocks --laplace_shared`)
    above it. Report the held Schur directions in a file as well as the
    log, since they say which k/m directions have no interval.
+   Done in 0.5.0: `tfs-sample-posterior --laplace auto|full|arrowhead|blocks|point`,
+   auto switching at `--laplace_max_params` (20,000 MAP parameters, about
+   1.6 GB of float32 Hessian); `{out_prefix}_held_directions.csv`. A model
+   whose genotypes couple (hill_mut) cannot use the arrowhead, so auto
+   fails on a large one of those; there is no full-library route for it.
 5. [ ] **The orchestrator.** `tfs-run-experiment experiment.yaml`.
    - The YAML names the inputs (counts directory, tube table, OD600 table,
      calibration, library YAML, optional binding and monoculture rates)

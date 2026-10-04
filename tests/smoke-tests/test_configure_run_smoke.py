@@ -101,6 +101,7 @@ def test_configure_run_pipeline_smoke(tmpdir, library_smoke_yaml):
     configure_model(binding_path,
                               growth_likelihood="lncfu", sample_offset_model="zero",
                               growth_df=growth_path,
+                              allow_missing_spikes=True,  # no wt in this toy table
                               library_config=library_smoke_yaml,
                               out_prefix=out_prefix)
 
@@ -257,6 +258,7 @@ def test_configure_run_autoguide_smoke(tmpdir, guide_type, library_smoke_yaml):
 
     cfg_prefix = os.path.join(tmpdir, "test_tfs")
     configure_model(binding_path, growth_df=growth_path,
+                    allow_missing_spikes=True,  # no wt in this toy table
                     growth_likelihood="lncfu", sample_offset_model="zero",
                     library_config=library_smoke_yaml, out_prefix=cfg_prefix)
     config_file = f"{cfg_prefix}_config.yaml"
@@ -322,6 +324,7 @@ def test_configure_run_binding_weight_smoke(tmpdir, library_smoke_yaml):
     configure_model(binding_path,
                     growth_likelihood="lncfu", sample_offset_model="zero",
                     growth_df=growth_path,
+                    allow_missing_spikes=True,  # no wt in this toy table
                     library_config=library_smoke_yaml,
                     out_prefix=out_explicit,
                     binding_weight=99.0)
@@ -337,6 +340,7 @@ def test_configure_run_binding_weight_smoke(tmpdir, library_smoke_yaml):
     configure_model(binding_path,
                     growth_likelihood="lncfu", sample_offset_model="zero",
                     growth_df=growth_path,
+                    allow_missing_spikes=True,  # no wt in this toy table
                     library_config=library_smoke_yaml,
                     out_prefix=out_auto)
 

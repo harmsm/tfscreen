@@ -33,7 +33,7 @@ RUN_SEED={{ seed }}
 PREDICT_GENOTYPES_FILE="{{ predict_genotypes_file }}"
 
 # ---------------------------------------------------------------------------
-# Run prefit calibration
+# Pre-fit calibration: pins each condition's growth k and m in the priors CSV
 # ---------------------------------------------------------------------------
 
 echo ">>> Prefit calibration"
@@ -41,7 +41,9 @@ tfs-prefit-calibration tfs_configure_config.yaml \
     --seed ${RUN_SEED}
 
 # ---------------------------------------------------------------------------
-# MAP fit
+# MAP fit. Writes tfs_fit_model_checkpoint.pkl, _params.npz, _losses.txt and
+# _convergence.csv. Step-size cuts and the stop rule use the defaults
+# (tfs-fit-model --help lists them).
 # ---------------------------------------------------------------------------
 
 echo ">>> MAP fit"
@@ -49,20 +51,22 @@ tfs-fit-model \
     tfs_configure_config.yaml \
     --seed ${RUN_SEED} \
     --analysis_method map \
-    --adam_step_size 1e-6 \
-    --adam_final_step_size 1e-6 \
-    --checkpoint_interval 100 \
-    --max_num_epochs 100000000 \
-    --patience 5
+    --checkpoint_interval 100
 
 # ---------------------------------------------------------------------------
-# Sample posterior
+# Sample posterior. A MAP checkpoint becomes a Laplace posterior: 'auto'
+# takes the full Laplace up to --laplace_max_params MAP parameters and the
+# arrowhead Laplace above. --skip_growth_observations leaves the stored
+# per-observation growth sites out of the file (most of its size);
+# tfs-predict-growth recomputes growth from the parameter samples.
 # ---------------------------------------------------------------------------
 
 echo ">>> Sample posterior"
 tfs-sample-posterior \
     tfs_configure_config.yaml \
     tfs_fit_model_checkpoint.pkl \
+    --laplace auto \
+    --skip_growth_observations \
     --sampling_batch_size 10 \
     --num_posterior_samples 1000 \
     --seed ${RUN_SEED}
@@ -89,5 +93,7 @@ tfs-predict-theta \
 
 echo ">>> Categorize response"
 tfs-cat-response \
-    tfs_theta_pred.csv \
+    tfs_pred_theta.csv \
+    titrant_conc \
+    --group_by titrant_name \
     --num_workers -1

@@ -1,5 +1,15 @@
 from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
 from tfscreen.tfmodel.configuration_io import write_configuration
+from tfscreen.tfmodel.priors_edit import (
+    GROWTH_PRIOR_FIELDS,
+    GROWTH_PRIOR_PREFIX,
+    apply_prior_overrides,
+    apply_priors_updates,
+    condition_rep_labels,
+    growth_prior_updates,
+    growth_priors_from_wt_rates,
+    parse_prior_overrides,
+)
 from tfscreen.tfmodel.model_stats import (
     count_model_dimensions,
     format_model_stats,
@@ -121,6 +131,95 @@ def check_genotypes_in_library(library_genotypes, data_df, label,
     )
 
 
+def check_spikes_in_data(composition, growth_df, allow_missing=False):
+    """
+    Fail unless every spiked genotype of the library has growth data.
+
+    A spike named in the library config but absent from the counts usually
+    means the reads were called with a different library config (a spike
+    list or codon that disagrees with the real spikes).
+
+    Parameters
+    ----------
+    composition : pandas.DataFrame
+        ``library_composition_table`` output (``genotype``, ``in_spiked_origin``).
+    growth_df : str or pandas.DataFrame
+        Growth data with a ``genotype`` column.
+    allow_missing : bool
+        Print the missing spikes instead of raising.
+    """
+    spikes = set(composition.loc[composition["in_spiked_origin"].astype(bool),
+                                 "genotype"])
+    if not spikes or growth_df is None:
+        return
+    df = read_dataframe(growth_df)
+    observed = set(pd.unique(np.asarray(standardize_genotypes(df["genotype"]))))
+    missing = sorted(spikes - observed)
+    if not missing:
+        return
+    msg = (f"{len(missing)} of {len(spikes)} spiked genotypes in "
+           f"library_config have no growth data: {missing}. Check that the "
+           f"counts were called with this library config "
+           f"(tfs-process-fastq).")
+    if not allow_missing:
+        raise ValueError(msg + " Pass --allow_missing_spikes if these spikes "
+                         "really dropped out.")
+    print(f"warning: {msg}", flush=True)
+
+
+def _edit_priors(orchestrator, priors_path, set_priors=None, growth_priors=None,
+                 growth_priors_wt_rates=None, growth_priors_sd_floor=0.002,
+                 condition_growth_model="linear", theta_model=None):
+    """Apply --growth_priors, --growth_priors_wt_rates and --set_priors."""
+    if growth_priors is not None or growth_priors_wt_rates is not None:
+        if orchestrator.growth_tm is None:
+            raise ValueError("growth_priors need growth data.")
+        if condition_growth_model != "linear":
+            raise ValueError("growth_priors and growth_priors_wt_rates support "
+                             "condition_growth_model 'linear' only.")
+        table = None
+        if growth_priors is not None:
+            table = read_dataframe(growth_priors)
+        if growth_priors_wt_rates is not None:
+            if theta_model != "hill_relative":
+                raise ValueError("growth_priors_wt_rates sets k and m on the "
+                                 "relative X gauge; it needs theta_model "
+                                 "'hill_relative'.")
+            gauge = orchestrator.settings["theta_gauge_conc"]
+            wt = growth_priors_from_wt_rates(read_dataframe(growth_priors_wt_rates),
+                                             gauge, sd_floor=growth_priors_sd_floor)
+            if table is None:
+                table = wt
+            else:
+                if "replicate" in table.columns:
+                    raise ValueError("growth_priors_wt_rates cannot be combined "
+                                     "with a per-replicate growth_priors table.")
+                table = table.set_index("condition_rep")
+                wt = wt.set_index("condition_rep")
+                table = wt.combine_first(table).reset_index()
+
+        priors_df = pd.read_csv(priors_path)
+        scalar = priors_df[priors_df.get("flat_index", pd.Series(np.nan, index=priors_df.index)).isna()]
+        defaults = {}
+        for fields in GROWTH_PRIOR_FIELDS.values():
+            for f in fields:
+                row = scalar[scalar["parameter"] == GROWTH_PRIOR_PREFIX + f]
+                if row.empty:
+                    raise ValueError(f"Priors CSV has no '{GROWTH_PRIOR_PREFIX + f}' row.")
+                defaults[f] = float(row["value"].iloc[0])
+
+        labels = condition_rep_labels(orchestrator)
+        updates = growth_prior_updates(table, labels, defaults)
+        apply_priors_updates(priors_path, updates, cond_rep_labels=labels,
+                             backup=False)
+
+    if set_priors:
+        resolved = apply_prior_overrides(priors_path,
+                                         parse_prior_overrides(set_priors))
+        for name, value in resolved.items():
+            print(f"  prior {name} = {value:g}", flush=True)
+
+
 def configure_model(binding_df=None,
                     growth_df=None,
                     presplit_df=None,
@@ -150,6 +249,11 @@ def configure_model(binding_df=None,
                     thermo_data=None,
                     batch_size=1024,
                     binding_weight=None,
+                    set_priors=None,
+                    growth_priors=None,
+                    growth_priors_wt_rates=None,
+                    growth_priors_sd_floor=0.002,
+                    allow_missing_spikes=False,
                     skip_model_stats=False):
     """
     Build and write the YAML configuration files needed by tfs-fit-model.
@@ -343,6 +447,41 @@ def configure_model(binding_df=None,
         Pass an explicit positive float to override this heuristic.  The
         resolved value (never None) is saved in the YAML so that
         ``tfs-fit-model`` applies the same weight without recomputing it.
+    set_priors : list of str, optional
+        ``name=value`` pairs that set scalar priors in
+        {out_prefix}_priors.csv, so the file is never edited by hand. A name
+        is a full row name (``theta.theta_log_hill_n_hyper_scale_fixed``) or
+        a unique dotted suffix of one (``theta_log_hill_n_hyper_scale_fixed``,
+        ``sample_offset.sigma_fixed``). An unknown or ambiguous name is an
+        error. Common uses: ``sigma_fixed=0.17`` holds the level tube
+        offsets' SD; ``theta_log_hill_n_hyper_scale_fixed=0.5`` holds the
+        population SD of log(hill_n) (and, for hill_relative,
+        ``theta_X_low_hyper_scale_fixed``, ``theta_X_delta_hyper_scale_fixed``,
+        ``theta_log_hill_K_hyper_scale_fixed``).
+    growth_priors : str, optional
+        CSV of per-condition growth priors for linear condition growth: a
+        ``condition_rep`` column (and ``replicate``, if conditions are not
+        shared across replicates) plus any of ``k_loc``, ``k_scale``,
+        ``m_loc``, ``m_scale``. Conditions or values it leaves out keep the
+        defaults. Use it where tfs-prefit-calibration does not run (a
+        growth-only model); the pre-fit overwrites k_loc and m_loc.
+    growth_priors_wt_rates : str, optional
+        CSV of wt monoculture growth rates (``condition_sel``,
+        ``titrant_conc``, ``rate_mean``, ``rate_sd``, ``num_replicates``),
+        for theta_model 'hill_relative' only. For each listed condition,
+        k = the rate at the high gauge concentration and m = the rate at the
+        low one minus k, each with the standard error of the mean as SD
+        (floored at growth_priors_sd_floor). List only the conditions where
+        the monoculture stands for the library's wt. Overrides
+        growth_priors for the conditions it lists.
+    growth_priors_sd_floor : float, optional
+        Smallest k and m prior SD (per minute) derived from
+        growth_priors_wt_rates. Default 0.002.
+    allow_missing_spikes : bool, optional
+        By default, a spiked genotype named in library_config with no growth
+        data is an error: it usually means the counts were called with a
+        different library config. Pass this to only report it (a spike can
+        drop out of a real experiment).
     skip_model_stats : bool, optional
         Skip the pre-fit parameter/observation accounting. By default a
         summary is printed to stdout and written to
@@ -400,6 +539,9 @@ def configure_model(binding_df=None,
             check_genotypes_in_library(set(composition["genotype"]),
                                        data_df, label)
 
+        check_spikes_in_data(composition, growth_df,
+                             allow_missing=allow_missing_spikes)
+
         library_file = f"{out_prefix}_library.csv"
         write_library_composition(composition, library_file)
         print(f"Wrote library composition to {library_file}", flush=True)
@@ -455,6 +597,14 @@ def configure_model(binding_df=None,
                         base_growth_df_path=base_growth_path,
                         library_meta=library_meta)
 
+    _edit_priors(orchestrator, f"{out_prefix}_priors.csv",
+                 set_priors=set_priors,
+                 growth_priors=growth_priors,
+                 growth_priors_wt_rates=growth_priors_wt_rates,
+                 growth_priors_sd_floor=growth_priors_sd_floor,
+                 condition_growth_model=condition_growth_model,
+                 theta_model=theta_model)
+
     # Pre-fit accounting: how many parameters, how many observations, and
     # which genotypes are individually under-determined.
     if not skip_model_stats:
@@ -473,9 +623,11 @@ def main():
                                               "thermo_data":str,
                                               "batch_size":int,
                                               "binding_weight":float,
+                                              "set_priors":str,
                                               "transformation_lambda":float,
                                               "theta_gauge_conc":float},
-                            manual_arg_nargs={"transformation_lambda":2,
+                            manual_arg_nargs={"set_priors":"+",
+                                              "transformation_lambda":2,
                                               "theta_gauge_conc":2})
 
 if __name__ == "__main__":

@@ -412,8 +412,8 @@ def test_process_fastq_happy_path_with_instance(mock_ftc_cls, mock_process_paire
 
     # Run the function with the mock instance
     process_fastq(
-        f1_fastq="r1.fq", f2_fastq="r2.fq", out_dir=str(out_dir),
-        run_config=mock_lm_instance, phred_cutoff=20, num_workers=4
+        library_config=mock_lm_instance, f1_fastq="r1.fq", f2_fastq="r2.fq",
+        out_dir=str(out_dir), phred_cutoff=20, num_workers=4
     )
     
     assert os.path.isdir(out_dir)
@@ -440,4 +440,4 @@ def test_process_fastq_raises_error_for_file_as_dir(tmp_path):
     out_file.touch()
 
     with pytest.raises(FileExistsError):
-        process_fastq("r1.fq", "r2.fq", out_dir=str(out_file), run_config={})
+        process_fastq({}, "r1.fq", "r2.fq", out_dir=str(out_file))

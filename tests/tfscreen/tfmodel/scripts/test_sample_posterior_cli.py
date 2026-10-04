@@ -155,9 +155,9 @@ class TestSamplePosteriorMap:
         assert kw["genotype_chunk_size"] is None
         assert kw["block_shared"] is False
 
-    def test_laplace_blocks_forwarded(self, tmp_path):
-        """--laplace_blocks asks for the per-genotype Laplace, with its chunk
-        size."""
+    def test_laplace_arrowhead_forwarded(self, tmp_path):
+        """--laplace arrowhead asks for the per-genotype Laplace with the
+        shared parameters, with its chunk size."""
         ri = self._make_map_ri(tmp_path, auto_loc=True)
         h5_src = str(tmp_path / "out_tmp_posterior_posterior.h5")
         ckpt_path = str(tmp_path / "map.pkl")
@@ -177,7 +177,7 @@ class TestSamplePosteriorMap:
             from tfscreen.tfmodel.scripts.sample_posterior_cli import sample_posterior
             sample_posterior("cfg.yaml", ckpt_path,
                              out_prefix=str(tmp_path / "out"),
-                             laplace_blocks=True, laplace_shared=True,
+                             laplace="arrowhead",
                              genotype_chunk_size=500)
 
         kw = ri.get_laplace_posteriors.call_args.kwargs
@@ -185,11 +185,55 @@ class TestSamplePosteriorMap:
         assert kw["block_shared"] is True
         assert kw["genotype_chunk_size"] == 500
 
-    def test_laplace_shared_needs_blocks(self, tmp_path):
+    def test_unknown_laplace_refused(self, tmp_path):
         from tfscreen.tfmodel.scripts.sample_posterior_cli import sample_posterior
-        with pytest.raises(ValueError, match="laplace_blocks"):
+        with pytest.raises(ValueError, match="laplace must be one of"):
             sample_posterior("cfg.yaml", str(tmp_path / "x.pkl"),
-                             laplace_shared=True)
+                             laplace="dense")
+
+    def test_resolve_laplace(self):
+        from tfscreen.tfmodel.scripts.sample_posterior_cli import resolve_laplace
+        assert resolve_laplace("auto", 100, 1000) == "full"
+        assert resolve_laplace("auto", 1000, 1000) == "full"
+        assert resolve_laplace("auto", 1001, 1000) == "arrowhead"
+        for m in ("full", "arrowhead", "blocks", "point"):
+            assert resolve_laplace(m, 10 ** 9, 1) == m
+        with pytest.raises(ValueError):
+            resolve_laplace("nope", 1, 1)
+
+    def test_auto_picks_arrowhead_above_threshold(self, tmp_path):
+        """--laplace auto on a model above laplace_max_params runs the
+        arrowhead and writes the held directions."""
+        import pandas as pd
+        ri = self._make_map_ri(tmp_path, auto_loc=True)
+        ri.held_shared_directions = pd.DataFrame(
+            {"direction": [0], "eigenvalue": [-1.0],
+             "parameter": ["k[0]"], "loading": [1.0]})
+        h5_src = str(tmp_path / "out_tmp_posterior_posterior.h5")
+        ckpt_path = str(tmp_path / "map.pkl")
+        open(ckpt_path, "w").close()
+
+        with patch("tfscreen.tfmodel.scripts.sample_posterior_cli.read_configuration",
+                   return_value=(MagicMock(), {})), \
+             patch("tfscreen.tfmodel.scripts.sample_posterior_cli.RunInference",
+                   return_value=ri), \
+             patch("tfscreen.tfmodel.scripts.sample_posterior_cli.dill") as mock_dill:
+
+            mock_dill.load.return_value = {"svi_state": MagicMock()}
+            ri.get_laplace_posteriors.side_effect = lambda **kw: (
+                open(h5_src, "w").close()
+            )
+
+            from tfscreen.tfmodel.scripts.sample_posterior_cli import sample_posterior
+            sample_posterior("cfg.yaml", ckpt_path,
+                             out_prefix=str(tmp_path / "out"),
+                             laplace_max_params=0)
+
+        kw = ri.get_laplace_posteriors.call_args.kwargs
+        assert kw["block_genotypes"] is True
+        assert kw["block_shared"] is True
+        held = pd.read_csv(tmp_path / "out_held_directions.csv")
+        assert list(held["parameter"]) == ["k[0]"]
 
     def test_map_output_file_renamed(self, tmp_path):
         ri = self._make_map_ri(tmp_path, auto_loc=True)
@@ -234,7 +278,7 @@ class TestSamplePosteriorMap:
 
             from tfscreen.tfmodel.scripts.sample_posterior_cli import sample_posterior
             sample_posterior("cfg.yaml", ckpt_path,
-                             out_prefix=str(tmp_path / "out"), map_point=True)
+                             out_prefix=str(tmp_path / "out"), laplace="point")
 
         ri.get_map_posteriors.assert_called_once()
         ri.get_laplace_posteriors.assert_not_called()
@@ -262,7 +306,7 @@ class TestSamplePosteriorMap:
 
             from tfscreen.tfmodel.scripts.sample_posterior_cli import sample_posterior
             sample_posterior("cfg.yaml", ckpt_path,
-                             out_prefix=str(tmp_path / "out"), map_point=True,
+                             out_prefix=str(tmp_path / "out"), laplace="point",
                              skip_growth_observations=True)
 
         sites = ri.get_map_posteriors.call_args.kwargs["sites_to_save"]

@@ -397,9 +397,10 @@ def fit_model(config_file,
         fit keeps its checkpoint's).  SVI widens the scales itself; a large
         start throws the pre-MAP point away.  Not accepted by 'delta'.
     out_prefix : str, optional
-        Prefix for all output files: checkpoints, parameter files, and the
-        posterior HDF5 (default 'tfs_fit_model'). Files are named
-        {out_prefix}_checkpoint.pkl, {out_prefix}_params.npz, etc.
+        Prefix for all output files (default 'tfs_fit_model'):
+        {out_prefix}_checkpoint.pkl, {out_prefix}_params.npz,
+        {out_prefix}_losses.txt, {out_prefix}_convergence.csv, the pre-MAP's
+        {out_prefix}_premap_* files, and, for NUTS only, the posterior HDF5.
     adam_step_size : float, optional
         Starting step size for the Adam optimizer (default 1e-3).
     adam_final_step_size : float, optional

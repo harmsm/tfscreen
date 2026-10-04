@@ -1,0 +1,27 @@
+Some other thoughts about what to mention in here.
+We actually ended up measuring 60 observations in our, sorry, in our experimental pipeline.
+We get 60 different observations for each genotype.
+So that is because we're covering eight different IPTG concentrations with selection, with canomycin
+or with 4CP.
+So that's 16.
+We then measure four different controls.
+So zero millimolar IPTG and one millimolar IPTG with the fee S, excuse me, with the fee
+S or the can R in the absence of selection.
+So those are basically getting the pre-growth rates or the growth rates without actually
+adding selection.
+So that brings us to 20.
+And then we measure three different time points for each one.
+So as the cells progressed over time, we get three observations.
+So that gives us 60 different condition observations.
+We then pulled out genotype frequency information for each of those.
+So each genotype has 60 possible observations.
+We then did the entire experiment in biological duplicate.
+So now we have two sets of independent measurements, giving us 120 observations per genotype.
+That we are trying to ultimately use to constrain four parameters, the hill coefficient, K,
+N, and then the baseline betas.
+So that's what going is experiment.
+Let's also talk about how we pulled parameters out.
+So after we do the SVI runs, what we do is we then extract posterior distributions for
+each of the different parameters.
+Pull from those posterior distributions to get credibility intervals for each of these.
+And so that gives us a 95% credibility region for the binding constant for each of those.

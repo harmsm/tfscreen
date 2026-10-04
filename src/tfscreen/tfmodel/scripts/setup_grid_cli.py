@@ -48,7 +48,7 @@ INPUT FILES
 -----------
 The grid directory is self-contained and can be moved as a unit (on and off a
 cluster, onto another partition). Every input file a run needs is copied into
-``<out_prefix>/inputs/`` once, and each run's config and rendered template
+``<out_dir>/inputs/`` once, and each run's config and rendered template
 refer to it as ``../inputs/<name>``. Nothing in a run points outside the grid.
 
 - The configure_model file arguments are the keys in ``_PATH_KEYS``
@@ -115,7 +115,7 @@ _COMPONENT_AXES = frozenset({
 })
 
 # configure_model arguments that are input file paths. Each is copied into
-# <out_prefix>/inputs/ and the written config names the copy. Add any new
+# <out_dir>/inputs/ and the written config names the copy. Add any new
 # file-valued configure_model argument here; setup fails on a configure_model
 # value outside this set that names an existing file.
 _PATH_KEYS = frozenset({
@@ -219,8 +219,11 @@ def _stage_written_config(cfg, path_map, subdir):
         return node
 
     out = rewrite(cfg, ())
+    # The provenance block records where configure ran (cwd, command line);
+    # it is a record, never read back as an input.
+    checked = {k: v for k, v in out.items() if k != "provenance"}
     _check_no_outside_paths(
-        out, staged_keys + list(_RUN_OUTPUT_KEYS), subdir,
+        checked, staged_keys + list(_RUN_OUTPUT_KEYS), subdir,
         hint=(f"tfs-configure-model recorded a path {_TOOL} does not know how "
               f"to copy. If it is an input file, add the configure_model "
               f"argument that supplies it to _PATH_KEYS in {__name__}."),
@@ -252,14 +255,14 @@ def _cm_kwargs(cm_vars):
 # Public entry point
 # ---------------------------------------------------------------------------
 
-def setup_grid(grid_yaml, out_prefix="grid"):
+def setup_grid(grid_yaml, out_dir="grid"):
     """
     Set up a directory grid for model runs.
 
     Reads a grid YAML file, expands all configure_model and template blocks
     into their Cartesian product, and for each combination:
 
-    1. Creates a subdirectory under *out_prefix*.
+    1. Creates a subdirectory under *out_dir*.
     2. Calls tfs-configure-model (via its Python API) to generate
        ``tfs_configure_config.yaml``, ``tfs_configure_priors.csv``, and
        ``tfs_configure_guesses.csv`` inside that subdirectory.  Incompatible
@@ -268,18 +271,18 @@ def setup_grid(grid_yaml, out_prefix="grid"):
        variables and writes the result to the subdirectory.
     4. Writes ``combo.json`` recording the variable assignments for that run.
 
-    A ``grid_summary.json`` is written to *out_prefix* listing all created
+    A ``grid_summary.json`` is written to *out_dir* listing all created
     runs and any skipped combinations. Input files named by the
     configure_model or template variables are copied into
-    ``<out_prefix>/inputs/`` and referenced as ``../inputs/<name>``, so the
-    *out_prefix* directory can be moved as a unit. Every combination's inputs
+    ``<out_dir>/inputs/`` and referenced as ``../inputs/<name>``, so the
+    *out_dir* directory can be moved as a unit. Every combination's inputs
     and template are validated before anything is written.
 
     Parameters
     ----------
     grid_yaml : str
         Path to the grid YAML file.
-    out_prefix : str, optional
+    out_dir : str, optional
         Root directory for the grid.  Created if it does not exist.
         Default ``"grid"``.
 
@@ -343,7 +346,7 @@ def setup_grid(grid_yaml, out_prefix="grid"):
     # (Component incompatibilities only surface when configure_model runs; those
     # combinations are skipped below, as before.)
     runs_to_write = []
-    checker = _InputStager(out_prefix, _TOOL, dry_run=True)
+    checker = _InputStager(out_dir, _TOOL, dry_run=True)
     for i, (cm_vars, tmpl_vars) in enumerate(all_combos, start=1):
         all_vars = {**cm_vars, **tmpl_vars}
         run_name = _make_run_name(run_name_template, all_vars, i)
@@ -353,15 +356,15 @@ def setup_grid(grid_yaml, out_prefix="grid"):
                 tmpl_vars, grid_yaml_dir, checker), run_name)
         runs_to_write.append((run_name, cm_vars, tmpl_vars))
 
-    os.makedirs(out_prefix, exist_ok=True)
-    stager = _InputStager(out_prefix, _TOOL)
+    os.makedirs(out_dir, exist_ok=True)
+    stager = _InputStager(out_dir, _TOOL)
 
     all_runs = []
     skipped = []
 
     for run_name, cm_vars, tmpl_vars in runs_to_write:
         all_vars = {**cm_vars, **tmpl_vars}
-        subdir = os.path.abspath(os.path.join(out_prefix, run_name))
+        subdir = os.path.abspath(os.path.join(out_dir, run_name))
 
         # configure_model reads the original input files (relative paths
         # resolved against the grid YAML's directory).
@@ -380,7 +383,7 @@ def setup_grid(grid_yaml, out_prefix="grid"):
             print(f"  SKIP {run_name}: {reason}", flush=True)
             continue
 
-        # Copy the inputs into <out_prefix>/inputs/ and point the written
+        # Copy the inputs into <out_dir>/inputs/ and point the written
         # config at the copies (../inputs/<name>).
         path_map = {
             path: stager.stage(path, f"configure_model variable '{key}'")
@@ -417,11 +420,11 @@ def setup_grid(grid_yaml, out_prefix="grid"):
     # Write grid_summary.json.
     summary = {
         "grid_yaml": grid_yaml,
-        "out_prefix": os.path.abspath(out_prefix),
+        "out_dir": os.path.abspath(out_dir),
         "runs": all_runs,
         "skipped": skipped,
     }
-    summary_path = os.path.join(out_prefix, "grid_summary.json")
+    summary_path = os.path.join(out_dir, "grid_summary.json")
     with open(summary_path, "w") as fh:
         json.dump(summary, fh, indent=2)
         fh.write("\n")
@@ -429,7 +432,7 @@ def setup_grid(grid_yaml, out_prefix="grid"):
     n_ok = len(all_runs)
     n_skip = len(skipped)
     print(
-        f"\n{n_ok} run{'s' if n_ok != 1 else ''} created under {out_prefix}/",
+        f"\n{n_ok} run{'s' if n_ok != 1 else ''} created under {out_dir}/",
         flush=True,
     )
     if n_skip:
@@ -445,7 +448,7 @@ def setup_grid(grid_yaml, out_prefix="grid"):
 def main():
     generalized_main(
         setup_grid,
-        manual_arg_types={"grid_yaml": str, "out_prefix": str},
+        manual_arg_types={"grid_yaml": str, "out_dir": str},
     )
 
 

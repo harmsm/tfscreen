@@ -1,9 +1,10 @@
 
 # ---------------------------------------------------------------------------
-# Library configuration for tfs-process-fastq
+# Library configuration for tfs-process-fastq and tfs-configure-model
 #
-# Pass this file as the run_config argument:
-#   tfs-process-fastq R1.fastq.gz R2.fastq.gz out/ library_config.yaml
+# Pass this one file to both:
+#   tfs-process-fastq library_config.yaml R1.fastq.gz R2.fastq.gz --out_dir counts
+#   tfs-configure-model --growth_df growth.csv --library_config library_config.yaml
 #
 # If you are running both tfs-simulate and tfs-process-fastq on the same
 # experiment, you can pass the simulate config directly to tfs-process-fastq

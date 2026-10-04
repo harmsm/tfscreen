@@ -2,58 +2,81 @@
 tfs-summarize-fit
 =================
 
-``tfs-summarize-fit`` collects the outputs of a completed model-fitting run,
-computes prediction quality statistics, and writes a set of diagnostic plots
-and tables to a ``summary/`` subdirectory.
-
-.. note::
-
-   **CSV files are the authoritative outputs.**  Every PDF written by this
-   command has a matching CSV containing the exact data used to generate it.
-   Use the CSVs for downstream quantitative analysis; treat the PDFs as
-   human-readable summaries.
-
-Usage
------
+``tfs-summarize-fit`` collects the outputs of a finished fit, computes
+prediction statistics and writes diagnostic plots and tables. It is the quick
+look at a run, and the place where simulated runs are scored against their
+ground truth.
 
 .. code-block:: bash
 
-    tfs-summarize-fit <run_dir> [options]
+    tfs-summarize-fit out/
 
-**Positional arguments:**
+The one positional argument is the run directory. Outputs go to
+``{run_dir}/summary/`` with the prefix ``tfs_summarize`` unless
+``--out_prefix`` says otherwise. ``--ref_theta_file`` names a theta reference
+table; see below. The full flag list is in :doc:`cli`.
 
-* ``run_dir`` — directory containing the completed model-fit outputs (i.e.
-  the ``out/`` directory produced by ``run.sh``).
+Every PDF has a matching CSV holding the exact data behind it. Use the CSVs
+for any quantitative analysis and treat the PDFs as summaries.
 
-**Optional arguments:**
+What the command reads
+----------------------
 
-* ``--ref_theta_file`` — CSV with columns ``genotype``, ``titrant_name``,
-  ``titrant_conc``, and a ``theta_obs`` or ``theta`` column containing
-  known θ values for evaluating out-of-sample predictions.  When omitted,
-  the script automatically looks for ``*_sim_genotype_theta.csv`` in
-  ``run_dir`` (the file written by ``tfs-simulate``).
-* ``--out_prefix`` — prefix for all output files.  Defaults to
-  ``{run_dir}/summary/tfs_summarize``.
+The command finds its inputs by file-name suffix inside ``run_dir``. When
+several files match, it warns and uses the first in alphabetical order. Each
+missing input switches off only the outputs that need it.
 
-What the script needs
----------------------
+``*_config.yaml``
+    The model config from ``tfs-configure-model``. Other YAML files in the
+    directory, such as a simulate config, are ignored. The config also points
+    to the binding data, used as training theta, and to the guesses CSV.
 
-The script scans ``run_dir`` for:
+``*_pred_theta.csv``
+    Theta predictions from ``tfs-predict-theta``.
 
-* ``*_config.yaml`` — model configuration (required).
-* ``*_pred_theta.csv`` — theta predictions from ``tfs-predict-theta`` (required).
-* ``*_sim_genotype_theta.csv`` — ground-truth θ from ``tfs-simulate``
-  (used for test statistics; absent for real-data runs).
-* ``*_pred_growth.csv`` — growth predictions from ``tfs-predict-growth``
-  (optional; enables growth statistics and plots).
-* ``*_losses.txt`` — training loss history from ``tfs-fit-model``
-  (optional; enables the loss-curve plot).
-* ``*_params_*.csv`` — parameter summaries from ``tfs-extract-params``
-  (optional; enables parameter-recovery plots when ``*_sim_parameters.csv``
-  is also present).
+``*_pred_growth.csv``
+    Growth predictions from ``tfs-predict-growth``. Optional.
 
-Output file reference
----------------------
+``*_losses.txt``
+    The loss history from ``tfs-fit-model``. The pre-MAP and pre-fit loss
+    files (``*_premap_losses.txt``, ``*_prefit_losses.txt``) are skipped.
+    Optional.
+
+``*_posterior.h5`` or ``*_params.npz``
+    The source for the growth trajectories, with the posterior preferred.
+    ``tfs-sample-posterior`` writes ``{out_prefix}.h5``, so the default name
+    ``tfs_posterior.h5`` matches but a custom prefix such as ``run1.h5``
+    does not. The MAP ``*_params.npz`` from ``tfs-fit-model`` is the
+    fallback. Optional.
+
+``*_params_*.csv``
+    Parameter tables from ``tfs-extract-params``. Compared to truth on
+    simulated runs. Optional.
+
+Simulated runs also have ground truth from ``tfs-simulate``:
+
+``*_sim_genotype_theta.csv``
+    True theta for every genotype and titrant point. Used as the theta test
+    reference unless ``--ref_theta_file`` names another table. A reference
+    table needs ``genotype``, ``titrant_name``, ``titrant_conc`` and a
+    ``theta_obs`` or ``theta`` column.
+
+``*_sim_parameters.csv``
+    True per-genotype parameters.
+
+``*_sim_growth_parameters.csv``
+    True per-condition growth parameters.
+
+``*_sim_k_ref.csv``
+    The true base growth rate ``k_ref``.
+
+``*_sim_transformation_lam.csv``
+    The true congression rate ``lam`` of the ``mixture`` transformation.
+
+Output files
+------------
+
+All names below use the default prefix ``tfs_summarize``.
 
 .. list-table::
    :header-rows: 1
@@ -62,273 +85,315 @@ Output file reference
    * - File
      - Contents
    * - ``tfs_summarize_fit_summary.json``
-     - Nested statistics dict (see :ref:`fit-summary-json`).
-   * - ``tfs_summarize_theta_corr.pdf`` / ``.csv``
-     - Two-panel θ correlation: training (left) and test (right).
+     - Statistics and run metadata (see :ref:`fit-summary-json`).
+   * - ``tfs_summarize_theta_corr.pdf``
+     - Two-panel theta correlation: training on the left, test on the right.
    * - ``tfs_summarize_theta_corr_training.csv``
-     - Joined (ref, predicted) θ pairs for training genotypes.
+     - Training theta predictions joined to the binding observations, which
+       are in the ``ref`` column.
    * - ``tfs_summarize_theta_corr_test.csv``
-     - Same for test genotypes.
+     - Theta predictions joined to the reference table, which is in the
+       ``ref`` column.
    * - ``tfs_summarize_growth_corr.pdf`` / ``.csv``
-     - Observed vs predicted ln(CFU) across all training points.
+     - Observed against predicted ln(CFU). The CSV is a copy of
+       ``*_pred_growth.csv`` with ``ln_cfu`` and ``ln_cfu_std`` renamed to
+       ``ref`` and ``ref_std``.
    * - ``tfs_summarize_{genotype}_theta_fits.pdf`` / ``.csv``
-     - Per-genotype θ curve overlaid with binding observations.
+     - Predicted theta curve over the binding observations, one pair per
+       binding genotype.
    * - ``tfs_summarize_{genotype}_trajectory.pdf`` / ``.csv``
-     - Per-genotype predicted ln(CFU) vs time across all conditions.
+     - Predicted ln(CFU) against time in every condition.
    * - ``tfs_summarize_losses.pdf``
-     - Training loss curve.
-   * - ``tfs_summarize_theta_training_calibration.pdf``
-     - Calibration plots for training θ (PIT histogram + coverage curve).
-   * - ``tfs_summarize_theta_test_calibration.pdf``
-     - Calibration plots for test θ.
-   * - ``tfs_summarize_growth_calibration.pdf``
-     - Calibration plots for growth predictions.
+     - The loss history.
+   * - ``tfs_summarize_{name}_calibration.pdf``, ``_pit.csv``,
+       ``_calibration_curve.csv``
+     - Interval calibration for ``theta_training``, ``theta_test``,
+       ``growth`` and each ``params_*`` table with a reference.
    * - ``tfs_summarize_params_{name}.pdf`` / ``.csv``
-     - Per-parameter scatter of simulated vs inferred values (simulated
-       data only).
-   * - ``tfs_summarize_params_{name}_calibration.pdf``
-     - Calibration plots for each inferred parameter (simulated data only).
+     - A parameter table with the true value added as ``ref``. Simulated
+       runs only.
+
+Slashes and spaces in genotype names become underscores in file names, so
+``M42I/K84L`` gives ``tfs_summarize_M42I_K84L_trajectory.pdf``.
+
+The theta fit plots need binding data with a ``theta_std`` column. The
+trajectory plots need growth data and a posterior or params file. With binding
+data, trajectories are drawn for the binding genotypes. Without it, they are
+drawn for wt, the spiked genotypes and 10 other genotypes picked at random
+with a fixed seed, so a rerun draws the same ones.
+
+Calibration needs at least two ``q<level>`` columns. A MAP checkpoint passed
+to the predict commands gives only ``q0.5``, so its predictions get
+correlation statistics but no calibration outputs.
+
+Relative-X fits
+---------------
+
+A ``hill_relative`` fit predicts the wt-relative growth variable X rather
+than theta (see :doc:`model`). For such a fit, ``metadata.theta_scale`` in the
+JSON is ``X``; it is ``theta`` otherwise. Simulated truth is mapped onto the
+X scale before comparison. The mapping uses the gauge concentrations recorded
+in the config, wt's true theta at those concentrations from the reference
+table, and each genotype's simulated activity from ``*_sim_parameters.csv``.
+The true ``growth_k`` and ``growth_m`` are mapped the same way: k becomes
+wt's growth at the high gauge concentration and m its change between the two.
+That mapping needs a single titrant. With several, the growth truth is left
+blank. When the truth cannot be mapped, for example because the reference has
+no wt value at a gauge concentration, the theta test comparison is skipped
+with a warning rather than made on the wrong scale.
 
 Reading the outputs
 -------------------
 
 .. _fit-summary-json:
 
-fit_summary.json — at a glance
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The summary JSON
+~~~~~~~~~~~~~~~~
 
-The JSON file gives a rapid numerical overview of the run.  Open it in any
-text editor or load it with ``json.load``.
+``tfs_summarize_fit_summary.json`` has three top-level keys. ``metadata``
+describes the run. ``theta`` holds ``training`` and ``test`` statistics, and
+``growth`` holds ``training`` statistics. A block that could not be computed
+is ``null``. The example below, with illustrative values, is a simulated
+growth-only run: there is no binding data, so ``theta.training`` is null.
 
 .. code-block:: json
 
    {
      "metadata": {
-       "n_parameters": 5005,
-       "n_theta_training_points": 32,
+       "run_dir": "/home/user/runs/run_0001/out",
+       "ref_theta_file": "/home/user/runs/run_0001/out/tfs_sim_genotype_theta.csv",
+       "timestamp": "2026-10-01T14:02:11.512340",
+       "n_parameters": 412,
+       "n_theta_training_points": null,
        "n_theta_test_points": 3752,
        "n_growth_training_points": 54180,
-       "final_loss": 7281255.0
+       "final_loss": 251873.4,
+       "theta_scale": "X"
      },
      "theta": {
-       "training": { "pearson_r": 0.999, "r_squared": 0.998, "rmse": 0.016 },
-       "test":     { "pearson_r": 0.936, "r_squared": 0.876, "rmse": 0.140 }
+       "training": null,
+       "test": {
+         "pct_success": 1.0,
+         "rmse": 0.071,
+         "normalized_rmse": 0.058,
+         "pearson_r": 0.968,
+         "spearman_r": 0.951,
+         "r_squared": 0.937,
+         "mean_error": -0.004,
+         "coverage_prob": null,
+         "residual_corr": -0.12,
+         "residual_corr_p_value": 1.3e-13,
+         "bp_p_value": 0.002
+       }
      },
      "growth": {
-       "training": { "pearson_r": 0.981, "r_squared": 0.963, "rmse": 0.577 }
+       "training": {
+         "pct_success": 1.0,
+         "rmse": 0.41,
+         "normalized_rmse": 0.031,
+         "pearson_r": 0.991,
+         "spearman_r": 0.987,
+         "r_squared": 0.982,
+         "mean_error": 0.002,
+         "coverage_prob": null,
+         "residual_corr": -0.05,
+         "residual_corr_p_value": 1.1e-31,
+         "bp_p_value": 0.0
+       }
      }
    }
 
-Key fields:
+The metadata keys:
 
-* ``n_parameters`` — total number of free parameters (from the guesses CSV).
-  Compare to ``n_growth_training_points`` to check for over-parameterisation.
-* ``final_loss`` — the converged SVI ELBO (negative; more negative = better).
-  Use this to compare runs with identical data but different components or seeds.
-* ``theta.training`` — statistics comparing the model's θ predictions against
-  the direct **binding observations** used as training data.  These will
-  always be near-perfect because the model is conditioned on these values.
-* ``theta.test`` — statistics comparing θ predictions against the full
-  ground-truth θ grid from ``tfs-simulate``.  This is the real generalization
-  diagnostic: the vast majority of test points were never directly observed.
-* ``growth.training`` — statistics comparing predicted ln(CFU) against the
-  observed growth data.
+* ``run_dir`` and ``ref_theta_file`` are the resolved absolute paths.
+  ``ref_theta_file`` is null when no reference was found.
+* ``timestamp`` is when the summary ran.
+* ``n_parameters`` is the number of rows in the config's guesses CSV, a rough
+  size of the model.
+* ``n_theta_training_points``, ``n_theta_test_points`` and
+  ``n_growth_training_points`` count the points behind each statistics block.
+* ``final_loss`` is the last entry of ``*_losses.txt``. Each entry is the
+  median loss over one convergence window, not a single step. The loss is the
+  negative ELBO for SVI and the negative log joint density for MAP. Lower is
+  better, and it is usually positive. Compare it only between runs on the same
+  data and model.
+* ``theta_scale`` is ``X`` for a relative fit and ``theta`` otherwise.
 
-Useful derived checks:
+Each statistics block compares the ``q0.5`` prediction with its reference:
 
-* ``theta.test.r_squared > 0.85`` is a reasonable threshold for a well-fitting
-  model on a library of this size and noise level.
-* A large gap between ``theta.training.rmse`` and ``theta.test.rmse`` signals
-  that the model fits the spiked genotypes well but struggles to generalize
-  to the broader library.
-* ``residual_corr`` and its p-value test for autocorrelation in the residuals.
-  A significant value indicates systematic structure the model is not capturing.
+* ``pearson_r``, ``spearman_r`` and ``r_squared`` measure agreement.
+  Spearman tests whether genotypes are ranked correctly.
+* ``rmse`` is the root mean squared error. ``normalized_rmse`` divides it by
+  the 2.5 to 97.5 percentile range of the reference, so it reads as error
+  relative to the signal.
+* ``mean_error`` is the average of prediction minus reference, the bias.
+* ``residual_corr`` and ``residual_corr_p_value`` test whether the error
+  depends on the true value. A significant correlation means systematic
+  structure, often shrinkage of the extremes toward the middle.
+* ``bp_p_value`` is the Breusch-Pagan test. A small value means the error
+  variance changes with the true value.
+* ``pct_success`` is the fraction of predictions that are not NaN.
+* ``coverage_prob`` is always null here, because the summary does not pass
+  uncertainties to this suite. Use the calibration outputs for coverage.
 
-Training-loss curve (tfs_summarize_losses.pdf)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The three blocks mean different things. ``theta.training`` compares
+predictions with the binding observations the model was fit to, so it should
+be close to perfect. A poor value points to a data-loading or configuration
+problem. ``theta.test`` compares predictions with the full reference grid,
+which on a simulated run covers every genotype at every concentration, nearly
+all of them never measured directly. That is the real test of the fit. A large
+gap between training and test error means the model fits the anchors but does
+not carry that accuracy to the library. ``growth.training`` compares
+predicted with observed ln(CFU) for every observed point.
 
-The loss curve shows the SVI ELBO at each recorded epoch.  A healthy run
-shows a smooth decrease that levels off to a plateau; a run that has not
-converged will still be declining at the final epoch.  If the loss spikes
-upward mid-run, the learning rate or the prior scales may need adjustment.
+Loss history
+~~~~~~~~~~~~
 
-Theta correlation (tfs_summarize_theta_corr.pdf)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+``tfs_summarize_losses.pdf`` plots each window's median loss against epoch.
+A healthy run falls and levels off. A run still falling at the end did not
+converge. ``*_convergence.csv`` from ``tfs-fit-model`` records why the run stopped; see
+:doc:`fitting`.
+
+Theta correlation
+~~~~~~~~~~~~~~~~~
 
 .. figure:: _static/saa_theta_corr.png
    :alt: Two-panel theta correlation plot
    :width: 100%
 
-   **Left panel** — training θ: the model's posterior-median prediction
-   vs the direct binding observations used as input.  Near-perfect agreement
-   is expected and is not by itself a measure of model quality.  **Right
-   panel** — test θ: predictions vs the full ground-truth θ grid from
-   simulation, covering all library genotypes at all concentrations.  Points
-   far from the diagonal indicate genotypes or concentrations where the
-   mutation-additivity assumption breaks down.
+   Left: training theta, the posterior median against the binding
+   observations used as input. Right: test theta, predictions against the
+   simulated ground truth for every library genotype at every concentration.
 
-The two panels serve different purposes:
+The training panel confirms that the model took in the binding data. The test
+panel is the generalization check. The model must predict theta for thousands
+of genotypes never measured directly, so scatter around the diagonal reflects
+how well growth alone pins each genotype down. Points far from the diagonal
+mark genotypes or concentrations the model cannot resolve. On a relative fit
+both axes are on the X scale.
 
-* **Training panel** confirms that the model correctly ingest the binding
-  data — any large deviation here points to a data-loading or configuration
-  error.
-* **Test panel** is the generalization diagnostic.  The model must predict θ
-  for thousands of genotypes that were never directly measured; it does so by
-  combining per-mutation effects inferred from the spiked controls and the
-  growth data.  Scatter around the diagonal reflects the irreducible noise in
-  that extrapolation.
-
-Per-genotype theta fits (tfs_summarize_{genotype}_theta_fits.pdf)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Per-genotype theta fits
+~~~~~~~~~~~~~~~~~~~~~~~
 
 .. figure:: _static/saa_wt_theta_fits.png
    :alt: Wild-type theta fit
    :width: 60%
 
-   Wild-type θ curve: posterior-median prediction (line) overlaid with the
-   binding observations (circles).  The x-axis is on a log scale.  A sigmoid
-   transition from high θ at low [IPTG] to low θ at high [IPTG] is the
-   expected shape for a repressor inactivated by its inducer.
+   Wild-type theta: the posterior median prediction as a line over the binding
+   observations as points, on a log concentration axis. A repressor released
+   by its inducer goes from high theta at low IPTG to low theta at high IPTG.
 
-One plot is produced per genotype that appears in both the binding data and
-the theta predictions.  For spiked genotypes with measured binding curves
-these plots confirm that the Hill model adequately describes the shape of the
-induction curve.
+One plot is drawn per genotype found in both the binding data and the theta
+predictions. These plots check that the theta model describes the shape of
+each measured induction curve.
 
-Growth trajectories (tfs_summarize_{genotype}_trajectory.pdf)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Growth trajectories
+~~~~~~~~~~~~~~~~~~~
 
-The trajectory plots show predicted ln(CFU) versus time for every growth
-condition, with the observed data points (two replicates) overlaid on the
-posterior-median prediction and its 95% credible interval.
+The trajectory plots show predicted ln(CFU) against time for every condition,
+with the posterior median, its 95% interval and the observed points. Each
+genotype gets one page with one panel per condition. A dashed vertical line
+marks the switch from pre-growth to selection.
 
-One page is produced per genotype; each page contains one panel per
-condition (library × selection × titrant concentration).  The dashed
-vertical line marks the transition from pre-growth to selection medium.
+Things to look for:
 
-Typical patterns to look for:
-
-* **Pre-growth panels** (``kanR-kan``, ``pheS-4CP`` without selection):
-  all genotypes should grow at similar rates; large deviations suggest a
-  problematic ``dk_geno`` estimate.
-* **Selection panels at extreme IPTG**: the two markers should respond in
-  opposite directions as θ moves from ~1 to ~0 with increasing [IPTG].
-* **Replicate agreement**: the two colored lines should be close together;
-  large replicate-to-replicate variation indicates high tube noise or a
+* In pre-growth, genotypes should grow at similar rates. A large deviation
+  suggests a poor ``dk_geno`` estimate.
+* At the extremes of IPTG the two markers should move in opposite directions
+  as theta goes from about 1 to about 0.
+* Replicates should agree. Large disagreement points to tube noise or a
   confounded sample.
 
-Growth correlation (tfs_summarize_growth_corr.pdf)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Growth correlation
+~~~~~~~~~~~~~~~~~~
 
 .. figure:: _static/saa_growth_corr.png
    :alt: Growth prediction correlation
    :width: 65%
 
-   Observed vs predicted ln(CFU) across all genotypes, conditions, and
-   time-points in the training data (54,180 points in the example run).
-   Points cluster tightly along the diagonal except at low ln(CFU) values
-   (~3–7), where sequencing noise dominates and the model's predictions
-   spread somewhat.
+   Observed against predicted ln(CFU) for every genotype, condition and time
+   point in the training data. Points spread more at low ln(CFU), where
+   sequencing noise dominates.
 
-A tight cluster along the diagonal confirms that the growth model
-accurately reproduces the data.  Systematic vertical or horizontal bands
-point to conditions or time-points where the model consistently over- or
-under-predicts; these are usually caused by incorrect ``{m, b}`` priors for
-those conditions or by tube-noise events in specific samples.
+A tight cluster along the diagonal means the growth model reproduces the data.
+Vertical or horizontal bands mark conditions or time points the model over- or
+under-predicts throughout. Those usually come from poor per-condition growth
+priors or from bad tubes.
 
 .. _calibration-plots:
 
-Calibration plots (tfs_summarize_*_calibration.pdf)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Calibration
+~~~~~~~~~~~
 
 .. figure:: _static/saa_growth_calibration.png
    :alt: Growth calibration plots
    :width: 100%
 
-   Growth-prediction calibration.  **Left** — PIT histogram; the dashed
-   red line shows the ideal uniform distribution.  **Right** — calibration
-   curve; the dashed black line is perfect calibration.
+   Growth-prediction calibration. Left: PIT histogram, with the dashed red
+   line at the ideal uniform. Right: calibration curve, with the dashed black
+   line at perfect calibration.
 
-Calibration plots assess whether the model's **posterior uncertainty
-intervals** are appropriately sized — neither too narrow (overconfident)
-nor too wide (underconfident).
+Calibration asks whether the posterior intervals have the right width. The PIT
+value of an observation is the fraction of its predictive distribution below
+the observed value, interpolated from the ``q<level>`` columns. For a
+calibrated model the PIT values are uniform on [0, 1] and the histogram is
+flat. A U shape, with spikes near 0 and 1, means many observations fall
+outside their intervals: the posterior is overconfident. A hump in the middle
+means the intervals are too wide.
 
-**PIT histogram** (left panel)
+The calibration curve plots, for each nominal coverage level, the fraction of
+observations inside that interval. Below the diagonal is overconfident and
+above is underconfident. ``_pit.csv`` holds the PIT values (``true_val``,
+``pit``) and ``_calibration_curve.csv`` the curve (``nominal``,
+``empirical``).
 
-The Probability Integral Transform (PIT) value for each observation is the
-fraction of the posterior predictive distribution that falls below the
-observed value.  For a perfectly calibrated model, PIT values are
-uniformly distributed on [0, 1] and the histogram should be flat.
+The example shows a U-shaped PIT and a curve below the diagonal: the growth
+intervals are somewhat too narrow, while the point predictions stay accurate.
+Variational guides tend to understate posterior variance, so check calibration
+before trusting interval widths. Theta calibration on a simulated run is the
+more important check, since theta is what downstream analysis uses.
 
-* **U-shaped histogram** (spikes near 0 and 1, flat middle): many
-  observations fall outside the predicted intervals → posterior is
-  **overconfident** (intervals too narrow).
-* **Hump-shaped histogram** (peak in the middle, low edges): observations
-  cluster inside the predicted intervals → posterior is **underconfident**
-  (intervals too wide).
-
-**Calibration curve** (right panel)
-
-For each nominal coverage level *α* (x-axis), the calibration curve shows
-the empirical fraction of observations that fall within the model's *α*
-credible interval (y-axis).
-
-* **Below the diagonal**: empirical coverage < nominal → **overconfident**.
-* **Above the diagonal**: empirical coverage > nominal → **underconfident**.
-* **On the diagonal**: perfectly calibrated.
-
-The example growth-calibration plot shows U-shaped PIT and a curve below
-the diagonal.  This slight overconfidence in growth predictions is typical
-of SVI: the mean-field variational approximation tends to underestimate
-posterior variance.  It does not indicate a model misspecification; the
-point predictions (correlation, R²) remain accurate.
-
-Similar calibration plots are produced for theta (training and test) and for
-each parameter group when ground-truth values are available.
-
-Parameter recovery (tfs_summarize_params_{name}.pdf)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Parameter recovery
+~~~~~~~~~~~~~~~~~~
 
 .. figure:: _static/saa_params_log_hill_K.png
    :alt: log_hill_K parameter recovery
    :width: 65%
 
-   Simulated vs inferred ``log_hill_K`` (log₁₀ of the Hill dissociation
-   constant) for all library genotypes.  Each point is one genotype; the
-   dashed line is perfect recovery.  Good agreement across the dynamic range
-   confirms that the model correctly identifies which genotypes have shifted
-   binding affinities.
+   Simulated against inferred ``log_hill_K``, the natural log of the Hill
+   constant, for every library genotype. Each point is one genotype and the
+   dashed line is perfect recovery.
 
-Parameter-recovery plots are produced only when the run directory contains
-a ``*_sim_parameters.csv`` file (i.e. when running on simulated data).  They
-compare the posterior-median inferred value for each parameter against the
-ground truth used during simulation.
+Parameter recovery runs only on simulated runs. Each ``*_params_*.csv`` table
+from ``tfs-extract-params`` is matched to its truth, written with a ``ref``
+column as ``tfs_summarize_params_{name}.csv``, plotted against ``q0.5`` and
+checked for calibration.
 
-One plot is produced per parameter group.  Versions are produced for:
+* Per-genotype tables such as ``log_hill_K``, ``hill_n``, ``theta_low``,
+  ``theta_high`` and ``dk_geno`` take their truth from
+  ``*_sim_parameters.csv``. Tables on a log or logit scale are matched by
+  transforming the truth.
+* ``hill_mut`` per-mutation tables (``d_`` prefix) are compared with the true
+  value minus wt's. Pair tables (``epi_`` prefix) are compared with the
+  additive epistasis of the true values.
+* ``params_growth_k``, ``params_growth_m`` and the other growth-model tables
+  are joined to ``*_sim_growth_parameters.csv`` on ``condition_rep``.
+* ``params_k_ref`` and ``params_lam`` are single values compared with
+  ``*_sim_k_ref.csv`` and ``*_sim_transformation_lam.csv``. They get a CSV
+  and a calibration check but no plot.
 
-* **Direct parameters** — per-genotype values (e.g. ``log_hill_K``,
-  ``theta_high``, ``theta_low``, ``hill_n``).
-* **Diff parameters** (``_d_`` infix) — per-mutation effect sizes relative to
-  wild-type (e.g. ``d_log_hill_K``, ``d_logit_low``).
-* **Epistasis parameters** (``_epi_`` infix) — pairwise epistatic deviations
-  from additivity for double-mutant genotypes.
+A table whose truth cannot be resolved is skipped. A truth column with no
+matching parameter table produces a warning.
 
-Each parameter group also has a companion calibration plot
-(``*_calibration.pdf``) assessing whether the inferred uncertainty correctly
-covers the true value.
+How to read recovery:
 
-Interpreting parameter recovery
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-* Tight scatter around the diagonal for all parameters → model recovers the
-  ground truth; the experimental design has sufficient signal.
-* Tight recovery for direct parameters but wide scatter for diff/epi
-  parameters → the model identifies which genotypes differ from wild-type
-  but cannot resolve the per-mutation contributions as precisely.
-* Systematic bias (all points shifted to one side of the diagonal) →
-  mis-specified priors, an incorrect model component, or a calibration issue
-  in the pre-fit step.
-* Good recovery for ``log_hill_K`` but poor for ``hill_n`` or ``theta_high``
-  → the mid-range of the induction curve is well-constrained but the shape
-  of the saturation plateaux is not (common when the growth data covers only
-  a restricted θ range for most genotypes).
+* Tight scatter around the diagonal means the design has the signal to
+  recover the parameter.
+* Good recovery of per-genotype values with wide scatter in ``d_`` or
+  ``epi_`` values means the model sees which genotypes differ but cannot split
+  the difference into per-mutation parts as precisely.
+* A shift of all points to one side points to a misspecified prior, a wrong
+  component or a problem in the pre-fit calibration.
+* Good ``log_hill_K`` with poor ``hill_n`` or ``theta_high`` means the
+  midpoint of the curve is well constrained and its plateaus are not. That is
+  common when most genotypes span only part of the theta range.

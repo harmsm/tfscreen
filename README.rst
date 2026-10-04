@@ -8,9 +8,9 @@ tfscreen
 
 `tfscreen` is a Python library for simulating and analyzing high-throughput screens of transcription
 factor (TF) function. It is designed to infer the energetic effects of mutations on conformations
-in the TF energy landscape — information that enables interpretable predictive models of how
-arbitrary combinations of mutations affect the TF response curve (operator binding versus allosteric
-effector).
+in the TF energy landscape. Those effects make it possible to build interpretable models that
+predict how any combination of mutations changes the TF response curve, operator binding against
+allosteric effector.
 
 The core strategy is to measure operator occupancy for thousands of double-mutant cycles across
 multiple allosteric effector concentrations. A single set of energetic effects must explain all
@@ -22,14 +22,15 @@ Occupancy is inferred from *E. coli* growth in a dual-marker selection scheme: *
 resistance, growth enhanced when expressed) and *pheS** (4-chloro-L-phenylalanine sensitivity,
 growth reduced when expressed) respond in opposite directions to a shift in occupancy. Libraries
 of TF variants are grown in different effector/selection combinations and variant frequencies are
-followed over time by direct sequencing. A hierarchical Bayesian model jointly fits the growth
-data and direct binding measurements, learning the relationship between occupancy and growth rate
-along the way.
+followed over time by direct sequencing. A hierarchical Bayesian model fits the read counts,
+alone or jointly with direct binding measurements, and learns the relationship between occupancy
+and growth rate along the way.
 
 Documentation
 -------------
 
-Full documentation is available at https://tfscreen.readthedocs.io.
+Full documentation is available at https://tfscreen.readthedocs.io. The pipeline page walks
+from sequencing reads to a posterior, and the CLI reference lists every ``tfs-*`` command and flag.
 
 Installation
 ------------
