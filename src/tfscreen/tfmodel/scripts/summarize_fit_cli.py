@@ -80,6 +80,31 @@ def _try_plot_theta_fits(binding_df, pred_df, out_prefix):
         warnings.warn(f"Could not generate theta fit plots: {exc}")
 
 
+# Number of randomly chosen extra genotypes whose trajectories are plotted
+# when the run has no binding genotypes to plot.
+_TRAJECTORY_RANDOM_GENOTYPES = 10
+
+
+def _default_trajectory_genotypes(orchestrator,
+                                  num_random=_TRAJECTORY_RANDOM_GENOTYPES,
+                                  seed=0):
+    """
+    Genotypes to plot when there is no binding data to choose them: wt, the
+    spiked genotypes, and a fixed-seed sample of ``num_random`` others (so
+    reruns plot the same ones). Without this a growth-only run would write a
+    trajectory CSV and PDF for every genotype in the library.
+    """
+    tm = orchestrator.growth_tm
+    all_genos = [str(g) for g in tm.tensor_dim_labels[tm.tensor_dim_names.index("genotype")]]
+    spiked = [str(g) for g in (orchestrator.settings.get("spiked_genotypes") or [])]
+    keep = [g for g in ["wt"] + spiked if g in all_genos]
+    keep = list(dict.fromkeys(keep))
+    rest = sorted(set(all_genos) - set(keep))
+    rng = np.random.default_rng(seed)
+    extra = rng.choice(rest, size=min(num_random, len(rest)), replace=False)
+    return keep + sorted(str(g) for g in extra)
+
+
 def _try_plot_trajectories(config_file, config_yaml, run_dir, out_prefix, binding_df):
     """Attempt to generate per-genotype growth trajectory plots.
 
@@ -103,7 +128,10 @@ def _try_plot_trajectories(config_file, config_yaml, run_dir, out_prefix, bindin
 
         orchestrator, _ = read_configuration(config_file)
 
-        genotypes = list(binding_df["genotype"].unique()) if binding_df is not None else None
+        if binding_df is not None:
+            genotypes = list(binding_df["genotype"].unique())
+        else:
+            genotypes = _default_trajectory_genotypes(orchestrator)
 
         pred_df = predict_geno_trajectory_df(
             orchestrator,
@@ -137,6 +165,79 @@ def _find_unique(run_dir, suffix, label, warn_missing=True):
             f"Multiple {label} files found in {run_dir}; using {os.path.basename(matches[0])}"
         )
     return matches[0]
+
+
+def _is_relative_config(config_yaml):
+    """True when the fit's theta component predicts X, not theta."""
+    from tfscreen.tfmodel.generative.registry import model_registry
+
+    components = (config_yaml or {}).get("components", {}) or {}
+    module = model_registry["theta"].get(components.get("theta"))
+    return getattr(module, "THETA_SCALE", "theta") == "X"
+
+
+def _x_gauge(config_yaml, ref_theta_file, run_dir):
+    """
+    What is needed to put simulated truth on a relative fit's X scale.
+
+    Returns None unless the fit's theta component is on the X scale
+    (``hill_relative``). Otherwise a dict with ``gauge`` (c_lo, c_hi), ``wt``
+    ({titrant_name: (theta_wt(c_lo), theta_wt(c_hi))}, from the reference
+    theta file) and ``activity`` (genotype -> simulated activity, from
+    ``*_sim_parameters.csv``; empty when absent, meaning activity 1). Warns
+    and returns None when the truth cannot be mapped.
+    """
+    if not _is_relative_config(config_yaml):
+        return None
+    components = config_yaml.get("components", {}) or {}
+
+    gauge = components.get("theta_gauge_conc")
+    if gauge is None or ref_theta_file is None:
+        warnings.warn("Relative (X-scale) fit without a recorded gauge or a "
+                      "reference theta file; its truth cannot be put on the "
+                      "X scale.")
+        return None
+
+    gt = pd.read_csv(ref_theta_file)
+    theta_col = "theta_obs" if "theta_obs" in gt.columns else "theta"
+    wt = gt[gt["genotype"].astype(str) == "wt"]
+    wt_theta = {}
+    for titrant, rows in wt.groupby("titrant_name"):
+        by_conc = rows.set_index("titrant_conc")[theta_col]
+        values = []
+        for c in gauge:
+            match = by_conc[np.isclose(by_conc.index.values.astype(float), c)]
+            if len(match) == 0:
+                warnings.warn(f"The reference theta file has no wt value at "
+                              f"the gauge concentration {c} ({titrant}); the "
+                              f"truth cannot be put on the X scale.")
+                return None
+            values.append(float(match.iloc[0]))
+        wt_theta[titrant] = tuple(values)
+
+    activity = {}
+    params_file = _find_unique(run_dir, "_sim_parameters.csv",
+                               "sim parameters", warn_missing=False)
+    if params_file is not None:
+        params = pd.read_csv(params_file)
+        if "activity" in params.columns:
+            activity = dict(zip(params["genotype"].astype(str),
+                                params["activity"].astype(float)))
+
+    return {"gauge": gauge, "wt": wt_theta, "activity": activity}
+
+
+def _x_scale_ref(gt_df, x_gauge):
+    """The ``ref`` column of a reference theta table, on the X scale."""
+    from tfscreen.tfmodel.generative.components.theta.hill_relative import (
+        x_scale_truth,
+    )
+    act = x_gauge["activity"]
+    lo = gt_df["titrant_name"].map(lambda t: x_gauge["wt"][t][0])
+    hi = gt_df["titrant_name"].map(lambda t: x_gauge["wt"][t][1])
+    a = gt_df["genotype"].astype(str).map(lambda g: act.get(g, 1.0))
+    return x_scale_truth(gt_df["ref"].values, lo.values, hi.values,
+                         a.values, act.get("wt", 1.0))
 
 
 def _is_tfmodel_config(path):
@@ -579,7 +680,33 @@ def _summarize_params(run_dir, out_prefix):
 _GROWTH_PARAM_NAMES = ["growth_k", "growth_m", "growth_n", "growth_min", "growth_max"]
 
 
-def _summarize_condition_growth_params(run_dir, out_prefix):
+def _x_scale_growth_ref(growth_ref_df, x_gauge):
+    """
+    ``growth_k``/``growth_m`` truth on a relative fit's X scale (roadmap C4:
+    k is wt's growth at c_hi, m its change between the gauge
+    concentrations). Needs a single titrant (the gauge is per titrant, k and
+    m per condition); otherwise warns and blanks both.
+    """
+    from tfscreen.tfmodel.generative.components.theta.hill_relative import (
+        x_scale_growth_truth,
+    )
+    out = growth_ref_df.copy()
+    if not {"growth_k", "growth_m"} <= set(out.columns):
+        return out
+    if len(x_gauge["wt"]) != 1:
+        warnings.warn("growth_k/growth_m truth is not mapped to the X scale "
+                      "with more than one titrant; left blank.")
+        out["growth_k"] = np.nan
+        out["growth_m"] = np.nan
+        return out
+    lo, hi = next(iter(x_gauge["wt"].values()))
+    out["growth_k"], out["growth_m"] = x_scale_growth_truth(
+        out["growth_k"].values, out["growth_m"].values, lo, hi,
+        x_gauge["activity"].get("wt", 1.0))
+    return out
+
+
+def _summarize_condition_growth_params(run_dir, out_prefix, x_gauge=None):
     """Annotate *_params_growth_{name}.csv with ground-truth ref from tfs_sim_growth_parameters.csv.
 
     Scans run_dir for a ``*_sim_growth_parameters.csv`` file (written by
@@ -592,7 +719,8 @@ def _summarize_condition_growth_params(run_dir, out_prefix):
     the configured growth model produces), the function looks for a
     matching ``*_params_{name}.csv`` file, warns if it is absent, and
     otherwise joins the two on ``condition_rep`` and writes the annotated
-    result to ``{out_prefix}_params_{name}.csv``.
+    result to ``{out_prefix}_params_{name}.csv``. For a relative (X-scale)
+    fit, ``x_gauge`` (from ``_x_gauge``) maps the k/m truth onto its scale.
     """
     sim_path = _find_unique(run_dir, "_sim_growth_parameters.csv",
                             "sim growth parameters", warn_missing=False)
@@ -611,6 +739,9 @@ def _summarize_condition_growth_params(run_dir, out_prefix):
             "column; skipping growth param summaries"
         )
         return
+
+    if x_gauge is not None:
+        growth_ref_df = _x_scale_growth_ref(growth_ref_df, x_gauge)
 
     present_param_names = [c for c in _GROWTH_PARAM_NAMES if c in growth_ref_df.columns]
 
@@ -754,7 +885,7 @@ def _summarize_transformation_lam(run_dir, out_prefix):
     _try_calibration(merged, "ref", out_name[:-4], "transformation_lam")
 
 
-def _summarize_growth_params(run_dir, out_prefix):
+def _summarize_growth_params(run_dir, out_prefix, x_gauge=None):
     """Annotate growth-model parameter files with simulated ground truth.
 
     Handles two independent, optionally-present ground-truth sources
@@ -770,7 +901,7 @@ def _summarize_growth_params(run_dir, out_prefix):
     base_growth_data); each is silently skipped when its sim-side file
     isn't found.
     """
-    _summarize_condition_growth_params(run_dir, out_prefix)
+    _summarize_condition_growth_params(run_dir, out_prefix, x_gauge)
     _summarize_k_ref(run_dir, out_prefix)
 
 
@@ -946,8 +1077,20 @@ def summarize_fit(run_dir,
                                       "ref theta", warn_missing=False)
     metadata["ref_theta_file"] = ref_theta_file
 
+    # A relative fit predicts X, not theta: its truth is mapped onto the X
+    # gauge (roadmap C8).
+    x_gauge = None
+    try:
+        x_gauge = _x_gauge(config_yaml, ref_theta_file, run_dir)
+    except Exception as exc:
+        warnings.warn(f"Could not build the X-scale truth: {exc}")
+    relative = _is_relative_config(config_yaml)
+    metadata["theta_scale"] = "X" if relative else "theta"
+
     # --- Theta test statistics ---
-    if ref_theta_file is not None and pred_df is not None:
+    # (a relative fit whose truth could not be mapped to X is not compared)
+    if (ref_theta_file is not None and pred_df is not None
+            and (x_gauge is not None or not relative)):
         try:
             gt_df = pd.read_csv(ref_theta_file)
             join_cols = ["genotype", "titrant_name", "titrant_conc"]
@@ -963,6 +1106,8 @@ def summarize_fit(run_dir,
                 theta_col = None
             if theta_col is not None:
                 gt_df = gt_df.rename(columns={theta_col: "ref"})
+                if x_gauge is not None:
+                    gt_df["ref"] = _x_scale_ref(gt_df, x_gauge)
             test_merged = pred_df.merge(
                 gt_df[join_cols + ["ref"]],
                 on=join_cols,
@@ -1133,7 +1278,7 @@ def summarize_fit(run_dir,
 
     # --- Sim-parameter correlation CSVs ---
     _summarize_params(run_dir, out_prefix)
-    _summarize_growth_params(run_dir, out_prefix)
+    _summarize_growth_params(run_dir, out_prefix, x_gauge)
     _summarize_transformation_lam(run_dir, out_prefix)
 
     return results

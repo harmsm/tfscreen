@@ -121,7 +121,7 @@ def check_genotypes_in_library(library_genotypes, data_df, label,
     )
 
 
-def configure_model(binding_df,
+def configure_model(binding_df=None,
                     growth_df=None,
                     presplit_df=None,
                     base_growth_df=None,
@@ -141,6 +141,9 @@ def configure_model(binding_df,
                     theta_growth_noise_model="zero",
                     theta_binding_noise_model="zero",
                     growth_noise_model="zero",
+                    sample_offset_model="level",
+                    growth_likelihood="counts",
+                    theta_gauge_conc=None,
                     library_config=None,
                     growth_shares_replicates=False,
                     epistasis=False,
@@ -158,15 +161,19 @@ def configure_model(binding_df,
     for a growth model, {out_prefix}_library.csv (the per-genotype library
     composition resolved from library_config).
 
-    When only binding_df is provided (no growth_df), a binding-only model is
-    configured that infers theta directly from observed binding measurements
-    rather than from bacterial growth data.
+    At least one of growth_df and binding_df is required. With both, the
+    joint growth + binding model is configured. With only binding_df, a
+    binding-only model infers theta directly from the binding measurements.
+    With only growth_df, a growth-only model infers theta from growth alone
+    (no binding likelihood, so theta_binding_noise_model must stay 'zero'
+    and binding_weight unset; tfs-prefit-calibration needs binding and
+    refuses such a config).
 
     Parameters
     ----------
-    binding_df : str
+    binding_df : str, optional
         Path to the binding data CSV file (theta vs. titrant measurements per
-        genotype). Required.
+        genotype). When omitted, a growth-only model is configured.
     growth_df : str, optional
         Path to the growth data CSV file (ln_cfu measurements per genotype,
         replicate, and timepoint). When omitted, a binding-only model is
@@ -199,7 +206,9 @@ def configure_model(binding_df,
     ln_cfu0_model : str, optional
         Model to use to describe ln_cfu0, the initial populations of genotypes
         in each replicate. Allowed values are 'hierarchical' (default) or
-        'hierarchical_factored'.
+        'hierarchical_factored'. The latter shares each genotype's baseline
+        across pre-conditions and is refused when they come from different
+        libraries (kanR and pheS are grown up separately).
     dk_geno_model : str, optional
         Model to use to describe dk_geno, the pleiotropic effect of a genotype
         on growth, independent of occupancy. Allowed values are
@@ -220,6 +229,12 @@ def configure_model(binding_df,
         'thermo.O2_C4_K3_U0_a.PddG', 'thermo.O2_C12_K5_U0_a.PK',
         'thermo.O2_C12_K5_U0_a.PnnC', 'thermo.O2_C12_K5_U0_a.PddG', and
         their O2_C4_K3_U1_a / O2_C12_K5_U1_a unfolded equivalents).
+        'hill_relative' fits growth alone on a wt-relative scale X instead
+        of theta (wt's X is 1 at the low and 0 at the high gauge
+        concentration, theta_gauge_conc). It takes no binding_df, and
+        requires activity 'fixed', theta_rescale 'passthrough', linear
+        condition growth, theta_growth_noise 'zero' and, with the
+        'mixture' transformation, congression_theta_rule 'max'.
     transformation_model : str, optional
         Model for congression. Allowed values are 'single' (default; one
         plasmid per cell) or 'mixture' (clean and congressed cells mixed at
@@ -261,6 +276,28 @@ def configure_model(binding_df,
         'normal_kt' learns a global sigma_k that inflates the observation scale
         in quadrature with ln_cfu_std, capturing biological variability in
         growth rates not explained by theta or dk_geno.
+    sample_offset_model : str, optional
+        Per-tube offset shared by every genotype in a tube. 'level'
+        (default) adds one ln_cfu offset per tube with a learned, constant
+        SD (the tube's composition offset and any error in its supplied
+        total, including the tube's own growth noise); 'zero' adds none;
+        'normal' adds a per-tube growth-rate offset scaled by elapsed time.
+        With growth_likelihood 'counts', an error in a tube's supplied total
+        otherwise moves every genotype in it.
+    growth_likelihood : str, optional
+        How growth data are observed: 'counts' (default; negative binomial
+        on the read counts, with a learned dispersion whose variance has a
+        part proportional to the mean and a quadratic part; no pseudocount)
+        or 'lncfu' (Student-t on ln_cfu). 'counts' needs a 'counts' column,
+        each tube's total reads ('sample_reads', or 'adjusted_counts' and
+        'frequency' to derive it) and total cells ('sample_ln_cfu', or
+        'sample_cfu' with its uncertainty), and growth_noise_model 'zero'.
+        It cut theta RMSE by 35-60% against 'lncfu' on simulations
+        (planning/studies/count-likelihood/).
+    theta_gauge_conc : list of float, optional
+        ``c_lo c_hi``: the titrant concentrations at which theta_model
+        'hill_relative' pins wt's X to 1 and 0. Default: the lowest and
+        highest concentration in growth_df. Refused by other theta models.
     library_config : str, optional
         Path to the library YAML describing the screened library -- the same
         file handed to ``tfs-process-fastq``.  Required whenever ``growth_df``
@@ -319,8 +356,9 @@ def configure_model(binding_df,
     -------
     None
     """
-    if binding_df is None:
-        raise ValueError("binding_df must be provided")
+    if binding_df is None and growth_df is None:
+        raise ValueError("At least one of binding_df and growth_df must be "
+                         "provided.")
 
     binding_only = growth_df is None
     if not binding_only:
@@ -392,6 +430,9 @@ def configure_model(binding_df,
                      theta_growth_noise=theta_growth_noise_model,
                      theta_binding_noise=theta_binding_noise_model,
                      growth_noise=growth_noise_model,
+                     sample_offset=sample_offset_model,
+                     growth_likelihood=growth_likelihood,
+                     theta_gauge_conc=theta_gauge_conc,
                      library_file=library_file,
                      growth_shares_replicates=growth_shares_replicates,
                      epistasis=epistasis,
@@ -407,7 +448,9 @@ def configure_model(binding_df,
     write_configuration(orchestrator=orchestrator,
                         out_prefix=out_prefix,
                         growth_df_path=growth_path,
-                        binding_df_path=binding_df if isinstance(binding_df, str) else "binding.csv",
+                        binding_df_path=(None if binding_df is None else
+                                         binding_df if isinstance(binding_df, str)
+                                         else "binding.csv"),
                         presplit_df_path=presplit_path,
                         base_growth_df_path=base_growth_path,
                         library_meta=library_meta)
@@ -430,8 +473,10 @@ def main():
                                               "thermo_data":str,
                                               "batch_size":int,
                                               "binding_weight":float,
-                                              "transformation_lambda":float},
-                            manual_arg_nargs={"transformation_lambda":2})
+                                              "transformation_lambda":float,
+                                              "theta_gauge_conc":float},
+                            manual_arg_nargs={"transformation_lambda":2,
+                                              "theta_gauge_conc":2})
 
 if __name__ == "__main__":
     main()

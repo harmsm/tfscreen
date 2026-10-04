@@ -1,0 +1,77 @@
+# ---------------------------------------------------------------------------
+# SVI overconfidence: repeated simulations on a small library
+# (planning/studies/svi-overconfidence/README.md)
+#
+#   tfs-setup-sim-grid grid.yaml --out_prefix svi_overconfidence
+#   for d in svi_overconfidence/run_*/; do (cd "$d" && sbatch run.srun); done
+#
+# Every SVI arm of the relative-fit grid undercovered, worst for the
+# best-measured genotypes, with growth_m 10-300 of its own SDs off truth.
+# Is that the variational approximation or the model? NUTS gave no reference
+# here (tree-depth ceiling, R-hat 3.5; README), so the reference is
+# calibration against truth over many simulations: a small library
+# (singles and spikes, ~50 genotypes, ~600 latents) fit three ways on the
+# same data, in the joint and the relative fit, with a Laplace posterior at
+# a converged MAP as the full-covariance comparison. Each SVI run also
+# reports how far its guide is from the posterior (guide_diagnostics.py).
+#
+# Poisson noise only (no founder sampling): the overconfidence was worst
+# there, and it keeps the question about the fit.
+#
+# 10 seeds x 2 fits x 3 inference arms = 60 runs.
+# ---------------------------------------------------------------------------
+
+base_config: simulate_config.yaml
+
+run_name: "seed{{ seed }}__{{ fit }}__{{ inference }}"
+
+output_file: run.srun
+
+
+simulate:
+
+  - name: noise
+    variants:
+      - founder_sampling: false
+
+  - name: lam
+    variants:
+      - transformation_poisson_lambda: 0.0
+
+  - name: dk
+    variants:
+      - dk_geno_hyper_loc: -3.5
+        dk_geno_hyper_scale: 0.5
+        dk_geno_hyper_shift: 0.02
+
+  - name: seed
+    variants:
+      - seed: 1
+      - seed: 2
+      - seed: 3
+      - seed: 4
+      - seed: 5
+      - seed: 6
+      - seed: 7
+      - seed: 8
+      - seed: 9
+      - seed: 10
+
+
+template:
+
+  - name: fit
+    variants:
+      - fit: joint
+      - fit: relative
+
+  - name: inference
+    variants:
+      - inference: component
+      - inference: low_rank
+      - inference: map
+
+  # copied into the grid's inputs/ and named from each run
+  - name: scripts
+    variants:
+      - diagnostics_script: guide_diagnostics.py

@@ -31,6 +31,325 @@ fall into two kinds:
 
 ### Added
 
+- **`tfs-sample-posterior --laplace_blocks`** (`RunInference.get_laplace_posteriors(block_genotypes=True)`,
+  `block_laplace_factors`): a per-genotype Laplace at a MAP. The shared
+  parameters (growth k and m, hyperparameters, tube offsets) stay at the
+  MAP. Given them, each genotype's parameters couple to no other genotype,
+  so the Hessian splits into one small block per genotype (9-11
+  parameters). B Hessian-vector products per genotype chunk give every
+  block at once (`--genotype_chunk_size`), so it runs on a full library,
+  where the full Hessian (about 2M parameters) cannot. It checks that the
+  blocks really separate, and refuses a model where they do not. On the
+  relative-fit run-4 MAPs, X 95% coverage was 0.93 (Poisson) and 0.84
+  (realistic), against 0.98 / 0.94 for the full Laplace and 0.81 / 0.76 for
+  the low-rank guide. It leaves out the k/m uncertainty (coverage 0).
+
+- **`tfs-sample-posterior --laplace_blocks --laplace_shared`**
+  (`get_laplace_posteriors(block_shared=True)`, `arrowhead_laplace_factors`):
+  the block Laplace with the shared parameters' uncertainty. The Hessian is
+  an arrowhead: genotype blocks, each genotype's coupling to the shared
+  parameters, and the shared block. One more Hessian-vector product per
+  shared parameter per chunk gives all of it. The shared parameters are drawn
+  from their marginal (the Schur complement) and each genotype from its
+  conditional given them. That is the full Laplace, and it matched the
+  dense inverse Hessian exactly on a toy model, chunked or not. Two
+  departures, both for MAPs short of an optimum: a floored direction of a
+  genotype block carries no coupling, and a negative direction of the Schur
+  complement is held at the MAP and named in the log. On the relative-fit
+  run-4 MAPs, X 95% coverage was 0.97 (Poisson) and 0.94 (realistic), with
+  0.95-0.98 above 1000 reads. k/m coverage was 0.92 / 1.0 and 0.50 / 0.42,
+  close to the full Laplace's 0.92 / 0.92 and 0.58 / 0.50.
+
+- **`theta: hill_relative` can hold every population SD.**
+  `theta_X_low_hyper_scale_fixed`, `theta_X_delta_hyper_scale_fixed` and
+  `theta_log_hill_K_hyper_scale_fixed` join the log(n) field below (above
+  0: held, a deterministic site with no guide parameters). On the dev-data
+  growth-only MAP the learned SDs ran to 3.6, 4.3 and 11, against about
+  0.45, 0.45 and 0.7 among genotypes with more than 1e4 reads, so the MAP
+  shrank nothing and its X at 100 reads or fewer was noise.
+
+### Fixed
+
+- **The Laplace path no longer applies the mini-batch likelihood scale at
+  full batch.** `scale_vector` is built for the configured batch size, so a
+  model configured with `batch_size` below the library weighted every
+  growth likelihood by `num_genotype / batch_size` (53x on the dev-data
+  screen at 4096) even when the Hessian was taken over the whole library.
+  `RunInference._unscaled_batch` removes it. The full Laplace had only run
+  on simulations with `batch_size` at or above the library, so no result
+  was affected.
+
+- **`theta: hill_geno` and `hill_relative` take
+  `theta_log_hill_n_hyper_scale_fixed`.** Above 0, the population SD of
+  log(hill_n) is held at that value (a deterministic site, no guide
+  parameters) instead of learned. Set `theta.theta_log_hill_n_hyper_scale_fixed`
+  in the priors CSV; default 0 keeps it learned. On the dev-data screen
+  the learned SD ran to about 19 in every MAP fit, joint and growth-only.
+  n spread from 0.01 to 13, and in 42% of genotypes the curve changed more
+  between 0 and the lowest nonzero IPTG (0.1 µM) than across the whole
+  measured range. The data show no such step: for the binding genotypes
+  the fit predicted a 0.4-0.55 ln-unit gain relative to wt in kanR+kan,
+  and the counts show 0.00-0.08.
+
+- **`condition_growth: linear` takes per-condition `m_scale_plus` and
+  `m_scale_minus`.** Like `k_scale`, each may now be a per-condition array:
+  indexed rows in the priors CSV, joined to the conditions by
+  `condition_rep`. Each condition takes the entry its `+`/`-` flag names.
+  Before this, every selection condition shared one m prior width. That
+  could not express a tight prior from monoculture data for kan alongside
+  a loose one for pheS, which the growth-only dev-data fits need.
+  Scalars behave as before.
+
+- **`tfs-fit-model --init_from <params.npz>`** starts a fit at a MAP
+  point, the `{site}_auto_loc` arrays of an earlier fit's
+  `*_params.npz`, wherever they name a site of this model. They take
+  precedence over the guesses, and other sites start at their guesses. So
+  a model can be seeded from a simpler one, for example a
+  `sample_offset: level` fit from a `zero` fit. The option is refused with
+  `checkpoint_file`. Before this, guesses were the only way in, and
+  `read_configuration` silently drops guess rows for names outside the
+  configured guesses, including sites such as `condition_growth_k` and the
+  tube offsets. On the dev-data screen the level-offset MAP had fallen into
+  a mode with offsets of ±2.8. Holding the no-offset MAP's point and
+  fitting only small per-tube offsets beat it by 1.2e5 nats of count
+  likelihood (`planning/dev-data/real_fit`, gitignored).
+
+- **`sample_offset: level` takes `sigma_fixed`.** Above 0, the SD of the
+  per-tube offsets is held at that value (a deterministic site, no guide
+  parameters) instead of learned; set `growth.sample_offset.sigma_fixed` in
+  the priors CSV. On the first real-data fit the learned SD went from its
+  0.2 prior scale to 0.53, and the offsets (-2.7 to +3.0, smooth in IPTG
+  and time) carried the population's growth in place of k and m. Default 0
+  keeps the learned SD.
+
+- **`tfs-sample-posterior --map_point`** writes a MAP checkpoint's point
+  itself (one sample, `RunInference.get_map_posteriors`) instead of a
+  Laplace posterior, whose full Hessian is out of reach on a full library
+  (about 2 million parameters for the dev-data screen).
+- **`tfs-sample-posterior --skip_growth_observations`** leaves the
+  per-observation growth sites (`growth_pred`, `growth_obs`) out of the
+  posterior file. They were 94% of its size on a 300-genotype subset and
+  would be about 100 GB per site at 500 draws on the full library;
+  `tfs-predict-growth` recomputes growth from the parameter draws.
+
+- **Compressed tables load by their inner extension.** `read_dataframe`
+  reads `.csv.gz`, `.tsv.bz2` and the like as CSV or TSV, with pandas
+  inferring the compression. They used to fall through to the slow
+  delimiter-sniffing reader. A full-library growth table from
+  `tfs-process-counts` is 5 GB as CSV and 0.7 GB gzipped.
+
+- **`linear` growth takes `k_pinned`.** Like `m_pinned`, it holds the
+  per-condition baseline k at `k_loc` (a deterministic site with no guide
+  parameters), set by `condition_growth.k_pinned` in the priors CSV. It is
+  for conditional fits at a fixed draw of k and m, such as the two-stage fit
+  in `planning/studies/svi-overconfidence/`. It is not meant for production
+  fits.
+
+### Fixed
+
+- **`ln_cfu0` extraction labeled rows with other genotypes' values.** The
+  model holds `ln_cfu0` as a (replicate, condition_pre, genotype) array, but
+  the extract spec indexed its flattened values with `map_ln_cfu0`, which
+  numbers only the combinations present in the data. Wherever a genotype
+  was missing from a replicate or library, every later row took another
+  cell's value: on an SVI-overconfidence run (2 of 200 cells missing) three
+  of four blocks correlated 0.09-0.25 with the presplit data they were fit
+  to, against 0.999 once labeled correctly. Fits were unaffected; the
+  `*_ln_cfu0.csv` outputs of `tfs-extract-params`, and anything downstream
+  of them, were wrong. Both `ln_cfu0` components now key rows by array
+  position (`hierarchical.ln_cfu0_extract_spec`).
+
+- **Simulated binding observations are no longer clipped to [0, 1].**
+  `generate_binding_df` and `generate_library_binding_df` clipped noisy
+  `theta_obs` to [0, 1], while the fit's binding likelihood is an unclipped
+  Normal, so the clipped anchors near 0 and 1 were biased (10-17% of the
+  observations in the SVI-overconfidence grids). `binding_data.clip_theta_obs:
+  true` reproduces the old simulations; the random draws are unchanged, so
+  only the formerly clipped values differ.
+
+- **SVI hyperparameter scales no longer start frozen.** The component
+  guide's hyperparameter scales are constrained `greater_than(1e-4)`, and
+  the guide start capped every scale at `guide_init_scale`, also 1e-4. They
+  started on the bound, `-inf` in unconstrained space, and never moved: in
+  every component-guide SVI fit since 2026-09-27 each hyperparameter's guide
+  SD stayed at 1e-4. The convergence monitor reported them as an infinite
+  drift, so conditional fits never stopped before their cap.
+  `initialization.component_guide_init` now starts a bounded scale at least
+  `init_scale` above its bound (`component_guide_map` records the bound).
+  Study grids fit with the component guide since then (count-likelihood v4,
+  relative-fit v3, SVI-overconfidence v2 and two-stage) carry the bug.
+- **Laplace posteriors no longer blow up along a MAP's negative-curvature
+  directions.** `get_laplace_posteriors` floored Hessian eigenvalues at
+  1e-3, a variance of 1000 in unconstrained units. A MAP stopped short of
+  its optimum always has a few negative eigenvalues, and where they touched
+  the growth slopes m the Laplace draws of m spread 50x wider than their
+  posterior. Eigenvalues are now floored at the prior's curvature along
+  each eigenvector (`laplace_eigenvalue_floor`, prior SDs from
+  `site_unconstrained_prior_sds` at the MAP), so no direction is wider than
+  the prior. On seed 8 of the two-stage grid the SD of m fell from 0.018 to
+  0.0005.
+
+- **Breaking: `ln_cfu0: hierarchical_factored` is refused across libraries.**
+  It shares each genotype's starting abundance across every pre-condition of
+  a replicate. kanR and pheS are transformed and grown up separately, so
+  that is wrong for them. On simulations the fit pushed the per-genotype
+  difference, SD 0.17-0.29 ln units, into a confident per-genotype theta
+  error: 95% coverage above 1000 reads was 0.09, against 0.80 with
+  `hierarchical`. The orchestrator now refuses the factored model when a
+  replicate's pre-conditions come from different libraries. The study grids
+  and `examples/simulate-and-analyze/run.sh` now use `hierarchical`, and
+  their earlier calibration numbers carry the mismatch.
+
+- **Breaking: `ln_cfu0: hierarchical_factored` has a non-centered tube
+  offset.** It used to draw `tube_offset ~ Normal(0, tube_scale)` directly.
+  The 4 offsets (replicate x pre-condition) trade against the genotype
+  baselines, so they could sit at 0. The joint density then grew without
+  bound as `tube_scale` went to 0, so no MAP existed: the pre-MAP put the
+  scale at 5e-5 against a prior median of 0.34. The component now samples
+  `tube_offset_z ~ N(0, 1)` and keeps `tube_offset = tube_scale *
+  tube_offset_z` as a deterministic site. The guide's parameters are now
+  `ln_cfu0_tube_offset_z_locs/scales`, so checkpoints and guesses files
+  written before do not load. Reconfigure and refit.
+- **A runaway loss is no longer called converged.** The convergence monitor
+  records the run's starting loss. A window whose loss falls below -1000
+  times its magnitude now ends the run as `diverged`, not converged
+  (`convergence.RUNAWAY_LOSS_FACTOR`). A full-covariance guide had run to a
+  loss of -8e23 and was reported as converged.
+
+- **NUTS starts where it should.** `RunInference.run_nuts` passed
+  `initialize_model`'s `ParamInfo` tuple to `init_to_value`. No site
+  matched it, so every chain started at a uniform draw in [-2, 2] on the
+  unconstrained scale. `tfs-fit-model --analysis_method nuts` now starts
+  the chains at the MAP warm-up's point (`--pre_map_num_epoch`, as SVI
+  does), falling back to prior medians. It also passes the full data set
+  through `get_batch`, prints the worst split R-hat and least n_eff, and
+  takes `--nuts_dense_mass`.
+
+- **SVI no longer throws away the pre-MAP solution.** The component guide
+  started with every scale at 0.1 and a multiplicative 0.1 jitter on every
+  starting value. The scale is in each parameter's own units, so for growth
+  rates (per minute) and ln_cfu levels it was enormous. SVI started about
+  1000x above the pre-MAP's loss, count and `lncfu` fits alike. It then
+  re-descended for tens of thousands of epochs into other optima: a
+  sign-flipped mirror mode, a halved slope `m`, or the whole library
+  shifted against wt. `tfs-fit-model --guide_init_scale` now defaults to
+  1e-4 (`DEFAULT_GUIDE_INIT_SCALE`). It also sets the autoguides'
+  `init_scale` for a fresh fit, instead of numpyro's 0.1. SVI widens the
+  scales itself. `--init_param_jitter` and
+  `RunInference.run_optimization(init_param_jitter=...)` now default to 0.
+  SVI calibration results from before this fix (the count-likelihood and
+  relative-fit grids) need a rerun.
+
+### Added
+
+- **`tfs-calibrate-od600` (roadmap step 3).** Fits an OD600-to-CFU/mL
+  calibration from a lab's own two experiments: repeated OD600 readings of
+  a dilution series (reading noise and detection threshold) and plate
+  counts of cultures whose OD600 was read (CFU/mL from colonies, dilution
+  and plated volume, with counting and pipetting error). Writes the
+  polynomial's coefficients with their full covariance (the curve's error
+  is shared by every tube, so callers get it apart from the reading noise),
+  the reading noise, the detection threshold and the calibrated range, plus
+  a diagnostic PDF and CSVs. The method, file format and apply/invert
+  functions are in `tfscreen.process_raw.od600`; documented CSV inputs;
+  synthetic example in `examples/od600/`. It reproduces the lab
+  notebook's coefficients to 2e-9 when fed the notebook's CFU/mL, but the
+  notebook did not divide by the plated volume, so its constants (and the
+  CFU totals made with them) are 10x low.
+
+### Changed
+
+- **Breaking: the simulator's `od600.calibration` is a
+  `tfs-calibrate-od600` file.** The lab notebook's format (`A_CFU`,
+  `OD600_PCT_STD`, ...) is refused with a pointer to the new tool.
+  `examples/simulate/od600_calibration.yaml` is replaced by
+  `examples/od600/od600_calibration.yaml`, made by the tool from synthetic
+  data at a realistic scale (8e8 CFU/mL per OD600 unit, not the old
+  example's 8e7). `od600_in_range` now means at or below the top of the
+  calibrated OD600 range.
+
+- **Breaking: `tfs-configure-model` defaults to the count likelihood.**
+  `--growth_likelihood` now defaults to `counts` and
+  `--sample_offset_model` to `level` (was `lncfu` and `zero`). On the
+  count-likelihood simulation grid (`planning/studies/count-likelihood/`)
+  counts cut theta RMSE by 35-60% and dk_geno RMSE by 40-85% at about the
+  same coverage. The growth file then needs read counts, each tube's total
+  reads and its total cells (see `--growth_likelihood`), and
+  `--growth_noise_model` must stay `zero`: a call that passed
+  `--growth_noise_model normal_kt` without a likelihood now fails, and
+  should add `--growth_likelihood lncfu --sample_offset_model zero` to keep
+  its old model. `ModelOrchestrator` keeps `lncfu`/`zero` as its own
+  defaults, so a config written before the count likelihood existed (no
+  `growth_likelihood` key) still reads back as the model it was.
+  `tfs-build-empirical` inherits the new defaults.
+
+### Added
+
+- **Relative-X fit (`theta: hill_relative`; roadmap step 5).** A theta
+  component that fits growth alone on a wt-relative scale X instead of
+  claiming absolute occupancy (growth fixes it only up to an affine map):
+  hill_geno's per-genotype curve with real-valued baselines, gauged so that
+  wt's X is 1 at the low and 0 at the high gauge concentration
+  (`theta_gauge_conc`, an orchestrator setting and `tfs-configure-model
+  --theta_gauge_conc c_lo c_hi`; default the lowest and highest measured
+  concentration, recorded in the config). wt keeps its K and n free. It
+  refuses binding data, a learned activity, `logit` rescaling, non-linear
+  condition growth, theta noise and, under the congression mixture, any
+  theta rule but `max`. Outputs are labelled: deterministic sites
+  `theta_X_low`/`theta_X_high`, a `theta_scale = X` column from
+  `tfs-predict-theta`; `tfs-predict-epistasis` and `tfs-extract-epistasis`
+  allow only `--scale add` on X, and the former writes no `in_regime`.
+  `tfs-summarize-fit` puts simulated theta and `growth_k`/`growth_m` truth
+  on the X gauge, and `tfs-summarize-calibration` gives such rows
+  `theta_regime = X`. Prediction on a genotype subset keeps wt (the gauge
+  needs it) and drops it from the output. Validation grid:
+  `planning/studies/relative-fit/`.
+- **Count likelihood (`growth_likelihood: counts`; roadmap step 7).** Growth
+  can be observed as read counts instead of `ln_cfu`: each genotype's reads
+  in a tube are negative binomial with mean
+  `depth * exp(ln_cfu_pred - ln(tube total))` and variance
+  `mu (1 + phi) + mu^2 inv_r` (both learned; study 0b found real counts 5-18x
+  Poisson), with no pseudocount (`generative/observe/growth_counts.py`). The
+  log-pmf is computed by Loader's algorithm (`CountNegativeBinomial`),
+  accurate to ~1e-4 nats in float32 where numpyro's negative binomial loses
+  several nats per observation at 1e4-1e6 reads. `tfs-configure-model
+  --growth_likelihood counts` (requires `growth_noise_model zero`); the
+  growth file needs `counts`, each tube's total reads (`sample_reads`, or
+  `adjusted_counts`/`frequency` to derive it) and total cells
+  (`sample_ln_cfu` or `sample_cfu`). Presplit data are still observed as
+  `ln_cfu`.
+- **`sample_offset: level`.** One ln_cfu offset per tube, shared by every
+  genotype in it, with a learned constant SD (the tube's composition offset
+  and any error in its supplied total), in place of `normal`'s
+  time-scaled growth-rate offset. `tfs-configure-model` now exposes
+  `--sample_offset_model` (it was always `zero` before).
+- **`counts_to_lncfu` writes `sample_reads`**, each tube's total reads
+  (`__unknown__` included, no pseudocounts).
+- **Simulator sampling noise and OD600 (roadmap step 4).** Optional
+  simulate-config keys, all off by default so existing configs simulate
+  exactly as before: `founder_sampling` (Poisson founders per clone per
+  tube), `demographic_growth` (birth-death noise given the founders),
+  `shared_transformation` (one library assembly and transformation for all
+  replicates, as from one glycerol stock), `pcr_template_molecules` and
+  `pcr_amplification_cv` (a template bottleneck with PCR jackpotting before
+  sequencing). An `od600` block gives every tube one simulated OD600 reading
+  through an OD600-to-CFU calibration (`simulate/od600.py`), optionally
+  feeds the pipeline the OD600-derived total instead of the truth, adds
+  OD-only replicates, and writes `tfs_sim_od600.csv`.
+  `selection_experiment` gains `shared_state` and `sequence`.
+  `examples/simulate/od600_calibration.yaml` is a synthetic calibration for
+  examples; `od600.calibration` is a `tfs-setup-sim-grid` path key.
+- **Growth-only models (no binding data).** `ModelOrchestrator` accepts
+  `binding_df=None` alongside growth data, and `tfs-configure-model` takes
+  `--binding_df` as an optional flag (at least one of `--binding_df` and
+  `--growth_df` is required). A growth-only model has no binding tensors,
+  no binding likelihood and no `theta_binding_noise` component; it refuses
+  a `binding_weight` or a non-`zero` binding noise model, and
+  `tfs-prefit-calibration` refuses a growth-only config.
+  `tfs-summarize-fit` then plots trajectories for wt, the spiked genotypes
+  and ten other genotypes chosen with a fixed seed, instead of every
+  genotype. Joint growth + binding models are unchanged (identical log
+  density at a fixed seed). Step 1 of `planning/analysis-roadmap.md`.
 - **Soft-min congression dk rules (`congression_dk_rule` `softmin`, `min`).**
   A congressed cell's dk_geno can now follow the whole soft-min family
   `dk_cell = -(1/alpha) log sum_g x_g exp(-alpha dk_g)`, not only its
@@ -137,6 +456,11 @@ fall into two kinds:
 
 ### Changed
 
+- **`tfs-configure-model`: `binding_df` is now the `--binding_df` flag**,
+  no longer a positional argument (breaking for command-line callers;
+  `configure_model(binding_path, ...)` from Python still works).
+  `examples/simulate-and-analyze/run.sh`, the congression-calibration
+  study's `run.srun` and the docs are updated.
 - **Breaking: a congressed cell's theta now follows a partition function
   (`congression_theta_rule: homodimer`), and TF activity defaults to 1.**
   The congression mixture (`transformation: mixture`) and the simulator
@@ -347,6 +671,57 @@ fall into two kinds:
 
 ### Fixed
 
+- **Step-size cuts during a slow descent.** The convergence monitor cut the
+  step size after `patience` windows each without a significant loss trend,
+  even when those windows together were clearly still falling: on the
+  count-likelihood v2 grid, 20 of 23 runs made their first cut mid-descent
+  (pooled t = 4-14), and one (run 0012) was cut into a wrong optimum at
+  twice its twin's ELBO. Before a cut or a stop the monitor now fits one
+  line through all the stalled windows (`convergence.pooled_loss_trend`) and
+  starts the count over if that is a significant descent. Fits spend longer
+  at the large step size; more may reach `max_num_epochs`. New
+  `pooled_loss_t` column in `{out_prefix}_convergence.csv`; checkpoints
+  carry the stalled windows.
+- **NaN from horseshoe priors far in the tail.** The slab-regularized
+  horseshoe scale `sqrt(c2 lam^2 / (c2 + tau^2 lam^2))` and numpyro's
+  HalfCauchy log density both square the local scale; a draw near 1e20
+  overflowed float32 and turned the fit to NaN (hill_mut epistasis for
+  low-read doubles, whose guide local scales widened to ~11 in log space;
+  count-likelihood v2 run 0007). New `components/_horseshoe.py`
+  (`regularized_scale`, a `HalfCauchy` with a `hypot`-based log density),
+  used by hill_mut, activity `horseshoe_mut`, `thermo/horseshoe.py` and the
+  thermo `PK`/`PnnC`/`PddG` variants; same values, no overflow.
+- **`tfs-prefit-calibration` took its Hessian at the wrong point.**
+  `RunInference.compute_hessian_sigmas` treated the MAP values it was given
+  as unconstrained, but its caller passes `svi.get_params(...)`, which
+  AutoDelta returns constrained; every positive site (hyper-scales, noise
+  scales, the count likelihood's `phi`) was evaluated at `exp(value)`. The
+  pre-fit's Hessian-derived `k_scale`/`m_scale_plus` were therefore off
+  (on a count-likelihood grid run, k sigmas of 0.0012-0.0029 against 0.0003-0.0007 at the
+  right point, so the written `k_scale` was ~0.0028 where the 0.002 floor
+  now applies), and on the count likelihood `phi` overflowed and wrote
+  NaN scales that crashed the fit. It now maps the values to unconstrained
+  space first. `tfs-sample-posterior` and `tfs-extract-params` read the
+  optimizer state (already unconstrained) and were not affected.
+- **Count likelihood NaN for genotypes predicted near extinction.** The
+  negative binomial's concentration `mu / phi` underflowed float32 when the
+  expected reads fell below about `e^-40` (reached by genotypes with zero
+  reads everywhere, whose likelihood keeps rising as `mu` falls), and the
+  log-pmf's gradient and Hessian went to NaN; SVI then exploded within its
+  first 250 steps. The concentration now has a floor of `e^-30`
+  (`growth_counts._LOG_C_FLOOR`), which changes only rows expecting under
+  ~1e-12 reads.
+- **Prediction with a per-tube `sample_offset`.** `tfs-predict-growth` (and
+  anything calling `analysis.prediction.predict` on a new time or
+  concentration grid) failed to reshape the per-tube offsets of
+  `sample_offset: normal` (and now `level`) onto the prediction grid's
+  tubes. Per-tube offsets are now set to zero there: a prediction is for a
+  typical tube.
+- **Absent prior groups survive the priors CSV.** `write_configuration`
+  wrote a `None` prior group (growth priors of a binding-only model, binding
+  priors of a growth-only one) as a `None` row that reloaded as NaN; it is
+  now left out and reloads as `None` (`configuration_io._extract_scalars`,
+  `_update_dataclass`).
 - **MAP parameter movement silently lost all its prior-SD units on models with
   a horseshoe slab.** `initialization.site_prior_sds` did not catch the
   `ZeroDivisionError` numpyro raises for the variance of an `InverseGamma`

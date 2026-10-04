@@ -545,3 +545,64 @@ def test_input_config_yaml_existence_check(tmp_path):
             run_simulation_from_config("config.yaml", str(tmp_path))
 
     mock_lib.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# od600 block: per-tube readings and OD-only replicates (roadmap step 4)
+# ---------------------------------------------------------------------------
+
+def _od_run(tmp_path, cf):
+    lib_df = pd.DataFrame({"genotype": ["wt"]})
+    params_df = pd.DataFrame({"genotype": ["wt"], "dk_geno": [0.0],
+                              "activity": [1.0]})
+    calls = []
+
+    def fake_selection(rep_cf, library_df, phenotype_df, shared_state=None,
+                       sequence=True):
+        calls.append({"sequence": sequence, "shared_state": shared_state})
+        rep = int(phenotype_df["replicate"].iloc[0])
+        sample_df = pd.DataFrame([{
+            "sample": 0, "replicate": rep, "library": "lib",
+            "condition_sel": "kanR+kan", "t_sel": 60.0, "sample_cfu": 1e8,
+            "sample_cfu_std": 1e6, "sample_cfu_true": 1e8, "od600": 0.3,
+            "od600_detectable": True, "od600_in_range": True}], index=[0])
+        if not sequence:
+            return sample_df, pd.DataFrame(columns=["sample", "genotype"])
+        counts_df = pd.DataFrame([{"sample": 0, "genotype": "wt",
+                                   "counts": 10, "ln_cfu_0": 1.0}])
+        return sample_df, counts_df
+
+    with patch("tfscreen.util.read_yaml", return_value=cf), \
+         patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
+               return_value=(lib_df, lib_df.copy(), lib_df.copy(), params_df, None)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
+               side_effect=fake_selection), \
+         patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
+               return_value=pd.DataFrame({"genotype": ["wt"]})):
+        run_simulation_from_config("fake_config.yaml", str(tmp_path),
+                                   num_replicates=2)
+    return calls
+
+
+def test_od600_written_with_od_only_replicates(tmp_path):
+    cf = {"seed": 1, "growth": {}, "cfu0": 1e8, "total_num_reads": 100,
+          "od600": {"calibration": "c.yaml", "num_od_only_replicates": 1}}
+    calls = _od_run(tmp_path, cf)
+
+    assert [c["sequence"] for c in calls] == [True, True, False]
+    # One shared_state dict passed to every replicate.
+    assert all(c["shared_state"] is calls[0]["shared_state"] for c in calls)
+
+    od = pd.read_csv(tmp_path / "tfs_sim_od600.csv")
+    assert list(od["replicate"]) == [1, 2, 3]
+    assert list(od["sequenced"]) == [True, True, False]
+    for col in ("od600", "od600_detectable", "od600_in_range",
+                "sample_cfu_true", "sample_cfu"):
+        assert col in od.columns
+
+
+def test_no_od600_file_without_block(tmp_path):
+    cf = {"seed": 1, "growth": {}, "cfu0": 1e8, "total_num_reads": 100}
+    calls = _od_run(tmp_path, cf)
+    assert [c["sequence"] for c in calls] == [True, True]
+    assert not (tmp_path / "tfs_sim_od600.csv").exists()

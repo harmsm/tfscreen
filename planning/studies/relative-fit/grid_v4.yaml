@@ -1,0 +1,86 @@
+# ---------------------------------------------------------------------------
+# Relative-X fit study, run 4: post-fix guide comparison (2026-10-01)
+#
+#   tfs-setup-sim-grid grid_v4.yaml --out_prefix relative_fit_v4
+#   for d in relative_fit_v4/run_*/; do (cd "$d" && sbatch run_v4.srun); done
+#
+# Runs 2 and 3 (2026-09-28) recommended the low-rank guide for the relative
+# fit, but ran with two bugs fixed on 2026-09-29: every component-guide
+# hyperparameter scale frozen at its 1e-4 bound (the low-rank autoguide
+# was unaffected) and the flat 1e-3 Laplace eigenvalue floor (the map
+# arm's blowups). This reruns the relative fit's inference arms on the same
+# simulations with the fixed code (README, "Run 4").
+#
+# Relative fit only (no joint baseline: the question is which inference
+# to trust on growth alone). Every arm holds the log(hill_n) population SD
+# at 0.5, as the real-data fits do.
+#   component           mean-field component guide
+#   low_rank            low-rank MVN, numpyro's default rank
+#   low_rank (rank 20)  the rank of the real-data run rel_off_n05_svi
+#   map                 MAP, then the floored Laplace posterior
+#   two_stage           MAP, floored Laplace, conditional component fits
+#
+# 2 noise x 3 seeds x 5 arms = 30 runs.
+# ---------------------------------------------------------------------------
+
+base_config: ../congression-calibration/simulate_config.yaml
+
+run_name: "{{ 'realistic' if founder_sampling else 'poisson' }}__seed{{ seed }}__{{ inference }}{{ ('_r' ~ guide_rank) if guide_rank else '' }}"
+
+output_file: run_v4.srun
+
+
+simulate:
+
+  - name: noise
+    variants:
+      - founder_sampling: false
+      - founder_sampling: true
+        demographic_growth: true
+        shared_transformation: true
+        cfu0: 150_000.0
+        pcr_template_molecules: 150_000
+        pcr_amplification_cv: 0.5
+
+  - name: lam
+    variants:
+      - transformation_poisson_lambda: 0.0
+
+  - name: dk
+    variants:
+      - dk_geno_hyper_loc: -3.5
+        dk_geno_hyper_scale: 0.5
+        dk_geno_hyper_shift: 0.02
+
+  - name: seed
+    variants:
+      - seed: 1
+      - seed: 2
+      - seed: 3
+
+
+template:
+
+  - name: fit
+    variants:
+      - fit: relative
+        n_scale: 0.5
+
+  - name: inference
+    variants:
+      - inference: component
+        guide_rank: ""
+      - inference: low_rank
+        guide_rank: ""
+      - inference: low_rank
+        guide_rank: 20
+      - inference: map
+        guide_rank: ""
+      - inference: two_stage
+        guide_rank: ""
+
+  # copied into the grid's inputs/ and named from each run
+  - name: scripts
+    variants:
+      - diagnostics_script: ../svi-overconfidence/guide_diagnostics.py
+        two_stage_script: ../svi-overconfidence/two_stage.py

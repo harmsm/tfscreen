@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import itertools
-from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator, _RELATIVE_THETA
 from tfscreen.tfmodel.inference.posteriors import load_posteriors, get_posterior_samples
 from tfscreen.tfmodel.tensors.batch import get_batch as _get_batch
 import jax
@@ -161,6 +161,11 @@ def _condition_rep_output_df(growth_tm, site_samples, q_to_get, num_samples):
     return df
 
 
+def _is_relative(orchestrator):
+    """True when the model's theta component is on the relative X scale."""
+    return orchestrator.settings.get("theta") in _RELATIVE_THETA
+
+
 def copy_orchestrator(orchestrator,
                       t_pre=None,
                       t_sel=None,
@@ -189,7 +194,8 @@ def copy_orchestrator(orchestrator,
         values from `orchestrator.growth_df`.
     genotypes : list, optional
         Subset of genotypes to include. Must be a subset of those in
-        ``orchestrator.growth_df``. If None, uses all genotypes.
+        ``orchestrator.growth_df``. If None, uses all genotypes. A relative
+        theta component is gauged on wt, so wt is always kept.
 
     Returns
     -------
@@ -246,6 +252,8 @@ def copy_orchestrator(orchestrator,
         missing = [g for g in geno_strs if g not in all_genos]
         if missing:
             raise ValueError(f"Genotype(s) not found in orchestrator: {missing}")
+        if _is_relative(orchestrator) and "wt" not in geno_strs:
+            geno_strs = geno_strs + ["wt"]
         unique_cats = unique_cats[
             unique_cats["genotype"].astype(str).isin(set(geno_strs))
         ]
@@ -260,10 +268,18 @@ def copy_orchestrator(orchestrator,
     # Add required data columns with dummy values
     new_growth_df["ln_cfu"] = 0.0
     new_growth_df["ln_cfu_std"] = 1.0
+    if orchestrator.settings.get("growth_likelihood") == "counts":
+        # The count observer's inputs; placeholders too, since prediction
+        # reads growth_pred, not the observation.
+        new_growth_df["counts"] = 0
+        new_growth_df["sample_reads"] = 1.0
+        new_growth_df["sample_ln_cfu"] = 0.0
 
     # We keep the binding_df as is, as it's keyed by genotype/titrant_name
-    # and we aren't subsetting those in this step.
-    new_binding_df = orchestrator.binding_df.copy()
+    # and we aren't subsetting those in this step. A growth-only model has
+    # none.
+    new_binding_df = (None if orchestrator.binding_df is None
+                      else orchestrator.binding_df.copy())
 
     # Create new ModelOrchestrator using settings from the old one
     settings = orchestrator.settings.copy()
@@ -548,6 +564,11 @@ def predict(orchestrator,
                                          titrant_conc=titrant_conc,
                                          genotypes=genotypes)
 
+    # A relative theta component's gauge needs wt, so copy_orchestrator keeps
+    # it in any subset; it is dropped from the output below if not asked for.
+    drop_wt = (genotypes is not None and _is_relative(orchestrator)
+               and "wt" not in [str(g) for g in genotypes])
+
     # After copy_orchestrator the new TM contains exactly the requested
     # genotypes (or all genotypes when genotypes=None).
     genotypes = new_orchestrator.growth_tm.tensor_dim_labels[-1].tolist()
@@ -609,6 +630,18 @@ def predict(orchestrator,
             continue
             
         val = val[sample_indices]
+
+        # Per-tube offsets (sample_offset: one value per tube, on a
+        # "{name}_tubes" plate) describe particular tubes. A prediction is
+        # for a typical tube, and its tube grid (every t_pre x t_sel x
+        # concentration asked for) is not the training grid, so these are
+        # set to zero: the expected growth, without any one tube's shift.
+        if any(frame.name.endswith("_tubes")
+               for frame in site.get("cond_indep_stack", [])):
+            num_new_tubes = int(np.prod(new_orchestrator.growth_tm.tensor_shape[:-1]))
+            sliced_samples[site_name] = jnp.zeros((val.shape[0], num_new_tubes),
+                                                  dtype=val.dtype)
+            continue
 
         # Slice any plated dimension to match the new data labels.
         # This handles genotype subsetting and any other model plates (like
@@ -827,6 +860,11 @@ def predict(orchestrator,
             df = pd.concat([df, samples_df], axis=1)
 
         all_dfs[site] = df
+
+    if drop_wt:
+        for site, df in all_dfs.items():
+            if "genotype" in df.columns:
+                all_dfs[site] = df[df["genotype"].astype(str) != "wt"]
 
     if len(predict_sites) == 1:
         return all_dfs[predict_sites[0]]

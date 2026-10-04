@@ -293,7 +293,9 @@ def test_resume_continues_stage_and_step():
     model = ToyModel()
     ri = RunInference(model, seed=0)
     svi = ri.setup_svi(adam_step_size=1e-2, guide_type="component")
-    _fit(ri, svi, final_step_size=1e-5, max_num_epochs=6000,
+    # first cut near step 6,400 (the pooled stall check keeps the descent
+    # that ends there at the large step size)
+    _fit(ri, svi, final_step_size=1e-5, max_num_epochs=7200,
          checkpoint_interval=10)
     saved_step = ri._current_step
     saved_step_size = ri._monitor.step_size

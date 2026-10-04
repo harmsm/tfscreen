@@ -200,11 +200,12 @@ def predict_growth(config_file,
               f"genotypes based on available memory.", flush=True)
 
     # Binding genotypes (those with direct theta_obs measurements) must appear
-    # in every batch so the binding TensorManager is never empty.
-    try:
-        binding_genos = [str(g) for g in orchestrator.binding_df["genotype"].unique()]
-    except Exception:
+    # in every batch so the binding TensorManager is never empty. A
+    # growth-only model has none.
+    if orchestrator.binding_df is None:
         binding_genos = []
+    else:
+        binding_genos = [str(g) for g in orchestrator.binding_df["genotype"].unique()]
     binding_set = set(binding_genos)
 
     # Subset mode: predict a single memory-fit block of genotypes rather than

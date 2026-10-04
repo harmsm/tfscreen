@@ -1,5 +1,7 @@
 import os
 import dill
+import numpy as np
+import jax.numpy as jnp
 
 from tfscreen.tfmodel.inference.run_inference import (
     RunInference,
@@ -11,10 +13,15 @@ from tfscreen.util.cli.generalized_main import generalized_main
 
 from tfscreen.tfmodel.configuration_io import read_configuration
 
-# Upper bound on the component guide's starting scales (the numpyro autoguides'
-# own default init_scale).  Starting at prior width makes early SVI escape the
-# guide variance by inflating the noise terms.
-DEFAULT_COMPONENT_INIT_SCALE = 0.1
+# Starting scale of the variational guide, in each site's unconstrained units:
+# an upper bound on every component-guide scale, and the autoguides'
+# ``init_scale`` for a fresh fit. It has to be small because it is one number
+# for every site: 0.1 on a growth rate (per minute) is 17 ln units over a
+# selection, and at 0.1 SVI started ~1000x above the pre-MAP's loss and
+# re-descended into other optima (relative-fit grid, 2026-09-27). SVI widens
+# the scales itself; the entropy term raises each about e-fold per 1000 Adam
+# steps at step size 1e-3.
+DEFAULT_GUIDE_INIT_SCALE = 1e-4
 
 def _optimization_kwargs(convergence_window_steps=2000,
                          patience=3,
@@ -213,11 +220,13 @@ def _run_svi(ri,
     return svi_obj, svi_state, params, converged
 
 def _run_nuts(ri,
+              init_values=None,
               out_prefix="tfs",
               nuts_num_warmup=500,
               nuts_num_samples=500,
               nuts_num_chains=1,
               nuts_target_accept_prob=0.9,
+              nuts_dense_mass=False,
               forward_batch_size=512):
     """
     Run NUTS (No-U-Turn Sampler) MCMC inference.
@@ -226,6 +235,9 @@ def _run_nuts(ri,
     ----------
     ri : RunInference
         RunInference object that manages model setup and MCMC routines.
+    init_values : dict or None, optional
+        Constrained site values to start the chains at (default: prior
+        medians).
     out_prefix : str, optional
         Output file root for checkpoints and results (default "tfs").
     nuts_num_warmup : int, optional
@@ -236,6 +248,8 @@ def _run_nuts(ri,
         Number of MCMC chains (default 1).
     nuts_target_accept_prob : float, optional
         Target acceptance probability for NUTS step-size adaptation (default 0.9).
+    nuts_dense_mass : bool, optional
+        Adapt a dense mass matrix (default False, diagonal).
     forward_batch_size : int, optional
         Number of genotypes to process per forward-model batch when computing
         posteriors (default 512).
@@ -249,7 +263,9 @@ def _run_nuts(ri,
     mcmc = ri.run_nuts(num_warmup=nuts_num_warmup,
                        num_samples=nuts_num_samples,
                        num_chains=nuts_num_chains,
-                       target_accept_prob=nuts_target_accept_prob)
+                       target_accept_prob=nuts_target_accept_prob,
+                       init_values=init_values,
+                       dense_mass=nuts_dense_mass)
 
     mcmc_samples = mcmc.get_samples()
 
@@ -286,6 +302,21 @@ def _check_checkpoint_guide(checkpoint_file, guide_type):
         )
 
 
+def _read_init_from(path):
+    """
+    The ``{site}_auto_loc`` arrays of a MAP ``*_params.npz`` (constrained
+    values, as ``write_params`` saves them), for ``site_values``: they take
+    precedence over guesses keyed by site or by guide parameter.
+    """
+    with np.load(path) as z:
+        values = {k: jnp.asarray(z[k]) for k in z.files if k.endswith("_auto_loc")}
+    if not values:
+        raise ValueError(f"init_from '{path}' has no '*_auto_loc' arrays; it "
+                         "should be the *_params.npz of a MAP fit.")
+    print(f"Starting from {len(values)} MAP sites in {path}")
+    return values
+
+
 def fit_model(config_file,
               seed=None,
               checkpoint_file=None,
@@ -308,12 +339,14 @@ def fit_model(config_file,
               max_num_epochs=100000,
               forward_batch_size=512,
               pre_map_num_epoch=10000,
-              init_param_jitter=0.1,
+              init_param_jitter=0.0,
               nuts_num_warmup=500,
               nuts_num_samples=500,
               nuts_num_chains=1,
               nuts_target_accept_prob=0.9,
-              epoch_checkpoint_interval=1000):
+              nuts_dense_mass=False,
+              epoch_checkpoint_interval=1000,
+              init_from=None):
     """
     Fit the joint hierarchical model using a previously generated configuration file.
 
@@ -357,10 +390,12 @@ def fit_model(config_file,
         Covariance rank for 'auto_low_rank_multivariate_normal' (numpyro's
         default when omitted).
     guide_init_scale : float, optional
-        Initial scale of the variational distribution.  For 'component' it
-        caps every guide scale at the start (default 0.1); for an autoguide
-        it is numpyro's ``init_scale`` (numpyro's default when omitted).  Not
-        accepted by 'delta'.
+        Initial scale of the variational distribution, in each site's
+        unconstrained units (default 1e-4, ``DEFAULT_GUIDE_INIT_SCALE``).
+        For 'component' it caps every guide scale at the start; for an
+        autoguide it is numpyro's ``init_scale`` for a fresh fit (a resumed
+        fit keeps its checkpoint's).  SVI widens the scales itself; a large
+        start throws the pre-MAP point away.  Not accepted by 'delta'.
     out_prefix : str, optional
         Prefix for all output files: checkpoints, parameter files, and the
         posterior HDF5 (default 'tfs_fit_model'). Files are named
@@ -404,12 +439,15 @@ def fit_model(config_file,
         When getting NUTS posteriors, calculate forward predictions in batches
         of this size (default 512).
     pre_map_num_epoch : int, optional
-        Maximum number of epochs of the MAP warm-up run before SVI (default
-        10000; 0 skips it).  The warm-up stops earlier when it converges.
-        Only used if analysis_method is 'svi'.
+        Maximum number of epochs of the MAP warm-up run before SVI or NUTS
+        (default 10000; 0 skips it).  The warm-up stops earlier when it
+        converges.  SVI's guide and NUTS's chains start at its point.  Not
+        used by 'map'.
     init_param_jitter : float, optional
-        Multiplicative jitter on the component guide's starting parameters,
-        to break symmetry (default 0.1).  Not used by autoguides or MAP.
+        Multiplicative jitter on the component guide's starting parameters
+        (default 0, none).  Not used by autoguides or MAP.  Leave it off when
+        starting from a pre-MAP: it scales with each value, so 0.1 moves an
+        ln_cfu0 location near 15 by about 1.5 ln units.
     nuts_num_warmup : int, optional
         Number of NUTS warmup steps (default 500). Only used if
         analysis_method is 'nuts'.
@@ -422,11 +460,24 @@ def fit_model(config_file,
     nuts_target_accept_prob : float, optional
         Target acceptance probability for NUTS step-size adaptation
         (default 0.9). Only used if analysis_method is 'nuts'.
+    nuts_dense_mass : bool, optional
+        Adapt a dense mass matrix for NUTS instead of a diagonal one
+        (default False).  Worth it for correlated posteriors of up to a few
+        thousand latents; with a diagonal one the relative fit ran at NUTS's
+        maximum tree depth.  Only used if analysis_method is 'nuts'.
     epoch_checkpoint_interval : int or None, optional
         Frequency (in epochs) to write numbered epoch checkpoints to a
         ``checkpoints/`` subdirectory alongside ``out_prefix`` (default 1000).
         Files are named ``{epoch:07d}_checkpoint.pkl``. Set to 0 or None to
         disable. Raises ``FileExistsError`` if a target file already exists.
+    init_from : str or None, optional
+        A ``*_params.npz`` written by a MAP fit (``{site}_auto_loc`` arrays)
+        to start from instead of the configured guesses, wherever it names a
+        site of this model; other sites start at their guesses. The fit may
+        be of a different model: starting a ``sample_offset: level`` fit from
+        a ``zero`` fit's point, say (the npz can carry
+        ``sample_offset_offset_auto_loc`` to set the offsets too). Refused
+        with ``checkpoint_file``, which sets the start itself.
 
     Returns
     -------
@@ -475,7 +526,7 @@ def fit_model(config_file,
                 "the file or change out_prefix."
             )
 
-        if analysis_method == "svi" and pre_map_num_epoch > 0:
+        if analysis_method in ("svi", "nuts") and pre_map_num_epoch > 0:
             premap_path = f"{out_prefix}_premap_checkpoint.pkl"
             if os.path.exists(premap_path):
                 raise FileExistsError(
@@ -483,7 +534,13 @@ def fit_model(config_file,
                     "overwrite, delete the file or change out_prefix."
                 )
 
+    if init_from is not None and checkpoint_file is not None:
+        raise ValueError("init_from and checkpoint_file both set the starting "
+                         "point; give one.")
+
     orchestrator, guesses = read_configuration(config_file)
+    if init_from is not None:
+        guesses = {**guesses, **_read_init_from(init_from)}
 
     # For posterior mode the seed is optional: the checkpoint restores the PRNG
     # key for SVI checkpoints, and any valid key works for MAP/Laplace sampling.
@@ -530,10 +587,9 @@ def fit_model(config_file,
                 # The MAP point replaces the guesses where it has a value.
                 start_values = {**start_values, **ri.site_values(map_params)}
 
+            init_scale = (DEFAULT_GUIDE_INIT_SCALE
+                          if guide_init_scale is None else guide_init_scale)
             if guide_type == "component":
-                init_scale = (DEFAULT_COMPONENT_INIT_SCALE
-                              if guide_init_scale is None
-                              else guide_init_scale)
                 init_params = ri.component_guide_start(start_values,
                                                        guesses=guesses,
                                                        init_scale=init_scale)
@@ -541,6 +597,8 @@ def fit_model(config_file,
             else:
                 init_params = None
                 init_values = start_values
+                if guide_type != "delta":
+                    guide_kwargs["init_scale"] = init_scale
 
         return _run_svi(ri,
                         init_params=init_params,
@@ -573,12 +631,30 @@ def fit_model(config_file,
                             epoch_checkpoint_interval=epoch_checkpoint_interval))
 
     elif analysis_method == "nuts":
+        # Start the chains at the MAP warm-up's point, as SVI does: from
+        # prior medians warmup spends its adaptation getting to the mode.
+        init_values = ri.site_values(guesses)
+        if pre_map_num_epoch > 0:
+            _, map_params, _ = _run_map(
+                ri,
+                init_values=init_values,
+                out_prefix=f"{out_prefix}_premap",
+                label="Pre-MAP",
+                **optimizer_kwargs,
+                **_optimization_kwargs(
+                    **convergence_kwargs,
+                    checkpoint_interval=pre_map_num_epoch,
+                    max_num_epochs=pre_map_num_epoch,
+                    epoch_checkpoint_interval=None))
+            init_values = {**init_values, **ri.site_values(map_params)}
         mcmc_samples = _run_nuts(ri,
+                                 init_values=init_values,
                                  out_prefix=out_prefix,
                                  nuts_num_warmup=nuts_num_warmup,
                                  nuts_num_samples=nuts_num_samples,
                                  nuts_num_chains=nuts_num_chains,
                                  nuts_target_accept_prob=nuts_target_accept_prob,
+                                 nuts_dense_mass=nuts_dense_mass,
                                  forward_batch_size=forward_batch_size)
         return None, mcmc_samples, True
 
@@ -603,7 +679,8 @@ def main():
                                               "nuts_num_samples":int,
                                               "nuts_num_chains":int,
                                               "nuts_target_accept_prob":float,
-                                              "epoch_checkpoint_interval":int})
+                                              "epoch_checkpoint_interval":int,
+                                              "init_from":str})
 
 if __name__ == "__main__":
     main()

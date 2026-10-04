@@ -401,6 +401,9 @@ class TestConfigureModel:
                         library_config=library_config_file,
                         out_prefix=out_prefix,
                         skip_model_stats=True,
+                        # synthetic ln_cfu table without read counts
+                        growth_likelihood="lncfu",
+                        sample_offset_model="zero",
                         **kwargs)
         return out_prefix
 

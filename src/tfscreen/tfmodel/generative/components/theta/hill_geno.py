@@ -3,7 +3,7 @@ import jax
 import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
-from flax.struct import dataclass
+from flax.struct import dataclass, field
 from typing import Dict, Any, Optional
 
 from tfscreen.tfmodel.data_class import DataClass
@@ -28,6 +28,13 @@ class ModelPriors:
     theta_log_hill_n_hyper_loc_loc : float
     theta_log_hill_n_hyper_loc_scale : float
     theta_log_hill_n_hyper_scale : float
+    theta_log_hill_n_hyper_scale_fixed : float
+        If > 0, the population SD of log(hill_n) is held at this value (a
+        deterministic site, no guide parameters) instead of learned. Learned,
+        a MAP on the dev-data screen drove it to about 19: n spread from
+        0.01 to 13, and a tiny n hid each genotype's shrunken response in the
+        0-IPTG tubes, below the lowest measured concentration
+        (planning/dev-data/real_fit). Default 0 keeps it learned.
     """
 
     theta_logit_low_hyper_loc_loc: float
@@ -44,6 +51,8 @@ class ModelPriors:
     theta_log_hill_n_hyper_loc_loc: float
     theta_log_hill_n_hyper_loc_scale: float
     theta_log_hill_n_hyper_scale: float
+    theta_log_hill_n_hyper_scale_fixed: float = field(pytree_node=False,
+                                                      default=0.0)
 
 
 @dataclass(frozen=True)
@@ -247,9 +256,14 @@ def define_model(name: str,
             f"{name}_log_hill_n_hyper_loc",
             dist.Normal(priors.theta_log_hill_n_hyper_loc_loc,
                         priors.theta_log_hill_n_hyper_loc_scale))
-        log_n_hyper_scale = pyro.sample(
-            f"{name}_log_hill_n_hyper_scale",
-            dist.HalfNormal(priors.theta_log_hill_n_hyper_scale))
+        n_fixed = float(priors.theta_log_hill_n_hyper_scale_fixed)
+        if n_fixed > 0:
+            log_n_hyper_scale = pyro.deterministic(
+                f"{name}_log_hill_n_hyper_scale", jnp.full(T, n_fixed))
+        else:
+            log_n_hyper_scale = pyro.sample(
+                f"{name}_log_hill_n_hyper_scale",
+                dist.HalfNormal(priors.theta_log_hill_n_hyper_scale))
 
     # ------------------------------------------------------------------
     # Full-population per-genotype offsets: shape (T, G)
@@ -341,9 +355,11 @@ def guide(name: str,
     h_n_loc_scale = pyro.param(f"{name}_log_hill_n_hyper_loc_scale",
                                jnp.full(T, priors.theta_log_hill_n_hyper_loc_scale),
                                constraint=dist.constraints.greater_than(1e-4))
-    h_n_scale_loc   = pyro.param(f"{name}_log_hill_n_hyper_scale_loc",   jnp.full(T, -1.0))
-    h_n_scale_scale = pyro.param(f"{name}_log_hill_n_hyper_scale_scale", jnp.full(T, 0.1),
-                                 constraint=dist.constraints.greater_than(1e-4))
+    n_fixed = float(priors.theta_log_hill_n_hyper_scale_fixed)
+    if not n_fixed > 0:
+        h_n_scale_loc   = pyro.param(f"{name}_log_hill_n_hyper_scale_loc",   jnp.full(T, -1.0))
+        h_n_scale_scale = pyro.param(f"{name}_log_hill_n_hyper_scale_scale", jnp.full(T, 0.1),
+                                     constraint=dist.constraints.greater_than(1e-4))
 
     with pyro.plate(f"{name}_hyper_plate", T, dim=-1):
         logit_low_hyper_loc   = pyro.sample(f"{name}_logit_low_hyper_loc",
@@ -360,8 +376,11 @@ def guide(name: str,
                                         dist.LogNormal(h_K_scale_loc, h_K_scale_scale))
         log_n_hyper_loc   = pyro.sample(f"{name}_log_hill_n_hyper_loc",
                                         dist.Normal(h_n_loc_loc, h_n_loc_scale))
-        log_n_hyper_scale = pyro.sample(f"{name}_log_hill_n_hyper_scale",
-                                        dist.LogNormal(h_n_scale_loc, h_n_scale_scale))
+        if n_fixed > 0:
+            log_n_hyper_scale = jnp.full(T, n_fixed)
+        else:
+            log_n_hyper_scale = pyro.sample(f"{name}_log_hill_n_hyper_scale",
+                                            dist.LogNormal(h_n_scale_loc, h_n_scale_scale))
 
     # ------------------------------------------------------------------
     # Full-population per-genotype offset variational parameters: shape (T, G)
@@ -610,6 +629,7 @@ def get_hyperparameters() -> Dict[str, Any]:
     parameters["theta_log_hill_n_hyper_loc_loc"]   = 0.7
     parameters["theta_log_hill_n_hyper_loc_scale"]  = 0.5
     parameters["theta_log_hill_n_hyper_scale"]      = 1.0
+    parameters["theta_log_hill_n_hyper_scale_fixed"] = 0.0
 
     return parameters
 

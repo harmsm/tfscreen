@@ -670,6 +670,36 @@ class TestPerConditionPriors:
         k_locs = np.asarray(gtr[f"{name}_k_locs"]["value"])
         assert np.allclose(k_locs, np.array([0.011, 0.021, 0.029]))
 
+    def test_array_m_scales_are_per_condition(self):
+        """Per-condition m_scale_plus/minus arrays: each condition takes the
+        entry its selection flag names (two '+' conditions, one tight from
+        monoculture data and one loose)."""
+        labels = ["kanR+kan", "kanR-kan", "pheS+4CP", "pheS-4CP"]
+        plus = jnp.array([0.0015, 99.0, 0.01, 99.0])     # 99: unused entries
+        minus = jnp.array([99.0, 0.004, 99.0, 0.01])
+        priors = get_priors(condition_labels=labels).replace(
+            m_scale_plus=plus, m_scale_minus=minus)
+        data = TestDefineModelSelectionAware()._make_data(num_condition_rep=4)
+        with seed(rng_seed=0):
+            tr = trace(define_model).get_trace(name="ms", data=data, priors=priors)
+        fn = tr["ms_m"]["fn"]
+        while not hasattr(fn, "scale"):
+            fn = fn.base_dist
+        assert np.allclose(np.asarray(fn.scale), [0.0015, 0.004, 0.01, 0.01])
+
+    def test_scalar_m_scales_unchanged(self):
+        """Scalar m_scale_plus/minus still give the per-class scales."""
+        labels = ["kanR+kan", "kanR-kan"]
+        priors = get_priors(condition_labels=labels)
+        data = TestDefineModelSelectionAware()._make_data(num_condition_rep=2)
+        with seed(rng_seed=0):
+            tr = trace(define_model).get_trace(name="mc", data=data, priors=priors)
+        fn = tr["mc_m"]["fn"]
+        while not hasattr(fn, "scale"):
+            fn = fn.base_dist
+        assert np.allclose(np.asarray(fn.scale),
+                           [priors.m_scale_plus, priors.m_scale_minus])
+
     def test_array_and_scalar_give_same_sites(self, mock_data):
         """Model/guide site sets are identical whether priors are scalar or array."""
         name = "ss"
@@ -701,3 +731,44 @@ class TestGetScaleBounds:
         assert bounds["k"]["floor"] <= 0.002
         assert bounds["k"]["scale_field"] == "k_scale"
         assert bounds["m"]["scale_field"] == "m_scale_plus"
+
+
+# --- k_pinned (hard clamp, for conditional fits) ---
+
+def test_k_and_m_pinned_clamp_both(mock_data):
+    """With k_pinned and m_pinned, both are deterministic at their locs and
+    the guide has no variational site for either."""
+    name = "pin"
+    k_loc = jnp.array([0.01, 0.02, 0.03])
+    m_loc = jnp.array([0.1, 0.2, 0.3])
+    priors = get_priors().replace(k_loc=k_loc, m_loc=m_loc,
+                                  k_pinned=True, m_pinned=True)
+
+    with seed(rng_seed=0):
+        model_trace = trace(define_model).get_trace(
+            name=name, data=mock_data, priors=priors)
+    with seed(rng_seed=0):
+        guide_trace = trace(guide).get_trace(
+            name=name, data=mock_data, priors=priors)
+
+    assert model_trace[f"{name}_k"]["type"] == "deterministic"
+    np.testing.assert_allclose(np.asarray(model_trace[f"{name}_k"]["value"]),
+                               np.asarray(k_loc))
+    assert f"{name}_k_locs" not in guide_trace
+    assert f"{name}_k" not in guide_trace
+
+    with seed(rng_seed=0):
+        params = guide(name=name, data=mock_data, priors=priors)
+    np.testing.assert_allclose(np.asarray(params.k_sel),
+                               np.asarray(k_loc[mock_data.map_condition_sel]))
+
+
+def test_k_pinned_alone_keeps_m_sampled(mock_data):
+    name = "pin"
+    priors = get_priors().replace(k_loc=jnp.array([0.01, 0.02, 0.03]),
+                                  k_pinned=True)
+    with seed(rng_seed=0):
+        model_trace = trace(define_model).get_trace(
+            name=name, data=mock_data, priors=priors)
+    assert model_trace[f"{name}_k"]["type"] == "deterministic"
+    assert model_trace[f"{name}_m"]["type"] == "sample"

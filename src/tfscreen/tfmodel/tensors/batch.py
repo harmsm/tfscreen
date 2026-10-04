@@ -51,6 +51,13 @@ def get_batch(full_data: DataClass, idx: jnp.ndarray) -> DataClass:
             map_condition_sel=full_data.growth.map_condition_sel[...,idx],
             good_mask=full_data.growth.good_mask[...,idx],
         )
+        # Count-likelihood tensors (growth_likelihood == "counts" only).
+        if getattr(full_data.growth, "counts", None) is not None:
+            new_growth = new_growth.replace(
+                counts=full_data.growth.counts[...,idx],
+                ln_sample_reads=full_data.growth.ln_sample_reads[...,idx],
+                sample_ln_cfu=full_data.growth.sample_ln_cfu[...,idx],
+            )
         return full_data.replace(growth=new_growth)
 
     # Binding-only mode: idx is a set of binding-genotype indices.

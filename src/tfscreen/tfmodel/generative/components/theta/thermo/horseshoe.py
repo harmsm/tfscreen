@@ -32,6 +32,7 @@ horseshoe and other shrinkage priors." Electronic Journal of Statistics.
 import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
+from tfscreen.tfmodel.generative.components._horseshoe import regularized_scale, HalfCauchy
 
 _DEFAULT_D0 = 8.0  # Å — residues within ~8 Å Cα-Cα are considered contacts
 
@@ -77,7 +78,7 @@ def sample_pair_ddG(name, struct_names, contact_distances,
 
     # Global shrinkage scale and slab variance (shared across all structures)
     tau = pyro.sample(f"{name}_epi_tau",
-                      dist.HalfCauchy(tau_scale))
+                      HalfCauchy(tau_scale))
     c2  = pyro.sample(
         f"{name}_epi_c2",
         dist.InverseGamma(slab_df / 2.0,
@@ -95,7 +96,7 @@ def sample_pair_ddG(name, struct_names, contact_distances,
         with pyro.plate(f"{name}_pair_plate", P, dim=-1):
             lam    = pyro.sample(
                 f"{name}_epi_lambda",
-                dist.HalfCauchy(lam_scale.T),   # (S, P)
+                HalfCauchy(lam_scale.T),   # (S, P)
             )
             offset = pyro.sample(
                 f"{name}_epi_offset",
@@ -103,7 +104,7 @@ def sample_pair_ddG(name, struct_names, contact_distances,
             )
 
     # Regularised horseshoe: clamp variance contribution from τ
-    lam_tilde = jnp.sqrt(c2 * lam ** 2 / (c2 + tau ** 2 * lam ** 2))  # (S, P)
+    lam_tilde = regularized_scale(lam, tau, c2)  # (S, P)
     epi_SP    = offset * tau * lam_tilde                                  # (S, P)
 
     pyro.deterministic(f"{name}_epi_ddG", epi_SP.T)

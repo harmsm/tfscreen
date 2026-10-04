@@ -1176,9 +1176,16 @@ class TestTryPlotTrajectories:
         _, kwargs = mock_pdf.call_args
         assert set(kwargs["genotypes"]) == {"wt", "A1B", "C2D"}
 
-    def test_passes_none_genotypes_when_binding_df_is_none(self, tmp_path):
+    def test_default_subset_when_binding_df_is_none(self, tmp_path):
+        """Without binding genotypes (a growth-only model) the plots cover a
+        default subset, not every genotype in the library."""
         (tmp_path / "run_posterior.h5").touch()
-        with patch(_PATCH_READ_CONFIG, return_value=(MagicMock(), {})), \
+        orch = MagicMock()
+        orch.growth_tm.tensor_dim_names = ["replicate", "genotype"]
+        orch.growth_tm.tensor_dim_labels = [
+            ["R1"], ["wt", "S1"] + [f"A{i}B" for i in range(30)]]
+        orch.settings = {"spiked_genotypes": ["S1"]}
+        with patch(_PATCH_READ_CONFIG, return_value=(orch, {})), \
              patch(_PATCH_PREDICT_DF, return_value=_MOCK_PRED_DF) as mock_pdf, \
              patch(_PATCH_PLOT_GENO, return_value=MagicMock()):
             _try_plot_trajectories(
@@ -1189,7 +1196,10 @@ class TestTryPlotTrajectories:
                 binding_df=None,
             )
         _, kwargs = mock_pdf.call_args
-        assert kwargs["genotypes"] is None
+        genos = kwargs["genotypes"]
+        assert genos[:2] == ["wt", "S1"]
+        assert len(genos) == 2 + 10
+        assert len(set(genos)) == len(genos)
 
     # ------------------------------------------------------------------
     # CSV output: one CSV per genotype alongside each trajectory PDF

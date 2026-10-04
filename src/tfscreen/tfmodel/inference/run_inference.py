@@ -38,6 +38,47 @@ from tfscreen.tfmodel.inference.initialization import (
     trace_model_sites,
 )
 
+# Smallest Hessian eigenvalue the Laplace posterior keeps, for elements with
+# no usable prior SD (see laplace_eigenvalue_floor).
+LAPLACE_MIN_EIGENVALUE = 1e-3
+
+
+def laplace_eigenvalue_floor(eigenvalues, eigenvectors, prior_precision):
+    """
+    Floor Hessian eigenvalues at the prior's curvature along each eigenvector.
+
+    At an optimum the Hessian of the negative log joint is the prior's
+    curvature plus the likelihood's, and a log-concave likelihood only adds
+    to it, so no direction should be flatter than the prior alone. An
+    eigenvalue below ``v^T diag(prior_precision) v`` (negative ones
+    included, from a MAP stopped short of its optimum) is raised to it:
+    the posterior is never wider than the prior along that direction.
+
+    Parameters
+    ----------
+    eigenvalues : numpy.ndarray
+        Shape ``(D,)``.
+    eigenvectors : numpy.ndarray
+        Shape ``(D, D)``, columns are eigenvectors (``numpy.linalg.eigh``).
+    prior_precision : numpy.ndarray
+        Shape ``(D,)``, positive prior precision per element.
+
+    Returns
+    -------
+    floored : numpy.ndarray
+        Eigenvalues, each at least its direction's prior curvature and at
+        least ``LAPLACE_MIN_EIGENVALUE``.
+    num_floored : int
+        How many eigenvalues were raised.
+    """
+
+    curvature = np.einsum("ij,i,ij->j", eigenvectors, prior_precision,
+                          eigenvectors)
+    floor = np.maximum(curvature, LAPLACE_MIN_EIGENVALUE)
+    floored = np.maximum(eigenvalues, floor)
+    return floored, int(np.sum(eigenvalues < floor))
+
+
 # The convergence window is split into this many blocks for the parameter
 # test (each block's parameter mean is accumulated on the device), and the
 # loop hands control back to the host once per block.
@@ -373,7 +414,7 @@ class RunInference:
                          step_size_cut=0.1,
                          checkpoint_interval=10,
                          max_num_epochs=10000000,
-                         init_param_jitter=0.1,
+                         init_param_jitter=0.0,
                          epoch_checkpoint_interval=1000):
         """
         Run the optimization loop until convergence or ``max_num_epochs``.
@@ -433,7 +474,10 @@ class RunInference:
         max_num_epochs : int, optional
             Maximum number of optimization epochs to run.
         init_param_jitter : float, optional
-            amount of jitter to add to init_params. To turn off, set to 0.
+            Multiplicative log-normal jitter on ``init_params`` (default 0,
+            none).  It scales with each value, so it moves large locations
+            (ln_cfu0 near 15) by whole ln units; keep it off when starting
+            from a MAP point.
         epoch_checkpoint_interval : int or None, optional
             Frequency (in epochs) to write numbered epoch checkpoints to a
             ``checkpoints/`` subdirectory alongside ``out_prefix``. Files are
@@ -690,6 +734,9 @@ class RunInference:
                 # Final checkpoint before exiting
                 self._write_checkpoint(svi_state, out_prefix)
                 break
+            if decision == conv.DIVERGED:
+                self._write_checkpoint(svi_state, out_prefix)
+                break
 
         # Write a final checkpoint when the loop exits by reaching max_num_epochs
         # (convergence already writes its own checkpoint via the break path above).
@@ -702,6 +749,13 @@ class RunInference:
                       f"{monitor.step_size:.3g}, {monitor.num_cuts} cut(s)): "
                       f"no significant loss improvement, parameter movement "
                       f"or loss skew for {patience} windows.", flush=True)
+            elif monitor.diverged:
+                print(f"Stopped at step {self._current_step}: the loss ran "
+                      f"away (below -{conv.RUNAWAY_LOSS_FACTOR:g} x its "
+                      f"starting magnitude {monitor.reference_loss:.4g}), so "
+                      f"the posterior density is unbounded along some "
+                      f"direction and there is no optimum. Not converged. "
+                      f"Last window: {monitor.describe()}", flush=True)
             else:
                 print(f"Stopped at step {self._current_step} "
                       f"(max_num_epochs) without converging. Last window: "
@@ -1646,7 +1700,7 @@ class RunInference:
                             "loss_mean", "loss_skew", "loss_skewed",
                             "worst_param", "worst_param_excess",
                             "worst_param_drift", "params_moving", "plateau",
-                            "plateau_count", "decision")
+                            "plateau_count", "pooled_loss_t", "decision")
 
     def _write_convergence(self, record, out_prefix):
         """
@@ -1742,8 +1796,10 @@ class RunInference:
         Parameters
         ----------
         map_params : dict
-            Parameter dict from an AutoDelta guide state, keys follow the
-            ``{site}_auto_loc`` convention, values are in unconstrained space.
+            AutoDelta parameters in *unconstrained* space, keys following the
+            ``{site}_auto_loc`` convention: the optimizer state
+            (``svi.optim.get_params(svi_state.optim_state)``), not
+            ``svi.get_params``, which returns constrained values.
 
         Returns
         -------
@@ -1825,7 +1881,8 @@ class RunInference:
         ----------
         map_params : dict
             Parameter dict from a MAP (AutoDelta) optimizer state, as
-            returned by ``svi.get_params(svi_state)``.  Keys follow the
+            returned by ``svi.optim.get_params(svi_state.optim_state)`` (not
+            ``svi.get_params``, which constrains them).  Keys follow the
             ``{site}_auto_loc`` convention; values are in unconstrained space.
         out_prefix : str
             Root name for the output file (written as
@@ -1974,10 +2031,16 @@ class RunInference:
         Parameters
         ----------
         map_params : dict
-            Parameter dict from a MAP (AutoDelta) optimizer state, as
-            returned by ``svi.get_params(svi_state)``.  Keys follow the
-            ``{site}_auto_loc`` convention; values are in unconstrained
-            space.
+            MAP (AutoDelta) parameters as returned by
+            ``svi.get_params(svi_state)`` (what ``run_optimization`` returns):
+            keys follow the ``{site}_auto_loc`` convention and values are in
+            *constrained* space (AutoDelta's ``_auto_loc`` params carry the
+            site's support, so ``get_params`` constrains them). They are
+            mapped to unconstrained space here, where the Hessian is taken.
+            (Until 2026-09-27 they were taken as already unconstrained, so
+            every positive site was evaluated at ``exp(value)``: the Hessian
+            of the pre-fit was taken at the wrong point, and overflowed on
+            the count likelihood's ``growth_phi``.)
         hessian_chunk_size : int, optional
             Number of Hessian rows to compute per device batch (default 64).
             Reduce if you hit device OOM during the Hessian computation.
@@ -2002,15 +2065,31 @@ class RunInference:
         full_data = self.model.get_batch(data_on_gpu, all_indices)
         model_kwargs = {"priors": self.model.priors, "data": full_data}
 
-        # Strip _auto_loc suffix → unconstrained site-level param dict
-        unconstrained = {
+        # Strip _auto_loc suffix → constrained site-level param dict
+        constrained = {
             k[: -len("_auto_loc")]: jnp.array(v)
             for k, v in map_params.items()
             if k.endswith("_auto_loc")
         }
 
-        if len(unconstrained) == 0:
+        if len(constrained) == 0:
             return {}
+
+        # Per-site bijection (unconstrained -> constrained) from a model
+        # trace; identity for real-valued supports.
+        seeded_model = seed(self.model.jax_model, rng_seed=0)
+        traced_model = trace(seeded_model)
+        model_trace = traced_model.get_trace(**model_kwargs)
+        site_transforms = {
+            name: biject_to(site["fn"].support)
+            for name, site in model_trace.items()
+            if site["type"] == "sample" and not site.get("is_observed", False)
+        }
+        unconstrained = {
+            name: (site_transforms[name].inv(v) if name in site_transforms
+                   else v)
+            for name, v in constrained.items()
+        }
 
         # Flatten to a single vector for Hessian computation.  We need to
         # remember the per-site shapes / offsets so we can pull the
@@ -2042,17 +2121,6 @@ class RunInference:
         # Unravel the unconstrained sigmas back to per-site shape.
         sigma_unconstrained = unravel(jnp.array(sigma_unconstrained_flat,
                                                  dtype=flat_map.dtype))
-
-        # Get the per-site bijection from a model trace.  For unconstrained
-        # supports (Normal) this is the identity transform.
-        seeded_model = seed(self.model.jax_model, rng_seed=0)
-        traced_model = trace(seeded_model)
-        model_trace = traced_model.get_trace(**model_kwargs)
-        site_transforms = {
-            name: biject_to(site["fn"].support)
-            for name, site in model_trace.items()
-            if site["type"] == "sample" and not site.get("is_observed", False)
-        }
 
         out = {}
         for name, x_unc in unconstrained.items():
@@ -2118,6 +2186,365 @@ class RunInference:
         
         return site_names
 
+    def _laplace_prior_precision(self, unconstrained, model_kwargs, D):
+        """
+        Prior precision of each flattened unconstrained MAP element.
+
+        The prior SD comes from ``site_unconstrained_prior_sds`` with the MAP
+        values substituted, so a hierarchical latent's prior is conditional
+        on the MAP's hyperparameters. Elements without a finite, positive
+        prior SD get ``LAPLACE_MIN_EIGENVALUE``. Returns a length-``D``
+        numpy array in the order of ``ravel_pytree(unconstrained)``.
+        """
+        import jax.flatten_util
+        from numpyro.distributions.transforms import biject_to
+
+        fallback = np.full(D, LAPLACE_MIN_EIGENVALUE)
+        try:
+            sites = trace_model_sites(self.model.jax_model,
+                                      model_kwargs["priors"],
+                                      model_kwargs["data"])
+            constrained = {
+                k: biject_to(sites[k]["fn"].support)(v)
+                for k, v in unconstrained.items() if k in sites
+            }
+            sites = trace_model_sites(self.model.jax_model,
+                                      model_kwargs["priors"],
+                                      model_kwargs["data"],
+                                      substitutions=constrained)
+            sds = site_unconstrained_prior_sds(sites)
+        except Exception as err:  # pragma: no cover - defensive
+            print(f"  Could not compute prior SDs for the Laplace floor "
+                  f"({err}); using {LAPLACE_MIN_EIGENVALUE}.", flush=True)
+            return fallback
+
+        prec = {}
+        for k, v in unconstrained.items():
+            p = np.full(np.shape(v), np.nan)
+            if k in sds:
+                try:
+                    p = 1.0 / np.broadcast_to(np.asarray(sds[k], float),
+                                              np.shape(v)) ** 2
+                except ValueError:
+                    pass
+            prec[k] = jnp.asarray(p)
+        flat, _ = jax.flatten_util.ravel_pytree(prec)
+        flat = np.asarray(flat, dtype=float)
+        if flat.shape[0] != D:  # pragma: no cover - defensive
+            return fallback
+        bad = ~np.isfinite(flat) | (flat <= 0)
+        flat[bad] = LAPLACE_MIN_EIGENVALUE
+        return flat
+
+    def _unscaled_batch(self, data, idx):
+        """
+        ``get_batch`` with the mini-batch likelihood scale removed.
+
+        ``scale_vector`` is built for the configured batch size, so a batch
+        taken at full size from a model configured with ``batch_size`` below
+        the library still weights every growth likelihood by
+        ``num_genotype / batch_size`` (53x on the dev-data screen at 4096).
+        A Hessian must see each observation once.
+        """
+        batch = self.model.get_batch(data, idx)
+        if getattr(batch, "growth", None) is not None:
+            batch = batch.replace(growth=batch.growth.replace(
+                scale_vector=jnp.ones_like(batch.growth.scale_vector)))
+        return batch
+
+    def _genotype_hessian_parts(self, unconstrained, dim_map, data, flat_map,
+                                unravel, genotype_chunk_size=None,
+                                leak_tolerance=1e-5, include_shared=False):
+        """
+        The pieces of the Hessian the block Laplaces need, from
+        Hessian-vector products over genotype chunks.
+
+        Given the shared parameters, genotypes do not couple, so the Hessian
+        of the negative log joint is an arrowhead: block-diagonal over
+        genotypes (``B x B`` each), plus each genotype's coupling to the
+        shared parameters and the shared-shared block. Block column ``j``
+        comes from one product whose probe is 1 on slot ``j`` of every
+        genotype in a chunk. With ``include_shared``, every shared element
+        gets its own probe: its response on a chunk's genotype rows is their
+        coupling (each genotype's prior and observations sit in its own
+        chunk), and its response on the shared rows is summed over chunks.
+        Every chunk's potential also carries the terms no chunk slices (the
+        priors, and binding observations in a joint model), so the sum
+        counts them once per chunk; those are measured as
+        ``H(a) + H(b) - H(a + b)`` on two one-genotype batches and the
+        surplus removed.
+
+        Returns
+        -------
+        elem_idx : numpy.ndarray, shape (G, B)
+            Flat positions of each genotype's parameters.
+        blocks : numpy.ndarray, shape (G, B, B)
+            Symmetrized genotype blocks.
+        shared_idx : numpy.ndarray, shape (S,)
+            Flat positions of the shared parameters.
+        coupling : numpy.ndarray or None, shape (G, B, S)
+            Genotype-shared entries (``include_shared`` only; float32).
+        shared_block : numpy.ndarray or None, shape (S, S)
+            Shared-shared block (``include_shared`` only).
+        """
+        import jax.flatten_util
+        from numpyro.infer.util import potential_energy
+
+        G = self.model.data.num_genotype
+        gid = {}
+        for k, v in unconstrained.items():
+            a = np.full(np.shape(v), -1.0)
+            if k in dim_map and np.ndim(v) > 0:
+                ax = dim_map[k] % np.ndim(v)
+                if np.shape(v)[ax] == G:
+                    shape = [1] * np.ndim(v)
+                    shape[ax] = G
+                    a = np.broadcast_to(np.arange(G).reshape(shape),
+                                        np.shape(v)).astype(float)
+            gid[k] = jnp.asarray(a)
+        flat_gid = np.rint(np.asarray(
+            jax.flatten_util.ravel_pytree(gid)[0])).astype(int)
+        per = np.bincount(flat_gid[flat_gid >= 0], minlength=G)
+        if per.size == 0 or not np.all(per == per[0]) or per[0] == 0:
+            raise ValueError("block Laplace needs the same number of "
+                             "parameters for every genotype")
+        B = int(per[0])
+        order = np.argsort(np.where(flat_gid >= 0, flat_gid, G), kind="stable")
+        elem_idx = order[:G * B].reshape(G, B)
+        shared_idx = np.flatnonzero(flat_gid < 0)
+        D = flat_map.shape[0]
+        S = shared_idx.size
+        print(f"Block Laplace: {G} genotypes x {B} parameters; {S} shared "
+              f"parameters {'included' if include_shared else 'held at the MAP'}",
+              flush=True)
+
+        priors = self.model.priors
+
+        @jax.jit
+        def hvp(batch, v):
+            def pe(f):
+                return potential_energy(self.model.jax_model, [],
+                                        {"priors": priors, "data": batch},
+                                        unravel(f))
+            return jax.jvp(jax.grad(pe), (flat_map,), (v,))[1]
+
+        def probe(positions):
+            return jnp.zeros(D).at[positions].set(1.0)
+
+        chunk = G if not genotype_chunk_size else int(genotype_chunk_size)
+        blocks = np.zeros((G, B, B))
+        coupling = shared_block = None
+        if include_shared:
+            coupling = np.zeros((G, B, S), dtype=np.float32)
+            shared_block = np.zeros((S, S))
+        num_chunks = 0
+        for start in range(0, G, chunk):
+            num_chunks += 1
+            idx = np.arange(start, min(start + chunk, G))
+            batch = self._unscaled_batch(data, jnp.asarray(idx))
+            if start == 0 and idx.size > 1:
+                probed, other = idx[::2], idx[1::2]
+                hv = np.asarray(hvp(batch, probe(elem_idx[probed].ravel())))
+                on = np.max(np.abs(hv[elem_idx[probed]]))
+                leak = np.max(np.abs(hv[elem_idx[other]]))
+                if on > 0 and leak / on > leak_tolerance:
+                    raise ValueError(
+                        f"genotype blocks are coupled (response on unprobed "
+                        f"genotypes {leak / on:.2e} of the probed ones); the "
+                        f"block Laplace does not apply to this model")
+            for j in range(B):
+                hv = np.asarray(hvp(batch, probe(elem_idx[idx, j])), dtype=float)
+                blocks[idx, :, j] = hv[elem_idx[idx]]
+            if include_shared:
+                for s_i, pos in enumerate(shared_idx):
+                    hv = np.asarray(hvp(batch, probe(pos)), dtype=float)
+                    coupling[idx, :, s_i] = hv[elem_idx[idx]]
+                    shared_block[:, s_i] += hv[shared_idx]
+
+        if include_shared and num_chunks > 1:
+            one = [self._unscaled_batch(data, jnp.asarray([g])) for g in (0, 1)]
+            both = self._unscaled_batch(data, jnp.asarray([0, 1]))
+            for s_i, pos in enumerate(shared_idx):
+                v = probe(pos)
+                invariant = (np.asarray(hvp(one[0], v), dtype=float)
+                             + np.asarray(hvp(one[1], v), dtype=float)
+                             - np.asarray(hvp(both, v), dtype=float))
+                shared_block[:, s_i] -= (num_chunks - 1) * invariant[shared_idx]
+
+        blocks = 0.5 * (blocks + np.transpose(blocks, (0, 2, 1)))
+        if include_shared:
+            shared_block = 0.5 * (shared_block + shared_block.T)
+        return elem_idx, blocks, shared_idx, coupling, shared_block
+
+    @staticmethod
+    def _floored_block_factors(blocks, prec_b, return_kept=False):
+        """
+        ``L_g`` with ``L_g L_g^T`` the inverse of each block after flooring
+        its eigenvalues at the prior's curvature (as the full Laplace).
+        With ``return_kept``, also ``L_g`` with the floored eigenvectors'
+        columns zeroed (``arrowhead_laplace_factors``).
+        """
+        G, B, _ = blocks.shape
+        w, V = np.linalg.eigh(blocks)
+        curvature = np.einsum("gij,gi,gij->gj", V, prec_b, V)
+        floor = np.maximum(curvature, LAPLACE_MIN_EIGENVALUE)
+        w_f = np.maximum(w, floor)
+        print(f"  {int(np.sum(np.any(w < 0, axis=1)))} of {G} blocks had "
+              f"negative eigenvalues; {int(np.sum(w < floor))} of {G * B} "
+              f"eigenvalues raised to the prior's curvature", flush=True)
+        L = V / np.sqrt(w_f)[:, None, :]
+        if return_kept:
+            return L, L * (w >= floor)[:, None, :]
+        return L
+
+    def block_laplace_factors(self, unconstrained, dim_map, data, flat_map,
+                              unravel, model_kwargs, genotype_chunk_size=None,
+                              leak_tolerance=1e-5):
+        """
+        Per-genotype Laplace factors with the shared parameters held at the MAP.
+
+        Given the shared parameters, each genotype's own unconstrained
+        parameters (every element of a genotype-plate site at its index)
+        appear only in that genotype's prior and observations, so the
+        Hessian of the negative log joint restricted to them is
+        block-diagonal: one ``B x B`` block per genotype. Column ``j`` of
+        every block comes from one Hessian-vector product whose probe is 1
+        on slot ``j`` of every genotype at once, so the whole factorization
+        costs ``B`` products per genotype chunk. Each block's eigenvalues
+        are floored at the prior's curvature along their eigenvectors
+        (``laplace_eigenvalue_floor``), as in the full Laplace.
+
+        Parameters
+        ----------
+        unconstrained : dict
+            Unconstrained MAP values by site.
+        dim_map : dict
+            Genotype axis of each genotype-plate site
+            (``_get_genotype_dim_map``).
+        data : DataClass
+            The full data (on device).
+        flat_map, unravel
+            ``ravel_pytree(unconstrained)``.
+        model_kwargs : dict
+            ``priors`` and the unscaled full-batch ``data`` (for the prior
+            precisions).
+        genotype_chunk_size : int or None, optional
+            Genotypes per pass (default all).
+        leak_tolerance : float, optional
+            Largest allowed response on other genotypes' parameters to a
+            probe on one set of genotypes, relative to the response on the
+            probed ones; above it the blocks are not separable and this
+            raises.
+
+        Returns
+        -------
+        elem_idx : numpy.ndarray, shape (num_genotype, B)
+            Flat positions of each genotype's parameters.
+        L_blocks : numpy.ndarray, shape (num_genotype, B, B)
+            Factors with ``L_g L_g^T`` = genotype g's conditional covariance.
+        """
+        elem_idx, blocks, _, _, _ = self._genotype_hessian_parts(
+            unconstrained, dim_map, data, flat_map, unravel,
+            genotype_chunk_size=genotype_chunk_size,
+            leak_tolerance=leak_tolerance)
+        prec = self._laplace_prior_precision(unconstrained, model_kwargs,
+                                             flat_map.shape[0])
+        return elem_idx, self._floored_block_factors(blocks, prec[elem_idx])
+
+    def arrowhead_laplace_factors(self, unconstrained, dim_map, data, flat_map,
+                                  unravel, model_kwargs,
+                                  genotype_chunk_size=None,
+                                  leak_tolerance=1e-5):
+        """
+        Block Laplace that keeps the shared parameters' uncertainty.
+
+        The Hessian is an arrowhead (``_genotype_hessian_parts``): genotype
+        blocks ``A_g``, couplings ``C_g`` to the shared parameters and the
+        shared block ``H_ss``. Its Gaussian factorizes exactly: the shared
+        parameters have precision ``H_ss - sum_g C_g^T A_g^-1 C_g`` (the
+        Schur complement), and given them genotype g is
+        ``N(x_g* - A_g^-1 C_g (s - s*), A_g^-1)``. So this is the full
+        Laplace, at one Hessian-vector product per shared parameter beyond
+        the block Laplace's. Each ``A_g`` and the Schur complement are
+        floored at the prior's curvature, as in the full Laplace, except
+        that a negative direction of the Schur complement is held at the
+        MAP (zero variance; named in the log). The MAP is a saddle there,
+        and every genotype follows a shared direction, so the prior's width
+        along it swamps every interval: on the relative-fit run 4 MAPs the
+        k/dk_geno slide (``dk_geno_hyper_shift`` with k, eigenvalue about
+        -1e7) floored at the prior gave k its prior SD (0.01) and X 95%
+        widths of 1-3 at every depth, and floored hyperscale directions
+        pulled high-depth X coverage to 0.53.
+
+        A floored direction of ``A_g`` carries no coupling: ``C_g`` is
+        projected off it. The floor marks a direction where the MAP is not
+        at an optimum (a negative or prior-flat eigenvalue), so its coupling
+        is not a curvature either, and kept it is ruinous: with the floored
+        curvature near the prior's (about 1) and a coupling to the growth
+        slope m near 1e5, ``C^T A^-1 C`` subtracted 6e10 from m's
+        curvature of 1e10 on a short dev-data MAP (167 of 308 blocks
+        floored) and m's draws spread to its prior. Those genotypes then
+        neither inform the shared parameters nor follow them along the
+        floored directions, which widens the shared intervals a little.
+
+        Parameters and the first two returns as ``block_laplace_factors``.
+
+        Returns
+        -------
+        elem_idx, L_blocks
+            As ``block_laplace_factors``.
+        shared_idx : numpy.ndarray, shape (S,)
+            Flat positions of the shared parameters.
+        L_shared : numpy.ndarray, shape (S, S)
+            ``L_shared L_shared^T`` = the shared parameters' covariance.
+        response : numpy.ndarray, shape (G, B, S), float32
+            ``A_g^-1 C_g``: how far each genotype's conditional mean moves per
+            unit change in the shared parameters (subtracted).
+        """
+        elem_idx, blocks, shared_idx, coupling, shared_block = \
+            self._genotype_hessian_parts(
+                unconstrained, dim_map, data, flat_map, unravel,
+                genotype_chunk_size=genotype_chunk_size,
+                leak_tolerance=leak_tolerance, include_shared=True)
+        G, B, S = coupling.shape
+        prec = self._laplace_prior_precision(unconstrained, model_kwargs,
+                                             flat_map.shape[0])
+        L_blocks, L_kept = self._floored_block_factors(
+            blocks, prec[elem_idx], return_kept=True)
+
+        response = np.zeros((G, B, S), dtype=np.float32)
+        schur = shared_block.copy()
+        step = 4096
+        for start in range(0, G, step):
+            sl = slice(start, min(start + step, G))
+            L = L_kept[sl]
+            C = coupling[sl].astype(float)
+            M = np.einsum("gij,gkj,gks->gis", L, L, C)
+            response[sl] = M
+            schur -= np.einsum("gbs,gbt->st", C, M)
+        schur = 0.5 * (schur + schur.T)
+
+        w, V = np.linalg.eigh(schur)
+        w_f, _ = laplace_eigenvalue_floor(w, V, prec[shared_idx])
+        negative = w < 0
+        w_f = np.where(negative, np.inf, w_f)
+        print(f"  shared parameters: {int(np.sum(negative))} of {S} "
+              f"directions of the Schur complement negative, held at the MAP; "
+              f"{int(np.sum(~negative & (w_f > w)))} raised to the prior's "
+              f"curvature", flush=True)
+        # name the parameters in the negative directions (held: their
+        # uncertainty is left out)
+        names = np.array([f"{k}[{i}]" for k in sorted(unconstrained)
+                          for i in range(int(np.size(unconstrained[k])))])
+        if names.size == flat_map.shape[0]:
+            names = names[shared_idx]
+            for j in np.argsort(w)[:min(10, int(np.sum(w < 0)))]:
+                top = np.argsort(-np.abs(V[:, j]))[:3]
+                print(f"    eigenvalue {w[j]:.2e}: " + ", ".join(
+                    f"{names[t]} {V[t, j]:+.2f}" for t in top), flush=True)
+        L_shared = V / np.sqrt(w_f)[None, :]
+        return elem_idx, L_blocks, shared_idx, L_shared, response
+
     def get_laplace_posteriors(self,
                                map_params,
                                out_prefix,
@@ -2125,7 +2552,10 @@ class RunInference:
                                sampling_batch_size=100,
                                forward_batch_size=512,
                                hessian_chunk_size=64,
-                               sites_to_save=None):
+                               sites_to_save=None,
+                               block_genotypes=False,
+                               genotype_chunk_size=None,
+                               block_shared=False):
         """
         Generate posterior samples from a MAP solution using the Laplace approximation.
 
@@ -2139,7 +2569,8 @@ class RunInference:
         ----------
         map_params : dict
             Parameter dict from a MAP (AutoDelta) optimizer state, as returned
-            by ``svi.get_params(svi_state)``. Keys follow the
+            by ``svi.optim.get_params(svi_state.optim_state)`` (not
+            ``svi.get_params``, which constrains them). Keys follow the
             ``{site}_auto_loc`` convention used by AutoDelta; values are in
             the unconstrained parameter space.
         out_prefix : str
@@ -2157,6 +2588,28 @@ class RunInference:
         sites_to_save : list of str or None, optional
             If given, only these site names are written to the HDF5 file.
             If None (default), all sites are saved.
+        block_genotypes : bool, optional
+            Per-genotype (block-diagonal) Laplace instead of the full one
+            (default False). The shared parameters (growth k and m,
+            hyperparameters, tube offsets) are held at the MAP, and each
+            genotype's own parameters get the Laplace of their conditional
+            posterior: given the shared parameters they couple to no other
+            genotype, so the Hessian splits into one small block per
+            genotype (``block_laplace_factors``). Memory and time scale with
+            the library, not its square, so it runs on a full library where
+            the full Hessian cannot. It leaves out the shared parameters'
+            uncertainty unless ``block_shared``.
+        genotype_chunk_size : int or None, optional
+            Genotypes per Hessian-vector-product pass in block mode (default
+            None, the whole library in one pass). Lower it if the pass runs
+            out of device memory.
+        block_shared : bool, optional
+            With ``block_genotypes``, keep the shared parameters' uncertainty
+            (``arrowhead_laplace_factors``; default False): the shared
+            parameters are drawn from their Laplace marginal and each
+            genotype from its conditional given that draw, which is the full
+            Laplace. Costs one more Hessian-vector product per shared
+            parameter per genotype chunk.
 
         Notes
         -----
@@ -2175,7 +2628,8 @@ class RunInference:
         dim_map = self._get_genotype_dim_map()
 
         all_indices = jnp.arange(total_num_genotypes)
-        full_data = self.model.get_batch(data_on_gpu, all_indices)
+        # unscaled: at full batch every genotype's likelihood counts once
+        full_data = self._unscaled_batch(data_on_gpu, all_indices)
         model_kwargs = {"priors": self.model.priors, "data": full_data}
 
         # Strip _auto_loc suffix → unconstrained site-level param dict
@@ -2192,43 +2646,100 @@ class RunInference:
         # Flatten to a single vector for Hessian computation
         flat_map, unravel = jax.flatten_util.ravel_pytree(unconstrained)
         D = flat_map.shape[0]
-        print(f"Computing Hessian for {D} parameters "
-              f"(chunk_size={hessian_chunk_size}) ...", flush=True)
+        if block_shared and not block_genotypes:
+            raise ValueError("block_shared needs block_genotypes")
+        if block_genotypes and block_shared:
+            elem_idx, L_blocks, shared_idx, L_shared, response = \
+                self.arrowhead_laplace_factors(
+                    unconstrained, dim_map, data_on_gpu, flat_map, unravel,
+                    model_kwargs, genotype_chunk_size=genotype_chunk_size)
+            elem_flat = jnp.asarray(elem_idx.reshape(-1))
+            shared_flat = jnp.asarray(shared_idx)
+            L_blocks = jnp.asarray(L_blocks, dtype=jnp.float32)
+            L_shared = jnp.asarray(L_shared, dtype=jnp.float32)
+            response = jnp.asarray(response)
 
-        def pe_fn(flat_p):
-            return potential_energy(
-                self.model.jax_model, [], model_kwargs, unravel(flat_p)
-            )
+            def draw(key, n):
+                # shared parameters from their marginal; each genotype from
+                # its conditional given them
+                k_s, k_g = jax.random.split(key)
+                d_shared = jax.random.normal(
+                    k_s, shape=(n, L_shared.shape[1])) @ L_shared.T
+                z = jax.random.normal(k_g, shape=(n,) + L_blocks.shape[:2])
+                delta = (jnp.einsum("gij,ngj->ngi", L_blocks, z)
+                         - jnp.einsum("gbs,ns->ngb", response, d_shared))
+                base = jnp.broadcast_to(flat_map, (n, D))
+                base = base.at[:, shared_flat].add(d_shared)
+                return base.at[:, elem_flat].add(delta.reshape(n, -1))
+        elif block_genotypes:
+            elem_idx, L_blocks = self.block_laplace_factors(
+                unconstrained, dim_map, data_on_gpu, flat_map, unravel,
+                model_kwargs, genotype_chunk_size=genotype_chunk_size)
+            elem_flat = jnp.asarray(elem_idx.reshape(-1))
+            L_blocks = jnp.asarray(L_blocks, dtype=jnp.float32)
 
-        H_np = self._chunked_hessian(pe_fn, flat_map, hessian_chunk_size)
+            def draw(key, n):
+                # shared parameters stay at the MAP; each genotype's block
+                # gets mean + L_g z_g
+                z = jax.random.normal(key, shape=(n,) + L_blocks.shape[:2])
+                delta = jnp.einsum("gij,ngj->ngi", L_blocks, z)
+                base = jnp.broadcast_to(flat_map, (n, D))
+                return base.at[:, elem_flat].add(delta.reshape(n, -1))
+        else:
+            print(f"Computing Hessian for {D} parameters "
+                  f"(chunk_size={hessian_chunk_size}) ...", flush=True)
 
-        # Project Hessian to the PD cone and compute the Cholesky factor of the
-        # covariance in float64 (via numpy) so that sampling is numerically
-        # stable even when JAX_ENABLE_X64 is not set.
-        #
-        # Three sources of instability in the naive float32 approach:
-        #  1. Saddle-point MAP → negative Hessian eigenvalues → non-PD covariance
-        #  2. Very large eigenvalues (e.g. 2.6e8) → covariance condition number
-        #     ~1e11, which exceeds float32 precision (~1e7) and reintroduces
-        #     negative eigenvalues after the V @ diag(1/λ) @ V^T reconstruction.
-        #  3. jax.random.multivariate_normal uses Cholesky internally; if the
-        #     covariance is not PD the Cholesky fails → NaN samples.
-        #
-        # Fix: do the eigendecomposition and Cholesky in numpy float64, clamp
-        # negative eigenvalues to 1e-3 (caps max variance per direction at 1000),
-        # then sample as mean + L @ z where z ~ N(0,I) in float32.
-        print("Projecting Hessian to PD cone and computing Cholesky ...", flush=True)
-        eigenvalues_np, eigenvectors_np = np.linalg.eigh(H_np)
-        n_negative = int(np.sum(eigenvalues_np < 0))
-        if n_negative > 0:
-            print(f"  Warning: {n_negative} negative Hessian eigenvalues "
-                  f"(min={eigenvalues_np.min():.3e}); clamping to 1e-3.",
-                  flush=True)
-        eigenvalues_pd = np.maximum(eigenvalues_np, 1e-3)
-        cov_np = eigenvectors_np @ np.diag(1.0 / eigenvalues_pd) @ eigenvectors_np.T
-        # Cholesky in float64; cast factor to float32 for the forward pass
-        L_np = np.linalg.cholesky(cov_np)
-        L = jnp.array(L_np, dtype=jnp.float32)
+            def pe_fn(flat_p):
+                return potential_energy(
+                    self.model.jax_model, [], model_kwargs, unravel(flat_p)
+                )
+
+            H_np = self._chunked_hessian(pe_fn, flat_map, hessian_chunk_size)
+
+            # Project Hessian to the PD cone and compute the Cholesky factor of the
+            # covariance in float64 (via numpy) so that sampling is numerically
+            # stable even when JAX_ENABLE_X64 is not set.
+            #
+            # Three sources of instability in the naive float32 approach:
+            #  1. Saddle-point MAP → negative Hessian eigenvalues → non-PD covariance
+            #  2. Very large eigenvalues (e.g. 2.6e8) → covariance condition number
+            #     ~1e11, which exceeds float32 precision (~1e7) and reintroduces
+            #     negative eigenvalues after the V @ diag(1/λ) @ V^T reconstruction.
+            #  3. jax.random.multivariate_normal uses Cholesky internally; if the
+            #     covariance is not PD the Cholesky fails → NaN samples.
+            #
+            # Fix: do the eigendecomposition and Cholesky in numpy float64, floor
+            # each eigenvalue at the prior's curvature along its eigenvector
+            # (``laplace_eigenvalue_floor``), then sample as mean + L @ z where
+            # z ~ N(0,I) in float32. The old flat floor of 1e-3 gave a direction
+            # with a negative eigenvalue a variance of 1000 in unconstrained
+            # units; a MAP stopped short of its optimum always has a few, and
+            # where they touched the growth slopes m, Laplace draws of m spread
+            # 50x wider than its posterior (SVI-overconfidence two-stage grid,
+            # seed 8: m from -0.049 to +0.017, truth -0.010).
+            print("Projecting Hessian to PD cone and computing Cholesky ...", flush=True)
+            eigenvalues_np, eigenvectors_np = np.linalg.eigh(H_np)
+            n_negative = int(np.sum(eigenvalues_np < 0))
+            prior_precision = self._laplace_prior_precision(unconstrained,
+                                                            model_kwargs, D)
+            eigenvalues_pd, n_floored = laplace_eigenvalue_floor(
+                eigenvalues_np, eigenvectors_np, prior_precision)
+            if n_negative > 0:
+                print(f"  Warning: {n_negative} negative Hessian eigenvalues "
+                      f"(min={eigenvalues_np.min():.3e}); the MAP is not at an "
+                      f"optimum.", flush=True)
+            print(f"  {n_floored} of {D} eigenvalues raised to the prior's "
+                  f"curvature along their eigenvector.", flush=True)
+            cov_np = eigenvectors_np @ np.diag(1.0 / eigenvalues_pd) @ eigenvectors_np.T
+            # Cholesky in float64; cast factor to float32 for the forward pass
+            L_np = np.linalg.cholesky(cov_np)
+            L = jnp.array(L_np, dtype=jnp.float32)
+
+            def draw(key, n):
+                # mean + z @ L^T (z ~ N(0,I)) avoids a second Cholesky
+                # inside jax.random.multivariate_normal
+                z = jax.random.normal(key, shape=(n, D))
+                return flat_map + z @ L.T
 
         # Get unconstrained → constrained transform for each latent site
         seeded_model = seed(self.model.jax_model, rng_seed=0)
@@ -2264,8 +2775,7 @@ class RunInference:
                 # Use mean + z @ L^T (z ~ N(0,I)) to avoid a second Cholesky
                 # inside jax.random.multivariate_normal.
                 sample_key = self.get_key()
-                z = jax.random.normal(sample_key, shape=(this_batch_size, D))
-                flat_samples = flat_map + z @ L.T
+                flat_samples = draw(sample_key, this_batch_size)
 
                 # Unravel each sample and transform to constrained space.
                 # jax.vmap(unravel) maps (N, D) → pytree of (N, *shape) arrays.
@@ -2381,7 +2891,9 @@ class RunInference:
                  num_warmup=500,
                  num_samples=500,
                  num_chains=1,
-                 target_accept_prob=0.9):
+                 target_accept_prob=0.9,
+                 init_values=None,
+                 dense_mass=False):
         """
         Run NUTS (No-U-Turn Sampler) MCMC on the full dataset.
 
@@ -2395,6 +2907,15 @@ class RunInference:
             Number of MCMC chains.
         target_accept_prob : float
             Target acceptance probability for step-size adaptation.
+        init_values : dict or None, optional
+            Constrained site values to start every chain at (``site_values``,
+            e.g. from a MAP warm-up).  Sites without a value start at their
+            prior median.
+        dense_mass : bool, optional
+            Adapt a dense mass matrix instead of a diagonal one.  It costs
+            O(D^2) memory and O(D^3) per adaptation window but follows
+            correlated posteriors (the relative fit's m*X ridge), where a
+            diagonal mass matrix leaves NUTS at its maximum tree depth.
 
         Returns
         -------
@@ -2402,30 +2923,30 @@ class RunInference:
             The MCMC object after sampling. Call `.get_samples()` to get
             posterior samples as a dict of {site_name: jnp.array}.
         """
-        from numpyro.infer import MCMC, NUTS, init_to_value, init_to_median
-        import numpyro.infer.util
+        from numpyro.infer import MCMC, NUTS
 
         main_key = random.PRNGKey(self._seed)
 
+        # The full data set as one batch, in library order (the path the
+        # Laplace posterior uses).
+        full_data = self.model.get_batch(self.model.data,
+                                         jnp.arange(self.model.data.num_genotype))
         jax_model_kwargs = {
             "priors": self.model.priors,
-            "data": self.model.data,
+            "data": full_data,
         }
 
-        # Initialise from prior median — more robust than random for
-        # hierarchical models with constrained parameters.
-        init_params, _, _, _ = numpyro.infer.util.initialize_model(
-            main_key,
-            self.model.jax_model,
-            model_args=[],
-            model_kwargs=jax_model_kwargs,
-            init_strategy=init_to_median,
-        )
-        init_strategy = init_to_value(values=init_params)
+        # Start at the given constrained site values, else at prior medians.
+        # (This used to hand initialize_model's ParamInfo tuple to
+        # init_to_value, which matched no site, so every chain started at
+        # init_to_uniform's draw in [-2, 2] on the unconstrained scale.)
+        init_strategy = _init_to_value_or(values=init_values,
+                                          fallback=init_to_median)
 
         kernel = NUTS(self.model.jax_model,
                       init_strategy=init_strategy,
-                      target_accept_prob=target_accept_prob)
+                      target_accept_prob=target_accept_prob,
+                      dense_mass=dense_mass)
 
         mcmc = MCMC(kernel,
                     num_warmup=num_warmup,
@@ -2442,4 +2963,31 @@ class RunInference:
             total = num_samples * num_chains
             print(f"NUTS: {num_div} divergences out of {total} samples")
 
+        self._report_nuts_diagnostics(mcmc)
+
         return mcmc
+
+    @staticmethod
+    def _report_nuts_diagnostics(mcmc):
+        """Print the worst split R-hat and smallest effective sample size."""
+        from numpyro.diagnostics import summary
+
+        try:
+            stats = summary(mcmc.get_samples(group_by_chain=True))
+        except Exception as err:  # diagnostics must never sink a finished run
+            print(f"NUTS: diagnostics unavailable ({err})")
+            return
+        worst_rhat, worst_rhat_site = -np.inf, None
+        least_neff, least_neff_site = np.inf, None
+        for site, st in stats.items():
+            # Constant deterministic sites (fixed values) give inf/NaN.
+            r_hat = np.asarray(st.get("r_hat", np.nan), dtype=float)
+            r_hat = r_hat[np.isfinite(r_hat)]
+            n_eff = np.asarray(st.get("n_eff", np.nan), dtype=float)
+            n_eff = n_eff[np.isfinite(n_eff)]
+            if r_hat.size and r_hat.max() > worst_rhat:
+                worst_rhat, worst_rhat_site = float(r_hat.max()), site
+            if n_eff.size and n_eff.min() < least_neff:
+                least_neff, least_neff_site = float(n_eff.min()), site
+        print(f"NUTS: max split R-hat {worst_rhat:.3f} ({worst_rhat_site}); "
+              f"min n_eff {least_neff:.0f} ({least_neff_site})", flush=True)

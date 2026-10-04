@@ -3,6 +3,7 @@ Tests for run_growth_analysis.py.
 """
 import pytest
 import dill
+import numpy as np
 import jax.numpy as jnp
 from unittest.mock import MagicMock
 
@@ -88,6 +89,9 @@ class TestRunGrowthAnalysisNuts:
             ".fit_model_cli.RunInference",
             return_value=MagicMock(_iterations_per_epoch=1),
         )
+        # NUTS starts from a MAP warm-up (pre_map_num_epoch > 0 by default)
+        mocker.patch("tfscreen.tfmodel.scripts.fit_model_cli._run_map",
+                     return_value=(MagicMock(), {}, True))
         fake_samples = {"param": [1.0]}
         run_nuts_mock = mocker.patch(
             "tfscreen.tfmodel.scripts"
@@ -270,6 +274,19 @@ class TestGuideSelection:
         assert kwargs["guide_type"] == "auto_low_rank_multivariate_normal"
         assert kwargs["guide_kwargs"] == {"rank": 4, "init_scale": 0.05}
 
+    @pytest.mark.parametrize("guide_type,expected", [
+        ("auto_normal", {"init_scale": 1e-4}),
+        ("delta", {}),
+    ])
+    def test_fresh_autoguide_starts_narrow(self, mocker, guide_type,
+                                           expected):
+        """numpyro's default init_scale (0.1) would throw the start away."""
+        _patch_common(mocker)
+        run_svi_mock = self._patch_run_svi(mocker)
+        fit_model(config_file="dummy.yaml", seed=1, pre_map_num_epoch=0,
+                  guide_type=guide_type)
+        assert run_svi_mock.call_args.kwargs["guide_kwargs"] == expected
+
     @staticmethod
     def _patch_ri(mocker, guesses=None):
         """RunInference whose site_values strips ``_auto_loc`` (like the
@@ -314,7 +331,32 @@ class TestGuideSelection:
         assert set(kwargs["init_values"]) == {"dk_geno_offset"}
         assert kwargs["init_params"] is None
 
-    @pytest.mark.parametrize("scale,expected", [(None, 0.1), (0.02, 0.02)])
+    def test_nuts_starts_from_premap_solution(self, mocker):
+        _patch_common(mocker)
+        self._patch_ri(mocker, guesses={"dk_geno_offset": jnp.zeros(3)})
+        map_params = {"dk_geno_offset_auto_loc": jnp.ones(3)}
+        run_map_mock = mocker.patch(f"{_CLI}._run_map",
+                                    return_value=(MagicMock(), map_params,
+                                                  True))
+        run_nuts_mock = mocker.patch(f"{_CLI}._run_nuts", return_value={})
+        fit_model(config_file="dummy.yaml", seed=1, analysis_method="nuts",
+                  pre_map_num_epoch=5)
+        assert run_map_mock.call_args.kwargs["max_num_epochs"] == 5
+        init_values = run_nuts_mock.call_args.kwargs["init_values"]
+        assert float(init_values["dk_geno_offset"][0]) == 1.0
+
+    def test_nuts_without_premap_starts_from_guesses(self, mocker):
+        _patch_common(mocker)
+        self._patch_ri(mocker, guesses={"dk_geno_offset": jnp.zeros(3)})
+        run_map_mock = mocker.patch(f"{_CLI}._run_map")
+        run_nuts_mock = mocker.patch(f"{_CLI}._run_nuts", return_value={})
+        fit_model(config_file="dummy.yaml", seed=1, analysis_method="nuts",
+                  pre_map_num_epoch=0)
+        run_map_mock.assert_not_called()
+        init_values = run_nuts_mock.call_args.kwargs["init_values"]
+        assert float(init_values["dk_geno_offset"][0]) == 0.0
+
+    @pytest.mark.parametrize("scale,expected", [(None, 1e-4), (0.02, 0.02)])
     def test_component_guide_starts_from_premap(self, mocker, scale,
                                                 expected):
         _patch_common(mocker)
@@ -344,6 +386,45 @@ class TestGuideSelection:
                                     return_value=(MagicMock(), {}, True))
         fit_model(config_file="dummy.yaml", seed=1, analysis_method="map")
         assert run_map_mock.call_args.kwargs["init_values"] == {"mu": 1.0}
+
+    def test_map_starts_from_init_from(self, tmp_path, mocker):
+        """A MAP params npz seeds every site it names, over the guesses;
+        guesses for sites it lacks are kept (a level-offset fit started from
+        a zero-offset fit's point)."""
+        npz = tmp_path / "prev_params.npz"
+        np.savez(npz, mu_auto_loc=np.array([2.0, 3.0]),
+                 offset_auto_loc=np.array([0.1]), not_a_site=np.array(9.0))
+        _patch_common(mocker)
+        ri = self._patch_ri(mocker, guesses={"mu": 1.0, "sigma": 0.5})
+        run_map_mock = mocker.patch(f"{_CLI}._run_map",
+                                    return_value=(MagicMock(), {}, True))
+        fit_model(config_file="dummy.yaml", seed=1, analysis_method="map",
+                  init_from=str(npz))
+        start = run_map_mock.call_args.kwargs["init_values"]
+        assert set(start) == {"mu", "sigma", "offset"}
+        np.testing.assert_array_equal(start["mu"], [2.0, 3.0])
+        np.testing.assert_allclose(start["offset"], [0.1], rtol=1e-6)
+        assert start["sigma"] == 0.5
+        # both keys reach site_values, which ranks {site}_auto_loc first
+        seen = ri.site_values.call_args.args[0]
+        assert "mu" in seen and "mu_auto_loc" in seen
+
+    def test_init_from_needs_map_arrays(self, tmp_path, mocker):
+        npz = tmp_path / "other.npz"
+        np.savez(npz, mu=np.array(1.0))
+        _patch_common(mocker)
+        with pytest.raises(ValueError, match="no '\\*_auto_loc' arrays"):
+            fit_model(config_file="dummy.yaml", seed=1, analysis_method="map",
+                      init_from=str(npz))
+
+    def test_init_from_refused_on_resume(self, tmp_path, mocker):
+        ckpt = tmp_path / "ckpt.pkl"
+        with open(ckpt, "wb") as f:
+            dill.dump({"guide_type": "component"}, f)
+        _patch_common(mocker)
+        with pytest.raises(ValueError, match="init_from and checkpoint_file"):
+            fit_model(config_file="dummy.yaml", analysis_method="map",
+                      checkpoint_file=str(ckpt), init_from="x.npz")
 
     def test_resume_skips_start_translation(self, tmp_path, mocker):
         ckpt = tmp_path / "ckpt.pkl"

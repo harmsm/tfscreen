@@ -27,6 +27,7 @@ Wild-type has no mutations so log_activity[wt] = 0 → activity[wt] = 1.0.
 import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
+from tfscreen.tfmodel.generative.components._horseshoe import regularized_scale, HalfCauchy
 import pandas as pd
 from flax.struct import dataclass
 from typing import Dict, Any
@@ -83,18 +84,18 @@ def define_model(name: str,
     # ------------------------------------------------------------------
     tau_d = pyro.sample(
         f"{name}_d_tau",
-        dist.HalfCauchy(priors.activity_d_tau_scale))
+        HalfCauchy(priors.activity_d_tau_scale))
     c2_d = pyro.sample(
         f"{name}_d_c2",
         dist.InverseGamma(priors.activity_d_slab_df / 2.0,
                           priors.activity_d_slab_df * priors.activity_d_slab_scale ** 2 / 2.0))
 
     with pyro.plate(f"{name}_mutation_plate", num_mut, dim=-1):
-        lambda_d = pyro.sample(f"{name}_d_lambda", dist.HalfCauchy(1.0))
+        lambda_d = pyro.sample(f"{name}_d_lambda", HalfCauchy(1.0))
         d_offset = pyro.sample(f"{name}_d_offset", dist.Normal(0.0, 1.0))
 
     # Regularised local scale, then non-centred delta (symmetric about 0)
-    lambda_d_tilde = jnp.sqrt(c2_d * lambda_d ** 2 / (c2_d + tau_d ** 2 * lambda_d ** 2))
+    lambda_d_tilde = regularized_scale(lambda_d, tau_d, c2_d)
     d_log_activity = d_offset * tau_d * lambda_d_tilde   # [num_mutation]
     pyro.deterministic(f"{name}_d_log_activity", d_log_activity)
 
@@ -111,18 +112,17 @@ def define_model(name: str,
 
         tau_epi = pyro.sample(
             f"{name}_epi_tau",
-            dist.HalfCauchy(priors.activity_epi_tau_scale))
+            HalfCauchy(priors.activity_epi_tau_scale))
         c2_epi = pyro.sample(
             f"{name}_epi_c2",
             dist.InverseGamma(priors.activity_epi_slab_df / 2.0,
                               priors.activity_epi_slab_df * priors.activity_epi_slab_scale ** 2 / 2.0))
 
         with pyro.plate(f"{name}_pair_plate", num_pair, dim=-1):
-            lambda_epi = pyro.sample(f"{name}_epi_lambda", dist.HalfCauchy(1.0))
+            lambda_epi = pyro.sample(f"{name}_epi_lambda", HalfCauchy(1.0))
             epi_offset = pyro.sample(f"{name}_epi_offset", dist.Normal(0.0, 1.0))
 
-        lambda_epi_tilde = jnp.sqrt(
-            c2_epi * lambda_epi ** 2 / (c2_epi + tau_epi ** 2 * lambda_epi ** 2))
+        lambda_epi_tilde = regularized_scale(lambda_epi, tau_epi, c2_epi)
         epi_log_activity = epi_offset * tau_epi * lambda_epi_tilde   # [num_pair]
         pyro.deterministic(f"{name}_epi_log_activity", epi_log_activity)
         log_activity = log_activity + apply_pair_matrix(
@@ -180,7 +180,7 @@ def guide(name: str,
         d_offset = pyro.sample(f"{name}_d_offset",
                                dist.Normal(d_offset_locs, d_offset_scales))
 
-    lambda_d_tilde = jnp.sqrt(c2_d * lambda_d ** 2 / (c2_d + tau_d ** 2 * lambda_d ** 2))
+    lambda_d_tilde = regularized_scale(lambda_d, tau_d, c2_d)
     d_log_activity = d_offset * tau_d * lambda_d_tilde
     log_activity = apply_mut_matrix(
         d_log_activity, mut_nnz_mut_idx, mut_nnz_geno_idx, data.num_genotype)
@@ -216,8 +216,7 @@ def guide(name: str,
             epi_offset = pyro.sample(f"{name}_epi_offset",
                                      dist.Normal(epi_offset_locs, epi_offset_scales))
 
-        lambda_epi_tilde = jnp.sqrt(
-            c2_epi * lambda_epi ** 2 / (c2_epi + tau_epi ** 2 * lambda_epi ** 2))
+        lambda_epi_tilde = regularized_scale(lambda_epi, tau_epi, c2_epi)
         epi_log_activity = epi_offset * tau_epi * lambda_epi_tilde
         log_activity = log_activity + apply_pair_matrix(
             epi_log_activity, pair_nnz_pair_idx, pair_nnz_geno_idx, data.num_genotype)

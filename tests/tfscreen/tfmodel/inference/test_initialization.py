@@ -27,7 +27,7 @@ from .test_batch_safety import (
     _BINDING_CSV,
     _GROWTH_CSV,
     _SAFE_VARIANTS,
-    _VARIANT_KWARGS,
+    _variant_kwargs,
     _owned_by,
 )
 
@@ -101,6 +101,36 @@ def test_component_guide_init():
     assert params == {}
 
 
+def _bounded_guide(data=None, priors=None):
+    numpyro.sample("e", dist.Normal(
+        numpyro.param("e_loc", 0.0),
+        numpyro.param("e_scale", 1.0,
+                      constraint=dist.constraints.greater_than(1e-4))))
+
+
+def test_component_guide_init_stays_inside_scale_bound():
+    """
+    A capped scale never starts on its constraint's lower bound.
+
+    With the cap equal to the bound (both 1e-4 for the hyperparameter
+    scales), the param started at the bound, -inf in unconstrained space,
+    and never moved (two-stage grid, 2026-09-29).
+    """
+    from numpyro.distributions.transforms import biject_to
+
+    mapping, _, defaults = component_guide_map(_bounded_guide, None, None)
+    assert mapping["e"]["scale_lower_bound"] == pytest.approx(1e-4)
+    params, _ = component_guide_init({}, mapping, defaults, init_scale=1e-4)
+    assert float(params["e_scale"]) == pytest.approx(2e-4)
+    u = biject_to(dist.constraints.greater_than(1e-4)).inv(params["e_scale"])
+    assert np.isfinite(float(u))
+    # unbounded scales are unchanged
+    mapping, _, defaults = component_guide_map(_guide, None, None)
+    assert mapping["a"]["scale_lower_bound"] is None
+    params, _ = component_guide_init({}, mapping, defaults, init_scale=0.2)
+    assert float(params["a_scale"]) == pytest.approx(0.2)
+
+
 def test_site_prior_sds():
     sds = site_prior_sds(trace_model_sites(_model, None, None,
                                            substitutions={"a": 0.0}))
@@ -160,11 +190,8 @@ _KNOWN_UNMAPPED = {
 
 @pytest.mark.parametrize("axis,variant", _SAFE_VARIANTS)
 def test_component_guides_follow_loc_scale_convention(axis, variant):
-    orchestrator = ModelOrchestrator(growth_df=_GROWTH_CSV,
-                                     binding_df=_BINDING_CSV,
-                                     batch_size=None,
-                                     **{axis: variant},
-                                     **_VARIANT_KWARGS.get((axis, variant), {}))
+    orchestrator = ModelOrchestrator(batch_size=None,
+                                     **_variant_kwargs(axis, variant))
     ri = RunInference(orchestrator, seed=0)
     mapping, unmatched, _ = component_guide_map(orchestrator.jax_model_guide,
                                                 orchestrator.priors,
@@ -192,3 +219,66 @@ def test_default_model_guide_start_round_trip():
     assert float(np.max(start["dk_geno_offset_scales"])) == pytest.approx(0.1)
     # param-keyed guesses (not sites) are kept
     assert "condition_growth_k_locs" in start
+
+
+def test_default_guide_start_stays_near_its_point():
+    """
+    SVI starts where the pre-MAP ended, not far above it.
+
+    The starting scale is one number in every site's own units, so a large one
+    is enormous on growth rates (per minute) and ln_cfu levels: at 0.1 the
+    relative-fit grid's SVI started ~1000x above its pre-MAP loss and
+    re-descended into other optima (2026-09-27).  Checked on the count
+    likelihood, the most sensitive to it.
+    """
+    from numpyro.handlers import seed, substitute, trace
+    from numpyro.infer.util import log_density
+
+    from tfscreen.tfmodel.scripts.fit_model_cli import DEFAULT_GUIDE_INIT_SCALE
+
+    orchestrator = ModelOrchestrator(growth_df=_GROWTH_CSV,
+                                     binding_df=_BINDING_CSV,
+                                     batch_size=None,
+                                     growth_likelihood="counts",
+                                     sample_offset="level")
+    ri = RunInference(orchestrator, seed=0)
+    values = ri.site_values(orchestrator.init_params)
+    data = orchestrator.get_batch(orchestrator.data,
+                                  jnp.asarray(orchestrator.get_random_idx()))
+
+    def neg_log_joint(params, key):
+        draw = trace(seed(substitute(orchestrator.jax_model_guide, params),
+                          key)).get_trace(data=data,
+                                          priors=orchestrator.priors)
+        point = {k: s["value"] for k, s in draw.items() if s["type"] == "sample"}
+        lp, _ = log_density(orchestrator.jax_model, (),
+                            dict(data=data, priors=orchestrator.priors), point)
+        return -float(lp)
+
+    def start(scale):
+        return ri.component_guide_start(values,
+                                        guesses=orchestrator.init_params,
+                                        init_scale=scale)
+
+    at_point = neg_log_joint(start(1e-12), 0)
+
+    def excess(scale):
+        params = start(scale)
+        return np.median([neg_log_joint(params, k) for k in range(8)]) - at_point
+
+    assert excess(DEFAULT_GUIDE_INIT_SCALE) < 0.01 * abs(at_point)
+
+    # every guide param starts strictly inside its constraint, so none is
+    # stuck at -inf in unconstrained space
+    from numpyro.distributions.transforms import biject_to
+    guide_trace = trace(seed(orchestrator.jax_model_guide, 0)).get_trace(
+        data=data, priors=orchestrator.priors)
+    params = start(DEFAULT_GUIDE_INIT_SCALE)
+    for name, value in params.items():
+        constraint = guide_trace[name]["kwargs"].get("constraint")
+        if constraint is None:
+            continue
+        u = biject_to(constraint).inv(jnp.asarray(value))
+        assert np.all(np.isfinite(np.asarray(u))), name
+    # the test can fail: the old default started far from the point
+    assert excess(0.1) > abs(at_point)

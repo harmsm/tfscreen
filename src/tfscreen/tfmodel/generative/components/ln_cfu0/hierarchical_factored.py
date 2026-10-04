@@ -94,9 +94,16 @@ def define_model(name: str,
     ``hierarchical`` component (pooled Normal per library class, separate
     locations for spiked/wt genotypes) but without the condition_pre
     dimension — reflecting the biology that all tubes were split from the
-    same stock at the same OD600.  ``tube_offset`` is a small centred Normal
-    per (replicate, condition_pre) pair that absorbs any remaining systematic
-    tube-to-tube dilution differences.
+    same stock at the same OD600.  ``tube_offset`` is a small Normal per
+    (replicate, condition_pre) pair that absorbs any remaining systematic
+    tube-to-tube dilution differences.  It is non-centred,
+    ``tube_offset = tube_scale * tube_offset_z`` with ``tube_offset_z ~
+    N(0, 1)``: the offsets trade against the genotype baselines, so the
+    data let them sit at 0, and the centred form ``Normal(0, tube_scale)``
+    then has a joint density that grows without bound as ``tube_scale``
+    goes to 0 (about ``tube_scale^-4`` for 4 offsets). No MAP existed, and a
+    full-covariance guide followed the scale to a loss near -1e23
+    (``planning/studies/svi-overconfidence/``, 2026-09-28).
 
     Parameters
     ----------
@@ -159,13 +166,13 @@ def define_model(name: str,
     if offset_geno.shape[-1] == data.num_genotype:
         offset_geno = offset_geno[..., data.batch_idx]
 
-    # Per-(replicate, condition_pre) tube offsets — shape (R, C)
+    # Per-(replicate, condition_pre) tube offsets, non-centred — shape (R, C)
     with pyro.plate(f"{name}_tube_replicate", data.num_replicate, dim=-2):
         with pyro.plate(f"{name}_condition_pre", data.num_condition_pre, dim=-1):
-            tube_offset = pyro.sample(
-                f"{name}_tube_offset",
-                dist.Normal(0.0, tube_scale)
-            )
+            tube_offset_z = pyro.sample(f"{name}_tube_offset_z",
+                                        dist.Normal(0.0, 1.0))
+    tube_offset = pyro.deterministic(f"{name}_tube_offset",
+                                     tube_scale * tube_offset_z)
 
     per_geno_loc, per_geno_scale = _per_geno_loc_scale(
         data, priors,
@@ -192,7 +199,8 @@ def guide(name: str,
 
     Variational parameters:
     - ``{name}_offset_geno_locs/scales``: shape ``(num_replicate, num_genotype)``
-    - ``{name}_tube_offset_locs/scales``: shape ``(num_replicate, num_condition_pre)``
+    - ``{name}_tube_offset_z_locs/scales``: shape ``(num_replicate, num_condition_pre)``,
+      the non-centred tube offsets (``tube_offset = tube_scale * tube_offset_z``)
     - Per-class hyper_loc/hyper_scale variational params (skipped when pinned)
     - ``{name}_tube_scale``: LogNormal variational posterior for positive scalar
     """
@@ -259,7 +267,8 @@ def guide(name: str,
     ts_loc = pyro.param(f"{name}_tube_scale_loc", jnp.array(-1.0))
     ts_scale = pyro.param(f"{name}_tube_scale_scale", jnp.array(0.1),
                           constraint=dist.constraints.greater_than(1e-4))
-    pyro.sample(f"{name}_tube_scale", dist.LogNormal(ts_loc, ts_scale))
+    tube_scale = pyro.sample(f"{name}_tube_scale",
+                             dist.LogNormal(ts_loc, ts_scale))
 
     # Per-(replicate, genotype) offset variational params — shape (R, G)
     geno_param_shape = (data.num_replicate, data.num_genotype)
@@ -279,18 +288,20 @@ def guide(name: str,
     if offset_geno.shape[-1] == data.num_genotype:
         offset_geno = offset_geno[..., data.batch_idx]
 
-    # Per-(replicate, condition_pre) tube offset variational params — shape (R, C)
+    # Per-(replicate, condition_pre) non-centred tube offsets — shape (R, C)
     tube_param_shape = (data.num_replicate, data.num_condition_pre)
-    tube_offset_locs = pyro.param(f"{name}_tube_offset_locs",
-                                  jnp.zeros(tube_param_shape, dtype=float))
-    tube_offset_scales = pyro.param(f"{name}_tube_offset_scales",
-                                    jnp.full(tube_param_shape, 0.1, dtype=float),
-                                    constraint=dist.constraints.positive)
+    tube_offset_z_locs = pyro.param(f"{name}_tube_offset_z_locs",
+                                    jnp.zeros(tube_param_shape, dtype=float))
+    tube_offset_z_scales = pyro.param(f"{name}_tube_offset_z_scales",
+                                      jnp.ones(tube_param_shape, dtype=float),
+                                      constraint=dist.constraints.positive)
 
     with pyro.plate(f"{name}_tube_replicate", data.num_replicate, dim=-2):
         with pyro.plate(f"{name}_condition_pre", data.num_condition_pre, dim=-1):
-            tube_offset = pyro.sample(f"{name}_tube_offset",
-                                      dist.Normal(tube_offset_locs, tube_offset_scales))
+            tube_offset_z = pyro.sample(
+                f"{name}_tube_offset_z",
+                dist.Normal(tube_offset_z_locs, tube_offset_z_scales))
+    tube_offset = tube_scale * tube_offset_z
 
     per_geno_loc, per_geno_scale = _per_geno_loc_scale(
         data, priors,
@@ -359,8 +370,9 @@ def get_guesses(name: str, data: GrowthData,
     median across condition_pre, unless a direct pre-split measurement is
     available (see ``presplit``), in which case it is preferred wherever
     valid.  The tube offset is the per-(replicate, condition_pre) median
-    residual after subtracting that baseline.  The tube scale is estimated
-    from the MAD of the tube offsets.
+    residual after subtracting that baseline, given as ``tube_offset_z`` =
+    offset / tube scale.  The tube scale is estimated from the MAD of the
+    tube offsets.
 
     Falls back to hard-coded defaults for any group or dimension with no
     valid observations.
@@ -384,7 +396,7 @@ def get_guesses(name: str, data: GrowthData,
             f"{name}_tube_scale":  _FALLBACK_TUBE_SCALE,
             f"{name}_offset_geno": jnp.zeros(
                 (data.num_replicate, data.num_genotype), dtype=float),
-            f"{name}_tube_offset": jnp.zeros(
+            f"{name}_tube_offset_z": jnp.zeros(
                 (data.num_replicate, data.num_condition_pre), dtype=float),
         }
         for i in range(num_classes):
@@ -442,7 +454,8 @@ def get_guesses(name: str, data: GrowthData,
         f"{name}_wt_loc":      float(estimates["wt_loc"]),
         f"{name}_tube_scale":  float(tube_scale_est),
         f"{name}_offset_geno": jnp.array(offset_geno, dtype=float),
-        f"{name}_tube_offset": jnp.array(tube_offset_est, dtype=float),
+        f"{name}_tube_offset_z": jnp.array(tube_offset_est / tube_scale_est,
+                                           dtype=float),
     }
     for i in range(len(class_masks)):
         guesses[f"{name}_hyper_loc_{i}"]   = float(estimates["hyper_locs"][i])
@@ -452,12 +465,8 @@ def get_guesses(name: str, data: GrowthData,
 
 
 def get_extract_specs(ctx):
-    if "map_ln_cfu0" not in ctx.growth_tm.df.columns:
-        return []
-    return [dict(
-        input_df=ctx.growth_tm.df,
-        params_to_get=["ln_cfu0"],
-        map_column="map_ln_cfu0",
-        get_columns=["replicate", "condition_pre", "genotype"],
-        in_run_prefix="",
-    )]
+    # same array layout as hierarchical; see its ln_cfu0_extract_spec
+    from tfscreen.tfmodel.generative.components.ln_cfu0.hierarchical import (
+        ln_cfu0_extract_spec,
+    )
+    return ln_cfu0_extract_spec(ctx)

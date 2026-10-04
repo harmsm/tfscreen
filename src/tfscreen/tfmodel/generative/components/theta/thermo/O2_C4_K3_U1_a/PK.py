@@ -28,6 +28,7 @@ values).
 import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
+from tfscreen.tfmodel.generative.components._horseshoe import regularized_scale, HalfCauchy
 import pandas as pd
 from flax.struct import dataclass
 from functools import partial
@@ -173,21 +174,21 @@ def define_model(name: str,
 
         tau_epi = pyro.sample(
             f"{name}_epi_tau",
-            dist.HalfCauchy(priors.theta_epi_tau_scale))
+            HalfCauchy(priors.theta_epi_tau_scale))
         c2_epi = pyro.sample(
             f"{name}_epi_c2",
             dist.InverseGamma(priors.theta_epi_slab_df / 2.0,
                               priors.theta_epi_slab_df * priors.theta_epi_slab_scale ** 2 / 2.0))
 
         with pyro.plate(f"{name}_pair_scalar_plate", num_pair, dim=-1):
-            epi_K_op_lam = pyro.sample(f"{name}_epi_ln_K_op_lambda", dist.HalfCauchy(1.0))
+            epi_K_op_lam = pyro.sample(f"{name}_epi_ln_K_op_lambda", HalfCauchy(1.0))
             epi_K_op_off = pyro.sample(f"{name}_epi_ln_K_op_offset", dist.Normal(0.0, 1.0))
-            epi_K_HL_lam = pyro.sample(f"{name}_epi_ln_K_HL_lambda", dist.HalfCauchy(1.0))
+            epi_K_HL_lam = pyro.sample(f"{name}_epi_ln_K_HL_lambda", HalfCauchy(1.0))
             epi_K_HL_off = pyro.sample(f"{name}_epi_ln_K_HL_offset", dist.Normal(0.0, 1.0))
 
         with pyro.plate(f"{name}_titrant_epi_outer_plate", T, dim=-2):
             with pyro.plate(f"{name}_pair_plate", num_pair, dim=-1):
-                epi_K_E_lam = pyro.sample(f"{name}_epi_ln_K_E_lambda", dist.HalfCauchy(1.0))
+                epi_K_E_lam = pyro.sample(f"{name}_epi_ln_K_E_lambda", HalfCauchy(1.0))
                 epi_K_E_off = pyro.sample(f"{name}_epi_ln_K_E_offset", dist.Normal(0.0, 1.0))
     else:
         pair_scatter = None
@@ -205,7 +206,7 @@ def define_model(name: str,
 
     if has_epi:
         def _lam_tilde(lam):
-            return jnp.sqrt(c2_epi * lam ** 2 / (c2_epi + tau_epi ** 2 * lam ** 2))
+            return regularized_scale(lam, tau_epi, c2_epi)
 
         epi_ln_K_op = epi_K_op_off * tau_epi * _lam_tilde(epi_K_op_lam)
         epi_ln_K_HL = epi_K_HL_off * tau_epi * _lam_tilde(epi_K_HL_lam)
@@ -362,7 +363,7 @@ def guide(name: str,
 
     if has_epi:
         def _lam_tilde(lam):
-            return jnp.sqrt(c2_epi * lam ** 2 / (c2_epi + tau_epi ** 2 * lam ** 2))
+            return regularized_scale(lam, tau_epi, c2_epi)
 
         ln_K_op = ln_K_op + pair_scatter(epi_K_op_off * tau_epi * _lam_tilde(epi_K_op_lam))
         ln_K_HL = ln_K_HL + pair_scatter(epi_K_HL_off * tau_epi * _lam_tilde(epi_K_HL_lam))

@@ -35,12 +35,14 @@ def jax_model(data: DataClass,
         - growth_noise
         - sample_offset
         - calculate_growth
-        - theta_binding_noise
+        - theta_binding_noise (absent in a growth-only model)
         - theta_growth_noise
-        - observe_binding
+        - observe_binding (absent in a growth-only model)
         - observe_growth
         - is_guide
-        The dictionary can also optionally have `observe_presplit` and/or
+        A growth-only model has ``data.binding = None``; the binding
+        prediction and likelihood are then skipped (static structure, so this
+        is jit-safe). The dictionary can also optionally have `observe_presplit` and/or
         `observe_base_growth` (the side-channel observers, present only when
         their data was supplied), plus `batch_idx` (which overrides whatever
         is in `batch_size`) or `batch_size`.
@@ -52,8 +54,8 @@ def jax_model(data: DataClass,
     binding_only = control.get("binding_only", False)
     is_guide = control["is_guide"]
     theta_model, calc_theta, _ = control["theta"]
-    theta_binding_noise_model = control["theta_binding_noise"]
-    binding_observer = control["observe_binding"]
+    theta_binding_noise_model = control.get("theta_binding_noise")
+    binding_observer = control.get("observe_binding")
 
     # -------------------------------------------------------------------------
     # Binding-only mode: theta is inferred directly from observed theta values.
@@ -107,14 +109,16 @@ def jax_model(data: DataClass,
                         priors.theta)
 
     # -------------------------------------------------------------------------
-    # Make prediction for the binding experiment
+    # Make prediction for the binding experiment (none in a growth-only model)
 
-    theta_binding = calc_theta(theta,data.binding)
-    pyro.deterministic(f"theta_binding_pred",theta_binding)
-    binding_pred = theta_binding_noise_model("theta_binding_noise",
-                                             theta_binding,
-                                             priors.binding.theta_binding_noise,
-                                             data=data.binding)
+    has_binding = data.binding is not None
+    if has_binding:
+        theta_binding = calc_theta(theta,data.binding)
+        pyro.deterministic(f"theta_binding_pred",theta_binding)
+        binding_pred = theta_binding_noise_model("theta_binding_noise",
+                                                 theta_binding,
+                                                 priors.binding.theta_binding_noise,
+                                                 data=data.binding)
 
     # -------------------------------------------------------------------------
     # Make prediction for the growth experiment
@@ -194,7 +198,8 @@ def jax_model(data: DataClass,
 
         growth_observer("growth", data.growth, None,
                         priors=priors.growth.growth_obs)
-        binding_observer("binding", data.binding, None)
+        if has_binding:
+            binding_observer("binding", data.binding, None)
 
         # Register side-channel guide sites. presplit.guide is a no-op (it
         # introduces no latents); base_growth.guide registers the k_ref
@@ -267,13 +272,15 @@ def jax_model(data: DataClass,
         ln_cfu_pred = ln_cfu0 + total_growth + delta_sample
 
         # Register results
-        pyro.deterministic(f"binding_pred", binding_pred)
+        if has_binding:
+            pyro.deterministic(f"binding_pred", binding_pred)
         pyro.deterministic(f"growth_pred", ln_cfu_pred)
 
         # Calculate likelihood
         growth_observer("growth", data.growth, ln_cfu_pred, sigma_k=sigma_k,
                         priors=priors.growth.growth_obs)
-        binding_observer("binding", data.binding, binding_pred)
+        if has_binding:
+            binding_observer("binding", data.binding, binding_pred)
 
 
 def _population(growth, theta, calc_theta, dk_population, activity_population):

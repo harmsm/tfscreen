@@ -1,6 +1,6 @@
 ---
 title: Fit read counts directly instead of ln_cfu
-status: idea
+status: promoted
 filed: 2026-09-24
 area: tfmodel
 revisit_when: >-
@@ -8,6 +8,7 @@ revisit_when: >-
   calibration grid has been re-run. The user expects to get here (2026-09-24):
   the data side is mostly propagating information we drop today.
 related:
+  - planning/analysis-roadmap.md
   - planning/congression-physics-plan.md
   - planning/per-sample-level-offset.md
   - planning/studies/congression-calibration/README.md
@@ -15,6 +16,10 @@ related:
   - src/tfscreen/tfmodel/generative/observe/growth.py
   - src/tfscreen/tfmodel/generative/observe/presplit.py
 ---
+
+**Promoted 2026-09-26** into `planning/analysis-roadmap.md` (Track N, step 7,
+implemented with supplied tube totals; validation grid in
+`planning/studies/count-likelihood/`).
 
 **Context:** The congression calibration grid (2026-09-24) found that the
 mixture used its congressed classes to fit the read-count detection floor.
@@ -34,7 +39,10 @@ with `o_s` a per-sample intercept whose prior is centered on plating,
 With `o_s` free this matches a multinomial over the tube (the Poisson trick),
 but each genotype's term stands alone, so genotype mini-batching still works.
 The reads carry how genotypes compare within a tube; plating carries the
-absolute scale. Predictions and all downstream outputs stay in `ln_cfu`.
+absolute scale. (Revised 2026-09-26: the total comes from OD600, not
+plating, and `o_s` is built from a smooth population curve fitted to every
+bioreplicate's OD600; see `planning/analysis-roadmap.md`, "Reads and
+totals".) Predictions and all downstream outputs stay in `ln_cfu`.
 
 What it gives that `ln_cfu` with censoring cannot:
 

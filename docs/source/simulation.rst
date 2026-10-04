@@ -56,6 +56,24 @@ cell's theta and TF activity) and ``congression_dk_rule`` (default
 any genotype. This replaces ``multi_plasmid_combine_fcn``, which combined whole
 growth rates and is now rejected.
 
+**Sampling noise** (optional; all off by default) — ``founder_sampling``
+(each tube seeded with a Poisson number of cells from each transformant
+clone), ``demographic_growth`` (birth-death noise given those founders),
+``shared_transformation`` (every replicate draws from one library assembly and
+transformation, as from one glycerol stock), ``pcr_template_molecules`` and
+``pcr_amplification_cv`` (reads drawn from a limited number of amplified
+template molecules). Without them simulated read counts are Poisson; real
+counts vary several times more (``planning/studies/noise-anatomy/``). See the
+commented block in ``examples/simulate/simulate_config.yaml``.
+
+**OD600** (optional) — an ``od600`` block (``calibration``,
+``tube_volume_mL``, ``num_od_only_replicates``, ``sample_cfu_from_od600``)
+gives every tube one OD600 reading from its true total through an
+OD600-to-CFU calibration, with reading noise and the detection threshold, and
+writes ``tfs_sim_od600.csv`` for every replicate, including extra replicates
+that are read but not sequenced. With ``sample_cfu_from_od600`` the pipeline
+receives each tube's total as estimated from its reading, as in the lab.
+
 **Growth transition** (optional) — ``growth_transition`` list; one entry per
 ``condition_pre`` that has a detectable lag phase. Supported models: ``instant``,
 ``memory``.

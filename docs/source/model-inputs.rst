@@ -3,9 +3,9 @@ Model Input Data
 =================
 
 ``tfs-configure-model`` (see :doc:`analysis`, Step 1) accepts up to five
-pieces of experimental input. Only ``binding_df`` is strictly required;
-everything else is optional and adds additional constraints to the
-model. This page describes what each input contributes to the fit, the
+pieces of experimental input. At least one of ``binding_df`` and
+``growth_df`` is required; everything else is optional and adds additional
+constraints to the model. This page describes what each input contributes to the fit, the
 rough amount of data that is useful in practice, and how it is passed in.
 
 .. list-table::
@@ -16,7 +16,7 @@ rough amount of data that is useful in practice, and how it is passed in.
      - Required?
      - What it anchors
    * - ``binding_df``
-     - Yes
+     - No (growth-only model if omitted)
      - Absolute scale/shape of *θ*, independent of growth
    * - ``growth_df``
      - No (binding-only model if omitted)
@@ -41,10 +41,20 @@ function of titrant concentration, independent of any growth-rate
 observation. Because it measures *θ* directly rather than through the
 growth likelihood, binding data anchors the absolute scale and shape of
 the occupancy curve — resolving degeneracies (e.g. between *θ* and
-activity *A*) that growth data alone cannot separate. It is the only
-required input to ``tfs-configure-model``: with ``growth_df`` omitted, a
-binding-only model is configured that infers *θ* from ``binding_df``
-alone.
+activity *A*) that growth data alone cannot separate. With ``growth_df``
+omitted, a binding-only model is configured that infers *θ* from
+``binding_df`` alone.
+
+Binding data are optional. With ``binding_df`` omitted, a **growth-only**
+model infers *θ* from growth alone. Growth then fixes *θ* only up to an
+affine map (the growth slope ``m`` and baseline ``k`` compensate for any
+rescaling of *θ*), so the absolute scale of *θ* rests on the priors. A
+growth-only model has no binding likelihood: ``theta_binding_noise_model``
+must stay ``zero``, ``binding_weight`` must be unset, and
+``tfs-prefit-calibration`` (which calibrates the growth-*θ* link on the
+genotypes with binding data) refuses it. ``tfs-summarize-fit`` then plots
+trajectories for wt, the spiked genotypes and ten other genotypes chosen
+with a fixed seed, instead of the binding genotypes.
 
 **Scale**
 
@@ -84,7 +94,7 @@ Passed as the required positional argument:
 
 .. code-block:: bash
 
-    tfs-configure-model binding.csv --growth_df growth.csv
+    tfs-configure-model --binding_df binding.csv --growth_df growth.csv
 
 Growth Data (``growth_df``)
 ==============================
@@ -116,11 +126,27 @@ specification (``genotype``, ``library``, ``replicate``,
 ``condition_pre``, ``condition_sel``, ``titrant_name``, ``titrant_conc``,
 ``t_pre``, ``t_sel``, ``ln_cfu``, ``ln_cfu_std``).
 
+**Likelihood.** By default (``--growth_likelihood lncfu``) each row's
+``ln_cfu`` is observed with a Student-t likelihood. With
+``--growth_likelihood counts`` the read counts are observed instead: a
+negative binomial with mean ``tube reads x predicted frequency`` and a
+learned dispersion (variance ``mu (1 + phi) + mu^2 / r``), with no
+pseudocount, so a genotype with zero reads is an observation rather than a
+floor. Real counts vary several times more than Poisson, mostly in
+proportion to the mean, which ``phi`` describes. This needs three more
+columns: ``counts``, each tube's total reads (``sample_reads``, written by
+``tfs-process-counts``; older files can supply ``adjusted_counts`` and
+``frequency`` instead) and each tube's total cells (``sample_ln_cfu``, or
+``sample_cfu`` with its uncertainty). It also needs
+``--growth_noise_model zero``, and pairs with ``--sample_offset_model
+level``, one offset per tube shared by all of its genotypes, which absorbs
+an error in the tube's supplied total.
+
 Passed via the optional flag:
 
 .. code-block:: bash
 
-    tfs-configure-model binding.csv --growth_df growth.csv
+    tfs-configure-model --binding_df binding.csv --growth_df growth.csv
 
 base_growth Data (``base_growth_df``)
 ========================================
@@ -170,7 +196,7 @@ Passed via the optional flag:
 
 .. code-block:: bash
 
-    tfs-configure-model binding.csv --growth_df growth.csv \
+    tfs-configure-model --binding_df binding.csv --growth_df growth.csv \
         --base_growth_df base_growth.csv
 
 Pre-split Data (``presplit_df``)
@@ -202,7 +228,7 @@ Passed via the optional flag:
 
 .. code-block:: bash
 
-    tfs-configure-model binding.csv --growth_df growth.csv \
+    tfs-configure-model --binding_df binding.csv --growth_df growth.csv \
         --presplit_df presplit.csv
 
 transformation_lambda
@@ -240,6 +266,6 @@ forbidden (must be omitted) when it is ``single``:
 
 .. code-block:: bash
 
-    tfs-configure-model binding.csv --growth_df growth.csv \
+    tfs-configure-model --binding_df binding.csv --growth_df growth.csv \
         --transformation_model mixture \
         --transformation_lambda 0.36 0.05

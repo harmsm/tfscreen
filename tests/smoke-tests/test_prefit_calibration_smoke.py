@@ -77,6 +77,7 @@ def test_prefit_writes_per_condition_baseline_prior(tmpdir, library_smoke_yaml,
     out_prefix = os.path.join(tmpdir, f"tfs_{cg_model}")
 
     configure_model(binding_path,
+                    growth_likelihood="lncfu", sample_offset_model="zero",
                     growth_df=growth_path,
                     library_config=library_smoke_yaml,
                     condition_growth_model=cg_model,
@@ -126,6 +127,7 @@ def test_configure_prefit_fit_full_loop_with_per_condition_priors(tmpdir,
     out_prefix = os.path.join(tmpdir, "tfs_full")
 
     configure_model(binding_path,
+                    growth_likelihood="lncfu", sample_offset_model="zero",
                     growth_df=growth_path,
                     library_config=library_smoke_yaml,
                     condition_growth_model="linear",

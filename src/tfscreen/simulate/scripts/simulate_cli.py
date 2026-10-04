@@ -41,7 +41,12 @@ def run_simulation_from_config(
     tfscreen.simulate.base_growth_data.generate_base_growth_df and
     .generate_k_ref_df). If it contains a 'presplit_data' block, also writes
     a simulated presplit CSV (see
-    tfscreen.simulate.presplit_data.generate_presplit_df).
+    tfscreen.simulate.presplit_data.generate_presplit_df). If it contains an
+    'od600' block, also writes one OD600 reading per tube for every
+    replicate, sequenced or not ('od600'; see tfscreen.simulate.od600), and
+    simulates od600.num_od_only_replicates extra replicates that get OD600
+    but no reads. With shared_transformation, every replicate (OD-only ones
+    included) draws its cells from one library assembly and transformation.
 
     Parameters
     ----------
@@ -78,6 +83,8 @@ def run_simulation_from_config(
     if "base_growth_data" in cf:
         output_names.append("base_growth")
         output_names.append("k_ref")
+    if cf.get("od600") is not None:
+        output_names.append("od600")
 
     existing = [out_path(n) for n in output_names if os.path.exists(out_path(n))]
     if os.path.exists(config_out):
@@ -105,10 +112,21 @@ def run_simulation_from_config(
 
     all_sample_parts = []
     all_counts_parts = []
+    od_only_parts = []
     sample_id_offset = 0
 
-    for rep in range(1, num_replicates + 1):
-        print(f"\n--- Replicate {rep} of {num_replicates} ---", flush=True)
+    # One library assembly and transformation for every replicate when
+    # shared_transformation is set (selection_experiment ignores it otherwise).
+    shared_state = {}
+
+    od_cf = cf.get("od600") or {}
+    num_od_only = int(od_cf.get("num_od_only_replicates") or 0)
+
+    for rep in range(1, num_replicates + num_od_only + 1):
+        sequenced = rep <= num_replicates
+        label = ("" if sequenced else " (OD600 only)")
+        print(f"\n--- Replicate {rep} of {num_replicates + num_od_only}{label} ---",
+              flush=True)
 
         # Give each replicate a distinct (but reproducible) random seed so
         # that replicates differ even when a base seed is set.
@@ -121,8 +139,12 @@ def run_simulation_from_config(
         rep_phenotype_df["replicate"] = rep
 
         sample_df_rep, counts_df_rep = selection_experiment(
-            rep_cf, library_df, rep_phenotype_df
+            rep_cf, library_df, rep_phenotype_df,
+            shared_state=shared_state, sequence=sequenced
         )
+        if not sequenced:
+            od_only_parts.append(sample_df_rep.assign(sequenced=False))
+            continue
 
         # Shift sample IDs so they are globally unique across replicates
         max_id = int(sample_df_rep.index.max()) + 1
@@ -138,6 +160,18 @@ def run_simulation_from_config(
 
     combined_sample_df = pd.concat(all_sample_parts)
     combined_counts_df = pd.concat(all_counts_parts, ignore_index=True)
+
+    if cf.get("od600") is not None:
+        od_df = pd.concat([combined_sample_df.assign(sequenced=True)]
+                          + od_only_parts, ignore_index=True)
+        keep = [c for c in ["replicate", "library", "condition_pre", "t_pre",
+                            "condition_sel", "t_sel", "titrant_name",
+                            "titrant_conc", "sequenced", "od600",
+                            "od600_detectable", "od600_in_range",
+                            "sample_cfu_true", "sample_cfu", "sample_cfu_std"]
+                if c in od_df.columns]
+        od_df[keep].to_csv(out_path("od600"), index=False)
+        print(f"Wrote: {out_path('od600')}")
 
     growth_df = counts_to_lncfu(combined_sample_df, combined_counts_df)
 
@@ -174,6 +208,7 @@ def run_simulation_from_config(
                 growth_df,
                 spiked_genotypes=spiked_names,
                 rng=rng,
+                clip_theta_obs=bool(binding_cfg.get("clip_theta_obs", False)),
             )
             binding_df = pd.concat([binding_df, lib_binding_df], ignore_index=True)
             lib_manifest.to_csv(out_path("library_binding"), index=False)

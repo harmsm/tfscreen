@@ -1497,3 +1497,55 @@ def test_model_and_guide_two_classes_compatible_sample_sites(mock_data_two_class
         f"  model only: {model_samples - guide_samples}\n"
         f"  guide only: {guide_samples - model_samples}"
     )
+
+
+def test_extract_spec_keys_rows_by_array_position_with_gaps():
+    """
+    ln_cfu0 rows are labeled by their position in the (replicate,
+    condition_pre, genotype) array, even when a genotype is missing from a
+    replicate. map_ln_cfu0 numbers only the combinations present, so
+    indexing the array with it shifted every later label (2026-09-29).
+    """
+    from types import SimpleNamespace
+    import pandas as pd
+    from tfscreen.tfmodel.analysis.extraction import _extract_param_est
+    from tfscreen.tfmodel.generative.components.ln_cfu0.hierarchical import (
+        ln_cfu0_extract_spec,
+    )
+
+    reps, cps, genos = [1, 2], ["kanR/kanR-kan", "pheS/pheS-4CP"], ["wt", "A1B", "C2D"]
+    rows = []
+    for r in reps:
+        for c in cps:
+            lib, cond = c.split("/")
+            for g in genos:
+                if r == 1 and c == cps[0] and g == "A1B":
+                    continue  # the gap
+                rows.append(dict(replicate=r, library=lib, condition_pre=cond,
+                                 genotype=g))
+    df = pd.DataFrame(rows)
+    # map_ln_cfu0 as the tensor manager builds it: consecutive over present rows
+    df["map_ln_cfu0"] = df.groupby(["replicate", "library", "condition_pre",
+                                    "genotype"], sort=False).ngroup()
+    tm = SimpleNamespace(df=df,
+                         tensor_dim_names=["replicate", "condition_pre", "genotype"],
+                         tensor_dim_labels=[reps, cps, genos])
+    spec = ln_cfu0_extract_spec(SimpleNamespace(growth_tm=tm))[0]
+
+    # the model's array: value encodes (replicate, condition_pre, genotype)
+    arr = np.array([[[100 * i + 10 * j + k for k in range(3)] for j in range(2)]
+                    for i in range(2)], dtype=float)
+    post = {"ln_cfu0": np.stack([arr, arr])}
+    out = _extract_param_est(input_df=spec["input_df"],
+                             params_to_get=spec["params_to_get"],
+                             map_column=spec["map_column"],
+                             get_columns=spec["get_columns"],
+                             in_run_prefix=spec["in_run_prefix"],
+                             param_posteriors=post,
+                             q_to_get={"median": 0.5})["ln_cfu0"]
+    for _, r in out.iterrows():
+        i = reps.index(r["replicate"])
+        j = [c.split("/")[1] for c in cps].index(r["condition_pre"])
+        k = genos.index(r["genotype"])
+        assert r["median"] == 100 * i + 10 * j + k
+    assert len(out) == len(df)

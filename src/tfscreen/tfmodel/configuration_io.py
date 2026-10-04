@@ -25,6 +25,11 @@ def _extract_scalars(obj, prefix=""):
         if k.startswith("_") or k in ['replace', 'asdict', '__class__', 'tree_flatten', 'tree_unflatten']:
             continue
         v = getattr(obj, k)
+        if v is None:
+            # An absent component (e.g. binding priors in a growth-only model,
+            # growth priors in a binding-only one). Writing it would come back
+            # as NaN; leaving it out keeps it None on read.
+            continue
         if hasattr(v, '__dataclass_fields__'):
             out.update(_extract_scalars(v, prefix + k + "."))
         elif isinstance(v, dict):
@@ -91,6 +96,9 @@ def _update_dataclass(dc, prefix, flat_dict):
             full_key = f"{prefix}{field_name}" if prefix else field_name
             attr_val = getattr(dc, field_name)
 
+            if attr_val is None:
+                # Absent component; nothing to update (see _extract_scalars).
+                continue
             if hasattr(attr_val, '__dataclass_fields__'):
                 updates[field_name] = _update_dataclass(attr_val, full_key + ".", flat_dict)
             elif isinstance(attr_val, dict):

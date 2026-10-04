@@ -1,3 +1,5 @@
+import copy
+
 import pytest
 import pandas as pd
 import numpy as np
@@ -1575,3 +1577,171 @@ def test_check_cf_accepts_base_growth_data(base_config: dict):
     cf = dict(base_config)
     cf["base_growth_data"] = {"k_ref": 0.025}
     _check_cf(cf)
+
+
+# =============================================================================
+# Sampling noise (roadmap step 4, planning/analysis-roadmap.md): founder
+# sampling, demographic growth, a template bottleneck with PCR jackpotting,
+# shared transformation across replicates and OD-only replicates.
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# config validation
+# ---------------------------------------------------------------------------
+
+def test_defaults_are_off(base_config):
+    cf = _check_cf(copy.deepcopy(base_config))
+    assert cf["founder_sampling"] is False
+    assert cf["demographic_growth"] is False
+    assert cf["shared_transformation"] is False
+    assert cf["pcr_template_molecules"] is None
+    assert cf["pcr_amplification_cv"] is None
+    assert cf["od600"] is None
+
+
+@pytest.mark.parametrize("update,match", [
+    ({"demographic_growth": True}, "founder_sampling"),
+    ({"pcr_amplification_cv": 0.5}, "pcr_template_molecules"),
+    ({"founder_sampling": "yes"}, "true or false"),
+    ({"pcr_template_molecules": 0}, "pcr_template_molecules"),
+    ({"od600": {"tube_volume_mL": 5.0}}, "calibration"),
+    ({"od600": {"calibration": "c.yaml", "bogus": 1}}, "Unknown keys"),
+    ({"od600": "c.yaml"}, "block"),
+])
+def test_invalid_settings(base_config, update, match):
+    cf = copy.deepcopy(base_config)
+    cf.update(update)
+    with pytest.raises(ValueError, match=match):
+        _check_cf(cf)
+
+
+def test_od600_defaults(base_config):
+    cf = copy.deepcopy(base_config)
+    cf["od600"] = {"calibration": "c.yaml"}
+    cf = _check_cf(cf)
+    assert cf["od600"] == {"calibration": "c.yaml", "tube_volume_mL": 5.0,
+                           "num_od_only_replicates": 0,
+                           "sample_cfu_from_od600": False}
+
+
+# ---------------------------------------------------------------------------
+# growth: founders and demographic noise
+# ---------------------------------------------------------------------------
+
+def _moments(kt, n0, draws, **kwargs):
+    rng = np.random.default_rng(1)
+    cell_kt = np.full((1, draws), kt)
+    out = _sim_growth(cell_kt, np.array([1.0]), n0, rng=rng, **kwargs)[0]
+    return out.mean(), out.var()
+
+
+def test_default_growth_is_deterministic():
+    cell_kt = np.array([[0.0, 1.0], [2.0, -1.0]])
+    out = _sim_growth(cell_kt, np.array([0.25, 0.75]), 100.0)
+    assert np.allclose(out, np.array([[0.25], [0.75]]) * 100 * np.exp(cell_kt))
+
+
+def test_founder_sampling_is_poisson():
+    n0, kt = 20.0, 1.5
+    mean, var = _moments(kt, n0, 200_000, founder_sampling=True)
+    fold = np.exp(kt)
+    assert mean == pytest.approx(n0 * fold, rel=0.01)
+    assert var == pytest.approx(n0 * fold ** 2, rel=0.03)
+
+
+def test_demographic_growth_doubles_variance():
+    # Poisson founders then Gamma(n0, e^kt) growth: var = 2 n0 e^(2 kt).
+    n0, kt = 20.0, 1.5
+    mean, var = _moments(kt, n0, 200_000, founder_sampling=True,
+                         demographic_growth=True)
+    fold = np.exp(kt)
+    assert mean == pytest.approx(n0 * fold, rel=0.01)
+    assert var == pytest.approx(2 * n0 * fold ** 2, rel=0.03)
+
+
+def test_demographic_death_is_binomial_thinning():
+    # Poisson(n0) founders each surviving with p: Poisson(n0 p).
+    n0, kt = 50.0, -0.7
+    mean, var = _moments(kt, n0, 200_000, founder_sampling=True,
+                         demographic_growth=True)
+    p = np.exp(kt)
+    assert mean == pytest.approx(n0 * p, rel=0.01)
+    assert var == pytest.approx(n0 * p, rel=0.03)
+
+
+def test_demographic_needs_founders():
+    with pytest.raises(ValueError, match="founder_sampling"):
+        _sim_growth(np.zeros((1, 1)), np.array([1.0]), 10.0,
+                    rng=np.random.default_rng(0), demographic_growth=True)
+
+
+def test_founders_are_independent_per_tube():
+    rng = np.random.default_rng(3)
+    out = _sim_growth(np.zeros((1, 50)), np.array([1.0]), 5.0, rng=rng,
+                      founder_sampling=True)
+    assert len(np.unique(out)) > 1
+
+
+# ---------------------------------------------------------------------------
+# sequencing: template bottleneck and jackpotting
+# ---------------------------------------------------------------------------
+
+def _count_variance_ratio(reads, templates=None, cv=None, num_geno=4000):
+    """Variance of per-genotype counts over the Poisson expectation, for
+    equally abundant single-plasmid genotypes."""
+    transformants = np.arange(num_geno)[:, None]
+    trans_mask = np.zeros_like(transformants, dtype=bool)
+    trans_cfu = np.ones((num_geno, 1))
+    counts = _sim_sequencing(transformants, trans_mask, trans_cfu, num_geno,
+                             reads, np.random.default_rng(5),
+                             pcr_template_molecules=templates,
+                             pcr_amplification_cv=cv)[:, 0]
+    return counts.var() / counts.mean()
+
+
+def test_no_bottleneck_is_poisson():
+    assert _count_variance_ratio(400_000) == pytest.approx(1.0, abs=0.1)
+
+
+@pytest.mark.parametrize("templates,cv", [(200_000, None), (200_000, 1.0),
+                                          (100_000, 0.5)])
+def test_bottleneck_inflates_variance(templates, cv):
+    # Multinomial templates, then reads from the (amplified) templates:
+    # variance / mean = 1 + (reads / templates) (1 + cv^2).
+    reads = 400_000
+    expected = 1 + (reads / templates) * (1 + (cv or 0) ** 2)
+    assert _count_variance_ratio(reads, templates, cv) == pytest.approx(
+        expected, rel=0.1)
+
+
+# ---------------------------------------------------------------------------
+# replicates: shared transformation and OD-only
+# ---------------------------------------------------------------------------
+
+def _run(cf, library_df, phenotype_df, seed, shared_state=None, sequence=True):
+    cf = copy.deepcopy(cf)
+    cf["seed"] = seed
+    return selection_experiment(cf, library_df.copy(), phenotype_df.copy(),
+                                shared_state=shared_state, sequence=sequence)
+
+
+@pytest.mark.parametrize("shared", [True, False])
+def test_shared_transformation(base_config, base_library_df,
+                               base_phenotype_df, shared):
+    cf = copy.deepcopy(base_config)
+    cf["shared_transformation"] = shared
+    state = {}
+    _, counts_1 = _run(cf, base_library_df, base_phenotype_df, 1, state)
+    _, counts_2 = _run(cf, base_library_df, base_phenotype_df, 2, state)
+    cfu0_1 = counts_1.groupby("genotype", observed=True)["ln_cfu_0"].first()
+    cfu0_2 = counts_2.groupby("genotype", observed=True)["ln_cfu_0"].first()
+    assert np.allclose(cfu0_1, cfu0_2) == shared
+
+
+def test_unsequenced_replicate(base_config, base_library_df,
+                               base_phenotype_df):
+    sample_df, counts_df = _run(base_config, base_library_df,
+                                base_phenotype_df, 1, sequence=False)
+    assert len(counts_df) == 0
+    assert len(sample_df) > 0
+    assert (sample_df["sample_cfu"] > 0).all()

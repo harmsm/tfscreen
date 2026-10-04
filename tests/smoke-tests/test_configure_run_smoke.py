@@ -99,6 +99,7 @@ def test_configure_run_pipeline_smoke(tmpdir, library_smoke_yaml):
 
     # Run configuration
     configure_model(binding_path,
+                              growth_likelihood="lncfu", sample_offset_model="zero",
                               growth_df=growth_path,
                               library_config=library_smoke_yaml,
                               out_prefix=out_prefix)
@@ -144,6 +145,79 @@ def test_configure_run_pipeline_smoke(tmpdir, library_smoke_yaml):
 
 
 @pytest.mark.slow
+def test_configure_run_growth_only_smoke(tmpdir, growth_smoke_csv,
+                                         library_smoke_yaml):
+    """
+    configure -> fit -> sample posterior -> extract params -> predict growth
+    for a growth-only model (growth data, no binding data).
+    """
+    from tfscreen.tfmodel.scripts.predict_growth_cli import predict_growth
+
+    cfg_prefix = os.path.join(tmpdir, "test_tfs_go")
+    configure_model(growth_df=growth_smoke_csv,
+                    library_config=library_smoke_yaml,
+                    out_prefix=cfg_prefix)
+    config_file = f"{cfg_prefix}_config.yaml"
+    with open(config_file, "r") as f:
+        config = yaml.safe_load(f)
+    assert "binding" not in config["data"]
+
+    out_prefix = os.path.join(tmpdir, "test_tfs_go_out")
+    fit_model(config_file=config_file,
+              seed=42,
+              max_num_epochs=1,
+              out_prefix=out_prefix)
+
+    sample_posterior(config_file=config_file,
+                     checkpoint_file=f"{out_prefix}_checkpoint.pkl",
+                     out_prefix=f"{out_prefix}_posterior",
+                     num_posterior_samples=10,
+                     sampling_batch_size=10)
+    posterior = f"{out_prefix}_posterior.h5"
+    assert os.path.exists(posterior)
+
+    summarize_posteriors(config_file=config_file,
+                         param_file=posterior,
+                         out_prefix=out_prefix)
+
+    predict_growth(config_file, posterior, out_prefix=f"{out_prefix}_pred")
+    pred = pd.read_csv(f"{out_prefix}_pred.csv")
+    assert len(pred) > 0
+
+
+@pytest.mark.slow
+def test_configure_run_count_likelihood_smoke(tmpdir, growth_smoke_csv,
+                                              binding_smoke_csv,
+                                              library_smoke_yaml):
+    """
+    configure -> fit -> sample posterior -> predict growth with the count
+    likelihood and a per-tube level offset.
+    """
+    from tfscreen.tfmodel.scripts.predict_growth_cli import predict_growth
+
+    cfg_prefix = os.path.join(tmpdir, "test_tfs_counts")
+    configure_model(binding_df=binding_smoke_csv,
+                    growth_df=growth_smoke_csv,
+                    library_config=library_smoke_yaml,
+                    growth_likelihood="counts",
+                    sample_offset_model="level",
+                    out_prefix=cfg_prefix)
+    config_file = f"{cfg_prefix}_config.yaml"
+
+    out_prefix = os.path.join(tmpdir, "test_tfs_counts_out")
+    fit_model(config_file=config_file, seed=42, max_num_epochs=1,
+              out_prefix=out_prefix)
+    sample_posterior(config_file=config_file,
+                     checkpoint_file=f"{out_prefix}_checkpoint.pkl",
+                     out_prefix=f"{out_prefix}_posterior",
+                     num_posterior_samples=10,
+                     sampling_batch_size=10)
+    posterior = f"{out_prefix}_posterior.h5"
+    predict_growth(config_file, posterior, out_prefix=f"{out_prefix}_pred")
+    assert len(pd.read_csv(f"{out_prefix}_pred.csv")) > 0
+
+
+@pytest.mark.slow
 @pytest.mark.parametrize("guide_type", ["auto_normal",
                                         "auto_low_rank_multivariate_normal"])
 def test_configure_run_autoguide_smoke(tmpdir, guide_type, library_smoke_yaml):
@@ -183,6 +257,7 @@ def test_configure_run_autoguide_smoke(tmpdir, guide_type, library_smoke_yaml):
 
     cfg_prefix = os.path.join(tmpdir, "test_tfs")
     configure_model(binding_path, growth_df=growth_path,
+                    growth_likelihood="lncfu", sample_offset_model="zero",
                     library_config=library_smoke_yaml, out_prefix=cfg_prefix)
     config_file = f"{cfg_prefix}_config.yaml"
 
@@ -245,6 +320,7 @@ def test_configure_run_binding_weight_smoke(tmpdir, library_smoke_yaml):
     # ── 1. Explicit binding_weight is preserved in the YAML ──────────────────
     out_explicit = os.path.join(tmpdir, "tfs_explicit")
     configure_model(binding_path,
+                    growth_likelihood="lncfu", sample_offset_model="zero",
                     growth_df=growth_path,
                     library_config=library_smoke_yaml,
                     out_prefix=out_explicit,
@@ -259,6 +335,7 @@ def test_configure_run_binding_weight_smoke(tmpdir, library_smoke_yaml):
     # ── 2. Auto-computed binding_weight is a concrete float, not None ─────────
     out_auto = os.path.join(tmpdir, "tfs_auto")
     configure_model(binding_path,
+                    growth_likelihood="lncfu", sample_offset_model="zero",
                     growth_df=growth_path,
                     library_config=library_smoke_yaml,
                     out_prefix=out_auto)

@@ -209,3 +209,6 @@ __marimo__/
 # Local test/lint/coverage output from run_all_tests.sh
 reports/
 docs/badges/
+
+# Lab data for development; never committed (C10)
+planning/dev-data/

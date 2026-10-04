@@ -231,7 +231,10 @@ def test_configure_model_to_read_configuration_round_trip(tmp_path,
                     base_growth_df=base_growth_path,
                     library_config=minimal_library_config,
                     out_prefix=out_prefix,
-                    theta_growth_noise_model="zero")
+                    theta_growth_noise_model="zero",
+                    # synthetic ln_cfu table without read counts
+                    growth_likelihood="lncfu",
+                    sample_offset_model="zero")
 
     config_path = f"{out_prefix}_config.yaml"
     orchestrator, init_params = read_configuration(config_path)

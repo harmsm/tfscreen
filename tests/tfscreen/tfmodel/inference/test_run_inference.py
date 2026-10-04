@@ -7,7 +7,9 @@ import numpyro
 import numpyro.distributions as dist
 import h5py
 from tfscreen.tfmodel.inference.run_inference import (
+    LAPLACE_MIN_EIGENVALUE,
     RunInference,
+    laplace_eigenvalue_floor,
     resolve_guide_type,
 )
 import os
@@ -1256,3 +1258,331 @@ def test_write_epoch_checkpoint_atomic_no_tmp_left(tmpdir):
 
     tmp_path = os.path.join(ri._epoch_checkpoints_dir, "0000003_checkpoint.pkl.tmp")
     assert not os.path.exists(tmp_path)
+
+
+# =============================================================================
+# compute_hessian_sigmas: takes constrained MAP values (svi.get_params)
+# =============================================================================
+
+def test_compute_hessian_sigmas_takes_constrained_values():
+    """
+    run_optimization returns svi.get_params(), which AutoDelta constrains.
+    compute_hessian_sigmas must map those back to unconstrained space; it
+    used to take them as unconstrained, so a positive site was evaluated at
+    exp(value) (the pre-fit's k_scale came out NaN on the count likelihood,
+    2026-09-27). With s ~ LogNormal(1, 0.5), log s is Normal(1, 0.5): at the
+    MAP s = e the unconstrained sigma is 0.5 and the constrained one e / 2.
+    """
+    def model(data, priors):
+        numpyro.sample("s", dist.LogNormal(1.0, 0.5))
+        numpyro.sample("x", dist.Normal(0.0, 2.0))
+
+    m = MockModel(num_genotype=1)
+    m.jax_model = model
+    ri = RunInference(m, seed=0)
+
+    # confirm what AutoDelta's get_params hands over
+    svi = ri.setup_svi(guide_type="delta",
+                       init_values={"s": float(np.e), "x": 0.0})
+    state = svi.init(ri.get_key(), data=m.data, priors=m.priors)
+    params = svi.get_params(state)
+    assert float(params["s_auto_loc"]) == pytest.approx(np.e, rel=1e-5)
+
+    out = ri.compute_hessian_sigmas(params)
+    assert float(out["s"]["map"]) == pytest.approx(np.e, rel=1e-5)
+    assert float(out["s"]["sigma"]) == pytest.approx(np.e * 0.5, rel=1e-3)
+    assert float(out["x"]["sigma"]) == pytest.approx(2.0, rel=1e-3)
+
+
+def test_run_nuts_starts_at_given_values(mocker):
+    """
+    run_nuts starts every chain at the given constrained site values and
+    falls back to prior medians (it once handed initialize_model's ParamInfo
+    tuple to init_to_value, which matched no site).
+    """
+    from unittest.mock import MagicMock
+
+    import numpyro.distributions as dist
+
+    ri = RunInference.__new__(RunInference)
+    ri._seed = 0
+    ri.model = MagicMock()
+    ri.model.data.num_genotype = 3
+    nuts = mocker.patch("numpyro.infer.NUTS")
+    mcmc = mocker.patch("numpyro.infer.MCMC")
+    mcmc.return_value.get_extra_fields.return_value = {}
+    ri.run_nuts(num_warmup=1, num_samples=1, init_values={"a": 2.5},
+                dense_mass=True)
+    assert nuts.call_args.kwargs["dense_mass"] is True
+    strategy = nuts.call_args.kwargs["init_strategy"]
+    site = {"type": "sample", "is_observed": False, "name": "a",
+            "fn": dist.Normal(0.0, 1.0), "value": None, "kwargs": {}}
+    assert float(strategy(site)) == 2.5
+    # the full data set goes in as one batch
+    ri.model.get_batch.assert_called_once()
+
+
+def test_report_nuts_diagnostics(capsys):
+    """Worst split R-hat and least n_eff, skipping constant sites."""
+    from unittest.mock import MagicMock
+
+    rng = np.random.default_rng(0)
+    mixed = rng.normal(size=(2, 200))
+    stuck = np.stack([rng.normal(0, 1, 200), rng.normal(5, 1, 200)])
+    mcmc = MagicMock()
+    mcmc.get_samples.return_value = {"good": mixed, "bad": stuck,
+                                     "fixed": np.zeros((2, 200))}
+    RunInference._report_nuts_diagnostics(mcmc)
+    out = capsys.readouterr().out
+    assert "max split R-hat" in out and "(bad)" in out
+    assert "inf" not in out
+
+
+# ---------------------------------------------------------------------------
+# laplace_eigenvalue_floor
+# ---------------------------------------------------------------------------
+
+def test_laplace_eigenvalue_floor_uses_prior_curvature():
+    """A direction flatter than the prior (or negative) gets the prior's curvature."""
+    rng = np.random.default_rng(0)
+    q, _ = np.linalg.qr(rng.normal(size=(3, 3)))
+    prior_precision = np.array([4.0, 100.0, 1.0])
+    curvature = np.einsum("ij,i,ij->j", q, prior_precision, q)
+    eigenvalues = np.array([-50.0, 1e6, 0.5 * curvature[2]])
+    floored, n = laplace_eigenvalue_floor(eigenvalues, q, prior_precision)
+    assert n == 2
+    assert floored[0] == pytest.approx(curvature[0])
+    assert floored[1] == pytest.approx(1e6)          # well-determined: kept
+    assert floored[2] == pytest.approx(curvature[2])
+
+
+def test_laplace_eigenvalue_floor_bounds_leak_into_other_elements():
+    """
+    A negative eigenvalue no longer inflates every element it touches.
+
+    The old flat floor of 1e-3 gave such a direction a variance of 1000, so
+    an element with a 3% share of it (the growth slope m, seed 8 of the
+    two-stage grid) had an SD near 1.
+    """
+    theta = 0.03
+    v = np.array([[np.cos(theta), -np.sin(theta)],
+                  [np.sin(theta), np.cos(theta)]])
+    eigenvalues = np.array([-10.0, 1e6])     # direction 0 mostly element 0
+    prior_precision = np.array([1.0, 1e4])
+    floored, _ = laplace_eigenvalue_floor(eigenvalues, v, prior_precision)
+    cov = v @ np.diag(1.0 / floored) @ v.T
+    old = v @ np.diag(1.0 / np.maximum(eigenvalues, 1e-3)) @ v.T
+    assert np.sqrt(old[1, 1]) > 0.5
+    assert np.sqrt(cov[1, 1]) < 0.05
+
+
+def test_laplace_eigenvalue_floor_minimum():
+    floored, n = laplace_eigenvalue_floor(np.array([-1.0]), np.eye(1),
+                                          np.array([0.0]))
+    assert floored[0] == pytest.approx(LAPLACE_MIN_EIGENVALUE)
+    assert n == 1
+
+
+# =============================================================================
+# Block (per-genotype) Laplace
+# =============================================================================
+
+@struct.dataclass
+class BlockData:
+    batch_idx: jnp.ndarray
+    y: jnp.ndarray            # (num_genotype, 2) observations
+    num_genotype: int = struct.field(pytree_node=False, default=0)
+    coupled: bool = struct.field(pytree_node=False, default=False)
+
+
+def _block_jax_model(data, priors):
+    """Shared mu; per-genotype (a, b) in a library-sized plate, sliced by
+    batch_idx; two observations per genotype that correlate a and b. With
+    ``coupled`` each observation also sees the library mean of a, so the
+    genotype blocks are not separable."""
+    mu = numpyro.sample("mu", dist.Normal(0., 1.))
+    with numpyro.plate("block_genotype_plate", data.num_genotype, dim=-1):
+        a = numpyro.sample("a", dist.Normal(mu, 1.))
+        b = numpyro.sample("b", dist.Normal(0., 1.))
+    a_b, b_b = a[data.batch_idx], b[data.batch_idx]
+    if data.coupled:
+        a_b = a_b + jnp.mean(a)
+    y = data.y[data.batch_idx]
+    with numpyro.plate("obs_genotype_plate", data.batch_idx.shape[0], dim=-1):
+        numpyro.sample("y1", dist.Normal(a_b + b_b, 0.3), obs=y[:, 0])
+        numpyro.sample("y2", dist.Normal(a_b - 2.0 * b_b, 0.2), obs=y[:, 1])
+
+
+class BlockModel:
+    def __init__(self, num_genotype=6, coupled=False, seed=3):
+        rng = np.random.default_rng(seed)
+        self.data = BlockData(num_genotype=num_genotype,
+                              batch_idx=jnp.arange(num_genotype),
+                              y=jnp.asarray(rng.normal(size=(num_genotype, 2))),
+                              coupled=coupled)
+        self.priors = {}
+        self.jax_model = _block_jax_model
+        self.jax_model_guide = lambda data, priors: None
+
+    def get_batch(self, data, indices):
+        return data.replace(batch_idx=jnp.asarray(indices))
+
+    def get_random_idx(self, key=None, num_batches=1):
+        if num_batches == 1:
+            return np.array([0])
+        return np.zeros((num_batches, 1), dtype=int)
+
+
+def _block_setup(model):
+    import jax.flatten_util
+    ri, map_params = _laplace_map_params(model)
+    unc = {k[:-len("_auto_loc")]: jnp.asarray(v) for k, v in map_params.items()
+           if k.endswith("_auto_loc")}
+    flat, unravel = jax.flatten_util.ravel_pytree(unc)
+    G = model.data.num_genotype
+    kw = {"priors": model.priors,
+          "data": ri._unscaled_batch(model.data, jnp.arange(G))}
+    return ri, map_params, unc, flat, unravel, kw
+
+
+def test_block_laplace_factors_match_full_hessian_blocks():
+    """Each block's covariance is the inverse of the matching diagonal block
+    of the full Hessian: given mu, genotypes do not couple."""
+    from numpyro.infer.util import potential_energy
+    model = BlockModel()
+    ri, _, unc, flat, unravel, kw = _block_setup(model)
+    dim_map = ri._get_genotype_dim_map()
+    elem_idx, L = ri.block_laplace_factors(unc, dim_map, model.data, flat,
+                                           unravel, kw)
+    assert elem_idx.shape == (6, 2) and L.shape == (6, 2, 2)
+    pe = lambda f: potential_energy(model.jax_model, [], kw, unravel(f))
+    H = ri._chunked_hessian(pe, flat, 64)
+    for g in range(6):
+        hb = H[np.ix_(elem_idx[g], elem_idx[g])]
+        np.testing.assert_allclose(L[g] @ L[g].T, np.linalg.inv(hb),
+                                   rtol=1e-4, atol=1e-6)
+        # the observations correlate a and b, so the blocks are not diagonal
+        assert abs(hb[0, 1]) > 1.0
+
+
+def test_block_laplace_factors_chunking_matches():
+    model = BlockModel(num_genotype=7)
+    ri, _, unc, flat, unravel, kw = _block_setup(model)
+    dim_map = ri._get_genotype_dim_map()
+    e1, L1 = ri.block_laplace_factors(unc, dim_map, model.data, flat, unravel, kw)
+    e2, L2 = ri.block_laplace_factors(unc, dim_map, model.data, flat, unravel, kw,
+                                      genotype_chunk_size=3)
+    np.testing.assert_array_equal(e1, e2)
+    np.testing.assert_allclose(np.einsum("gij,gkj->gik", L1, L1),
+                               np.einsum("gij,gkj->gik", L2, L2), rtol=1e-5)
+
+
+def test_block_laplace_factors_refuse_coupled_genotypes():
+    model = BlockModel(coupled=True)
+    ri, _, unc, flat, unravel, kw = _block_setup(model)
+    with pytest.raises(ValueError, match="coupled"):
+        ri.block_laplace_factors(unc, ri._get_genotype_dim_map(), model.data,
+                                 flat, unravel, kw)
+
+
+def test_get_laplace_posteriors_block_holds_shared_and_varies_genotypes(tmpdir):
+    model = BlockModel()
+    ri, map_params, *_ = _block_setup(model)
+    out = str(tmpdir.join("block"))
+    ri.get_laplace_posteriors(map_params, out_prefix=out,
+                              num_posterior_samples=400,
+                              sampling_batch_size=100,
+                              forward_batch_size=6,
+                              block_genotypes=True)
+    with h5py.File(f"{out}_posterior.h5", "r") as hf:
+        mu, a = hf["mu"][...], hf["a"][...]
+    np.testing.assert_allclose(mu, float(map_params["mu_auto_loc"]), atol=1e-6)
+    assert a.shape == (400, 6)
+    assert np.all(a.std(axis=0) > 0.01)
+    np.testing.assert_allclose(a.mean(axis=0),
+                               np.asarray(map_params["a_auto_loc"]), atol=0.1)
+
+
+def _arrowhead_covariance(elem_idx, L_blocks, shared_idx, L_shared, response):
+    """Dense covariance implied by the arrowhead factors."""
+    G, B = elem_idx.shape
+    D = G * B + shared_idx.size
+    cov = np.zeros((D, D))
+    css = L_shared @ L_shared.T
+    cov[np.ix_(shared_idx, shared_idx)] = css
+    for g in range(G):
+        Mg = np.asarray(response[g], dtype=float)
+        cov[np.ix_(elem_idx[g], shared_idx)] = -Mg @ css
+        cov[np.ix_(shared_idx, elem_idx[g])] = -(Mg @ css).T
+        for h in range(G):
+            Mh = np.asarray(response[h], dtype=float)
+            block = Mg @ css @ Mh.T
+            if g == h:
+                block = block + L_blocks[g] @ L_blocks[g].T
+            cov[np.ix_(elem_idx[g], elem_idx[h])] = block
+    return cov
+
+
+@pytest.mark.parametrize("chunk", [None, 3])
+def test_arrowhead_laplace_matches_full_laplace(chunk):
+    """Genotype blocks plus their coupling to the shared mu reproduce the
+    inverse of the full Hessian, chunked or not (the chunked sum counts the
+    priors once per chunk and must take the surplus back out)."""
+    from numpyro.infer.util import potential_energy
+    model = BlockModel(num_genotype=7)
+    ri, _, unc, flat, unravel, kw = _block_setup(model)
+    factors = ri.arrowhead_laplace_factors(unc, ri._get_genotype_dim_map(),
+                                           model.data, flat, unravel, kw,
+                                           genotype_chunk_size=chunk)
+    elem_idx, L_blocks, shared_idx, L_shared, response = factors
+    assert shared_idx.size == 1 and response.shape == (7, 2, 1)
+    pe = lambda f: potential_energy(model.jax_model, [], kw, unravel(f))
+    H = ri._chunked_hessian(pe, flat, 64)
+    np.testing.assert_allclose(_arrowhead_covariance(*factors),
+                               np.linalg.inv(H), rtol=1e-4, atol=1e-6)
+
+
+def test_get_laplace_posteriors_block_shared_varies_shared(tmpdir):
+    model = BlockModel()
+    ri, map_params, unc, flat, unravel, kw = _block_setup(model)
+    from numpyro.infer.util import potential_energy
+    pe = lambda f: potential_energy(model.jax_model, [], kw, unravel(f))
+    cov = np.linalg.inv(ri._chunked_hessian(pe, flat, 64))
+    out = str(tmpdir.join("arrow"))
+    ri.get_laplace_posteriors(map_params, out_prefix=out,
+                              num_posterior_samples=4000,
+                              sampling_batch_size=500,
+                              forward_batch_size=6,
+                              block_genotypes=True, block_shared=True)
+    with h5py.File(f"{out}_posterior.h5", "r") as hf:
+        mu, a = hf["mu"][...], hf["a"][...]
+    # ravel_pytree orders sites a, b, mu
+    i_mu, i_a = 12, np.arange(6)
+    assert mu.std() == pytest.approx(np.sqrt(cov[i_mu, i_mu]), rel=0.1)
+    # a follows mu: its draws correlate with mu's as the full Laplace says
+    sd_a = np.sqrt(np.diag(cov)[i_a])
+    want = cov[i_mu, i_a] / (np.sqrt(cov[i_mu, i_mu]) * sd_a)
+    got = [np.corrcoef(mu, a[:, g])[0, 1] for g in range(6)]
+    np.testing.assert_allclose(got, want, atol=0.08)
+
+
+def test_block_shared_needs_block_genotypes(tmpdir):
+    model = BlockModel()
+    ri, map_params, *_ = _block_setup(model)
+    with pytest.raises(ValueError, match="block_genotypes"):
+        ri.get_laplace_posteriors(map_params, out_prefix=str(tmpdir.join("x")),
+                                  block_shared=True)
+
+
+def test_unscaled_batch_removes_minibatch_scale():
+    """A model configured with batch_size below the library weights each
+    growth likelihood by num_genotype / batch_size even at full batch;
+    the Laplace must see each observation once."""
+    orch = _smoke_orchestrator()
+    ri = RunInference(orch, seed=0)
+    G = orch.data.num_genotype
+    data = jax.device_put(orch.data)
+    scaled = orch.get_batch(data, jnp.arange(G))
+    assert float(jnp.max(scaled.growth.scale_vector)) > 1.0
+    unscaled = ri._unscaled_batch(data, jnp.arange(G))
+    np.testing.assert_array_equal(np.asarray(unscaled.growth.scale_vector), 1.0)

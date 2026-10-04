@@ -57,12 +57,12 @@ cd "${run_dir}"
 # Edit the flags here to change which model components are used.
 echo ">>> Configure model"
 tfs-configure-model \
-    tfs_sim_binding.csv \
+    --binding_df tfs_sim_binding.csv \
     --growth_df tfs_sim_growth.csv \
     --presplit_df tfs_sim_presplit.csv \
     --condition_growth_model linear \
     --growth_transition_model instant \
-    --ln_cfu0_model hierarchical_factored \
+    --ln_cfu0_model hierarchical \
     --dk_geno_model hierarchical_geno \
     --activity_model fixed \
     --theta_model hill_mut \
@@ -70,7 +70,9 @@ tfs-configure-model \
     --theta_rescale_model passthrough \
     --theta_growth_noise_model logit_normal \
     --theta_binding_noise_model zero \
-    --growth_noise_model normal_kt \
+    --growth_likelihood counts \
+    --sample_offset_model level \
+    --growth_noise_model zero \
     --library_config "${library_config}" \
     --growth_shares_replicates \
     --epistasis

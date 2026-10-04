@@ -30,6 +30,7 @@ import jax
 import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
+from tfscreen.tfmodel.generative.components._horseshoe import regularized_scale, HalfCauchy
 import pandas as pd
 from flax.struct import dataclass, field
 from typing import Dict, Any, Optional, Union
@@ -314,7 +315,7 @@ def define_model(name: str,
         # Shared global scale and slab variance across all Hill parameters
         tau_epi = pyro.sample(
             f"{name}_epi_tau",
-            dist.HalfCauchy(priors.theta_epi_tau_scale))
+            HalfCauchy(priors.theta_epi_tau_scale))
         c2_epi = pyro.sample(
             f"{name}_epi_c2",
             dist.InverseGamma(priors.theta_epi_slab_df / 2.0,
@@ -324,19 +325,19 @@ def define_model(name: str,
         with pyro.plate(f"{name}_titrant_pair_outer_plate", T, dim=-2):
             with pyro.plate(f"{name}_pair_plate", num_pair, dim=-1):
                 epi_low_lam = pyro.sample(
-                    f"{name}_epi_logit_low_lambda", dist.HalfCauchy(1.0))
+                    f"{name}_epi_logit_low_lambda", HalfCauchy(1.0))
                 epi_low_off = pyro.sample(
                     f"{name}_epi_logit_low_offset", dist.Normal(0.0, 1.0))
                 epi_delta_lam = pyro.sample(
-                    f"{name}_epi_logit_delta_lambda", dist.HalfCauchy(1.0))
+                    f"{name}_epi_logit_delta_lambda", HalfCauchy(1.0))
                 epi_delta_off = pyro.sample(
                     f"{name}_epi_logit_delta_offset", dist.Normal(0.0, 1.0))
                 epi_K_lam = pyro.sample(
-                    f"{name}_epi_log_hill_K_lambda", dist.HalfCauchy(1.0))
+                    f"{name}_epi_log_hill_K_lambda", HalfCauchy(1.0))
                 epi_K_off = pyro.sample(
                     f"{name}_epi_log_hill_K_offset", dist.Normal(0.0, 1.0))
                 epi_n_lam = pyro.sample(
-                    f"{name}_epi_log_hill_n_lambda", dist.HalfCauchy(1.0))
+                    f"{name}_epi_log_hill_n_lambda", HalfCauchy(1.0))
                 epi_n_off = pyro.sample(
                     f"{name}_epi_log_hill_n_offset", dist.Normal(0.0, 1.0))
     else:
@@ -358,7 +359,7 @@ def define_model(name: str,
 
     if has_epi:
         def _lam_tilde(lam):
-            return jnp.sqrt(c2_epi * lam ** 2 / (c2_epi + tau_epi ** 2 * lam ** 2))
+            return regularized_scale(lam, tau_epi, c2_epi)
 
         epi_logit_low   = epi_low_off   * tau_epi * _lam_tilde(epi_low_lam)    # [T, P]
         epi_logit_delta = epi_delta_off * tau_epi * _lam_tilde(epi_delta_lam)
@@ -621,7 +622,7 @@ def guide(name: str,
 
     if has_epi:
         def _lam_tilde(lam):
-            return jnp.sqrt(c2_epi * lam ** 2 / (c2_epi + tau_epi ** 2 * lam ** 2))
+            return regularized_scale(lam, tau_epi, c2_epi)
 
         logit_theta_low   = logit_theta_low   + pair_scatter(epi_low_off   * tau_epi * _lam_tilde(epi_low_lam))
         logit_theta_delta = logit_theta_delta + pair_scatter(epi_delta_off * tau_epi * _lam_tilde(epi_delta_lam))

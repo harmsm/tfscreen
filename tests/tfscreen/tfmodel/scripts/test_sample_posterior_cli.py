@@ -43,7 +43,8 @@ class TestSamplePosteriorNuts:
                 "mcmc_samples": {"activity": np.zeros((10, 4))}
             }
 
-            def fake_nuts_posteriors(samples, out_prefix, forward_batch_size):
+            def fake_nuts_posteriors(samples, out_prefix, forward_batch_size,
+                                     sites_to_save=None):
                 open(h5_src, "w").close()
 
             ri.get_nuts_posteriors.side_effect = fake_nuts_posteriors
@@ -149,6 +150,46 @@ class TestSamplePosteriorMap:
                              out_prefix=str(tmp_path / "out"))
 
         ri.get_laplace_posteriors.assert_called_once()
+        kw = ri.get_laplace_posteriors.call_args.kwargs
+        assert kw["block_genotypes"] is False
+        assert kw["genotype_chunk_size"] is None
+        assert kw["block_shared"] is False
+
+    def test_laplace_blocks_forwarded(self, tmp_path):
+        """--laplace_blocks asks for the per-genotype Laplace, with its chunk
+        size."""
+        ri = self._make_map_ri(tmp_path, auto_loc=True)
+        h5_src = str(tmp_path / "out_tmp_posterior_posterior.h5")
+        ckpt_path = str(tmp_path / "map.pkl")
+        open(ckpt_path, "w").close()
+
+        with patch("tfscreen.tfmodel.scripts.sample_posterior_cli.read_configuration",
+                   return_value=(MagicMock(), {})), \
+             patch("tfscreen.tfmodel.scripts.sample_posterior_cli.RunInference",
+                   return_value=ri), \
+             patch("tfscreen.tfmodel.scripts.sample_posterior_cli.dill") as mock_dill:
+
+            mock_dill.load.return_value = {"svi_state": MagicMock()}
+            ri.get_laplace_posteriors.side_effect = lambda **kw: (
+                open(h5_src, "w").close()
+            )
+
+            from tfscreen.tfmodel.scripts.sample_posterior_cli import sample_posterior
+            sample_posterior("cfg.yaml", ckpt_path,
+                             out_prefix=str(tmp_path / "out"),
+                             laplace_blocks=True, laplace_shared=True,
+                             genotype_chunk_size=500)
+
+        kw = ri.get_laplace_posteriors.call_args.kwargs
+        assert kw["block_genotypes"] is True
+        assert kw["block_shared"] is True
+        assert kw["genotype_chunk_size"] == 500
+
+    def test_laplace_shared_needs_blocks(self, tmp_path):
+        from tfscreen.tfmodel.scripts.sample_posterior_cli import sample_posterior
+        with pytest.raises(ValueError, match="laplace_blocks"):
+            sample_posterior("cfg.yaml", str(tmp_path / "x.pkl"),
+                             laplace_shared=True)
 
     def test_map_output_file_renamed(self, tmp_path):
         ri = self._make_map_ri(tmp_path, auto_loc=True)
@@ -172,6 +213,62 @@ class TestSamplePosteriorMap:
                              out_prefix=str(tmp_path / "out"))
 
         assert os.path.isfile(str(tmp_path / "out.h5"))
+
+    def test_map_point_skips_laplace(self, tmp_path):
+        """map_point writes the MAP point (no Hessian) for a MAP checkpoint."""
+        ri = self._make_map_ri(tmp_path, auto_loc=True)
+        h5_src = str(tmp_path / "out_tmp_posterior_posterior.h5")
+        ckpt_path = str(tmp_path / "map.pkl")
+        open(ckpt_path, "w").close()
+
+        with patch("tfscreen.tfmodel.scripts.sample_posterior_cli.read_configuration",
+                   return_value=(MagicMock(), {})), \
+             patch("tfscreen.tfmodel.scripts.sample_posterior_cli.RunInference",
+                   return_value=ri), \
+             patch("tfscreen.tfmodel.scripts.sample_posterior_cli.dill") as mock_dill:
+
+            mock_dill.load.return_value = {"svi_state": MagicMock()}
+            ri.get_map_posteriors.side_effect = lambda **kw: (
+                open(h5_src, "w").close()
+            )
+
+            from tfscreen.tfmodel.scripts.sample_posterior_cli import sample_posterior
+            sample_posterior("cfg.yaml", ckpt_path,
+                             out_prefix=str(tmp_path / "out"), map_point=True)
+
+        ri.get_map_posteriors.assert_called_once()
+        ri.get_laplace_posteriors.assert_not_called()
+        assert ri.get_map_posteriors.call_args.kwargs["map_params"] == \
+            {"global_p_auto_loc": np.array(0.5)}
+        assert os.path.isfile(str(tmp_path / "out.h5"))
+
+    def test_skip_growth_observations_drops_only_those_sites(self, tmp_path):
+        """skip_growth_observations passes a sites_to_save without growth_pred/obs."""
+        ri = self._make_map_ri(tmp_path, auto_loc=True)
+        h5_src = str(tmp_path / "out_tmp_posterior_posterior.h5")
+        ckpt_path = str(tmp_path / "map.pkl")
+        open(ckpt_path, "w").close()
+
+        with patch("tfscreen.tfmodel.scripts.sample_posterior_cli.read_configuration",
+                   return_value=(MagicMock(), {})), \
+             patch("tfscreen.tfmodel.scripts.sample_posterior_cli.RunInference",
+                   return_value=ri), \
+             patch("tfscreen.tfmodel.scripts.sample_posterior_cli.dill") as mock_dill:
+
+            mock_dill.load.return_value = {"svi_state": MagicMock()}
+            ri.get_map_posteriors.side_effect = lambda **kw: (
+                open(h5_src, "w").close()
+            )
+
+            from tfscreen.tfmodel.scripts.sample_posterior_cli import sample_posterior
+            sample_posterior("cfg.yaml", ckpt_path,
+                             out_prefix=str(tmp_path / "out"), map_point=True,
+                             skip_growth_observations=True)
+
+        sites = ri.get_map_posteriors.call_args.kwargs["sites_to_save"]
+        assert "growth_pred" not in sites
+        assert "growth_obs" not in sites
+        assert "theta_theta_low" in sites and "ln_cfu0" in sites
 
     def test_map_detection_requires_auto_loc_key(self, tmp_path):
         """Without '_auto_loc' keys the SVI branch must be taken, not MAP."""

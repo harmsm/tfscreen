@@ -170,7 +170,7 @@ selecting a ``PnnC`` theta component:
 
 .. code-block:: bash
 
-    tfs-configure-model binding.csv --growth_df growth.csv \
+    tfs-configure-model --binding_df binding.csv --growth_df growth.csv \
         --theta_model thermo.O2_C4_K3_U0_a.PnnC \
         --thermo_data ensemble.h5
 

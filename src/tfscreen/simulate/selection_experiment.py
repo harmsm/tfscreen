@@ -11,6 +11,11 @@ from tfscreen.simulate.thermo_to_growth import (
     growth_rates,
     growth_rate_one_condition,
 )
+from tfscreen.simulate.od600 import (
+    read_od600_calibration,
+    simulate_od600,
+    od600_to_cfu_per_mL,
+)
 from tfscreen.simulate.cell_rules import (
     THETA_RULES,
     DK_RULES,
@@ -63,8 +68,11 @@ SIMULATE_KNOWN_KEYS = frozenset({
     "transformation_poisson_lambda", "cfu0",
     "congression_theta_rule", "congression_dk_rule", "congression_dk_alpha",
     "tube_noise_sigma", "growth_transition",
+    # Sampling noise (roadmap step 4; all off by default)
+    "founder_sampling", "demographic_growth", "shared_transformation",
+    "pcr_template_molecules", "pcr_amplification_cv",
     # Data collection
-    "total_num_reads", "prob_index_hop", "seed",
+    "total_num_reads", "prob_index_hop", "seed", "od600",
     # Column selectors (rarely overridden)
     "condition_selector", "library_selector",
     # Optional output blocks
@@ -155,6 +163,86 @@ def _check_dict_number(
         raise ValueError(err) from e
 
     return input_dict
+
+
+def _check_bool(key: str, cf: dict[str, Any], default: bool = False) -> None:
+    """Set ``cf[key]`` to a bool (``default`` when missing or None)."""
+    v = cf.get(key)
+    if v is None:
+        cf[key] = default
+    elif isinstance(v, (bool, np.bool_)):
+        cf[key] = bool(v)
+    else:
+        raise ValueError(f"'{key}' must be true or false, not {v!r}.")
+
+
+def _check_sampling_noise(cf: dict[str, Any]) -> None:
+    """
+    Validate the optional sampling-noise settings (roadmap step 4,
+    planning/analysis-roadmap.md) and the ``od600`` block, in place. Every
+    one is off by default, so an existing config simulates as before.
+
+    - ``founder_sampling``: each tube is seeded with a Poisson number of
+      cells from each transformant clone (mean ``cfu0 * frequency``), drawn
+      independently per tube, instead of exactly ``cfu0 * frequency``.
+    - ``demographic_growth``: given its founders, a clone's cells at harvest
+      are Gamma(founders, exp(kt)) when it grows (a birth process started
+      from few cells) and Binomial(founders, exp(kt)) when it shrinks.
+      Requires ``founder_sampling``.
+    - ``shared_transformation``: every replicate draws its cells from one
+      library assembly and transformation (one glycerol stock), rather than
+      each replicate redrawing them.
+    - ``pcr_template_molecules``: reads are drawn from this many template
+      molecules per tube (a bottleneck before sequencing).
+    - ``pcr_amplification_cv``: coefficient of variation of each template's
+      amplification (PCR jackpotting). Requires ``pcr_template_molecules``.
+    - ``od600``: block with ``calibration`` (path to the OD600-to-CFU
+      constants), ``tube_volume_mL`` (default 5.0), ``num_od_only_replicates``
+      (extra replicates that get OD600 but no reads; default 0) and
+      ``sample_cfu_from_od600`` (estimate each tube's total from its
+      simulated OD600, as the lab does, instead of using the true total;
+      default false).
+    """
+    for key in ("founder_sampling", "demographic_growth",
+                "shared_transformation"):
+        _check_bool(key, cf)
+    if cf["demographic_growth"] and not cf["founder_sampling"]:
+        raise ValueError("'demographic_growth' starts each clone from its "
+                         "sampled founders, so it needs "
+                         "'founder_sampling: true'.")
+
+    _check_dict_number("pcr_template_molecules", cf, cast_type=int,
+                       min_allowed=0, inclusive_min=False, allow_none=True)
+    _check_dict_number("pcr_amplification_cv", cf, min_allowed=0,
+                       allow_none=True)
+    if cf["pcr_amplification_cv"] and cf["pcr_template_molecules"] is None:
+        raise ValueError("'pcr_amplification_cv' varies the amplification of "
+                         "each template molecule, so it needs "
+                         "'pcr_template_molecules'.")
+
+    od = cf.get("od600")
+    if od is None:
+        cf["od600"] = None
+        return
+    if not isinstance(od, dict):
+        raise ValueError("'od600' must be a block with at least "
+                         "'calibration'.")
+    unknown = set(od) - {"calibration", "tube_volume_mL",
+                         "num_od_only_replicates", "sample_cfu_from_od600"}
+    if unknown:
+        raise ValueError(f"Unknown keys in 'od600': {sorted(unknown)}.")
+    if od.get("calibration") is None:
+        raise ValueError("'od600' needs 'calibration', the path to the "
+                         "OD600-to-CFU constants.")
+    if od.get("tube_volume_mL") is None:
+        od["tube_volume_mL"] = 5.0
+    _check_dict_number("tube_volume_mL", od, min_allowed=0,
+                       inclusive_min=False)
+    if od.get("num_od_only_replicates") is None:
+        od["num_od_only_replicates"] = 0
+    _check_dict_number("num_od_only_replicates", od, cast_type=int,
+                       min_allowed=0)
+    _check_bool("sample_cfu_from_od600", od)
 
 
 def _check_cf(
@@ -266,6 +354,8 @@ def _check_cf(
             f"'congression_dk_alpha' is only used by congression_dk_rule "
             f"'softmin' (got rule '{cf['congression_dk_rule']}'); remove it "
             f"or set the rule to 'softmin'.")
+
+    _check_sampling_noise(cf)
 
     if not isinstance(cf["condition_selector"], list):
         raise ValueError("condition_selector must be a list of column names.")
@@ -883,8 +973,27 @@ def _sim_growth(
     cell_kt: np.ndarray,
     trans_freq: np.ndarray,
     total_cfu0: float,
+    rng: Generator | None = None,
+    founder_sampling: bool = False,
+    demographic_growth: bool = False,
 ) -> np.ndarray:
     """Simulate cell growth for a population under multiple conditions.
+
+    Each column of ``cell_kt`` is one tube. By default every tube starts
+    with exactly ``total_cfu0 * trans_freq`` cells of each transformant
+    clone and grows deterministically. The two options add the sampling
+    noise of a real split (study 0b, planning/studies/noise-anatomy/):
+
+    - ``founder_sampling``: a tube is seeded with a Poisson number of cells
+      of each clone (mean ``total_cfu0 * trans_freq``), drawn independently
+      for every tube. A rare clone's starting abundance then differs from
+      tube to tube.
+    - ``demographic_growth``: given ``n0`` founders, a clone's cells at
+      harvest are ``Gamma(n0, exp(kt))`` when ``kt >= 0`` (the sum of
+      ``n0`` birth-process lineages, each with mean ``exp(kt)`` and variance
+      about ``exp(2 kt)``) and ``Binomial(n0, exp(kt))`` when ``kt < 0``
+      (each cell survives with probability ``exp(kt)``). Requires
+      ``founder_sampling``.
 
     Parameters
     ----------
@@ -897,6 +1006,10 @@ def _sim_growth(
     total_cfu0 : float
         The total initial colony-forming units (CFU) for the entire
         population.
+    rng : numpy.random.Generator, optional
+        Required when either option is on.
+    founder_sampling, demographic_growth : bool, optional
+        See above. Both default to False.
 
     Returns
     -------
@@ -904,13 +1017,27 @@ def _sim_growth(
         A 2D float array of shape `(num_cells, num_conditions)` holding the
         final CFU for each cell after growth in each condition.
     """
-
     # -> trans_cfu0 has shape (num_cells,)
     trans_cfu0 = total_cfu0*trans_freq
 
-    # -> trans_cfu has shape (num_cells, num_conditions)
-    trans_cfu = trans_cfu0[:,np.newaxis]*np.exp(cell_kt)
+    if not founder_sampling:
+        if demographic_growth:
+            raise ValueError("demographic_growth requires founder_sampling.")
+        # -> trans_cfu has shape (num_cells, num_conditions)
+        return trans_cfu0[:,np.newaxis]*np.exp(cell_kt)
 
+    # Founders: an independent Poisson draw for every clone in every tube.
+    founders = rng.poisson(np.broadcast_to(trans_cfu0[:, np.newaxis],
+                                           cell_kt.shape))
+    fold = np.exp(cell_kt)
+    if not demographic_growth:
+        return founders*fold
+
+    trans_cfu = np.zeros(cell_kt.shape, dtype=float)
+    grow = (cell_kt >= 0) & (founders > 0)
+    trans_cfu[grow] = rng.gamma(shape=founders[grow], scale=fold[grow])
+    shrink = (cell_kt < 0) & (founders > 0)
+    trans_cfu[shrink] = rng.binomial(founders[shrink], fold[shrink])
     return trans_cfu
 
 
@@ -949,6 +1076,8 @@ def _sim_sequencing(
     num_genotypes: int,
     reads_per_sample: int,
     rng: Generator,
+    pcr_template_molecules: int | None = None,
+    pcr_amplification_cv: float | None = None,
 ) -> np.ndarray:
     """Simulate the sequencing of plasmids from grown cell populations.
 
@@ -973,6 +1102,17 @@ def _sim_sequencing(
         The number of sequencing reads to simulate for each condition/sample.
     rng : numpy.random.Generator
         An initialized NumPy random number generator.
+    pcr_template_molecules : int, optional
+        If given, the reads are drawn from this many template molecules per
+        sample rather than from the cells directly: the templates are a
+        multinomial draw over genotypes by abundance, and each read then
+        picks a template. Models a limited amount of DNA going into PCR
+        (study 0b). None (default) means no bottleneck.
+    pcr_amplification_cv : float, optional
+        Coefficient of variation of each template's amplification (PCR
+        jackpotting). A genotype with ``m`` templates then carries weight
+        ``Gamma(m / cv^2, cv^2)`` (the sum of ``m`` independent
+        amplifications with mean 1). Requires ``pcr_template_molecules``.
 
     Returns
     -------
@@ -1015,6 +1155,18 @@ def _sim_sequencing(
 
             # Normalize to get relative probability of each drawing each genotype
             geno_probs = geno_counts/np.sum(geno_counts)
+
+            # A limited number of template molecules goes into PCR; reads
+            # are drawn from those, each amplified by a random factor.
+            if pcr_template_molecules is not None:
+                templates = rng.multinomial(pcr_template_molecules, geno_probs)
+                weights = templates.astype(float)
+                if pcr_amplification_cv:
+                    cv2 = pcr_amplification_cv**2
+                    has = templates > 0
+                    weights[has] = rng.gamma(shape=templates[has]/cv2,
+                                             scale=cv2)
+                geno_probs = weights/np.sum(weights)
         
             # Sample genotypes based on their probabilities.
             sampled_plasmids = rng.choice(
@@ -1184,6 +1336,8 @@ def _simulate_library_group(
     reads_per_sample: int,
     cf: dict[str, Any],
     rng: Generator,
+    shared_state: dict | None = None,
+    sequence: bool = True,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Run a complete simulation for a single library group.
@@ -1210,6 +1364,15 @@ def _simulate_library_group(
         The main, validated configuration dictionary for the simulation.
     rng : numpy.random.Generator
         An initialized NumPy random number generator.
+    shared_state : dict, optional
+        With ``shared_transformation``, the transformation of each library
+        (keyed by its ``library`` value) is taken from here when present and
+        stored here otherwise, so every replicate draws its cells from the
+        same transformants.
+    sequence : bool, optional
+        If False, skip sequencing: the returned ``counts_df`` is empty and
+        only the tube totals (and OD600, with an ``od600`` block) are
+        simulated. Used for OD-only replicates. Default True.
 
     Returns
     -------
@@ -1251,13 +1414,25 @@ def _simulate_library_group(
 
     # -- simulate transformation and mixing of libraries --
 
-    print("--> simulating transformation",flush=True)
-    transformants, trans_mask, trans_freq = _sim_transform_and_mix(
-        lib_origin_dict,
-        transform_sizes,
-        library_mixture,
-        transformation_poisson_lambda,
-        rng)
+    # With shared_transformation, every replicate reuses one transformation
+    # per library (one glycerol stock); otherwise each group draws its own.
+    share_key = None
+    if cf.get("shared_transformation") and shared_state is not None:
+        share_key = ("transformation",
+                     sub_df["library"].iloc[0] if "library" in sub_df.columns
+                     else None)
+    if share_key is not None and share_key in shared_state:
+        transformants, trans_mask, trans_freq = shared_state[share_key]
+    else:
+        print("--> simulating transformation",flush=True)
+        transformants, trans_mask, trans_freq = _sim_transform_and_mix(
+            lib_origin_dict,
+            transform_sizes,
+            library_mixture,
+            transformation_poisson_lambda,
+            rng)
+        if share_key is not None:
+            shared_state[share_key] = (transformants, trans_mask, trans_freq)
 
     # -- calculate cfu0 of every genotype --
     
@@ -1356,11 +1531,31 @@ def _simulate_library_group(
                        condition_info,
                        tube_kt,
                        cf)
-    trans_cfu = _sim_growth(cell_kt, trans_freq, total_cfu0)
-    
-    # Record cfu/mL over all conditions
+    trans_cfu = _sim_growth(cell_kt, trans_freq, total_cfu0, rng=rng,
+                            founder_sampling=cf.get("founder_sampling", False),
+                            demographic_growth=cf.get("demographic_growth", False))
+
+    # Record the total cells in each tube
     sample_df.loc[:,"sample_cfu"] = np.sum(trans_cfu,axis=0)
     sample_df.loc[:,"sample_cfu_std"] = 0.0
+
+    # One OD600 reading per tube. With sample_cfu_from_od600 the pipeline
+    # sees the lab's estimate of the total, not the truth.
+    od_cf = cf.get("od600")
+    if od_cf is not None:
+        cal = read_od600_calibration(od_cf["calibration"])
+        true_total = sample_df["sample_cfu"].to_numpy(dtype=float)
+        reading = simulate_od600(true_total, od_cf["tube_volume_mL"], cal, rng)
+        sample_df.loc[:,"sample_cfu_true"] = true_total
+        for k, v in reading.items():
+            sample_df.loc[:,k] = v
+        if od_cf["sample_cfu_from_od600"]:
+            cfu, cfu_std, _ = od600_to_cfu_per_mL(reading["od600"], cal)
+            sample_df.loc[:,"sample_cfu"] = cfu*od_cf["tube_volume_mL"]
+            sample_df.loc[:,"sample_cfu_std"] = cfu_std*od_cf["tube_volume_mL"]
+
+    if not sequence:
+        return sample_df, counts_df.iloc[0:0][["sample","genotype"]]
 
     # -- simulate sequencing -- 
     print("--> simulating sequencing",flush=True)
@@ -1369,7 +1564,9 @@ def _simulate_library_group(
                                         trans_cfu,
                                         num_genotypes,
                                         reads_per_sample,
-                                        rng)
+                                        rng,
+                                        pcr_template_molecules=cf.get("pcr_template_molecules"),
+                                        pcr_amplification_cv=cf.get("pcr_amplification_cv"))
 
     # Create a DataFrame from the dense counts with the same structure as the pivot
     counts_df_wide = pd.DataFrame(data=read_counts_dense,
@@ -1407,6 +1604,8 @@ def selection_experiment(
     cf: dict[str, Any] | str | Path,
     library_df: pd.DataFrame | str | Path,
     phenotype_df: pd.DataFrame | str | Path,
+    shared_state: dict | None = None,
+    sequence: bool = True,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Simulate a high-throughput selection experiment.
 
@@ -1428,12 +1627,21 @@ def selection_experiment(
         A dataframe containing the fitness landscape (growth rates `k_pre`
         and `k_sel`) for each genotype under all possible experimental
         conditions.
+    shared_state : dict, optional
+        Pass the same dict to every call (every replicate) so that, with
+        ``shared_transformation``, they share one library assembly and one
+        transformation. Ignored without ``shared_transformation``.
+    sequence : bool, optional
+        If False, simulate tube totals (and OD600) without sequencing, for
+        OD-only replicates; ``counts_df_final`` is then empty. Default True.
 
     Returns
     -------
     sample_df_final : pandas.DataFrame
         A dataframe describing each unique sample (experimental condition),
-        including the final total CFU/mL.
+        including the final total CFU/mL. With an ``od600`` block it also
+        has ``sample_cfu_true``, ``od600``, ``od600_detectable`` and
+        ``od600_in_range``.
     counts_df_final : pandas.DataFrame
         A dataframe containing the simulated sequencing counts for every
         genotype in every sample, along with the calculated initial
@@ -1509,11 +1717,20 @@ def selection_experiment(
     # Build base probabilities for library transformation. By putting skew here
     # we are modeling skew that occurs during library construction, not skew 
     # during out growth or transformation. 
-    library_df["probs"] = 0.0
-    for _, origin_sub_df in lib_origin_grouper:
-        p = _sim_plasmid_probabilities(origin_sub_df["weight"],
-                                        cf["lib_assembly_skew_sigma"], rng)
-        library_df.loc[origin_sub_df.index, "probs"] = p
+    # With shared_transformation, one library assembly serves every call
+    # that passes the same shared_state (every replicate), like the
+    # transformation itself (see _simulate_library_group).
+    share = cf.get("shared_transformation") and shared_state is not None
+    if share and "assembly_probs" in shared_state:
+        library_df["probs"] = shared_state["assembly_probs"]
+    else:
+        library_df["probs"] = 0.0
+        for _, origin_sub_df in lib_origin_grouper:
+            p = _sim_plasmid_probabilities(origin_sub_df["weight"],
+                                            cf["lib_assembly_skew_sigma"], rng)
+            library_df.loc[origin_sub_df.index, "probs"] = p
+        if share:
+            shared_state["assembly_probs"] = library_df["probs"].to_numpy().copy()
 
     # Create a dictionary of grouped DataFrames. 
     lib_origin_dict = dict(list(library_df.groupby(["library_origin"])))
@@ -1567,7 +1784,9 @@ def selection_experiment(
                                                        ordered_genotypes,
                                                        reads_per_sample,
                                                        cf,
-                                                       rng)
+                                                       rng,
+                                                       shared_state=shared_state,
+                                                       sequence=sequence)
 
         sample_df_batches.append(sample_df)
         counts_df_batches.append(counts_df)
