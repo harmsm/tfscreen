@@ -340,6 +340,15 @@ joint stage, pass its checkpoint with ``--checkpoint_file``.
 MAP and nothing else (not SVI, not a resumed fit, not ``--init_from``).
 ``off`` fits in one go; ``on`` insists on staging.
 
+On the dev data the offset mode is not only a trap for the optimizer. Run to
+convergence from the hand-built start, a fit moved into it and scored 7.9e4
+nats better than the staged MAP, with offsets that follow IPTG in the
+selection conditions and unphysical *k* and *m*. The staged MAP keeps the
+fit in the physical basin, but a longer or better fit can leave it. Check
+the tube offsets of any level-offset fit (``sample_offset_offset`` in
+``tfs_fit_model_params.npz``) for structure by IPTG or selection. The cause
+is filed for study (``planning/offset-mode-growth-transition.md``).
+
 ``--checkpoint_file`` resumes a fit from its ``{out_prefix}_checkpoint.pkl``
 at the checkpoint's step size and convergence state. It cannot be combined
 with ``--init_from``. A new fit refuses to overwrite an existing checkpoint,

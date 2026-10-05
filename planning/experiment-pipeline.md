@@ -6,7 +6,8 @@ area: tfmodel
 revisit_when: >-
   Agreed 2026-10-03 for the next branch, after
   claude/physics-improvements-roadmap-03a273 merges. Keep the step list
-  current while it is worked.
+  current while it is worked. Re-ordered 2026-10-05: steps 6 and 7 next,
+  step 5 (the orchestrator) deferred, then a science prioritization.
 related:
   - planning/analysis-roadmap.md
   - planning/analysis-roadmap-summary.md
@@ -52,14 +53,25 @@ orchestrator built first would wrap the hacks and freeze them.
 
 ## Done when
 
-- The real fit (`rel_off_n05` plus its arrowhead Laplace) reruns from one
-  experiment YAML with one command, with no hand-edited intermediate file.
-  Every spike's K and n must land inside the `rel_off_n05_alap` intervals,
-  and the count log-likelihood within a few thousand nats. This rerun
-  becomes the official, shortened recipe for the real fit.
-- A full-size simulation of the same design runs through the same YAML,
-  with only the data paths changed. That is the start of the reviewer
-  simulations in `planning/studies/real-data-fit/README.md`, "Next".
+Revised 2026-10-05 (user), with step 5 deferred and the offset mode found
+to be a model problem (`planning/offset-mode-growth-transition.md`):
+
+- The real fit reruns through the documented CLI chain (process, configure,
+  fit, posterior, extract, predict) with no hand-edited intermediate file
+  and no hand-built start. The chain's commands are the official recipe
+  for the real fit, replacing the `real-data-fit` study's six-run chain.
+- A full-size simulation of the same design, written by `tfs-simulate` in
+  the raw formats (step 6), runs through the same chain with only the data
+  paths changed. That is the start of the reviewer simulations in
+  `planning/studies/real-data-fit/README.md`, "Next", and the footing for
+  every model study after this plan: a user can reproduce one end to end.
+- Both report the tube-offset diagnostic (step 7), so a fit in the offset
+  mode is flagged, not accepted silently.
+
+The original criterion, every spike's K and n inside the `rel_off_n05_alap`
+intervals, was dropped: run to convergence, the start behind
+`rel_off_n05` moves into the offset mode, so its intervals are not a
+reference.
 
 ## Constraints
 
@@ -109,7 +121,7 @@ orchestrator built first would wrap the hacks and freeze them.
    `examples/process_raw/`; `tfs-configure-model` refuses a missing spike
    unless `--allow_missing_spikes`. `tfs-process-presplit` became
    `tfs-process-counts --presplit`.
-2. [ ] **Configure exposes everything that was hand-edited** (seam 2).
+2. [x] **Configure exposes everything that was hand-edited** (seam 2).
    - Flags for `sigma_fixed` on level offsets and for every
      `theta_*_hyper_scale_fixed`.
    - A growth-prior step for growth-only models, replacing
@@ -124,9 +136,11 @@ orchestrator built first would wrap the hacks and freeze them.
    Flags done in 0.5.0: `--set_priors name=value ...` (any scalar prior,
    by full name or unique suffix), `--growth_priors` (per-condition table)
    and `--growth_priors_wt_rates` (the monokan rule, hill_relative only),
-   in `tfmodel/priors_edit.py`. The defaults decision is still open: the
-   defaults did not change.
-3. [ ] **The staged MAP inside `tfs-fit-model`** (seam 3).
+   in `tfmodel/priors_edit.py`. Closed 2026-10-05. The defaults did not
+   change (user, 2026-10-04); the decision moved to
+   `planning/offset-mode-growth-transition.md`, since the held SDs and the
+   offset SD are likely to change with the growth-transition model.
+3. [x] **The staged MAP inside `tfs-fit-model`** (seam 3).
    - With level offsets on, the fit stages itself. First a MAP with the
      offsets held at 0. Then each tube's offset alone, with everything else
      held (what `small_offsets.py` did, cheap). Then the joint MAP from
@@ -142,6 +156,19 @@ orchestrator built first would wrap the hacks and freeze them.
    ever seen on the full dev data, so the test runs there first
    (`planning/studies/staged-map/`); a full-size simulation waits on step
    6. Retire the hand scripts once the study passes.
+   Study result (2026-10-05): the staged MAP avoids the offset mode, but run
+   to convergence on the exact full-batch loss (also added) the offset mode
+   scores best: it is the model's preferred optimum, not a trap, and its
+   IPTG-structured offsets point at a missing selection-onset transient
+   (roadmap 7b).
+   Closed 2026-10-05 as machinery (user): the staged MAP and exact-loss
+   convergence work, and the staged fit is the physical one (3.7e5 nats
+   better than `rel_off_n05` as it was used). The open problem is the
+   model, carried by `planning/offset-mode-growth-transition.md`: under
+   the current model the offset mode is the better optimum, so a longer
+   or better fit can still leave the physical basin. Step 7's offset
+   diagnostic guards against that until the model is fixed. The hand
+   scripts retire in step 7.
 4. [x] **Posterior defaults for large libraries.** Choose the Laplace
    automatically from the library size: the full Laplace below a
    parameter threshold, the arrowhead (`--laplace_blocks --laplace_shared`)
@@ -153,6 +180,8 @@ orchestrator built first would wrap the hacks and freeze them.
    whose genotypes couple (hill_mut) cannot use the arrowhead, so auto
    fails on a large one of those; there is no full-library route for it.
 5. [ ] **The orchestrator.** `tfs-run-experiment experiment.yaml`.
+   Deferred 2026-10-05 (user): a convenience over the CLI chain, which
+   steps 6 and 7 document and test first.
    - The YAML names the inputs (counts directory, tube table, OD600 table,
      calibration, library YAML, optional binding and monoculture rates)
      and the choices (model, priors, staging, posterior, predictions).
@@ -167,19 +196,45 @@ orchestrator built first would wrap the hacks and freeze them.
      YAML, never from code.
    - Scoring (`score_counts.py`) becomes a CLI if the orchestrator reports
      a fit's count likelihood; otherwise it stays a study script.
-6. [ ] **The simulator writes the same raw formats.** `tfs-simulate`
-   writes per-tube count files, the tube table and the OD600 table in the
-   formats of step 1, so a simulated experiment runs through the same
-   experiment YAML. Then the full-size simulation of the real design.
-7. [ ] **Validate and document.** Rerun the real data from one YAML (the
-   done criterion), run the full-size simulation, and replace the
-   `real-data-fit` study's start chain with the YAML. Update `docs/` and
-   CLAUDE.md, and retire the hand scripts.
+6. [ ] **The simulator writes the same raw formats** (next).
+   - `tfs-simulate` writes per-tube count files in `tfs-process-fastq`'s
+     format (`counts_<sample>.csv`: `genotype`, `counts`, with the
+     `__unknown__` row), the tube table and the OD600 table in step 1's
+     formats, so a simulated experiment enters at `tfs-process-counts`,
+     exactly where real data do. Ground truth stays in its own files.
+   - Keep the current direct outputs (`tfs_sim_growth.csv` and the rest)
+     until every study grid and example has moved to the raw path, then
+     decide whether to drop them.
+   - Test: `tfs-process-counts` on the simulator's raw output reproduces
+     the simulator's own growth table (same counts, tube totals from the
+     simulated OD600 through the same calibration).
+   - Then the full-size simulation of the real design (library, tube grid,
+     depth, OD600), as a study.
+7. [ ] **Validate and document** (after step 6). Without the orchestrator:
+   - Run the real data and the full-size simulation through the CLI chain
+     with no hand step, and write the commands down as the recipe
+     (`planning/studies/real-data-fit/`, and a page in `docs/`).
+   - Add the tube-offset diagnostic: `tfs-summarize-fit` reports each
+     level-offset fit's offsets in prior SDs and their correlation with
+     titrant within each selection condition, and flags a fit whose
+     offsets carry structure (the offset mode). Pass test for this step:
+     both runs reproduce, and the diagnostic is clean or flagged.
+   - Update `docs/` and CLAUDE.md, and retire `make_init_npz.py`,
+     `make_warm_start.py` and `check_warm.py` (frozen in the study; no
+     longer part of any recipe).
+8. [ ] **Then: prioritize the science** (user, 2026-10-05). With steps 6
+   and 7 in, any model change can be tested end to end on simulations a
+   user can reproduce. Step back and list the model work (the growth
+   transition, the offsets' freedom, the population model, the
+   growth-binding map, and others), how the changes interact, and what
+   order to do them in. Not to be decided before steps 6 and 7.
 
 ## Out of scope
 
 - The population model and the OD600 likelihood (roadmap step 6), and the
-  growth-transition decision (7b). This plan only keeps room for them (P3).
+  growth-transition decision (7b, now
+  `planning/offset-mode-growth-transition.md`). This plan only keeps room
+  for them (P3).
 - The growth-binding relationship study (summary, Part 3, item 1).
 - Workflow engines (Snakemake, Nextflow). A Python orchestrator over the
   CLI functions is enough at this size, and adds no dependency.

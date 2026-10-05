@@ -55,7 +55,11 @@ fall into two kinds:
   (`{out_prefix}_stage1_*`, `{out_prefix}_stage2_*`); a finished stage is
   reused and an interrupted one resumes. `HeldModel` wraps a model with
   sites held at fixed values (a `numpyro.handlers.condition`). Dev-data
-  validation: `planning/studies/staged-map/`.
+  validation (`planning/studies/staged-map/`): it avoids the offset mode,
+  which the cold MAP fell into (4.8e5 nats worse), but run to convergence
+  the offset mode scores 7.9e4 nats better than the staged MAP; it is the
+  model's preferred optimum, with IPTG-structured offsets and unphysical
+  k/m. Filed: `planning/offset-mode-growth-transition.md`.
 
 ## [0.5.0] - 2026-10-03
 

@@ -138,7 +138,7 @@ intervals too narrow to judge the other. The criterion can only be applied
 once both fits converge. Next: judge MAP windows by the exact full-batch
 loss (done, see "Run 2"), rerun both arms, and retest.
 
-### Run 2: exact-loss convergence (pending)
+### Run 2: exact-loss convergence
 
 `tfs-fit-model` now judges every MAP window by the exact full-batch loss
 (`RunInference.full_batch_loss`), so a fit stops only when it stops
@@ -165,3 +165,37 @@ staged_auto2 staged_off2 rel_off_n05` and, once both have converged,
 `compare.py` against `ref_refit`'s Laplace instead of rel_off_n05_alap's.
 The convergence CSVs now carry `loss_exact`, so the window-by-window paths
 can be compared too.
+
+Results (2026-10-05, commit 6671763d28 plus the uncommitted exact-loss
+change; every arm converged on the exact-loss rule, 4.0-4.4 h of fitting
+each). Exact scores (`score_map.py`, run in each job):
+
+| run | log joint | vs ref_refit | count ll | vs ref_refit | tube offsets |
+|---|---|---|---|---|---|
+| ref_refit | -61,024,460 | 0 | -58,755,810 | 0 | SD 1.56, -4.20 to +2.98 |
+| staged_auto2 | -61,103,315 | -78,855 | -58,846,646 | -90,835 | SD 0.21, -0.80 to +0.77 |
+| staged_off2 | -61,507,099 | -482,639 | -59,250,907 | -495,097 | SD 0.37, -1.93 to +1.96 |
+| rel_off_n05 (run 1) | -61,477,486 | -453,026 | -58,985,729 | -229,919 | |
+
+Run to convergence, the reference gained 4.5e5 nats, and it did so by
+moving into an offset mode: its tube offsets became a smooth function of
+IPTG in the two selection conditions (kanR selection +2 at 0 mM down to -3
+to -4 at 1 mM, pheS selection the reverse, -1 up to +1.9), nearly the same
+at all three time points, and near 0 in the no-selection conditions; growth
+k and m went unphysical (kanR+kan k 0.036 and m -0.050 against about 0.01
+elsewhere). Those offsets are 10-25 prior SDs each at sigma_fixed 0.17,
+about 4e4 nats of prior, which the likelihood repays several times over.
+The staged MAP's offsets are small and patternless and its k uniform (about
+0.027); the cold MAP sits in a third mode (log(n) population mean 4.6, k
+negative). Every run stopped on the loss_rtol floor while still descending
+about 40 nats per window at step size 1e-6.
+
+So the staged MAP does what it was built for (it avoids the offset mode),
+but the offset mode is the better optimum of this model's objective, not an
+optimizer trap: staging works only by stopping in a local optimum, which a
+longer or better fit would leave. A tube offset that is constant over time
+and structured by IPTG and selection is a population-level shift set before
+the first sampled time point, which the instant growth transition cannot
+produce; the offsets supply it. The spike criterion is moot until that is
+settled. Next decision: the model (roadmap step 7b, the growth transition;
+the offsets' freedom), not the optimizer.
