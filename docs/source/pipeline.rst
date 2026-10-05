@@ -167,7 +167,10 @@ Simulations
 -----------
 
 ``tfs-simulate`` writes a simulated experiment and its ground truth from one
-YAML file, and its growth table enters the pipeline at step 3. The simulator
-does not yet write raw per-tube counts or OD600 tables, so it skips steps 1
-and 2. ``tfs-setup-sim-grid`` and ``tfs-setup-grid`` lay out grids of
+YAML file. It writes the experiment in the raw formats a lab's data come in,
+one counts file per tube, the tube table and, with an ``od600`` block, the
+OD600 table and calibration, so a simulation enters the pipeline at step 2
+through the same ``tfs-process-counts`` command as real data; the command is
+printed. (Step 1 is replaced by the simulator's own sequencing model.) Its
+growth table, written directly, is the same table and can enter at step 3. ``tfs-setup-sim-grid`` and ``tfs-setup-grid`` lay out grids of
 simulations and fits. See :doc:`simulation` and :doc:`grid`.

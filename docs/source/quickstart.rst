@@ -73,10 +73,14 @@ The script runs nine steps and prints a ``>>>`` header before each one.
    builds the library, draws every genotype's *θ* curve from the
    ``hill_mut`` model with sparse epistasis, grows two replicates and
    sequences them. It writes the growth, binding and presplit tables plus
-   the ground truth. The script then moves into ``out/``.
+   the ground truth, and the experiment in raw form: one counts file per
+   tube in ``tfs_sim_counts/`` and the tube table ``tfs_sim_tubes.csv``. The
+   script then moves into ``out/`` and runs ``tfs-process-counts`` on the
+   raw files, exactly as on a lab's data, to make
+   ``tfs_sim_processed_growth.csv``.
 
 2. ``tfs-configure-model`` picks the model. The script passes the binding,
-   growth and presplit tables and the simulate config as
+   processed growth and presplit tables and the simulate config as
    ``--library_config``, and chooses components that match how the data
    were simulated: ``linear`` condition growth, an ``instant`` growth
    transition, ``hierarchical`` ln_cfu0, ``hierarchical_geno`` dk_geno,
@@ -127,9 +131,14 @@ holds:
 
    * - File
      - Contents
+   * - ``tfs_sim_counts/``, ``tfs_sim_tubes.csv``
+     - The raw experiment: one counts file per tube and the tube table.
+   * - ``tfs_sim_processed_growth.csv``
+     - The growth table ``tfs-process-counts`` made from them, which the
+       model reads.
    * - ``tfs_sim_growth.csv``
-     - Simulated growth table, the format ``tfs-process-counts`` writes,
-       with each row's true values.
+     - The same table written directly by the simulator, with each row's
+       true values.
    * - ``tfs_sim_binding.csv``
      - Simulated binding curves for the four genotypes in
        ``hill_params.csv``.

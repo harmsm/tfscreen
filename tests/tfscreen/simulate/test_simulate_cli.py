@@ -8,6 +8,20 @@ import pandas as pd
 from tfscreen.simulate.scripts.simulate_cli import run_simulation_from_config
 from tfscreen.util.cli.generalized_main import generalized_main
 
+_RAW = "tfscreen.simulate.scripts.simulate_cli.write_raw_experiment"
+
+
+@pytest.fixture(autouse=True)
+def _stub_raw_output(request):
+    """The mocked frames here carry no tube totals; the raw writer has its
+    own tests (test_raw_output.py). Tests that check the call patch it."""
+    if "raw_call" in request.keywords:
+        yield None
+        return
+    with patch(_RAW, return_value={"tubes": "t.csv", "counts_dir": "c",
+                                   "dropped": [], "command": "x"}) as m:
+        yield m
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -606,3 +620,24 @@ def test_no_od600_file_without_block(tmp_path):
     calls = _od_run(tmp_path, cf)
     assert [c["sequence"] for c in calls] == [True, True]
     assert not (tmp_path / "tfs_sim_od600.csv").exists()
+
+
+# ---------------------------------------------------------------------------
+# Raw-format output
+# ---------------------------------------------------------------------------
+
+def test_raw_output_written_by_default(patched_simulation, _stub_raw_output):
+    mock_yaml, tmp_path = patched_simulation
+    run_simulation_from_config("config.yaml", out_prefix=str(tmp_path / "tfs_sim"))
+    assert _stub_raw_output.call_count == 1
+    args, kwargs = _stub_raw_output.call_args
+    assert args[3] == str(tmp_path / "tfs_sim")
+    assert list(args[2]) == ["wt"]
+    assert kwargs["od600_config"] is None
+
+
+def test_raw_output_can_be_skipped(patched_simulation, _stub_raw_output):
+    mock_yaml, tmp_path = patched_simulation
+    run_simulation_from_config("config.yaml", out_prefix=str(tmp_path / "tfs_sim"),
+                               write_raw=False)
+    assert _stub_raw_output.call_count == 0

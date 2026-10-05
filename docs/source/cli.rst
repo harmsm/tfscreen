@@ -1610,7 +1610,7 @@ tfs-simulate
 .. code-block:: text
 
    usage: tfs-simulate [-h] [--out_prefix OUT_PREFIX] [--num_replicates NUM_REPLICATES]
-                       [--seed SEED]
+                       [--seed SEED] [--no_write_raw]
                        config_file
 
    Simulate a TF selection experiment from a YAML configuration file.
@@ -1652,6 +1652,13 @@ tfs-simulate
                            Default 2.
      --seed SEED           Random seed. Overrides seed in the config file when provided.
                            (default: None)
+     --no_write_raw        Turn off (on by default): Also write the experiment in the raw
+                           formats real data come in (one count file per tube in
+                           {out_prefix}_counts/, the tube table {out_prefix}_tubes.csv
+                           and, with an od600 block, the OD600 table and the
+                           calibration), so tfs-process-counts processes it exactly as it
+                           would a lab's data. The command is printed. See
+                           tfscreen.simulate.raw_output.
 
 tfs-build-empirical
 -------------------

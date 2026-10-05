@@ -12,6 +12,7 @@ from tfscreen.simulate.base_growth_data import generate_base_growth_df, generate
 from tfscreen.simulate.growth_parameters_output import generate_growth_parameters_df
 from tfscreen.simulate.transformation_lam_output import generate_transformation_lam_df
 from tfscreen.process_raw import counts_to_lncfu
+from tfscreen.simulate.raw_output import write_raw_experiment
 from tfscreen.util.cli.generalized_main import generalized_main
 
 
@@ -20,6 +21,7 @@ def run_simulation_from_config(
     out_prefix="tfs_sim",
     num_replicates=2,
     seed=None,
+    write_raw=True,
 ):
     """
     Simulate a TF selection experiment from a YAML configuration file.
@@ -58,6 +60,13 @@ def run_simulation_from_config(
         Number of independent experimental replicates to simulate. Default 2.
     seed : int, optional
         Random seed. Overrides seed in the config file when provided.
+    write_raw : bool
+        Also write the experiment in the raw formats real data come in (one
+        count file per tube in ``{out_prefix}_counts/``, the tube table
+        ``{out_prefix}_tubes.csv`` and, with an ``od600`` block, the OD600
+        table and the calibration), so ``tfs-process-counts`` processes it
+        exactly as it would a lab's data. The command is printed. See
+        ``tfscreen.simulate.raw_output``.
     """
     cf = tfscreen.util.read_yaml(config_file)
     if seed is not None:
@@ -86,6 +95,8 @@ def run_simulation_from_config(
     if cf.get("od600") is not None:
         output_names.append("od600")
 
+    if write_raw:
+        output_names.append("tubes")
     existing = [out_path(n) for n in output_names if os.path.exists(out_path(n))]
     if os.path.exists(config_out):
         existing.append(config_out)
@@ -174,6 +185,19 @@ def run_simulation_from_config(
         print(f"Wrote: {out_path('od600')}")
 
     growth_df = counts_to_lncfu(combined_sample_df, combined_counts_df)
+
+    if write_raw:
+        raw = write_raw_experiment(combined_sample_df, combined_counts_df,
+                                   library_df["genotype"], out_prefix,
+                                   od600_config=cf.get("od600"))
+        print(f"\nWrote the raw experiment: {raw['tubes']}, "
+              f"{raw['counts_dir']}/"
+              + (f", {raw['od600']}, {raw['calibration']}"
+                 if "od600" in raw else ""), flush=True)
+        if raw["dropped"]:
+            print(f"Left out of the tube table (OD600 below the detection "
+                  f"threshold): {raw['dropped']}", flush=True)
+        print(f"Process it as real data with:\n  {raw['command']}", flush=True)
 
     # -------------------------------------------------------------------------
     # Write outputs

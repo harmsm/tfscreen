@@ -38,7 +38,10 @@ fi
 # 1. Simulate library
 # ---------------------------------------------------------------------------
 # tfs-simulate reads the config YAML and writes simulated growth data,
-# binding curves, and ground-truth parameter CSVs as run_dir/tfs_sim_*.
+# binding curves, and ground-truth parameter CSVs as run_dir/tfs_sim_*. It
+# also writes the experiment in the raw formats a lab's data come in: one
+# counts file per tube (tfs_sim_counts/) and the tube table
+# (tfs_sim_tubes.csv).
 echo ">>> Simulate library"
 tfs-simulate "${config_file}" --out_prefix "${run_dir}/tfs_sim" --seed "${seed}"
 
@@ -48,6 +51,19 @@ tfs-simulate "${config_file}" --out_prefix "${run_dir}/tfs_sim" --seed "${seed}"
 library_config="$(cd "$(dirname "${config_file}")" && pwd)/$(basename "${config_file}")"
 
 cd "${run_dir}"
+
+# ---------------------------------------------------------------------------
+# 1b. Process the raw counts, exactly as for real data
+# ---------------------------------------------------------------------------
+# The growth table the model reads comes from the per-tube count files and the
+# tube table, through the same command a lab runs. (This config has no od600
+# block, so the tube table carries each tube's total; with one, add the
+# --od600_file, --od600_calibration_file and --tube_volume_mL that
+# tfs-simulate prints.) The presplit table is still written directly by
+# tfs-simulate.
+echo ">>> Process counts"
+tfs-process-counts tfs_sim_tubes.csv tfs_sim_counts \
+    --out_prefix tfs_sim_processed_growth --no_verbose
 
 # ---------------------------------------------------------------------------
 # 2. Configure model
@@ -63,7 +79,7 @@ cd "${run_dir}"
 echo ">>> Configure model"
 tfs-configure-model \
     --binding_df tfs_sim_binding.csv \
-    --growth_df tfs_sim_growth.csv \
+    --growth_df tfs_sim_processed_growth.csv \
     --presplit_df tfs_sim_presplit.csv \
     --condition_growth_model linear \
     --growth_transition_model instant \

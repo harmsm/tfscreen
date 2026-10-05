@@ -246,6 +246,36 @@ The optional blocks add ``tfs_sim_binding.csv`` (and, with
 genotypes chosen), ``tfs_sim_presplit.csv``, ``tfs_sim_base_growth.csv``
 with ``tfs_sim_k_ref.csv``, and ``tfs_sim_od600.csv``.
 
+The raw experiment
+^^^^^^^^^^^^^^^^^^
+
+``tfs-simulate`` also writes the experiment the way a lab hands it to the
+pipeline, so a simulation is processed by exactly the commands real data go
+through (see :doc:`process-raw`):
+
+``tfs_sim_counts/counts_tube0001.csv``, ...
+    One file per sequenced tube in ``tfs-process-fastq``'s format: every
+    library genotype with its read count, zeros included, and the
+    ``__unknown__`` row (0; the simulator assigns every read). Tubes are
+    named with fixed-width ids, so each name matches exactly one file.
+``tfs_sim_tubes.csv``
+    The tube table: ``sample``, ``library`` and the design columns, with no
+    ground truth. Without an ``od600`` block it also carries each tube's
+    total (``sample_cfu``, ``sample_cfu_std``).
+``tfs_sim_tube_od600.csv``, ``tfs_sim_od600_calibration.yaml``
+    With an ``od600`` block: one OD600 reading per tube and a copy of the
+    calibration. A tube read below the detection threshold is left out of
+    the tube table, as a lab would drop it, and the dropped tubes are
+    printed.
+
+``tfs-simulate`` prints the ``tfs-process-counts`` command that processes
+these files. Its output matches ``tfs_sim_growth.csv`` row for row: the same
+counts, tube totals and *ln_cfu*. The ln_cfu values differ slightly only
+where a library genotype never appears in any tube, because a real counts
+file lists it and its pseudocount enters the denominator. ``--no_write_raw``
+skips the raw files, which on a full-size library are one file per tube
+with every genotype. The presplit table is still written directly.
+
 Empirical phenotypes
 --------------------
 

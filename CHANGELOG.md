@@ -31,6 +31,16 @@ fall into two kinds:
 
 ### Added
 
+- **`tfs-simulate` writes the raw experiment** (`simulate/raw_output.py`,
+  pipeline plan step 6): one counts file per sequenced tube in
+  `tfs-process-fastq`'s format (`{out_prefix}_counts/`), the tube table
+  (`{out_prefix}_tubes.csv`) and, with an `od600` block, the OD600 table and
+  a copy of the calibration, and prints the `tfs-process-counts` command
+  that processes them. A simulation now goes through exactly the commands
+  real data do; the output matches `tfs_sim_growth.csv` row for row.
+  `--no_write_raw` skips it. `examples/simulate-and-analyze/run.sh` and the
+  quickstart now fit the processed table.
+
 - **MAP convergence on the exact loss** (`RunInference.full_batch_loss`,
   `run_optimization(exact_loss=None)`, `ConvergenceMonitor.end_window(...,
   exact_loss=)`). A MAP fit (and the staged MAP's stages, the SVI pre-MAP

@@ -210,6 +210,12 @@ reference.
      simulated OD600 through the same calibration).
    - Then the full-size simulation of the real design (library, tube grid,
      depth, OD600), as a study.
+   Raw formats done 2026-10-05 (`simulate/raw_output.py`, written by
+   `tfs-simulate` by default): the round trip matched the direct table
+   exactly on the simulate-and-analyze example (51,000 rows) and, through
+   OD600, on the simulate example; `examples/simulate-and-analyze/run.sh`
+   uses it. Raw presplit is not written yet (the presplit table is still
+   direct). Left: the full-size simulation of the real design.
 7. [ ] **Validate and document** (after step 6). Without the orchestrator:
    - Run the real data and the full-size simulation through the CLI chain
      with no hand step, and write the commands down as the recipe
