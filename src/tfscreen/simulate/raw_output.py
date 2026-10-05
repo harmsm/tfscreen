@@ -20,7 +20,9 @@ exactly where real data do (pipeline plan step 6):
   block the tube table carries ``sample_cfu`` and ``sample_cfu_std`` (the
   simulator's totals).
 
-Sample names are fixed-width (``tube0001``), so the count-file glob
+Tubes keep the design's names when the simulation follows a design file
+(``design_sample``) and no name is a substring of another; otherwise they
+are fixed-width (``tube0001``). Either way the count-file glob
 ``counts*{sample}*.csv`` matches exactly one file per tube.
 """
 
@@ -41,6 +43,25 @@ def sample_names(n):
     """Fixed-width tube names, so no name is a substring of another."""
     width = max(4, len(str(max(n, 1))))
     return [f"tube{i + 1:0{width}d}" for i in range(n)]
+
+
+def _tube_names(tubes):
+    """
+    The design's tube names (``design_sample``) when every tube has one and no
+    name is a substring of another (the count-file glob would match two
+    files); else fixed-width ``tubeNNNN`` names.
+    """
+    if "design_sample" in tubes.columns:
+        given = tubes["design_sample"]
+        if given.notna().all():
+            given = given.astype(str).tolist()
+            clash = [a for a in given for b in given if a != b and a in b]
+            if not clash and len(set(given)) == len(given):
+                return given
+            print(f"Design tube names cannot name count files uniquely "
+                  f"(e.g. {clash[:3]}); using tube0001, ... instead.",
+                  flush=True)
+    return sample_names(len(tubes))
 
 
 def write_raw_experiment(sample_df, counts_df, library_genotypes, out_prefix,
@@ -74,7 +95,7 @@ def write_raw_experiment(sample_df, counts_df, library_genotypes, out_prefix,
     """
     tubes = sample_df.copy()
     tubes = tubes.sort_index()
-    names = dict(zip(tubes.index, sample_names(len(tubes))))
+    names = dict(zip(tubes.index, _tube_names(tubes)))
     tubes["sample"] = tubes.index.map(names)
 
     dropped = []

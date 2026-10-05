@@ -84,6 +84,18 @@ Conditions
 of concentration and selection time is one tube. Every ``condition_pre`` and
 ``condition_sel`` must appear in ``growth``.
 
+To follow a real experiment's layout exactly, give ``design`` instead: the
+path to a tube table, the format ``tfs-process-counts`` reads (``sample``,
+``library``, ``replicate``, ``condition_pre``, ``t_pre``, ``condition_sel``,
+``t_sel``, ``titrant_name``, ``titrant_conc``; other columns are ignored).
+Each replicate gets exactly its own tubes, so irregular time points and
+replicates sampled at different times carry over, and the replicates are
+the design's (``--num_replicates`` is ignored). The raw experiment keeps the
+design's tube names, so the simulated tube table has the real layout. A
+design cannot be combined with ``condition_blocks`` or with
+``od600.num_od_only_replicates``. Like every path in the config, it is read
+relative to the directory ``tfs-simulate`` runs in.
+
 ``growth_transition`` is an optional list with one entry per
 ``condition_pre``, describing the switch from pre-growth to selection.
 The simulator supports ``instant`` (no lag), ``memory`` (``tau0``, ``k1``,
@@ -99,7 +111,10 @@ Transformation and congression
 ``tile_combos`` plus ``spiked``. ``library_mixture`` gives the ratio in
 which those sub-libraries are pooled. ``lib_assembly_skew_sigma`` spreads
 the starting genotype frequencies log-normally; 0 makes them even.
-``cfu0`` is the number of cells in each tube at the start of pre-growth.
+``cfu0`` is the number of cells in each tube at the start of pre-growth: one
+number, or one per library (``cfu0: {kanR: 2.6e7, pheS: 5.3e7}``) when the
+libraries were grown up separately. A tube's simulated total scales with
+it, which makes it easy to match a real experiment's densities.
 
 ``transformation_poisson_lambda`` gives each cell a zero-truncated Poisson
 number of plasmids; 0 or null gives exactly one. A cell with several
@@ -274,7 +289,14 @@ counts, tube totals and *ln_cfu*. The ln_cfu values differ slightly only
 where a library genotype never appears in any tube, because a real counts
 file lists it and its pseudocount enters the denominator. ``--no_write_raw``
 skips the raw files, which on a full-size library are one file per tube
-with every genotype. The presplit table is still written directly.
+with every genotype. ``--no_write_growth`` skips ``tfs_sim_growth.csv``,
+which ``tfs-process-counts`` rebuilds from the raw files anyway. The
+presplit table is still written directly.
+
+A simulation the size of a real screen (a few hundred thousand genotypes
+in about a hundred tubes) is large: tens of GB of memory at its peak, an
+hour or more of computing, and several GB of output, most of it the growth
+table and the count files.
 
 Empirical phenotypes
 --------------------

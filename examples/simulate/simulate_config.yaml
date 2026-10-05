@@ -141,6 +141,12 @@ theta_component: "thermo.O2_C12_K5_U0_a.PK"
 # Each block defines one set of growth conditions.  The Cartesian product of
 # titrant_conc × t_sel gives one sample per entry.  condition_pre and
 # condition_sel must also appear as keys in the 'growth' section below.
+#
+# To copy a real experiment's layout instead (irregular times, replicates
+# sampled differently), replace condition_blocks with
+#   design: tube_table.csv
+# a tube table in the format tfs-process-counts reads; each replicate then
+# gets exactly its own tubes, under the table's names.
 condition_blocks:
   - library: "kanR"
     titrant_name: "iptg"

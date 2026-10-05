@@ -93,6 +93,7 @@ from tfscreen.util.grid_utils import (
 # a config value outside this list that names an existing file.
 _SIM_PATH_KEYS = (
     ("thermo_data",),
+    ("design",),
     ("calibration_file",),
     ("empirical", "phenotype_model"),
     ("od600", "calibration"),

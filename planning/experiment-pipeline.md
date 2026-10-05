@@ -216,6 +216,13 @@ reference.
    OD600, on the simulate example; `examples/simulate-and-analyze/run.sh`
    uses it. Raw presplit is not written yet (the presplit table is still
    direct). Left: the full-size simulation of the real design.
+   Full-size simulation set up 2026-10-05: `planning/studies/full-size-sim/`
+   (config derived from the dev data by `make_sim_config.py`; the
+   simulator's new `design` key copies the real 118-tube layout), to run on
+   the cluster. A local pilot ran (85 min, 68 GB peak); `cfu0` is now
+   calibrated per library from a pilot. The calibrated simulation still
+   misses the real tube totals in a structured way (IPTG, time), which is
+   recorded for step 8.
 7. [ ] **Validate and document** (after step 6). Without the orchestrator:
    - Run the real data and the full-size simulation through the CLI chain
      with no hand step, and write the commands down as the recipe

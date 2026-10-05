@@ -1610,7 +1610,7 @@ tfs-simulate
 .. code-block:: text
 
    usage: tfs-simulate [-h] [--out_prefix OUT_PREFIX] [--num_replicates NUM_REPLICATES]
-                       [--seed SEED] [--no_write_raw]
+                       [--seed SEED] [--no_write_raw] [--no_write_growth]
                        config_file
 
    Simulate a TF selection experiment from a YAML configuration file.
@@ -1659,6 +1659,11 @@ tfs-simulate
                            calibration), so tfs-process-counts processes it exactly as it
                            would a lab's data. The command is printed. See
                            tfscreen.simulate.raw_output.
+     --no_write_growth     Turn off (on by default): Also write {out_prefix}_growth.csv,
+                           the growth table built directly from the simulated counts
+                           (with each row's true values). tfs-process-counts builds the
+                           same table from the raw files, so a full-size simulation can
+                           skip it: on a real library's size it is several GB.
 
 tfs-build-empirical
 -------------------

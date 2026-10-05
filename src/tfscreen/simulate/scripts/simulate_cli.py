@@ -13,6 +13,10 @@ from tfscreen.simulate.growth_parameters_output import generate_growth_parameter
 from tfscreen.simulate.transformation_lam_output import generate_transformation_lam_df
 from tfscreen.process_raw import counts_to_lncfu
 from tfscreen.simulate.raw_output import write_raw_experiment
+from tfscreen.simulate.build_sample_dataframes import (
+    CONDITION_COLUMNS,
+    read_design,
+)
 from tfscreen.util.cli.generalized_main import generalized_main
 
 
@@ -22,6 +26,7 @@ def run_simulation_from_config(
     num_replicates=2,
     seed=None,
     write_raw=True,
+    write_growth=True,
 ):
     """
     Simulate a TF selection experiment from a YAML configuration file.
@@ -67,6 +72,12 @@ def run_simulation_from_config(
         table and the calibration), so ``tfs-process-counts`` processes it
         exactly as it would a lab's data. The command is printed. See
         ``tfscreen.simulate.raw_output``.
+    write_growth : bool
+        Also write ``{out_prefix}_growth.csv``, the growth table built
+        directly from the simulated counts (with each row's true values).
+        ``tfs-process-counts`` builds the same table from the raw files, so a
+        full-size simulation can skip it: on a real library's size it is
+        several GB.
     """
     cf = tfscreen.util.read_yaml(config_file)
     if seed is not None:
@@ -81,8 +92,10 @@ def run_simulation_from_config(
 
     config_out = f"{out_prefix}_input-config.yaml"
 
-    output_names = ["library", "parameters", "genotype_theta", "growth",
+    output_names = ["library", "parameters", "genotype_theta",
                     "growth_parameters", "transformation_lam"]
+    if write_growth:
+        output_names.append("growth")
     if "binding_data" in cf:
         output_names.append("binding")
         if cf["binding_data"].get("library_binding") is not None:
@@ -133,20 +146,39 @@ def run_simulation_from_config(
     od_cf = cf.get("od600") or {}
     num_od_only = int(od_cf.get("num_od_only_replicates") or 0)
 
-    for rep in range(1, num_replicates + num_od_only + 1):
-        sequenced = rep <= num_replicates
+    # A design tube table fixes the replicates and each one's tubes.
+    design = None
+    if cf.get("design") is not None:
+        design = read_design(cf["design"])
+        if num_od_only:
+            raise ValueError("od600.num_od_only_replicates cannot be combined "
+                             "with a design; add the OD-only tubes to the "
+                             "design instead.")
+        rep_ids = sorted(design["replicate"].unique().tolist())
+        if num_replicates != len(rep_ids):
+            print(f"Design has {len(rep_ids)} replicate(s) {rep_ids}; "
+                  f"num_replicates ({num_replicates}) is ignored.", flush=True)
+        num_replicates = len(rep_ids)
+    else:
+        rep_ids = list(range(1, num_replicates + num_od_only + 1))
+
+    for rep_num, rep in enumerate(rep_ids, start=1):
+        sequenced = rep_num <= num_replicates
         label = ("" if sequenced else " (OD600 only)")
-        print(f"\n--- Replicate {rep} of {num_replicates + num_od_only}{label} ---",
+        print(f"\n--- Replicate {rep} of {len(rep_ids)}{label} ---",
               flush=True)
 
         # Give each replicate a distinct (but reproducible) random seed so
         # that replicates differ even when a base seed is set.
         rep_cf = dict(cf)
         rep_cf["seed"] = (
-            base_seed * num_replicates + rep if base_seed is not None else None
+            base_seed * num_replicates + rep_num if base_seed is not None else None
         )
 
         rep_phenotype_df = phenotype_df.copy()
+        if design is not None:
+            tubes = design.loc[design["replicate"] == rep, CONDITION_COLUMNS]
+            rep_phenotype_df = rep_phenotype_df.merge(tubes, on=CONDITION_COLUMNS)
         rep_phenotype_df["replicate"] = rep
 
         sample_df_rep, counts_df_rep = selection_experiment(
@@ -184,7 +216,25 @@ def run_simulation_from_config(
         od_df[keep].to_csv(out_path("od600"), index=False)
         print(f"Wrote: {out_path('od600')}")
 
-    growth_df = counts_to_lncfu(combined_sample_df, combined_counts_df)
+    if design is not None:
+        # The design's tube names, for the raw output.
+        key = ["replicate"] + CONDITION_COLUMNS
+        named = combined_sample_df[key].merge(
+            design[key + ["sample"]].rename(columns={"sample": "design_sample"}),
+            on=key, how="left")
+        combined_sample_df = combined_sample_df.copy()
+        combined_sample_df["design_sample"] = named["design_sample"].to_numpy()
+
+    # The in-memory growth table: written unless skipped, and needed by the
+    # in-library binding selection (survivors).
+    need_growth = write_growth or (
+        "binding_data" in cf
+        and cf["binding_data"].get("library_binding") is not None)
+    growth_df = None
+    if need_growth:
+        growth_df = counts_to_lncfu(
+            combined_sample_df.drop(columns="design_sample", errors="ignore"),
+            combined_counts_df)
 
     if write_raw:
         raw = write_raw_experiment(combined_sample_df, combined_counts_df,
@@ -205,10 +255,13 @@ def run_simulation_from_config(
     library_df.to_csv(out_path("library"), index=False)
     parameters_df.to_csv(out_path("parameters"), index=False)
     genotype_theta_df.to_csv(out_path("genotype_theta"), index=False)
-    growth_df.to_csv(out_path("growth"), index=False)
+    if write_growth:
+        growth_df.to_csv(out_path("growth"), index=False)
     growth_parameters_df.to_csv(out_path("growth_parameters"), index=False)
     transformation_lam_df.to_csv(out_path("transformation_lam"), index=False)
-    print(f"\nWrote: {', '.join(out_path(n) for n in ['library', 'parameters', 'genotype_theta', 'growth', 'growth_parameters', 'transformation_lam'])}")
+    written = ["library", "parameters", "genotype_theta", "growth_parameters",
+               "transformation_lam"] + (["growth"] if write_growth else [])
+    print(f"\nWrote: {', '.join(out_path(n) for n in written)}")
 
     if "binding_data" in cf:
         binding_cfg = cf["binding_data"]

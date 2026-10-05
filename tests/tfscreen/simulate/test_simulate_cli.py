@@ -641,3 +641,12 @@ def test_raw_output_can_be_skipped(patched_simulation, _stub_raw_output):
     run_simulation_from_config("config.yaml", out_prefix=str(tmp_path / "tfs_sim"),
                                write_raw=False)
     assert _stub_raw_output.call_count == 0
+
+
+def test_growth_table_can_be_skipped(patched_simulation):
+    mock_yaml, tmp_path = patched_simulation
+    with patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu") as c2l:
+        run_simulation_from_config("config.yaml", out_prefix=str(tmp_path / "tfs_sim"),
+                                   write_growth=False)
+    # nothing needs the in-memory growth table, so it is not built
+    assert c2l.call_count == 0

@@ -31,6 +31,21 @@ fall into two kinds:
 
 ### Added
 
+- **`cfu0` per library** in the simulate config (`{library: cells}`), so
+  separately grown libraries can start at their own densities, and
+  **`tfs-simulate --no_write_growth`**, which skips the direct growth table
+  (several GB at a real library's size; `tfs-process-counts` rebuilds it from
+  the raw files). The full-size simulation study calibrates `cfu0` per
+  library from a pilot run.
+
+- **Simulation designs** (`design` key in the simulate config,
+  `simulate/build_sample_dataframes.read_design`): a tube table in the
+  format `tfs-process-counts` reads, in place of `condition_blocks`, so a
+  simulation follows a real experiment's layout exactly (irregular times,
+  replicates sampled differently). Each replicate gets its own tubes and the
+  raw output keeps the design's tube names. Used by the full-size simulation
+  study (`planning/studies/full-size-sim/`).
+
 - **`tfs-simulate` writes the raw experiment** (`simulate/raw_output.py`,
   pipeline plan step 6): one counts file per sequenced tube in
   `tfs-process-fastq`'s format (`{out_prefix}_counts/`), the tube table

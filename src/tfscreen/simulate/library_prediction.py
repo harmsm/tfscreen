@@ -3,6 +3,8 @@ import tfscreen
 
 from tfscreen.simulate import (
     build_sample_dataframes,
+    design_conditions,
+    read_design,
     thermo_to_growth,
 )
 from tfscreen.simulate.sim_data_class import build_sim_data
@@ -262,11 +264,19 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
     lm = library_manager.LibraryManager(cf)
     library_df = lm.build_library_df()
 
-    # Build sample_df (holds all conditions for the experiment)
-    sample_df = build_sample_dataframes(
-        cf['condition_blocks'],
-        replicate=1
-    )
+    # Build sample_df (holds all conditions for the experiment): from the
+    # condition blocks, or from a design tube table (the union of its
+    # replicates' conditions; each replicate later takes its own tubes).
+    if cf.get('design') is not None:
+        if cf.get('condition_blocks') is not None:
+            raise ValueError("Give either 'design' or 'condition_blocks', not "
+                             "both.")
+        sample_df = design_conditions(read_design(cf['design']))
+    else:
+        sample_df = build_sample_dataframes(
+            cf['condition_blocks'],
+            replicate=1
+        )
 
     # Build SimData: lightweight container for the theta model
     sim_data = build_sim_data(

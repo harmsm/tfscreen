@@ -93,3 +93,76 @@ def build_sample_dataframes(condition_blocks, replicate=1):
     sample_df = sample_df.sort_values(sort_columns).reset_index(drop=True)
 
     return sample_df
+
+# Columns of a design file: the tube table tfs-process-counts reads, without
+# the tube totals (the simulator makes those).
+DESIGN_COLUMNS = ["sample", "library", "replicate", "condition_pre", "t_pre",
+                  "condition_sel", "t_sel", "titrant_name", "titrant_conc"]
+
+# The columns that make two tubes the same growth condition.
+CONDITION_COLUMNS = ["library", "titrant_name", "condition_pre", "t_pre",
+                     "condition_sel", "titrant_conc", "t_sel"]
+
+
+def read_design(design):
+    """
+    Read and check a simulation design: one row per sequenced tube.
+
+    The design replaces ``condition_blocks`` when a simulation should follow
+    a real experiment's layout exactly (irregular time points, per-replicate
+    differences). Its format is the tube table ``tfs-process-counts`` reads;
+    extra columns (tube totals, OD600, read counts) are ignored.
+
+    Parameters
+    ----------
+    design : str or pandas.DataFrame
+        Path to the tube table (CSV/TSV/Excel) or the table itself.
+
+    Returns
+    -------
+    pandas.DataFrame
+        The ``DESIGN_COLUMNS``, ``sample`` as str and ``replicate`` as int.
+
+    Raises
+    ------
+    ValueError
+        On a missing column, a repeated sample name, or two tubes of one
+        replicate with the same growth condition.
+    """
+    from tfscreen.util.io import read_dataframe
+
+    df = read_dataframe(design)
+    if df.index.name == "sample":
+        df = df.reset_index()
+    missing = [c for c in DESIGN_COLUMNS if c not in df.columns]
+    if missing:
+        raise ValueError(f"design is missing column(s) {missing}; it needs "
+                         f"{DESIGN_COLUMNS} (a tube table).")
+    df = df[DESIGN_COLUMNS].copy()
+    df["sample"] = df["sample"].astype(str)
+    df["replicate"] = df["replicate"].astype(int)
+    dups = df["sample"][df["sample"].duplicated()].unique().tolist()
+    if dups:
+        raise ValueError(f"design repeats sample name(s): {dups[:10]}")
+    key = ["replicate"] + CONDITION_COLUMNS
+    clash = df[df.duplicated(subset=key, keep=False)]
+    if not clash.empty:
+        raise ValueError("design has more than one tube with the same "
+                         "replicate and growth condition: "
+                         f"{clash['sample'].tolist()[:10]}")
+    return df.reset_index(drop=True)
+
+
+def design_conditions(design_df):
+    """
+    The distinct growth conditions of a design, in ``build_sample_dataframes``
+    form (``replicate`` 1): the union over replicates, whose phenotypes the
+    simulator computes once before each replicate takes its own tubes.
+    """
+    conds = (design_df[CONDITION_COLUMNS].drop_duplicates()
+             .assign(replicate=1))
+    sort_columns = ["replicate", "library", "condition_pre", "condition_sel",
+                    "titrant_name", "titrant_conc", "t_sel"]
+    cols = ["replicate", "library", "titrant_name", "condition_pre", "t_pre",
+            "condition_sel", "titrant_conc", "t_sel"]
+    return conds[cols].sort_values(sort_columns).reset_index(drop=True)

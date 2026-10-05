@@ -1,0 +1,70 @@
+#!/bin/bash -l
+#SBATCH --account=harmslab
+#SBATCH --job-name=tfs_fullsim
+#SBATCH --output=run.out
+#SBATCH --error=run.err
+#SBATCH --partition=gpulong
+#SBATCH --time=02-00:00:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --gpus=1
+#SBATCH --mem=0
+#SBATCH --ntasks-per-node=1
+
+# The full-size simulation of the dev-data design, through the same chain as
+# real data (planning/studies/full-size-sim). Run from a directory made by
+# make_sim_config.py (it holds design.csv, simulate_config.yaml and the
+# calibration), inside planning/dev-data:
+#
+#   python ../make_sim_config.py --out_dir sim_realistic_s1 --seed 1
+#   cd sim_realistic_s1 && sbatch ../run_full_size.srun
+#
+# Each step is the documented command; nothing between them is edited by hand.
+# The fit is the growth-only relative model of the real fit
+# (planning/studies/staged-map/run_staged.srun), so the simulation tests the
+# recipe the real data use.
+
+module load cuda/12.4.1
+
+set -e
+
+SEED="${SEED:-1}"
+
+echo ">>> Simulate $(date)"
+tfs-simulate simulate_config.yaml --out_prefix tfs_sim --seed "${SEED}"
+
+echo ">>> Process counts $(date)"
+tfs-process-counts tfs_sim_tubes.csv tfs_sim_counts \
+    --od600_file tfs_sim_tube_od600.csv \
+    --od600_calibration_file tfs_sim_od600_calibration.yaml \
+    --tube_volume_mL 5 \
+    --out_prefix tfs_growth --no_verbose
+
+echo ">>> Configure $(date)"
+tfs-configure-model \
+    --growth_df tfs_growth.csv \
+    --library_config simulate_config.yaml \
+    --theta_model hill_relative \
+    --growth_shares_replicates \
+    --batch_size 4096 \
+    --growth_priors ../growth_priors_loose.csv \
+    --set_priors sigma_fixed=0.17 theta_log_hill_n_hyper_scale_fixed=0.5
+
+echo ">>> Fit (staged MAP) $(date)"
+tfs-fit-model tfs_configure_config.yaml --seed "${SEED}" --analysis_method map
+
+echo ">>> Arrowhead Laplace $(date)"
+tfs-sample-posterior tfs_configure_config.yaml tfs_fit_model_checkpoint.pkl \
+    --laplace arrowhead --num_posterior_samples 500 --skip_growth_observations
+
+echo ">>> Extract and predict $(date)"
+tfs-extract-params tfs_configure_config.yaml tfs_posterior.h5
+tfs-predict-theta tfs_configure_config.yaml tfs_posterior.h5
+
+echo ">>> Score (exact, full batch) $(date)"
+python ../score_map.py .
+
+echo ">>> Summarize against the truth $(date)"
+tfs-summarize-fit .
+
+echo ">>> Done $(date)"

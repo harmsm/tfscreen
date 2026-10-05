@@ -1,6 +1,8 @@
 
 from .build_sample_dataframes import (  # noqa: F401
     build_sample_dataframes,
+    design_conditions,
+    read_design,
 )
 
 from .sim_data_class import (  # noqa: F401

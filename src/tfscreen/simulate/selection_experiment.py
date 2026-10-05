@@ -60,7 +60,7 @@ SIMULATE_KNOWN_KEYS = frozenset({
     # Empirical phenotype source (resample from a fitted PopulationModel)
     "phenotype_source", "empirical",
     # Conditions and growth
-    "condition_blocks", "growth",
+    "condition_blocks", "design", "growth",
     "dk_geno_hyper_loc", "dk_geno_hyper_scale", "dk_geno_hyper_shift", "dk_geno_zero",
     "activity_wt", "activity_mut_scale", "activity_component", "activity_priors",
     # Experimental simulation parameters
@@ -298,7 +298,14 @@ def _check_cf(
     cf = _check_dict_number("transformation_poisson_lambda", cf, min_allowed=0, allow_none=True)
     cf = _check_dict_number("tube_noise_sigma", cf, min_allowed=0, allow_none=True)
     cf = _check_dict_number("seed", cf, cast_type=int, min_allowed=0, allow_none=True)
-    cf = _check_dict_number("cfu0", cf, allow_none=False,min_allowed=0)
+    # cfu0: cells per tube at -t_pre, one number or one per library
+    if isinstance(cf.get("cfu0"), dict):
+        for lib_name in list(cf["cfu0"]):
+            cf["cfu0"] = dict(cf["cfu0"])
+            _check_dict_number(lib_name, cf["cfu0"], allow_none=False,
+                               min_allowed=0)
+    else:
+        cf = _check_dict_number("cfu0", cf, allow_none=False,min_allowed=0)
     cf = _check_dict_number("total_num_reads", cf, cast_type=int, min_allowed=0, inclusive_min=False)
 
     # --- Validate nested dictionaries ---
@@ -1389,6 +1396,12 @@ def _simulate_library_group(
     transform_sizes = cf["transform_sizes"]
     prob_index_hop = cf["prob_index_hop"]
     total_cfu0 = cf["cfu0"]
+    if isinstance(total_cfu0, dict):
+        lib_names = sub_df["library"].unique().tolist()
+        if len(lib_names) != 1 or lib_names[0] not in total_cfu0:
+            raise ValueError(f"cfu0 is given per library {sorted(total_cfu0)}, "
+                             f"but this group is library {lib_names}.")
+        total_cfu0 = float(total_cfu0[lib_names[0]])
 
     num_genotypes = len(ordered_genotypes)
 
