@@ -1498,6 +1498,13 @@ tfs-summarize-fit
      configured and a posterior/params file is found).
    - {out_prefix}_losses.pdf — training loss curve (only written when
      *_losses.txt is present).
+   - {out_prefix}_tube_offsets.csv / _tube_offset_trends.csv /
+     _tube_offsets.pdf — the per-tube sample offsets in prior SDs and,
+     per condition, their Spearman trend with titrant and with time (only
+     when tfs-extract-params wrote *_sample_offset_offset.csv). A
+     condition whose trend has BH q < 0.05 is flagged structured: the
+     offsets are carrying growth (the offset mode) rather than tube noise.
+     The JSON's tube_offsets key holds the summary.
 
    positional arguments:
      run_dir               Directory containing model fit outputs.

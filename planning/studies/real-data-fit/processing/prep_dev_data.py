@@ -10,6 +10,11 @@ Lab-specific choices live here (see README.md, "Answers from Mike"):
 - OD600 is the measurement; sample_df's lncfu columns are ignored.
 - Tube totals: calibrated CFU/mL times TUBE_VOLUME_ML.
 
+Writes processed/sample_df.csv (the tube table with OD600, the totals and
+read counts, for the study scripts) and, for the documented chain
+(fit/run_recipe.srun), processed/tube_table.csv and processed/tube_od600.csv,
+which tfs-process-counts turns into the growth table with the calibration.
+
 Run from this directory:  python prep_dev_data.py
 """
 
@@ -215,6 +220,11 @@ def sample_table(cal, pooled):
     return kept.sort_values("sample").reset_index(drop=True), dropped
 
 
+TUBE_TABLE_COLUMNS = ["sample", "library", "replicate", "condition_pre",
+                      "t_pre", "condition_sel", "t_sel", "titrant_name",
+                      "titrant_conc"]
+
+
 def write_counts(pooled, samples):
     d = os.path.join(OUT, "counts")
     os.makedirs(d, exist_ok=True)
@@ -311,6 +321,13 @@ def main():
     samples, dropped = sample_table(cal, pooled)
     samples.to_csv(os.path.join(OUT, "sample_df.csv"), index=False)
     dropped.to_csv(os.path.join(OUT, "sample_df_dropped.csv"), index=False)
+    # the inputs of the documented chain (pipeline plan step 7):
+    # tfs-process-counts computes the totals from the OD600 table itself,
+    # so the tube table carries neither OD600 nor totals
+    samples[TUBE_TABLE_COLUMNS].to_csv(os.path.join(OUT, "tube_table.csv"),
+                                       index=False)
+    samples[["sample", "od600"]].to_csv(os.path.join(OUT, "tube_od600.csv"),
+                                        index=False)
     write_counts(pooled, samples)
     print(f"{len(samples)} tubes kept, {len(dropped)} dropped: "
           f"{dropped['sample'].tolist()}")

@@ -2390,3 +2390,58 @@ class TestCalibrationIntegration:
                         if "params_activity" in c.kwargs["out_prefix"]]
         assert len(params_calls) == 1
         assert not params_calls[0].kwargs["out_prefix"].endswith(".csv")
+
+
+# ---------------------------------------------------------------------------
+# Tube offsets
+# ---------------------------------------------------------------------------
+
+def _write_offsets(run_dir, pattern):
+    rows = []
+    for cond in ("kanR+kan", "pheS+4CP"):
+        for rep in (1, 2):
+            for t in (0.0, 60.0, 120.0):
+                for i, c in enumerate([0.0, 0.01, 0.1, 1.0]):
+                    rows.append(dict(replicate=rep, library="lib",
+                                     condition_pre="pre", condition_sel=cond,
+                                     titrant_name="iptg", titrant_conc=c,
+                                     t_pre=30.0, t_sel=t,
+                                     value=(2.0 - i if pattern else 0.0)
+                                     + 0.01 * ((rep * 7 + i * 3 + int(t)) % 5)))
+    pd.DataFrame(rows).rename(columns={"value": "q0.5"}).to_csv(
+        os.path.join(run_dir, "run_params_sample_offset_offset.csv"),
+        index=False)
+
+
+class TestTubeOffsets:
+
+    def test_no_offset_file_gives_none(self, run_dir):
+        results = summarize_fit(run_dir)
+        assert results["tube_offsets"] is None
+
+    def test_held_sigma_from_priors_and_flag(self, run_dir):
+        _write_offsets(run_dir, pattern=True)
+        pd.DataFrame({"parameter": ["growth.sample_offset.sigma_fixed"],
+                      "value": [0.17]}).to_csv(
+            os.path.join(run_dir, "test_priors.csv"), index=False)
+        results = summarize_fit(run_dir)
+        s = results["tube_offsets"]
+        assert s["sigma"] == pytest.approx(0.17)
+        assert s["sigma_source"] == "sigma_fixed"
+        assert s["structured"]
+        prefix = os.path.join(run_dir, "summary", "tfs_summarize")
+        for suffix in ("_tube_offsets.csv", "_tube_offset_trends.csv",
+                       "_tube_offsets.pdf"):
+            assert os.path.exists(prefix + suffix)
+        with open(prefix + "_fit_summary.json") as fh:
+            assert json.load(fh)["tube_offsets"]["structured"] is True
+
+    def test_extracted_sigma_wins(self, run_dir):
+        _write_offsets(run_dir, pattern=False)
+        pd.DataFrame({"parameter": ["sample_offset_sigma"],
+                      "q0.5": [0.5]}).to_csv(
+            os.path.join(run_dir, "run_params_sample_offset_sigma.csv"),
+            index=False)
+        s = summarize_fit(run_dir)["tube_offsets"]
+        assert s["sigma"] == pytest.approx(0.5)
+        assert not s["structured"]

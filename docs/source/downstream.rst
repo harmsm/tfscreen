@@ -67,8 +67,15 @@ theta baselines. Other components add their own files, for example
 ``tfs_params_dk_geno.csv``, ``tfs_params_growth_k.csv`` and
 ``tfs_params_growth_m.csv`` (keyed by ``condition_rep``, plus
 ``replicate`` when replicates have their own growth parameters),
-``tfs_params_lam.csv`` for the ``mixture`` transformation, and
-``tfs_params_k_ref.csv`` when base-growth data were supplied.
+``tfs_params_lam.csv`` for the ``mixture`` transformation,
+``tfs_params_k_ref.csv`` when base-growth data were supplied, and, with
+tube offsets, ``tfs_params_sample_offset_offset.csv`` (``level``) or
+``tfs_params_sample_offset_delta_k.csv`` (``normal``), one row per tube
+keyed by its design (``replicate``, ``library``, ``condition_pre``,
+``condition_sel``, ``titrant_name``, ``titrant_conc``, ``t_pre``,
+``t_sel``), with the offsets' SD in ``tfs_params_sample_offset_sigma.csv``.
+A held SD (``sigma_fixed``) is a deterministic site, so a checkpoint has no
+SD file.
 
 ``log_hill_K`` is the natural log of the Hill constant in the units of
 ``titrant_conc``. It is not a base-10 log.

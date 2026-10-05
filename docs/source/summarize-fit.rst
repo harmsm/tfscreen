@@ -112,6 +112,11 @@ All names below use the default prefix ``tfs_summarize``.
    * - ``tfs_summarize_params_{name}.pdf`` / ``.csv``
      - A parameter table with the true value added as ``ref``. Simulated
        runs only.
+   * - ``tfs_summarize_tube_offsets.pdf`` / ``.csv``,
+       ``tfs_summarize_tube_offset_trends.csv``
+     - The per-tube sample offsets in prior SDs and their trends with titrant
+       and time, one row per condition (see `Tube offsets`_). Fits with tube
+       offsets only.
 
 Slashes and spaces in genotype names become underscores in file names, so
 ``M42I/K84L`` gives ``tfs_summarize_M42I_K84L_trajectory.pdf``.
@@ -150,10 +155,11 @@ Reading the outputs
 The summary JSON
 ~~~~~~~~~~~~~~~~
 
-``tfs_summarize_fit_summary.json`` has three top-level keys. ``metadata``
+``tfs_summarize_fit_summary.json`` has four top-level keys. ``metadata``
 describes the run. ``theta`` holds ``training`` and ``test`` statistics, and
-``growth`` holds ``training`` statistics. A block that could not be computed
-is ``null``. The example below, with illustrative values, is a simulated
+``growth`` holds ``training`` statistics. ``tube_offsets`` holds the
+tube-offset summary (see `Tube offsets`_). A block that could not be
+computed, or a fit without tube offsets, is ``null``. The example below, with illustrative values, is a simulated
 growth-only run: there is no binding data, so ``theta.training`` is null.
 
 .. code-block:: json
@@ -198,7 +204,8 @@ growth-only run: there is no binding data, so ``theta.training`` is null.
          "residual_corr_p_value": 1.1e-31,
          "bp_p_value": 0.0
        }
-     }
+     },
+     "tube_offsets": null
    }
 
 The metadata keys:
@@ -243,6 +250,46 @@ all of them never measured directly. That is the real test of the fit. A large
 gap between training and test error means the model fits the anchors but does
 not carry that accuracy to the library. ``growth.training`` compares
 predicted with observed ln(CFU) for every observed point.
+
+Tube offsets
+~~~~~~~~~~~~
+
+A ``level`` tube offset is meant to absorb tube noise: an error in a tube's
+total or its composition, independent from tube to tube and about the size of
+the OD600 scatter. On the dev data the MAP's better optimum used the offsets
+for something else. Within each selection condition they followed IPTG, from
++2 to -4 ln units across 0 to 1 mM, and stayed constant over time, carrying
+growth the model could not express (see :doc:`fitting`, "Staged MAP"). This
+check makes that visible.
+
+It reads ``*_sample_offset_offset.csv`` (``*_sample_offset_delta_k.csv`` for
+``normal`` offsets) from ``tfs-extract-params``. The prior SD comes from
+``*_sample_offset_sigma.csv`` when the SD was learned, or from
+``sigma_fixed`` in the priors file when it was held.
+
+* ``tfs_summarize_tube_offsets.csv`` is the offsets table with ``offset``
+  (the ``q0.5``) and ``z``, the offset in prior SDs.
+* ``tfs_summarize_tube_offset_trends.csv`` has one row per condition
+  (``library``, ``condition_pre``, ``condition_sel``, ``titrant_name``):
+  the mean and SD of the offsets, in ln units and in prior SDs; the Spearman
+  correlation of the offset with titrant concentration (``rho_titrant``,
+  ``p_titrant``) and with selection time (``rho_time``, ``p_time``);
+  ``r2_titrant``, the share of the offsets' variance explained by the mean
+  at each concentration, which catches a non-monotone pattern; and
+  Benjamini-Hochberg q values over every condition and both trends.
+  ``structured`` is true when either q is below 0.05.
+* ``tfs_summarize_tube_offsets.pdf`` plots the offsets against titrant, one
+  panel per selection condition, colored by time.
+* The JSON's ``tube_offsets`` block holds ``n_tubes``, ``sigma`` and its
+  source, the offsets' ``sd``, ``sd_over_sigma``, the median, 95th
+  percentile and maximum of ``|z|``, the ``range``, and ``structured`` with
+  the list of structured conditions.
+
+Noise offsets have ``sd_over_sigma`` near 1 and no structured condition. A
+structured fit is not wrong by construction, since a real tube effect can
+trend with IPTG, but its offsets are carrying signal the growth model
+leaves out, and its *k*, *m* and curves should not be read until that is
+understood.
 
 Loss history
 ~~~~~~~~~~~~

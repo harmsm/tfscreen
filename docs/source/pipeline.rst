@@ -160,8 +160,21 @@ epistasis is only defined on the additive scale: pass
 ``tfs-predict-epistasis --scale add``. ``tfs-cat-response`` classifies the
 response curves, ``tfs-extract-epistasis``
 computes epistasis from any long-form table, and ``tfs-compare-runs``
-measures agreement between runs. See :doc:`downstream`. ``tfs-summarize-fit``
-gathers a run's diagnostics; see :doc:`summarize-fit`.
+measures agreement between runs. See :doc:`downstream`.
+
+7. Check the fit
+----------------
+
+``tfs-summarize-fit`` gathers a run's diagnostics from its directory: the
+loss history, observed against predicted growth, and, for a fit with tube
+offsets, the offsets in prior SDs with a flag for offsets that trend with
+titrant or time. A flagged fit has offsets carrying growth the model leaves
+out, so read its curves with care. On a simulation it also compares every
+parameter and prediction with the truth. See :doc:`summarize-fit`.
+
+.. code-block:: bash
+
+   tfs-summarize-fit .
 
 Simulations
 -----------
@@ -172,5 +185,10 @@ one counts file per tube, the tube table and, with an ``od600`` block, the
 OD600 table and calibration, so a simulation enters the pipeline at step 2
 through the same ``tfs-process-counts`` command as real data; the command is
 printed. (Step 1 is replaced by the simulator's own sequencing model.) Its
-growth table, written directly, is the same table and can enter at step 3. ``tfs-setup-sim-grid`` and ``tfs-setup-grid`` lay out grids of
-simulations and fits. See :doc:`simulation` and :doc:`grid`.
+growth table, written directly, is the same table and can enter at step 3.
+A simulation can also follow a real experiment's tube table (the ``design``
+key), so the same chain runs on a simulated copy of the experiment with only
+the data paths changed. A full-size simulation of a real screen is large,
+tens of GB of memory and over an hour for one seed. ``tfs-setup-sim-grid``
+and ``tfs-setup-grid`` lay out grids of simulations and fits. See
+:doc:`simulation` and :doc:`grid`.

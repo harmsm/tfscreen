@@ -48,10 +48,14 @@ directory is gitignored and is not pulled. Check the copy with
   - `prep_dev_data.py`: the tube table, OD600 to tube totals through
     `tfs-calibrate-od600`, the swapped initial samples, pooling of
     resequenced tubes, failed tubes dropped, the nine-spike library config
-    (`SPIKE_EDITS`), and the wt monoculture rates.
+    (`SPIKE_EDITS`), and the wt monoculture rates. Since 2026-10-05 it also
+    writes `tube_table.csv` and `tube_od600.csv`, the recipe's inputs to
+    `tfs-process-counts` (the old `sample_df.csv` carries OD600 and totals
+    both, which the command refuses).
   - `binding_fit.py`, `binding_plot.py`: the joint anisotropy-to-theta and
     Hill fit, interpolated to 10 µM protein.
 - `fit/`
+  - `run_recipe.srun` and `growth_priors_loose.csv`: **the recipe** (below).
   - `run.srun`: the joint fits.
   - `run_relative.srun`: the growth-only relative fits.
   - `run_blap.srun`: the block Laplace, or the arrowhead Laplace with
@@ -61,6 +65,12 @@ directory is gitignored and is not pulled. Check the copy with
   - `make_warm_start.py`, `make_init_npz.py`, `make_init_hs.py`: build
     `--init_from` start points.
   - `check_warm.py`: stops a job whose start is not where it should be.
+  - Retired 2026-10-05 (pipeline plan step 7): `make_warm_start.py`,
+    `make_init_npz.py` and `check_warm.py` built the staged start by hand;
+    `tfs-fit-model` stages a level-offset MAP itself now. They stay as the
+    record of the runs below and are part of no recipe. `make_init_hs.py`
+    (a warm start at held Hill SDs) and `set_growth_priors.py` (replaced
+    by `tfs-configure-model --growth_priors`) are kept for the same reason.
 - `analysis/`
   - `score_counts.py`: the count log-likelihood by tube, traced from the
     model, so it works for any model.
@@ -110,10 +120,25 @@ commands run from `real_fit/`, each in its own new run directory:
 | `rel_off_hs_mix` | `rel_off_hs`'s settings plus `TRANSFORMATION=mixture` and `INIT_FROM=../inputs/init_rel_off_hs_map.npz` | a copy of `rel_off_hs/tfs_fit_model_params.npz` |
 
 The chain is long because each step fixed a problem found by the one
-before. The pipeline plan (`planning/experiment-pipeline.md`) builds the
-staged start into `tfs-fit-model`, and its done criterion is this fit
-rerun from one experiment file, so the shortened recipe comes from there
-rather than from a rerun of this chain.
+before. The pipeline plan (`planning/experiment-pipeline.md`) built the
+staged start into `tfs-fit-model`; the recipe below replaces the chain.
+
+## Recipe
+
+`fit/run_recipe.srun` is the official recipe for this fit (pipeline plan
+step 7, 2026-10-05): `prep_dev_data.py` (the lab-specific cleanup, a
+script), then `tfs-process-counts` (tube totals from OD600 through the
+calibration), `tfs-configure-model` (every model choice a flag),
+`tfs-fit-model` (MAP, staged automatically), `tfs-sample-posterior`
+(`--laplace auto`, the arrowhead at this size), `tfs-extract-params`,
+`tfs-predict-theta` and `tfs-summarize-fit`, whose tube-offset diagnostic
+flags a fit in the offset mode. No file is edited by hand and no start is
+built by hand. The model is `rel_off_n05`'s and `staged_auto2`'s
+(`planning/studies/staged-map/`). The full-size simulation of this design
+(`planning/studies/full-size-sim/`) runs the same commands with only the
+data paths changed.
+
+Recipe run: pending (the cluster).
 
 Every other run directory in `real_fit/` is a dead end recorded in the
 notebook: the first offset fits, the SVI arms, `rel_monokan`,
@@ -158,7 +183,7 @@ screen" onward. In short:
 - **Full-size simulations of this design,** to answer reviewers: the same
   library size, read depth, noise and fit recipe, with known truth, to show
   that the curves, the intervals and the binding comparison come out
-  right. This should run through the new pipeline's experiment file once
-  the simulator writes the same raw formats (the pipeline plan, step 6).
-- Rerun the fit from one experiment file when the pipeline lands. This
-  makes the shortened recipe the official one.
+  right. Set up 2026-10-05 in `planning/studies/full-size-sim/`, through
+  the recipe's commands.
+- Run the recipe (above) on the cluster and record it here. One
+  experiment file (the orchestrator, pipeline plan step 5) is deferred.

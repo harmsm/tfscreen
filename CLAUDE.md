@@ -61,7 +61,7 @@ tfs-build-empirical # Fit real data → empirical phenotype-generating distribut
 tfs-setup-sim-grid         # Set up grid of simulation runs
 tfs-setup-grid             # Set up grid of model configs
 tfs-summarize-grid         # Summarize grid results
-tfs-summarize-fit          # Summarize a fitted model
+tfs-summarize-fit          # Summarize a fitted model (and, with tube offsets, the offset-mode check: offsets in prior SDs, Spearman trend vs titrant/time per condition, BH-flagged; tfmodel/analysis/tube_offsets.py)
 tfs-summarize-calibration  # Pool posterior calibration (coverage, PIT, width, RMSE) across a tfs-setup-sim-grid grid, by arm and stratum; --baseline pairs runs fit to the same simulated data
 ```
 
@@ -132,7 +132,7 @@ The hierarchical Bayesian inference engine. Key files:
   - `noise/` (theta observation noise; registry keys `theta_growth_noise`: `zero`/`beta`/`logit_normal`, `theta_binding_noise`: `zero`/`beta`)
   - `growth_noise/`: `zero`, `normal_kt`
   - `ln_cfu0/`: `hierarchical` (one starting abundance per replicate x pre-condition x genotype; use this), `hierarchical_factored` (one genotype baseline per replicate shared by every pre-condition, plus a per-tube offset; tube offsets non-centered, `tube_offset = tube_scale * tube_offset_z`, because the centered form had an unbounded density as `tube_scale` went to 0). The orchestrator refuses `hierarchical_factored` when a replicate's pre-conditions come from different libraries (`_check_factored_ln_cfu0`): kanR and pheS are transformed and grown up separately (user, 2026-09-28), so their starting abundances differ per genotype. On simulations the fit pushed that difference into a confident per-genotype theta error: 95% coverage 0.09 above 1000 reads, against 0.80 with `hierarchical` (`planning/studies/svi-overconfidence/`). Every study grid used the factored model until then.
-  - `sample_offset/`: `zero`, `normal` (per-tube growth-rate offset, scaled by elapsed time), `level` (per-tube ln_cfu offset, constant prior; `sigma_fixed` > 0 holds its SD instead of learning it: learned, it grew to a free level per tube on the first real-data fit and absorbed the population's growth)
+  - `sample_offset/`: `zero`, `normal` (per-tube growth-rate offset, scaled by elapsed time), `level` (per-tube ln_cfu offset, constant prior; `sigma_fixed` > 0 holds its SD instead of learning it: learned, it grew to a free level per tube on the first real-data fit and absorbed the population's growth). Both extract one row per measured tube, labeled from the growth tensor's `{dim}_idx` columns in the components' reshape order (`_tubes.py`; `test_tubes.py` checks the labels against the model's own tensor)
 
 - **`generative/observe/`** — *not* under `components/`, and not swappable via YAML. Holds the four observation-likelihood layers (`binding`, `growth`, `presplit`, `base_growth`), registered under flat `model_registry` keys `observe_binding`/`observe_growth`/`observe_presplit`/`observe_base_growth`. `ModelOrchestrator` wires in `observe_binding` whenever binding data were supplied and (unless `binding_only`) the growth observer chosen by `growth_likelihood` (`lncfu` → `observe_growth`, Student-t on `ln_cfu`; `counts` → `observe_growth_counts`, see **Count likelihood** below), plus `observe_presplit`/`observe_base_growth` only when the corresponding data (`presplit_df`/`base_growth_df`) was supplied — these are parallel, independently-gated observers, not alternative choices for one axis. **Growth-only models** (`binding_df=None`, `tfs-configure-model` without `--binding_df`) have `data.binding = None`, `priors.binding = None`, no `theta_binding_noise` component and no binding sites in the model (`jax_model` gates them on `data.binding is not None`, static structure); the orchestrator refuses a `binding_weight` or a non-`zero` `theta_binding_noise` without binding, and `tfs-prefit-calibration` refuses a growth-only config. Absent prior groups are left out of the priors CSV (`configuration_io._extract_scalars` / `_update_dataclass` skip `None`), so they reload as `None`, not NaN.
 
@@ -467,10 +467,12 @@ anything a plan cites moves into `planning/studies/`. The active plans are
 `planning/congression-physics-plan.md`, `planning/analysis-roadmap.md`
 (steps 2, 6, 7b, 8 and 9 left; outcome so far in
 `planning/analysis-roadmap-summary.md`) and `planning/experiment-pipeline.md`
-(one experiment file from raw data to posterior; steps 0-4 done, step 3 as
-machinery; next steps 6 (simulator raw formats) and 7 (documented CLI chain,
-tube-offset diagnostic), step 5 (orchestrator) deferred, then a science
-prioritization that takes up `planning/offset-mode-growth-transition.md`).
+(one experiment file from raw data to posterior; steps 0-4 and 6 done, step
+3 as machinery; step 7's code and docs done, its two cluster runs (the
+real-data recipe `planning/studies/real-data-fit/fit/run_recipe.srun` and
+`planning/studies/full-size-sim/`) pending; step 5 (orchestrator) deferred;
+then a science prioritization that takes up
+`planning/offset-mode-growth-transition.md`).
 
 ## YAML Standards
 

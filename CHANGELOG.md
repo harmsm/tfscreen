@@ -31,6 +31,16 @@ fall into two kinds:
 
 ### Added
 
+- **Tube-offset diagnostic in `tfs-summarize-fit`** (pipeline plan step 7).
+  `tfs-extract-params` now writes the per-tube sample offsets,
+  `{out_prefix}_sample_offset_offset.csv` (`level`) or `_delta_k.csv`
+  (`normal`), one row per tube labeled by its design, plus their SD
+  (`sample_offset/_tubes.py`). `tfs-summarize-fit` reports them in prior SDs
+  and, per condition, their Spearman trend with titrant and with time
+  (`tfmodel/analysis/tube_offsets.py`), writes `_tube_offsets.csv`,
+  `_tube_offset_trends.csv` and `_tube_offsets.pdf`, and flags a fit whose
+  offsets trend (BH q < 0.05) in the JSON's new `tube_offsets` block, so a
+  fit in the offset mode is not accepted silently.
 - **`cfu0` per library** in the simulate config (`{library: cells}`), so
   separately grown libraries can start at their own densities, and
   **`tfs-simulate --no_write_growth`**, which skips the direct growth table

@@ -344,9 +344,10 @@ On the dev data the offset mode is not only a trap for the optimizer. Run to
 convergence from the hand-built start, a fit moved into it and scored 7.9e4
 nats better than the staged MAP, with offsets that follow IPTG in the
 selection conditions and unphysical *k* and *m*. The staged MAP keeps the
-fit in the physical basin, but a longer or better fit can leave it. Check
-the tube offsets of any level-offset fit (``sample_offset_offset`` in
-``tfs_fit_model_params.npz``) for structure by IPTG or selection. The cause
+fit in the physical basin, but a longer or better fit can leave it.
+``tfs-summarize-fit`` checks every level-offset fit for this: it reports the
+tube offsets in prior SDs and flags a fit whose offsets trend with titrant or
+time within a condition (see :doc:`summarize-fit`, "Tube offsets"). The cause
 is filed for study (``planning/offset-mode-growth-transition.md``).
 
 ``--checkpoint_file`` resumes a fit from its ``{out_prefix}_checkpoint.pkl``

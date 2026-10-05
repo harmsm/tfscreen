@@ -153,6 +153,7 @@ def extract_parameters(orchestrator, posteriors, q_to_get=None):
         ("activity", orchestrator._activity),
         ("theta", orchestrator._theta),
         ("transformation", orchestrator._transformation),
+        ("sample_offset", getattr(orchestrator, "_sample_offset", "zero")),
     ]
 
     extract = []

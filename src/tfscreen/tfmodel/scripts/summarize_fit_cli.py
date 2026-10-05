@@ -913,6 +913,116 @@ def _summarize_growth_params(run_dir, out_prefix, x_gauge=None):
     _summarize_k_ref(run_dir, out_prefix)
 
 
+# Per-tube offset sites and their SDs, by sample_offset component
+_TUBE_OFFSET_SITES = (("sample_offset_offset", "sample_offset_sigma"),
+                      ("sample_offset_delta_k", "sample_offset_sigma_env"))
+
+
+def _held_offset_sigma(config_yaml, config_file):
+    """The level offsets' held SD (``sigma_fixed`` > 0) from the priors CSV."""
+    if config_yaml is None or config_file is None:
+        return None
+    name = config_yaml.get("priors_file")
+    if not name:
+        return None
+    path = os.path.join(os.path.dirname(config_file), name)
+    if not os.path.exists(path):
+        return None
+    priors = pd.read_csv(path)
+    hit = priors[priors["parameter"].astype(str)
+                 .str.endswith("sample_offset.sigma_fixed")]
+    if len(hit) == 0:
+        return None
+    value = float(hit["value"].iloc[0])
+    return value if value > 0 else None
+
+
+def _summarize_tube_offsets(run_dir, out_prefix, config_yaml, config_file):
+    """
+    Size and structure of the per-tube sample offsets.
+
+    Reads the ``*_sample_offset_offset.csv`` (or ``_delta_k``) that
+    tfs-extract-params writes, takes the prior SD from the extracted sigma
+    or the held ``sigma_fixed``, and writes ``{out_prefix}_tube_offsets.csv``
+    (one row per tube, with ``z``), ``{out_prefix}_tube_offset_trends.csv``
+    (one row per condition) and ``{out_prefix}_tube_offsets.pdf``. Returns
+    the summary dict for the JSON, or None when the fit has no offsets.
+    """
+    from tfscreen.tfmodel.analysis.tube_offsets import (
+        format_tube_offset_summary, tube_offset_diagnostic)
+
+    offset_file = sigma_file = None
+    for site, sigma_site in _TUBE_OFFSET_SITES:
+        offset_file = _find_unique(run_dir, f"_{site}.csv", site,
+                                   warn_missing=False)
+        if offset_file is not None:
+            sigma_file = _find_unique(run_dir, f"_{sigma_site}.csv",
+                                      sigma_site, warn_missing=False)
+            break
+    if offset_file is None:
+        return None
+
+    sigma, sigma_source = None, None
+    if sigma_file is not None:
+        sigma = float(pd.read_csv(sigma_file)["q0.5"].iloc[0])
+        sigma_source = os.path.basename(sigma_file)
+    else:
+        sigma = _held_offset_sigma(config_yaml, config_file)
+        sigma_source = "sigma_fixed" if sigma is not None else None
+
+    tubes, trends, summary = tube_offset_diagnostic(pd.read_csv(offset_file),
+                                                    sigma=sigma)
+    summary["file"] = os.path.basename(offset_file)
+    summary["sigma_source"] = sigma_source
+    print(format_tube_offset_summary(summary, trends))
+
+    for df, suffix in ((tubes, "tube_offsets"), (trends, "tube_offset_trends")):
+        out_name = f"{out_prefix}_{suffix}.csv"
+        try:
+            df.to_csv(out_name, index=False)
+            print(f"Wrote {out_name}")
+        except Exception as exc:
+            warnings.warn(f"Could not write {out_name}: {exc}")
+
+    pdf_file = f"{out_prefix}_tube_offsets.pdf"
+    try:
+        _plot_tube_offsets(tubes, trends, pdf_file)
+        print(f"Wrote tube offset plot to {pdf_file}")
+    except Exception as exc:
+        warnings.warn(f"Could not plot tube offsets: {exc}")
+    return summary
+
+
+def _plot_tube_offsets(tubes, trends, pdf_file):
+    """Offset against titrant, one panel per selection condition, by time."""
+    conds = list(dict.fromkeys(tubes["condition_sel"].astype(str)))
+    ncol = min(3, len(conds))
+    nrow = int(np.ceil(len(conds) / ncol))
+    fig, axes = plt.subplots(nrow, ncol, figsize=(4.5 * ncol, 3.8 * nrow),
+                             squeeze=False)
+    conc = tubes["titrant_conc"].astype(float)
+    floor = conc[conc > 0].min() / 10 if (conc > 0).any() else 1.0
+    y = "z" if "z" in tubes.columns else "offset"
+    t_min, t_max = tubes["t_sel"].min(), tubes["t_sel"].max()
+    for ax, cond in zip(axes.flat, conds):
+        g = tubes[tubes["condition_sel"].astype(str) == cond]
+        sc = ax.scatter(np.maximum(g["titrant_conc"].astype(float), floor),
+                        g[y], c=g["t_sel"], cmap="viridis", vmin=t_min,
+                        vmax=t_max, s=18)
+        ax.axhline(0, color="gray", lw=0.8)
+        ax.set_xscale("log")
+        flag = trends.loc[trends["condition_sel"].astype(str) == cond,
+                          "structured"].any()
+        ax.set_title(cond + (" (trend)" if flag else ""))
+        ax.set_xlabel("titrant (0 drawn at min/10)")
+        ax.set_ylabel("offset / prior SD" if y == "z" else "offset (ln)")
+    for ax in list(axes.flat)[len(conds):]:
+        ax.set_visible(False)
+    fig.colorbar(sc, ax=axes, label="t_sel")
+    fig.savefig(pdf_file)
+    plt.close(fig)
+
+
 def summarize_fit(run_dir,
                   ref_theta_file=None,
                   out_prefix=None):
@@ -953,6 +1063,13 @@ def summarize_fit(run_dir,
       configured and a posterior/params file is found).
     - ``{out_prefix}_losses.pdf`` — training loss curve (only written when
       *_losses.txt is present).
+    - ``{out_prefix}_tube_offsets.csv`` / ``_tube_offset_trends.csv`` /
+      ``_tube_offsets.pdf`` — the per-tube sample offsets in prior SDs and,
+      per condition, their Spearman trend with titrant and with time (only
+      when tfs-extract-params wrote ``*_sample_offset_offset.csv``). A
+      condition whose trend has BH q < 0.05 is flagged ``structured``: the
+      offsets are carrying growth (the offset mode) rather than tube noise.
+      The JSON's ``tube_offsets`` key holds the summary.
 
     Parameters
     ----------
@@ -1151,6 +1268,14 @@ def summarize_fit(run_dir,
         except Exception as exc:
             warnings.warn(f"Could not compute growth training statistics: {exc}")
 
+    # --- Tube offsets ---
+    tube_offsets = None
+    try:
+        tube_offsets = _summarize_tube_offsets(run_dir, out_prefix,
+                                               config_yaml, config_file)
+    except Exception as exc:
+        warnings.warn(f"Could not summarize tube offsets: {exc}")
+
     # --- Trajectory plots ---
     _try_plot_trajectories(config_file, config_yaml, run_dir, out_prefix, binding_df)
 
@@ -1167,6 +1292,7 @@ def summarize_fit(run_dir,
         "growth": {
             "training": growth_training_stats,
         },
+        "tube_offsets": tube_offsets,
     }
     json_file = f"{out_prefix}_fit_summary.json"
     try:

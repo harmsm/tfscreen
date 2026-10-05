@@ -1,0 +1,73 @@
+#!/bin/bash -l
+#SBATCH --account=harmslab
+#SBATCH --job-name=tfs_recipe
+#SBATCH --output=run.out
+#SBATCH --error=run.err
+#SBATCH --partition=gpulong
+#SBATCH --time=02-00:00:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --gpus=1
+#SBATCH --mem=0
+#SBATCH --ntasks-per-node=1
+
+# The official recipe for the dev-data fit (pipeline plan step 7): the
+# documented CLI chain from the processed experiment to the posterior and its
+# diagnostics, with no hand-edited file and no hand-built start. It replaces
+# the six-run chain in README.md. Every setting is a flag; the only tracked
+# input is growth_priors_loose.csv (loose k/m priors for a growth-only model).
+#
+# The lab-specific step stays a script: processing/prep_dev_data.py, run in
+# planning/dev-data, writes processed/ (tube table, OD600 table, calibration,
+# count files, library config). Then, from a new directory in
+# planning/dev-data/real_fit:
+#
+#   mkdir recipe && cd recipe && sbatch ../run_recipe.srun
+#
+# Copy run_recipe.srun and growth_priors_loose.csv into real_fit/ first
+# (planning/dev-data is gitignored and not pulled); check with
+#   grep -c tube_od600 run_recipe.srun
+#
+# The same chain runs on the full-size simulation of this design
+# (planning/studies/full-size-sim/run_full_size.srun), with only the data
+# paths changed.
+
+module load cuda/12.4.1
+
+set -e
+
+PROCESSED="${PROCESSED:-../../processed}"
+SEED="${SEED:-20260930}"
+
+echo ">>> Process counts $(date)"
+tfs-process-counts "${PROCESSED}/tube_table.csv" "${PROCESSED}/counts" \
+    --od600_file "${PROCESSED}/tube_od600.csv" \
+    --od600_calibration_file "${PROCESSED}/od600_calibration.yaml" \
+    --tube_volume_mL 5 \
+    --out_prefix tfs_growth --no_verbose
+
+echo ">>> Configure $(date)"
+tfs-configure-model \
+    --growth_df tfs_growth.csv \
+    --library_config "${PROCESSED}/library_config.yaml" \
+    --theta_model hill_relative \
+    --growth_shares_replicates \
+    --batch_size 4096 \
+    --growth_priors ../growth_priors_loose.csv \
+    --set_priors sigma_fixed=0.17 theta_log_hill_n_hyper_scale_fixed=0.5
+
+echo ">>> Fit (staged MAP) $(date)"
+tfs-fit-model tfs_configure_config.yaml --seed "${SEED}" --analysis_method map
+
+echo ">>> Posterior (Laplace, auto: arrowhead at this size) $(date)"
+tfs-sample-posterior tfs_configure_config.yaml tfs_fit_model_checkpoint.pkl \
+    --num_posterior_samples 500 --skip_growth_observations
+
+echo ">>> Extract and predict $(date)"
+tfs-extract-params tfs_configure_config.yaml tfs_posterior.h5
+tfs-predict-theta tfs_configure_config.yaml tfs_posterior.h5
+
+echo ">>> Summarize (tube-offset diagnostic) $(date)"
+tfs-summarize-fit .
+
+echo ">>> Done $(date)"

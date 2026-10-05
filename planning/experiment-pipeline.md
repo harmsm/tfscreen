@@ -235,6 +235,18 @@ reference.
    - Update `docs/` and CLAUDE.md, and retire `make_init_npz.py`,
      `make_warm_start.py` and `check_warm.py` (frozen in the study; no
      longer part of any recipe).
+   Code and docs done 2026-10-05: `tfs-extract-params` writes the tube
+   offsets labeled by tube (`sample_offset/_tubes.py`), and
+   `tfs-summarize-fit` reports them in prior SDs with a Spearman trend
+   against titrant and time per condition, flagging BH q < 0.05
+   (`tfmodel/analysis/tube_offsets.py`; JSON `tube_offsets`). The recipe is
+   `planning/studies/real-data-fit/fit/run_recipe.srun` and
+   `docs/source/pipeline.rst` (step 7, "Check the fit", added). One seam
+   found and closed: `prep_dev_data.py`'s tube table carried OD600 and
+   totals both, which `tfs-process-counts` refuses, so it now also writes
+   `tube_table.csv` and `tube_od600.csv`. The hand scripts are marked
+   retired in the study README. Left: the two cluster runs (recipe, and
+   `full-size-sim`), each checked for the diagnostic's verdict.
 8. [ ] **Then: prioritize the science** (user, 2026-10-05). With steps 6
    and 7 in, any model change can be tested end to end on simulations a
    user can reproduce. Step back and list the model work (the growth
