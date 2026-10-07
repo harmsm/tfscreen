@@ -213,3 +213,7 @@ docs/badges/
 # Lab data for development; never committed (C10)
 planning/dev-data/
 planning/results/
+# Run outputs downloaded into study directories (lab-data fits, multi-GB
+# simulations); the study's scripts and README stay tracked
+planning/studies/recipe/
+planning/studies/full-size-sim/sim_*/

@@ -30,18 +30,31 @@ set -e
 
 SEED="${SEED:-1}"
 
-echo ">>> Simulate $(date)"
-tfs-simulate simulate_config.yaml --out_prefix tfs_sim --seed "${SEED}"
+# A rerun skips the simulation and the processing when their outputs exist
+# (the simulation alone takes about 85 minutes).
+if [[ -f tfs_sim_tubes.csv && -f tfs_sim_input-config.yaml ]]; then
+    echo ">>> Simulate: tfs_sim_tubes.csv exists, skipped"
+else
+    echo ">>> Simulate $(date)"
+    tfs-simulate simulate_config.yaml --out_prefix tfs_sim --seed "${SEED}"
+fi
 
-echo ">>> Process counts $(date)"
-tfs-process-counts tfs_sim_tubes.csv tfs_sim_counts \
-    --od600_file tfs_sim_tube_od600.csv \
-    --od600_calibration_file tfs_sim_od600_calibration.yaml \
-    --tube_volume_mL 5 \
-    --out_prefix tfs_growth --no_verbose
+if [[ -f tfs_growth.csv ]]; then
+    echo ">>> Process counts: tfs_growth.csv exists, skipped"
+else
+    echo ">>> Process counts $(date)"
+    tfs-process-counts tfs_sim_tubes.csv tfs_sim_counts \
+        --od600_file tfs_sim_tube_od600.csv \
+        --od600_calibration_file tfs_sim_od600_calibration.yaml \
+        --tube_volume_mL 5 \
+        --out_prefix tfs_growth --no_verbose
+fi
 
+# --allow_missing_spikes: a spike's simulated phenotype can kill it (seed 1
+# left H74A/K84L with no growth data, 2026-10-06).
 echo ">>> Configure $(date)"
 tfs-configure-model \
+    --allow_missing_spikes \
     --growth_df tfs_growth.csv \
     --library_config simulate_config.yaml \
     --theta_model hill_relative \

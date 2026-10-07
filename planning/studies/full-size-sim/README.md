@@ -123,4 +123,38 @@ Both bear on `planning/offset-mode-growth-transition.md` (the tube offsets
 carried an IPTG pattern) and on roadmap step 6 (the population model), and
 go to the science prioritization (pipeline plan step 8).
 
-Cluster runs: pending.
+Cluster runs, first attempt (2026-10-06): both arms simulated and
+processed, then stopped at configure. Seed 1 drew dk_geno -0.1 per minute
+for the spike H74A/K84L. At that rate the spike falls about e^-12 behind by
+the first sampled tube (30 minutes of pre-growth plus about 90 of
+selection), so it has no reads, and configure refused a spike without
+growth data. A spike can die in a simulation, so `run_full_size.srun` now
+passes `--allow_missing_spikes`. It also skips the simulation and the
+processing when their outputs exist.
+
+Rerun from configure (2026-10-06): both arms ran through the whole chain
+with no hand step (staged MAP converged at every stage; arrowhead Laplace
+held 45 and 55 shared directions, all k/m/dk_geno shift combinations), and
+the tube-offset diagnostic found no structure (no condition trends with
+IPTG or time; offset SD 1.8 to 1.9 times the held 0.17). The recovery
+numbers are not usable: **the simulated wt did not respond to IPTG**.
+hill_geno's simulation sampler drew wt's phenotype like any genotype's,
+and seed 1 gave it "never binds" (theta 0.0063 at 0 to 0.0060 at 1 mM).
+The relative fit gauges X on wt's own change, so the mapped X truth was
+about 3,600 times too wide (theta test RMSE about 2,700), and the fit
+itself was forced to put a wt response where there was none.
+`thermo_to_growth` now gives wt the hill_geno reference curve
+(`_pin_wt_reference`; an explicit wt override still wins). Every earlier
+hill_geno simulation had a perturbed wt, 12% of seeds a non-normal
+category. Rerun: new directories, same pilot calibration (wt is one
+spike, a negligible share of the tube totals):
+
+```bash
+python make_sim_config.py --out_dir sim_realistic_s1b --seed 1 --calibrate_from pilot_s1
+```
+
+```bash
+python make_sim_config.py --out_dir sim_poisson_s1b --seed 1 --noise poisson --calibrate_from pilot_s1
+```
+
+Pending.

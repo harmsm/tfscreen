@@ -1585,3 +1585,50 @@ class TestThetaParamToDf:
         param = self._make_param_single_titrant(4)
         df = _theta_param_to_df(param, genotypes, sim_idx)
         assert len(df) == 4
+
+
+# ----------------------------------------------------------------------------
+# wt keeps the hill_geno reference curve
+# ----------------------------------------------------------------------------
+
+def _hill_geno_run(seed, sim_overrides=None, theta_gc_override=None):
+    import jax
+    from tfscreen.simulate.sim_data_class import build_sim_data
+    genotypes = ["wt"] + [f"A{i}G" for i in range(2, 40)]
+    sample_df = pd.DataFrame({
+        "condition_pre": ["M9"] * 4, "condition_sel": ["M9+Ab"] * 4,
+        "titrant_name": ["IPTG"] * 4, "titrant_conc": [0.0, 0.01, 0.1, 1.0]})
+    sim_data = build_sim_data(pd.DataFrame({"genotype": genotypes}), sample_df)
+    growth = {"M9": {"m": 0.001, "b": 0.02}, "M9+Ab": {"m": -0.01, "b": 0.005}}
+    # every genotype in a non-normal category: an unpinned wt would never
+    # get the reference curve
+    priors = {"p_stuck_bound": 0.0, "p_never_binds": 0.999, "p_inverted": 0.0}
+    priors.update(sim_overrides or {})
+    return thermo_to_growth(
+        genotypes, sim_data, sample_df, "hill_geno",
+        jax.random.PRNGKey(seed), growth,
+        theta_sim_priors_overrides=priors,
+        theta_gc_override=theta_gc_override,
+        rng=np.random.default_rng(seed))
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_hill_geno_wt_gets_reference_curve(seed):
+    _, theta_df, params = _hill_geno_run(seed, {"wt_log_K": -3.0})
+    wt = params[params["genotype"] == "wt"].iloc[0]
+    assert wt["theta_low"] == pytest.approx(0.99)
+    assert wt["theta_high"] == pytest.approx(0.01)
+    assert wt["log_hill_K"] == pytest.approx(-3.0)
+    assert wt["hill_n"] == pytest.approx(2.0)
+    t = theta_df[theta_df["genotype"] == "wt"].sort_values("titrant_conc")["theta"]
+    assert t.iloc[0] > 0.98 and t.iloc[-1] < 0.05
+    # the other genotypes kept their (never-binds) draws
+    others = params[params["genotype"] != "wt"]
+    assert (others["theta_low"] < 0.5).all()
+
+
+def test_hill_geno_wt_override_wins():
+    override = {"wt": np.array([0.5, 0.5, 0.5, 0.5])}
+    _, theta_df, _ = _hill_geno_run(0, theta_gc_override=override)
+    t = theta_df[theta_df["genotype"] == "wt"]["theta"]
+    np.testing.assert_allclose(t, 0.5)

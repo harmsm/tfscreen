@@ -29,6 +29,16 @@ fall into two kinds:
 
 ## [Unreleased]
 
+### Fixed
+
+- **Simulated wt keeps its reference curve under `hill_geno`.** The
+  simulation sampler drew wt's phenotype category and perturbation like any
+  genotype's, so wt could come out flat ("never binds", about 5% of seeds)
+  or shifted; a relative fit gauges X on wt, and the full-size simulation's
+  flat wt stretched the X truth 3,600-fold. `thermo_to_growth` now sets wt
+  to the `wt_*` SimPriors curve unless a wt override is given
+  (`_pin_wt_reference`). Simulations with `hill_geno` change for wt only.
+
 ### Added
 
 - **Tube-offset diagnostic in `tfs-summarize-fit`** (pipeline plan step 7).

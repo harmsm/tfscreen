@@ -336,6 +336,40 @@ def growth_rates(condition_array, theta_array, activity_array, dk_geno_array,
     return result
 
 
+def _pin_wt_reference(theta_gc, theta_param, sim_data, wt_idx,
+                      sim_priors_overrides=None):
+    """
+    Give wt the hill_geno reference curve (``wt_theta_low``, ``wt_theta_high``,
+    ``wt_log_K``, ``wt_hill_n`` of its SimPriors, with any overrides).
+
+    The sampler treats wt like every other genotype, so wt could draw a
+    perturbed curve or a special category: seed 1 of the full-size simulation
+    gave it "never binds" (theta 0.006 at every IPTG), which made the
+    relative fit's X gauge, set by wt's own change, 3,600 times too wide.
+    Only wt's row of ``theta_gc`` and its ``theta_param`` entries change.
+    """
+    from tfscreen.tfmodel.generative.components.theta import hill_geno
+
+    sp = hill_geno.get_sim_hyperparameters()
+    if sim_priors_overrides:
+        sp.update(sim_priors_overrides)
+    low, high = float(sp["wt_theta_low"]), float(sp["wt_theta_high"])
+    log_K, n = float(sp["wt_log_K"]), float(sp["wt_hill_n"])
+
+    log_conc = np.asarray(sim_data.log_titrant_conc, dtype=float)
+    occupancy = 1.0 / (1.0 + np.exp(-n * (log_conc - log_K)))
+    theta_gc = np.array(theta_gc)
+    theta_gc[wt_idx, :] = low + (high - low) * occupancy
+
+    theta_param = theta_param.replace(
+        theta_low=theta_param.theta_low.at[:, wt_idx].set(low),
+        theta_high=theta_param.theta_high.at[:, wt_idx].set(high),
+        log_hill_K=theta_param.log_hill_K.at[:, wt_idx].set(log_K),
+        hill_n=theta_param.hill_n.at[:, wt_idx].set(n),
+    )
+    return theta_gc, theta_param
+
+
 def thermo_to_growth(
     genotypes: Iterable[str],
     sim_data,
@@ -529,6 +563,16 @@ def thermo_to_growth(
     all_genotypes = list(genotypes)   # sim_data order (may have duplicates)
     geno_to_sim_idx = {g: i for i, g in enumerate(all_genotypes)}
     unique_sim_indices = np.array([geno_to_sim_idx[g] for g in unique_genotypes])
+
+    # ── wt keeps the reference curve (hill_geno) ──────────────────────────────
+    # hill_geno's sampler draws every genotype's category and perturbation,
+    # wt included (hill_mut gives wt the reference by construction). An
+    # explicit override of wt below still wins.
+    if (theta_component == "hill_geno" and "wt" in geno_to_sim_idx
+            and "wt" not in (theta_gc_override or {})):
+        theta_gc, theta_param = _pin_wt_reference(
+            theta_gc, theta_param, sim_data, geno_to_sim_idx["wt"],
+            theta_sim_priors_overrides)
 
     # ── Inject stratified theta for calibration genotypes ─────────────────────
     if theta_gc_override:
