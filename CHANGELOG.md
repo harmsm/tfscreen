@@ -59,6 +59,9 @@ fall into two kinds:
   the `test` extra. The Ubuntu / Python 3.12 matrix job is gone, since the
   coverage job runs the same suite there plus the slow tests. A newer push
   to a branch cancels its older run.
+- The fit's progress line counts plateau windows from 1: `Plateau: 1/3` in
+  the first window that could stall, `3/3` in the window that decides a
+  step-size cut or a stop.
 
 ### Added
 

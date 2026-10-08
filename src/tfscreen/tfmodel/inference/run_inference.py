@@ -694,11 +694,13 @@ class RunInference:
             block_centers.append(window_filled + block_size / 2)
             window_filled += block_size
 
-            # stdout
+            # stdout. Plateau counts from 1: the window in progress is the
+            # (plateau_count + 1)-th of the `patience` stalled windows that
+            # would cut the step size or stop, so 3/3 is the deciding one.
             print(f"Step: {self._current_step:10d}, "
                   f"Loss: {np.median(interval_losses):10.5e}, "
                   f"Step size: {monitor.step_size:9.3e}, "
-                  f"Plateau: {monitor.plateau_count}/{patience}", flush=True)
+                  f"Plateau: {monitor.plateau_count + 1}/{patience}", flush=True)
 
             # Check for explosion in parameters
             params = svi.get_params(svi_state)
