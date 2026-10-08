@@ -196,7 +196,7 @@ reference.
      YAML, never from code.
    - Scoring (`score_counts.py`) becomes a CLI if the orchestrator reports
      a fit's count likelihood; otherwise it stays a study script.
-6. [ ] **The simulator writes the same raw formats** (next).
+6. [x] **The simulator writes the same raw formats**.
    - `tfs-simulate` writes per-tube count files in `tfs-process-fastq`'s
      format (`counts_<sample>.csv`: `genotype`, `counts`, with the
      `__unknown__` row), the tube table and the OD600 table in step 1's
@@ -223,7 +223,7 @@ reference.
    calibrated per library from a pilot. The calibrated simulation still
    misses the real tube totals in a structured way (IPTG, time), which is
    recorded for step 8.
-7. [ ] **Validate and document** (after step 6). Without the orchestrator:
+7. [x] **Validate and document** (after step 6). Without the orchestrator:
    - Run the real data and the full-size simulation through the CLI chain
      with no hand step, and write the commands down as the recipe
      (`planning/studies/real-data-fit/`, and a page in `docs/`).
@@ -247,12 +247,33 @@ reference.
    `tube_table.csv` and `tube_od600.csv`. The hand scripts are marked
    retired in the study README. Left: the two cluster runs (recipe, and
    `full-size-sim`), each checked for the diagnostic's verdict.
+   Recipe run 2026-10-06: end to end, offsets clean, reproduces
+   `staged_auto2` (log K r 0.992; README "Recipe"). The full-size
+   simulation ran end to end and its offsets are clean, but it found a
+   simulator bug (hill_geno drew wt like any genotype; seed 1's wt was
+   flat), fixed the same day. Corrected arms 2026-10-07: chain clean,
+   offsets clean; X undercovers, worse with depth (95% coverage 0.66
+   realistic, 0.29 Poisson), from shared k/m/dk_geno errors the arrowhead
+   Laplace holds at the MAP (`planning/studies/full-size-sim/` results).
+   Step 7 done 2026-10-07: both runs reproduce through the documented
+   chain and the diagnostic gives a verdict; the recovery numbers are step
+   8's baseline. Also found: the low overall X r is depth, not k/m (r
+   0.96-0.99 above 1e4 reads), and the simulated depth distribution does
+   not match the real screen (real median double 480 total reads against
+   ~1e4 simulated; 64% of real doubles below 1e3). Both in the study
+   README.
 8. [ ] **Then: prioritize the science** (user, 2026-10-05). With steps 6
    and 7 in, any model change can be tested end to end on simulations a
    user can reproduce. Step back and list the model work (the growth
    transition, the offsets' freedom, the population model, the
    growth-binding map, and others), how the changes interact, and what
-   order to do them in. Not to be decided before steps 6 and 7.
+   order to do them in. From step 7's simulation, on the list: match the
+   simulated library's depth distribution to the real screen first (every
+   simulated recovery number depends on it); anchor k against dk_geno and
+   give the held shared directions an interval; hold the X population SDs
+   (shrinkage for shallow genotypes); pooling across doubles (hill_mut)
+   for the 64% of real doubles below 1e3 reads; a level-like simulated
+   tube noise matched to the real offsets. Not to be decided before steps 6 and 7.
 
 ## Out of scope
 

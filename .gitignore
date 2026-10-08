@@ -217,3 +217,7 @@ planning/results/
 # simulations); the study's scripts and README stay tracked
 planning/studies/recipe/
 planning/studies/full-size-sim/sim_*/
+planning/studies/full-size-sim/pilot_*/
+
+.DS_Store 
+

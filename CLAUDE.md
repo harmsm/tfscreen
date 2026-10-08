@@ -467,12 +467,14 @@ anything a plan cites moves into `planning/studies/`. The active plans are
 `planning/congression-physics-plan.md`, `planning/analysis-roadmap.md`
 (steps 2, 6, 7b, 8 and 9 left; outcome so far in
 `planning/analysis-roadmap-summary.md`) and `planning/experiment-pipeline.md`
-(one experiment file from raw data to posterior; steps 0-4 and 6 done, step
-3 as machinery; step 7's code and docs done, its two cluster runs (the
-real-data recipe `planning/studies/real-data-fit/fit/run_recipe.srun` and
-`planning/studies/full-size-sim/`) pending; step 5 (orchestrator) deferred;
-then a science prioritization that takes up
-`planning/offset-mode-growth-transition.md`).
+(one experiment file from raw data to posterior; steps 0-4, 6 and 7 done,
+step 3 as machinery; step 5 (orchestrator) deferred; next, step 8, a
+science prioritization that takes up
+`planning/offset-mode-growth-transition.md`). The real-data recipe is
+`planning/studies/real-data-fit/fit/run_recipe.srun`; the full-size
+simulation (`planning/studies/full-size-sim/`) is step 8's baseline: X
+undercovers on a full library, worse with read depth, because the k/m/
+dk_geno shared errors are held at the MAP by the arrowhead Laplace.
 
 ## YAML Standards
 

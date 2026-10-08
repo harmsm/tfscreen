@@ -52,19 +52,18 @@ several GB of files. Run it on the cluster, in `planning/dev-data/`
 `score_map.py` too):
 
 ```bash
-cp <repo>/planning/studies/full-size-sim/{make_sim_config.py,run_full_size.srun,growth_priors_loose.csv} <repo>/planning/studies/staged-map/score_map.py .
+cp <repo>/planning/studies/full-size-sim/{make_sim_config.py,run_pilot.srun,run_full_size.srun,growth_priors_loose.csv} <repo>/planning/studies/staged-map/score_map.py .
 ```
 
 First a pilot at the first-guess `cfu0`, only to calibrate it (no raw
 files, no growth table):
 
 ```bash
-python make_sim_config.py --out_dir pilot_s1 --seed 1
+sbatch run_pilot.srun
 ```
 
-```bash
-cd pilot_s1 && tfs-simulate simulate_config.yaml --out_prefix tfs_sim --seed 1 --no_write_raw --no_write_growth
-```
+It runs `make_sim_config.py --out_dir pilot_s1 --seed 1`, then
+`tfs-simulate` with `--no_write_raw --no_write_growth` inside `pilot_s1`.
 
 Then the calibrated config and the run (same seed, so the same phenotypes):
 
@@ -157,4 +156,100 @@ python make_sim_config.py --out_dir sim_realistic_s1b --seed 1 --calibrate_from 
 python make_sim_config.py --out_dir sim_poisson_s1b --seed 1 --noise poisson --calibrate_from pilot_s1
 ```
 
-Pending.
+Corrected arms (2026-10-06/07, commit 8399fb6b; `sim_realistic_s1b`,
+`sim_poisson_s1b`): wt carries the reference curve (0.99 to 0.01, log K
+-4.1, n 2). **The chain is clean**: simulate, process, configure, staged
+MAP (every stage converged on the exact loss), arrowhead Laplace (9 and 11
+held shared directions), extract, predict and summarize, with no hand
+step. **The offset diagnostic is clean** (smallest BH q 0.63 realistic,
+0.31 Poisson), as it should be with no selection-onset transient in the
+simulator. The offsets' SD (0.31, 0.34) is about twice the held 0.17: the
+simulator's tube noise is a per-tube growth-rate shift
+(`tube_noise_sigma` 0.002 per minute, so ~0.4 ln units over a selection),
+larger than the real fit's offsets (SD 0.20) and not a level.
+
+Recovery, the baseline for pipeline plan step 8 (realistic / Poisson;
+genotypes 124k / 186k with growth data):
+
+| | realistic | Poisson |
+|---|---|---|
+| X: Pearson r, RMSE, mean error | 0.34, 0.94, +0.06 | 0.76, 0.37, -0.21 |
+| X: 95% coverage, median width | 0.66, 0.39 | 0.29, 0.15 |
+| log K: r, 95% coverage | 0.28, 0.80 | 0.45, 0.82 |
+| log n: r, 95% coverage | 0.43, 0.94 | 0.66, 0.94 |
+| dk_geno: r, bias, 95% coverage | 0.69, -0.007, 0.66 | 0.79, -0.011, 0.23 |
+| growth k, bias per minute | +0.006 | +0.022 |
+| growth m, kanR+kan / pheS+4CP (truth -0.0138 / +0.0141) | -0.0192 / +0.0187 | -0.0168 / +0.0164 |
+| k and m 95% coverage | 0 | 0 |
+
+X coverage by genotype reads (95%; realistic / Poisson): <=100 reads
+1.00 / 0.93, 1e2-1e3 0.90 / 0.62, 1e3-1e4 0.81 / 0.24, 1e4-1e5 0.61 /
+0.10, >1e5 0.20 / 0.04. Coverage falls with depth, and under Poisson
+noise the X error is a near-constant -0.22 at every depth: a shared error,
+not per-genotype noise. The shared parameters are off and carry no
+interval. k slid up with dk_geno down (the k/dk_geno slide,
+"Per-condition growth priors" in CLAUDE.md; the loose priors, k SD 0.01,
+allow it), |m| came out 20-40% too large, and the arrowhead Laplace held
+exactly those directions (k, m, dk_geno_hyper_shift) at the MAP, so k and
+m have zero-width intervals and every deep genotype inherits their error.
+The relative-fit study's run 4 (small library) covered X 0.97 / 0.94 with
+the same route; at full size the shared error dominates. These go to step
+8: anchoring k against dk_geno (tighter or measured k priors, base-growth
+or wt monoculture data), the held Schur directions, and a simulator tube
+noise that matches the real offsets.
+
+**What limits the correlation is depth, not k and m.** The realistic arm's
+overall X r of 0.34 is set by shallow genotypes. Reads below are summed
+over all 118 tubes (every condition, IPTG, time and replicate, both
+libraries); 1,000 reads is about 8 per tube. By genotype-concentration
+point, realistic arm:
+
+| total reads | r | RMSE | RMSE after the best affine map | SD of truth |
+|---|---|---|---|---|
+| <=100 | 0.11 | 2.64 | 0.43 | 0.43 |
+| 1e2-1e3 | 0.30 | 1.26 | 0.41 | 0.43 |
+| 1e3-1e4 | 0.73 | 0.33 | 0.30 | 0.43 |
+| 1e4-1e5 | 0.96 | 0.14 | 0.13 | 0.43 |
+| >1e5 | 0.99 | 0.11 | 0.06 | 0.43 |
+
+Deep genotypes rank well; their error is a shared rescaling (slope 1.2,
+|m| too large), which the k/m work fixes and r does not see. Below 1e3
+reads the realistic noise leaves no information on X (best affine error =
+the truth's spread), and the MAP points are wild (RMSE 1.3-2.6) because
+the X population SDs are not held (only log n is; `hill_relative`'s
+`theta_{X_low,X_delta,log_hill_K}_hyper_scale_fixed` would shrink them).
+Their intervals cover (0.996), so they are honest but uninformative.
+Above 1e3 reads the realistic arm's r is 0.87 (Spearman 0.82). Report
+recovery by depth, not one all-genotype r.
+
+**The simulated depth distribution does not match the real screen.**
+Genotypes with growth data by total reads (doubles / singles):
+
+| total reads | realistic sim | Poisson sim | real (recipe) |
+|---|---|---|---|
+| 1-100 | 10,948 / 25 | 17,870 / 17 | 43,713 / 0 |
+| 1e2-1e3 | 18,616 / 36 | 30,618 / 33 | 95,717 / 0 |
+| 1e3-1e4 | 30,460 / 90 | 48,356 / 82 | 60,542 / 7 |
+| 1e4-1e5 | 39,771 / 159 | 59,435 / 145 | 15,634 / 40 |
+| >1e5 | 23,630 / 608 | 28,474 / 644 | 1,387 / 903 |
+| all (incl. wt, one triple) | 124,345 | 185,676 | 217,945 |
+
+Median total reads per double: 11,136 / 8,348 / 480 (94 / 71 / 4 per
+tube); per single 441,080 / 590,799 / 867,829. The total reads match, but
+the simulation concentrates them: many doubles deep, many below the
+10-read minimum and dropped (124k of 218k survive under realistic noise),
+where the real reads spread thinly over nearly every double (64% of real
+doubles, 139,430, have fewer than 1,000 reads). The likely cause is the
+simulated pool's unevenness (`lib_assembly_skew_sigma` 1.25 and the
+design's `transform_sizes` bottleneck). So:
+
+- The simulation is not yet a stand-in for this screen. Calibrate its
+  library composition to the real depth distribution (this table is the
+  target) before quoting its recovery; every other result depends on it.
+- Most real doubles sit where the realistic arm had no information on X.
+  If the real counts are as overdispersed as that arm, those curves are
+  not usable one genotype at a time (the noise model is calibrated to the
+  real overdispersion, planning/studies/noise-anatomy/, so this is a
+  warning, not a measurement). Pooling is the lever there: held X
+  population SDs, and mutation-level structure (`hill_mut`) that shares
+  information across doubles with the same single.

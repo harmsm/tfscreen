@@ -138,7 +138,19 @@ built by hand. The model is `rel_off_n05`'s and `staged_auto2`'s
 (`planning/studies/full-size-sim/`) runs the same commands with only the
 data paths changed.
 
-Recipe run: pending (the cluster).
+Recipe run (2026-10-06, commit 47b02e63; the provenance's dirty flag is
+a local path edit in `wipe.sh`, nothing the run used): ran end to end with
+no hand step. All three MAP stages converged on the exact loss; the arrowhead
+Laplace held 6 shared directions. The tube-offset diagnostic is clean: no
+condition trends with titrant or time (smallest BH q 0.20), offset SD 0.20
+against the held 0.17, range -0.79 to +0.44. It reproduces `staged_auto2`
+(`planning/studies/staged-map/`, the same model run by hand-assembled
+commands): every genotype matched; Pearson r 0.992 for log K, 0.982 for n,
+0.998 for X_low and dk_geno, median absolute differences 0.04 (log K) and
+0.12 (n); growth k within 7e-4 and m within 2e-4 per minute in every
+condition. The differences come from the growth table, now built by
+`tfs-process-counts` from the OD600 table rather than read from the older
+`inputs/growth.csv.gz`.
 
 Every other run directory in `real_fit/` is a dead end recorded in the
 notebook: the first offset fits, the SVI arms, `rel_monokan`,
@@ -183,7 +195,9 @@ screen" onward. In short:
 - **Full-size simulations of this design,** to answer reviewers: the same
   library size, read depth, noise and fit recipe, with known truth, to show
   that the curves, the intervals and the binding comparison come out
-  right. Set up 2026-10-05 in `planning/studies/full-size-sim/`, through
-  the recipe's commands.
+  right. Run 2026-10-07 in `planning/studies/full-size-sim/` through the
+  recipe's commands: the curves' ranks come out, but X intervals
+  undercover badly at depth because k and m are off with no interval.
+  Not yet reviewer-ready; pipeline plan step 8 takes it up.
 - Run the recipe (above) on the cluster and record it here. One
   experiment file (the orchestrator, pipeline plan step 5) is deferred.

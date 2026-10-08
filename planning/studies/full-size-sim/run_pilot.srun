@@ -1,0 +1,29 @@
+#!/bin/bash -l
+#SBATCH --account=harmslab
+#SBATCH --job-name=tfs_pilot
+#SBATCH --output=pilot.out
+#SBATCH --error=pilot.err
+#SBATCH --partition=gpulong
+#SBATCH --time=0-06:00:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=0
+#SBATCH --ntasks-per-node=1
+
+# The pilot simulation that calibrates cfu0 (planning/studies/full-size-sim):
+# the first-guess cfu0, totals and OD600 only (no raw files, no growth
+# table). About 85 minutes and a 68 GB peak; numpy only, so no GPU is
+# needed. Submit from the study's working directory (processed/ beside it):
+#
+#   sbatch run_pilot.srun
+#
+# Then make_sim_config.py --calibrate_from pilot_s1 for each arm.
+
+set -e
+
+SEED="${SEED:-1}"
+
+python make_sim_config.py --out_dir "pilot_s${SEED}" --seed "${SEED}"
+cd "pilot_s${SEED}"
+tfs-simulate simulate_config.yaml --out_prefix tfs_sim --seed "${SEED}" \
+    --no_write_raw --no_write_growth
