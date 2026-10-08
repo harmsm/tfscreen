@@ -78,11 +78,13 @@ unit tests:
 pytest tests/tfscreen
 ```
 
+Add `-n auto` to run them in parallel (`pytest-xdist`, in the `test` extra).
+
 Check coverage, including slow tests. Coverage settings (branch coverage,
 source) live in `pyproject.toml`, so the same commands work locally and in CI:
 
 ```bash
-coverage run -m pytest tests/tfscreen --runslow
+pytest -n auto --runslow --cov --cov-report= tests/tfscreen
 ```
 
 ```bash

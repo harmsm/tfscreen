@@ -46,6 +46,19 @@ fall into two kinds:
   flat wt stretched the X truth 3,600-fold. `thermo_to_growth` now sets wt
   to the `wt_*` SimPriors curve unless a wt override is given
   (`_pin_wt_reference`). Simulations with `hill_geno` change for wt only.
+- **`tfs-configure-model --set_priors` works under pandas 3.** The priors
+  CSV's `value` column mixes numbers and text, which pandas 3 reads as a
+  string dtype that refused the new float (`TypeError: Invalid value ... for
+  dtype 'str'`). `priors_edit.apply_priors_updates` reads it as object. This
+  failed every CI job from 2026-10-04 on; pandas 2 was unaffected.
+
+### Changed
+
+- CI runs the tests in parallel (`pytest-xdist`, `-n auto`) and the coverage
+  job measures through `pytest-cov`; `pytest-xdist` and `pytest-cov` joined
+  the `test` extra. The Ubuntu / Python 3.12 matrix job is gone, since the
+  coverage job runs the same suite there plus the slow tests. A newer push
+  to a branch cancels its older run.
 
 ### Added
 

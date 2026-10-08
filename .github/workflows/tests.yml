@@ -12,6 +12,11 @@ on:
         type: boolean
         default: false
 
+# A newer push to the same branch or pull request cancels the older run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     name: Python ${{ matrix.python-version }} / ${{ matrix.os }}
@@ -21,6 +26,10 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
         python-version: ["3.11", "3.12", "3.13"]
+        # The coverage job runs this one, plus the slow tests.
+        exclude:
+          - os: ubuntu-latest
+            python-version: "3.12"
 
     steps:
       - uses: actions/checkout@v4
@@ -29,6 +38,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          cache: pip
 
       - name: Install package and test dependencies
         run: pip install -e ".[test]"
@@ -40,7 +50,7 @@ jobs:
         env:
           NUMBA_DISABLE_JIT: "1"
         run: >
-          pytest tests/tfscreen
+          pytest -n auto tests/tfscreen
           ${{ (github.event_name == 'workflow_dispatch' && inputs.run_slow_tests) && '--runslow' || '' }}
 
   coverage:
@@ -57,22 +67,27 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
 
       - name: Install package and test dependencies
         run: pip install -e ".[test]"
 
       # Slow tests are included so code tested only by them counts as covered.
+      # pytest-cov combines the workers' data; settings come from pyproject.toml
+      # (branch coverage, source = tfscreen only, so planning/, tests/ and
+      # docs/ are never measured).
       - name: Run unit tests under coverage
         env:
           NUMBA_DISABLE_JIT: "1"
-        run: coverage run -m pytest tests/tfscreen --runslow
+        run: pytest -n auto --runslow --cov --cov-report= tests/tfscreen
 
       - name: Report total coverage
         run: |
           coverage xml
           coverage report --fail-under=90
 
-      # Every line and branch a pull request adds or changes must be covered.
+      # Every line and branch a pull request adds or changes in src/ must be
+      # covered. Files outside coverage.xml are not judged.
       - name: Check coverage of changed lines
         if: github.event_name == 'pull_request'
         run: >

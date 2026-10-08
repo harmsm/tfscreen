@@ -93,7 +93,9 @@ def apply_priors_updates(priors_path, prior_updates, cond_rep_labels=None,
     """
     if not prior_updates:
         return set()
-    df = pd.read_csv(priors_path)
+    # The value column mixes numbers and text (bool flags), so pandas >= 3
+    # reads it as a string dtype that refuses a float; keep it object.
+    df = pd.read_csv(priors_path, dtype={"value": object})
     if "parameter" not in df.columns or "value" not in df.columns:
         raise ValueError(
             f"Priors CSV {priors_path} is missing required 'parameter' / "

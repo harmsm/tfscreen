@@ -160,7 +160,7 @@ class TestComponentInterfaces:
             f"transformation/{name} must declare NEEDS_POPULATION"
         )
 
-    @pytest.mark.parametrize("key", list(OBSERVE_KEYS))
+    @pytest.mark.parametrize("key", sorted(OBSERVE_KEYS))
     def test_observe_modules_have_observe_and_guide(self, key):
         mod = model_registry[key]
         for attr in OBSERVE_ATTRS:
