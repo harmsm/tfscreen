@@ -20,6 +20,9 @@
 #   cd sim_realistic_s1 && sbatch ../run_full_size.srun
 #
 # Each step is the documented command; nothing between them is edited by hand.
+# The fit is configured with the real library config (library_config.yaml,
+# copied by make_sim_config.py), as the real data's fit is; the simulated
+# pool's realized composition and excess wt stay in the simulation.
 # The fit is the growth-only relative model of the real fit
 # (planning/studies/staged-map/run_staged.srun), so the simulation tests the
 # recipe the real data use.
@@ -56,7 +59,7 @@ echo ">>> Configure $(date)"
 tfs-configure-model \
     --allow_missing_spikes \
     --growth_df tfs_growth.csv \
-    --library_config simulate_config.yaml \
+    --library_config library_config.yaml \
     --theta_model hill_relative \
     --growth_shares_replicates \
     --batch_size 4096 \

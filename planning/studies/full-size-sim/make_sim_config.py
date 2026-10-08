@@ -37,21 +37,54 @@ What comes from the real experiment, and how:
   comes from the growth rates.
 - Reads: total_num_reads = the sum of the real tubes' called reads, spread
   evenly over the tubes (the simulator does not vary depth per tube).
+  unassigned_read_fraction, per library, is the share of the real tubes'
+  reads in the __unknown__ row (kanR about 0.66, pheS 0.20: the kanR
+  library's structural variants), so a simulated genotype gets the reads a
+  real one does.
+- Pool composition: library_mixture is the realized one, estimated from the
+  real pre-split (initial) composition with estimate_library_mixture and
+  averaged over the two libraries (they agree within ~0.05), not the
+  design's (which gives doubles 83% of the pool against about 54%
+  realized). wt is about 11% of the real pool, ~90 times what the spike
+  design gives it, for reasons not yet known (being worked on at the bench,
+  2026-10-08). The simulation reproduces it by repeating the wt sequence in
+  the simulated spiked_seqs (a repeated sequence is degeneracy within the
+  spiked origin) and scaling the spiked origin's mixture and transformants
+  so the other spikes keep their share. This is simulation-only: the fit is
+  configured with the real library config (copied to library_config.yaml),
+  as the real data's fit is.
 - OD600: the real calibration, totals estimated from OD600 as the lab does
   (sample_cfu_from_od600).
 - Congression: transformation_poisson_lambda 0.357, the measured value.
+- Pool evenness (2026-10-08), fitted to the real initial composition and
+  the screen's dropout: doubles are very uneven before any selection (CV 5
+  to 7 in the initial sample, 23-30% at zero reads out of a mean of 20-50),
+  yet only 2.7% of real doubles end below 10 reads over the screen, and
+  their abundance is shared between the separately transformed libraries
+  (log-count correlation 0.69). That is a wide assembly skew with many
+  clones per genotype: doubles skew sigma 2.0 and ~300 clones per double
+  (transform_sizes double-1-2 = 300 x its genotypes, about 6.7e7); singles
+  are even (CV 0.8-1.2), skew 0.8. The simulator merges identical clones
+  into weighted rows, so this costs one row per genotype, and holds the
+  congressed cells to max_congressed_cells (2e6).
+- dk_geno: the real fit's well-measured genotypes (singles, doubles above
+  1e4 reads) spread over about 0.016 per minute (1st-99th percentile), with
+  none below -0.03; the old hyperparameters (scale 1.0) put 31% of
+  genotypes below -0.03 and killed them. Scale 0.15 keeps the median
+  (-0.010) and gives a 1st-99th percentile range of about -0.023 to -0.001.
 
 Chosen, not measured: the noise model (``realistic``: founder sampling,
-demographic growth, one shared transformation, PCR templates at reads per
-tube / 10 with CV 0.5, the setting that matched the real counts' 5-18x
+demographic growth, one shared transformation, PCR templates at assigned
+reads per tube / 10 with CV 0.5, the setting that matched the real counts' 5-18x
 overdispersion, planning/studies/noise-anatomy/; or ``poisson``), the
 phenotypes (hill_geno prior draws, or resampled from a tfs-build-empirical
-model with --phenotype_model), dk_geno's hyperparameters (the example
-config's), tube_noise_sigma (0.002 per minute) and the growth transition
+model with --phenotype_model), dk_geno's location and shift (the example
+config's; its scale is fitted, above), tube_noise_sigma (0.002 per minute) and the growth transition
 (instant; ``memory`` with the example config's parameters as a test arm).
 """
 
 import argparse
+import glob
 import os
 import shutil
 
@@ -59,6 +92,12 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from tfscreen.genetics import UNKNOWN_GENOTYPE
+from tfscreen.genetics.library_design import (
+    estimate_library_mixture,
+    library_composition_table,
+)
+from tfscreen.genetics.library_manager import LibraryManager
 from tfscreen.process_raw.od600 import od600_to_cfu_per_mL
 from tfscreen.simulate.build_sample_dataframes import read_design
 
@@ -67,6 +106,11 @@ TUBE_VOLUME_ML = 5.0
 PRESPLIT_OD600 = 0.35
 PRESPLIT_DILUTION = 0.2 / 15.2
 LAMBDA = 0.357
+ASSEMBLY_SKEW = {"double-1-2": 2.0, "single-1": 0.8, "single-2": 0.8,
+                 "spiked": 0.5}
+CLONES_PER_DOUBLE = 300
+MAX_CONGRESSED_CELLS = 2_000_000
+DK_HYPER_SCALE = 0.15
 
 GENETICS_KEYS = ("reading_frame", "first_amplicon_residue", "wt_seq",
                  "degen_sites", "tiles", "expected_5p", "expected_3p",
@@ -86,6 +130,86 @@ def growth_block(rates):
             b, m = float(r.mean()), 0.0
         out[cond] = {"b": round(b, 6), "m": round(m, 6)}
     return out
+
+
+def unassigned_fractions(tubes):
+    """Share of each library's reads in the real count files' __unknown__ row."""
+    out = {}
+    for lib, g in tubes.groupby("library"):
+        unknown = total = 0
+        for name in g["sample"]:
+            path = os.path.join(PROCESSED, "counts", f"counts__{name}__.csv")
+            c = pd.read_csv(path)
+            unknown += c.loc[c["genotype"] == UNKNOWN_GENOTYPE, "counts"].sum()
+            total += c["counts"].sum()
+        out[lib] = round(float(unknown / total), 4)
+    return out
+
+
+def realized_pool(lib):
+    """
+    The realized library_mixture (mean over libraries of
+    estimate_library_mixture on the initial composition) and wt's share of
+    the pool.
+    """
+    library_df = LibraryManager(lib).build_library_df()
+    ic = pd.read_csv(os.path.join(PROCESSED, "initial_composition.csv"))
+    ic = ic[ic["genotype"] != UNKNOWN_GENOTYPE]
+    mixes, wt_shares = [], []
+    for _, g in ic.groupby("library"):
+        mix, _, _ = estimate_library_mixture(
+            library_df, g.set_index("genotype")["counts"])
+        mixes.append(mix)
+        wt_shares.append(g.loc[g["genotype"] == "wt", "counts"].sum()
+                         / g["counts"].sum())
+    mixture = {k: float(np.mean([m[k] for m in mixes])) for k in mixes[0]}
+    return mixture, float(np.mean(wt_shares))
+
+
+def with_wt_excess(lib, mixture, wt_share):
+    """
+    Genetics keys, mixture and transform sizes with wt repeated in the
+    spiked origin so wt makes up wt_share of the pool, the other spikes
+    keeping theirs (simulation only).
+
+    The spiked origin's n sequences share its mixture by degeneracy. Giving
+    wt d copies and scaling the origin's mixture and transformants by
+    (n - 1 + d) / n leaves every other spike's mass unchanged; d is the
+    smallest integer that brings wt's pool fraction (spiked plus bulk, from
+    library_composition_table) up to wt_share.
+    """
+    wt_seq = lib["wt_seq"]
+    spiked = list(lib["spiked_seqs"])
+    library_df = LibraryManager(lib).build_library_df()
+    n_doubles = int((library_df["library_origin"] == "double-1-2").sum())
+    n = len(spiked)
+    if spiked.count(wt_seq) != 1:
+        raise ValueError("expected wt exactly once in spiked_seqs")
+
+    def build(d):
+        cf = dict(lib)
+        cf["spiked_seqs"] = spiked + [wt_seq] * (d - 1)
+        scale = (n - 1 + d) / n
+        cf["library_mixture"] = dict(mixture, spiked=mixture["spiked"] * scale)
+        sizes = dict(lib["transform_sizes"])
+        sizes["double-1-2"] = CLONES_PER_DOUBLE * n_doubles
+        sizes["spiked"] = int(round(sizes["spiked"] * scale))
+        cf["transform_sizes"] = sizes
+        comp = library_composition_table(cf)
+        wt = float(comp.loc[comp["genotype"] == "wt", "pool_fraction"].iloc[0])
+        return cf, wt
+
+    lo, hi = 1, 2
+    while build(hi)[1] < wt_share:
+        lo, hi = hi, hi * 2
+    while hi - lo > 1:
+        mid = (lo + hi) // 2
+        if build(mid)[1] < wt_share:
+            lo = mid
+        else:
+            hi = mid
+    cf, wt = build(hi)
+    return cf, hi, wt
 
 
 TUBE_KEY = ["replicate", "library", "condition_pre", "t_pre", "condition_sel",
@@ -147,6 +271,13 @@ def main():
 
     with open(os.path.join(PROCESSED, "library_config.yaml")) as fh:
         lib = yaml.safe_load(fh)
+    # the fit is configured with the real library config, as the real data's
+    shutil.copyfile(os.path.join(PROCESSED, "library_config.yaml"),
+                    os.path.join(args.out_dir, "library_config.yaml"))
+    mixture, wt_share = realized_pool(lib)
+    sim_lib, wt_copies, wt_pool = with_wt_excess(lib, mixture, wt_share)
+    unassigned = unassigned_fractions(tubes)
+
     cal_src = os.path.join(PROCESSED, "od600_calibration.yaml")
     cal_dst = os.path.join(args.out_dir, "od600_calibration.yaml")
     shutil.copyfile(cal_src, cal_dst)
@@ -161,16 +292,17 @@ def main():
     total_reads = int(tubes["called_reads"].sum())
     reads_per_tube = total_reads / len(design)
 
-    cf = {k: lib[k] for k in GENETICS_KEYS if k in lib}
+    cf = {k: sim_lib[k] for k in GENETICS_KEYS if k in sim_lib}
     cf.update({
         "design": "design.csv",
         "growth": growth_block(rates),
         "dk_geno_hyper_loc": -3.5,
-        "dk_geno_hyper_scale": 1.0,
+        "dk_geno_hyper_scale": DK_HYPER_SCALE,
         "dk_geno_hyper_shift": 0.02,
         "activity_wt": 1.0,
         "activity_mut_scale": 0.0,
-        "lib_assembly_skew_sigma": 1.25,
+        "lib_assembly_skew_sigma": dict(ASSEMBLY_SKEW),
+        "max_congressed_cells": MAX_CONGRESSED_CELLS,
         "transformation_poisson_lambda": LAMBDA,
         "congression_theta_rule": "homodimer",
         "congression_dk_rule": "dilution",
@@ -178,6 +310,7 @@ def main():
                  if isinstance(cfu0, dict) else float(round(cfu0, -3))),
         "tube_noise_sigma": 0.002,
         "total_num_reads": total_reads,
+        "unassigned_read_fraction": unassigned,
         "prob_index_hop": 0.0,
         "seed": args.seed,
         # bare file names: tfs-simulate runs from inside out_dir
@@ -193,7 +326,12 @@ def main():
     if args.noise == "realistic":
         cf.update({"founder_sampling": True, "demographic_growth": True,
                    "shared_transformation": True,
-                   "pcr_template_molecules": int(round(reads_per_tube / 10)),
+                   # templates = assigned reads per tube / 10, the ratio
+                   # that matched the real counts' overdispersion
+                   # (noise-anatomy, measured on called reads)
+                   "pcr_template_molecules": int(round(
+                       reads_per_tube * (1 - np.mean(list(unassigned.values())))
+                       / 10)),
                    "pcr_amplification_cv": 0.5})
     if args.transition == "memory":
         cf["growth_transition"] = [
@@ -211,6 +349,10 @@ def main():
     print(f"{path}: {len(design)} tubes in {design['replicate'].nunique()} "
           f"replicates; cfu0 {cf['cfu0']}; {total_reads:.3g} reads "
           f"({reads_per_tube:.3g} per tube); growth {cf['growth']}")
+    print(f"realized library_mixture {cf['library_mixture']} (design "
+          f"{lib['library_mixture']}); wt {wt_share:.3f} of the real pool, "
+          f"{wt_copies} wt copies in spiked_seqs give {wt_pool:.3f}; "
+          f"unassigned_read_fraction {unassigned}")
 
 
 if __name__ == "__main__":

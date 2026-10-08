@@ -11,8 +11,8 @@
 #SBATCH --ntasks-per-node=1
 
 # The pilot simulation that calibrates cfu0 (planning/studies/full-size-sim):
-# the first-guess cfu0, totals and OD600 only (no raw files, no growth
-# table). About 85 minutes and a 68 GB peak; numpy only, so no GPU is
+# the first-guess cfu0, with the raw count files (for the depth check
+# against the real screen) but no growth table. About 85 minutes and a 68 GB peak; numpy only, so no GPU is
 # needed. Submit from the study's working directory (processed/ beside it):
 #
 #   sbatch run_pilot.srun
@@ -26,4 +26,4 @@ SEED="${SEED:-1}"
 python make_sim_config.py --out_dir "pilot_s${SEED}" --seed "${SEED}"
 cd "pilot_s${SEED}"
 tfs-simulate simulate_config.yaml --out_prefix tfs_sim --seed "${SEED}" \
-    --no_write_raw --no_write_growth
+    --no_write_growth

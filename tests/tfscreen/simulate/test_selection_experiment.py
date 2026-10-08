@@ -18,6 +18,7 @@ from tfscreen.simulate.selection_experiment import (
     _sim_plasmid_probabilities,
     _sim_index_hop,
     _sim_transform,
+    _sim_transform_collapsed,
     _sim_transform_and_mix,
     _sim_growth,
     _cell_kt,
@@ -543,11 +544,13 @@ def test_sim_transform_and_mix(mocker, base_library_df: pd.DataFrame,
     # FIX: Convert to dict, as the code now iterates over .items()
     lib_origin_dict = dict(list(df.groupby(groupby_key)))
     
-    mock_return_libA = (np.ones((2, 2)), np.zeros((2, 2), dtype=bool))
-    mock_return_libB = (np.ones((3, 1)), np.zeros((3, 1), dtype=bool))
+    mock_return_libA = (np.ones((2, 2)), np.zeros((2, 2), dtype=bool),
+                        np.ones(2))
+    mock_return_libB = (np.ones((3, 1)), np.zeros((3, 1), dtype=bool),
+                        np.ones(3))
 
     mock_sim_transform = mocker.patch(
-        "tfscreen.simulate.selection_experiment._sim_transform",
+        "tfscreen.simulate.selection_experiment._sim_transform_collapsed",
         side_effect=[mock_return_libA, mock_return_libB]
     )
     # We don't necessarily need to mock vstack_padded unless strictly testing flow
@@ -588,11 +591,14 @@ def test_sim_transform_and_mix_invariant_to_transform_sizes(rng: Generator):
     where per-cell weights weren't normalized by the number of transformants
     drawn, letting transform_sizes leak into the mixing ratio.
     """
-    df = pd.DataFrame({
-        "library_origin": ["A"] * 5 + ["B"] * 5,
-        "genotype": [f"A{i}" for i in range(5)] + [f"B{i}" for i in range(5)],
-    })
-    df["probs"] = 0.2
+    # every genotype in every origin (zero weight outside its own), as
+    # selection_experiment lays the library out, so genotype indices are
+    # global: A's genotypes are 0-4, B's 5-9
+    genos = [f"A{i}" for i in range(5)] + [f"B{i}" for i in range(5)]
+    df = pd.DataFrame({"library_origin": ["A"] * 10 + ["B"] * 10,
+                       "genotype": genos * 2})
+    df["probs"] = np.r_[np.full(5, 0.2), np.zeros(5),
+                        np.zeros(5), np.full(5, 0.2)]
     lib_origin_dict = dict(list(df.groupby("library_origin")))
 
     library_mixture = {"A": 1.0, "B": 1.0}
@@ -602,12 +608,12 @@ def test_sim_transform_and_mix_invariant_to_transform_sizes(rng: Generator):
         {"A": 1000, "B": 10000},
         {"A": 1000, "B": 100000},
     ):
-        _, _, probs = _sim_transform_and_mix(
+        trans, _, probs = _sim_transform_and_mix(
             lib_origin_dict, transform_sizes, library_mixture, None, rng
         )
-        n_a = transform_sizes["A"]
-        np.testing.assert_allclose(probs[:n_a].sum(), 0.5, atol=1e-9)
-        np.testing.assert_allclose(probs[n_a:].sum(), 0.5, atol=1e-9)
+        from_a = trans[:, 0] < 5
+        np.testing.assert_allclose(probs[from_a].sum(), 0.5, atol=1e-9)
+        np.testing.assert_allclose(probs[~from_a].sum(), 0.5, atol=1e-9)
 
 
 # ----------------------------------------------------------------------------
@@ -1745,3 +1751,114 @@ def test_unsequenced_replicate(base_config, base_library_df,
     assert len(counts_df) == 0
     assert len(sample_df) > 0
     assert (sample_df["sample_cfu"] > 0).all()
+
+
+# ---------------------------------------------------------------------------
+# unassigned_read_fraction: reads that call no library genotype
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("frac", [0.25, "per_library"])
+def test_unassigned_reads_go_to_unknown(base_config, base_library_df,
+                                        base_phenotype_df, frac):
+    cf = copy.deepcopy(base_config)
+    libs = base_phenotype_df["library"].unique().tolist() \
+        if "library" in base_phenotype_df else []
+    if frac == "per_library":
+        if not libs:
+            pytest.skip("fixture has no library column")
+        cf["unassigned_read_fraction"] = {lib: 0.4 for lib in libs}
+        expect = 0.4
+    else:
+        cf["unassigned_read_fraction"] = frac
+        expect = frac
+    _, base_counts = _run(base_config, base_library_df, base_phenotype_df, 3)
+    _, counts = _run(cf, base_library_df, base_phenotype_df, 3)
+
+    total = counts.groupby("sample")["counts"].sum()
+    base_total = base_counts.groupby("sample")["counts"].sum()
+    # the tube's read budget is unchanged (index hopping moves a few reads
+    # between tubes); a share of it is unassigned
+    assert total.sum() == base_total.sum()
+    np.testing.assert_allclose(total, base_total, rtol=1e-4)
+    unknown = (counts[counts["genotype"] == "__unknown__"]
+               .set_index("sample")["counts"])
+    assert np.allclose(unknown / total.loc[unknown.index], expect, atol=1e-3)
+    assert "__unknown__" not in set(base_counts["genotype"].astype(str))
+
+
+def test_unassigned_fraction_validated(base_config, base_library_df,
+                                       base_phenotype_df):
+    cf = copy.deepcopy(base_config)
+    cf["unassigned_read_fraction"] = 1.0
+    with pytest.raises(ValueError):
+        _run(cf, base_library_df, base_phenotype_df, 1)
+    cf["unassigned_read_fraction"] = {"not_a_library": 0.5}
+    with pytest.raises(ValueError, match="per library"):
+        _run(cf, base_library_df, base_phenotype_df, 1)
+
+
+# ----------------------------------------------------------------------------
+# collapsed transformation: identical cells merged into weighted rows
+# ----------------------------------------------------------------------------
+
+def test_collapsed_transform_single_plasmid_rows_are_clone_counts():
+    rng = np.random.default_rng(0)
+    probs = np.array([0.5, 0.3, 0.2, 0.0])
+    trans, mask, cells = _sim_transform_collapsed(probs, 100_000, None, rng)
+    assert cells.sum() == 100_000
+    assert len(trans) == 3                      # one row per genotype seen
+    assert (~mask).sum(axis=1).tolist() == [1, 1, 1]
+    np.testing.assert_allclose(cells / cells.sum(), probs[trans[:, 0]],
+                               atol=0.01)
+
+
+def test_collapsed_transform_matches_per_cell_composition():
+    """The congressed share and each genotype's cell-equivalents agree with
+    the per-cell transformation (``_sim_transform``)."""
+    rng = np.random.default_rng(1)
+    probs = np.array([0.4, 0.3, 0.2, 0.1])
+    n, lam = 200_000, 0.357
+    t1, m1 = _sim_transform(probs, n, lam, rng)
+    t2, m2, c2 = _sim_transform_collapsed(probs, n, lam, rng)
+    multi1 = ((~m1).sum(axis=1) > 1).mean()
+    multi2 = c2[(~m2).sum(axis=1) > 1].sum() / c2.sum()
+    assert multi2 == pytest.approx(multi1, abs=0.01)
+    s1 = _calc_genotype_cfu0(t1, m1, np.full(n, 1.0 / n), 1.0, 4)
+    s2 = _calc_genotype_cfu0(t2, m2, c2 / c2.sum(), 1.0, 4)
+    np.testing.assert_allclose(s1, s2, atol=0.005)
+
+
+def test_collapsed_transform_cap_on_congressed_cells():
+    rng = np.random.default_rng(2)
+    probs = np.full(10, 0.1)
+    trans, mask, cells = _sim_transform_collapsed(
+        probs, 1_000_000, 0.357, rng, max_congressed_cells=1000)
+    congressed = (~mask).sum(axis=1) > 1
+    assert congressed.sum() == 1000
+    assert cells.sum() == pytest.approx(1_000_000)
+    assert np.allclose(cells[congressed], cells[congressed][0])
+    assert cells[congressed][0] > 100           # each row stands for many
+
+
+def test_merged_rows_founder_sampling_is_exact():
+    """Merging identical clones is exact for founder sampling: one row of k
+    clones gets Poisson(k m) founders, the sum of k Poisson(m)."""
+    rng = np.random.default_rng(3)
+    kt = np.zeros((1, 20_000))
+    merged = _sim_growth(kt, np.array([1.0]), 50.0, rng=rng,
+                         founder_sampling=True)[0]
+    split = _sim_growth(np.zeros((10, 20_000)), np.full(10, 0.1), 50.0,
+                        rng=rng, founder_sampling=True).sum(axis=0)
+    assert merged.mean() == pytest.approx(split.mean(), rel=0.02)
+    assert merged.var() == pytest.approx(split.var(), rel=0.05)
+
+
+def test_per_origin_skew(base_config, base_library_df, base_phenotype_df):
+    origins = base_library_df["library_origin"].unique().tolist()
+    cf = copy.deepcopy(base_config)
+    cf["lib_assembly_skew_sigma"] = {o: 0.5 for o in origins}
+    _run(cf, base_library_df, base_phenotype_df, 1)
+    cf["lib_assembly_skew_sigma"] = {origins[0]: 0.5}
+    if len(origins) > 1:
+        with pytest.raises(ValueError, match="per origin"):
+            _run(cf, base_library_df, base_phenotype_df, 1)

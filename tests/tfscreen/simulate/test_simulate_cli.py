@@ -5,7 +5,10 @@ import pytest
 from unittest.mock import patch, MagicMock
 import pandas as pd
 
-from tfscreen.simulate.scripts.simulate_cli import run_simulation_from_config
+from tfscreen.simulate.scripts.simulate_cli import (
+    replicate_read_totals,
+    run_simulation_from_config,
+)
 from tfscreen.util.cli.generalized_main import generalized_main
 
 _RAW = "tfscreen.simulate.scripts.simulate_cli.write_raw_experiment"
@@ -573,7 +576,8 @@ def _od_run(tmp_path, cf):
 
     def fake_selection(rep_cf, library_df, phenotype_df, shared_state=None,
                        sequence=True):
-        calls.append({"sequence": sequence, "shared_state": shared_state})
+        calls.append({"sequence": sequence, "shared_state": shared_state,
+                      "reads": rep_cf.get("total_num_reads")})
         rep = int(phenotype_df["replicate"].iloc[0])
         sample_df = pd.DataFrame([{
             "sample": 0, "replicate": rep, "library": "lib",
@@ -613,6 +617,24 @@ def test_od600_written_with_od_only_replicates(tmp_path):
     for col in ("od600", "od600_detectable", "od600_in_range",
                 "sample_cfu_true", "sample_cfu"):
         assert col in od.columns
+
+
+def test_total_reads_split_across_replicates(tmp_path):
+    """total_num_reads is the total over all sequenced tubes, not per
+    replicate (each replicate used to get the full total)."""
+    cf = {"seed": 1, "growth": {}, "cfu0": 1e8, "total_num_reads": 1000,
+          "od600": {"calibration": "c.yaml", "num_od_only_replicates": 1}}
+    calls = _od_run(tmp_path, cf)
+    assert [c["reads"] for c in calls if c["sequence"]] == [500, 500]
+
+
+def test_replicate_read_totals_by_design_tube_count():
+    design = pd.DataFrame({"replicate": [1] * 60 + [2] * 56 + [3] * 2})
+    reads = replicate_read_totals(118_000, [1, 2, 3], 3, design)
+    assert reads == {1: 60_000, 2: 56_000, 3: 2_000}
+    assert replicate_read_totals(90, [1, 2, 3], 3) == {1: 30, 2: 30, 3: 30}
+    # OD600-only replicates get no reads
+    assert replicate_read_totals(90, [1, 2, 3], 2) == {1: 45, 2: 45}
 
 
 def test_no_od600_file_without_block(tmp_path):

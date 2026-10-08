@@ -25,6 +25,7 @@ from tfscreen.util.numerical import (
     zero_truncated_poisson,
 )
 from tfscreen.genetics import (
+    UNKNOWN_GENOTYPE,
     set_categorical_genotype
 )
 
@@ -65,6 +66,7 @@ SIMULATE_KNOWN_KEYS = frozenset({
     "activity_wt", "activity_mut_scale", "activity_component", "activity_priors",
     # Experimental simulation parameters
     "transform_sizes", "library_mixture", "lib_assembly_skew_sigma",
+    "max_congressed_cells",
     "transformation_poisson_lambda", "cfu0",
     "congression_theta_rule", "congression_dk_rule", "congression_dk_alpha",
     "tube_noise_sigma", "growth_transition",
@@ -72,7 +74,8 @@ SIMULATE_KNOWN_KEYS = frozenset({
     "founder_sampling", "demographic_growth", "shared_transformation",
     "pcr_template_molecules", "pcr_amplification_cv",
     # Data collection
-    "total_num_reads", "prob_index_hop", "seed", "od600",
+    "total_num_reads", "prob_index_hop", "unassigned_read_fraction",
+    "seed", "od600",
     # Column selectors (rarely overridden)
     "condition_selector", "library_selector",
     # Optional output blocks
@@ -294,7 +297,16 @@ def _check_cf(
 
     # --- Validate single numerical values ---
     cf = _check_dict_number("prob_index_hop", cf, min_allowed=0, max_allowed=1, allow_none=True)
-    cf = _check_dict_number("lib_assembly_skew_sigma", cf, min_allowed=0, allow_none=True)
+    # lib_assembly_skew_sigma: one number, or one per library origin
+    if isinstance(cf.get("lib_assembly_skew_sigma"), dict):
+        cf["lib_assembly_skew_sigma"] = dict(cf["lib_assembly_skew_sigma"])
+        for origin in list(cf["lib_assembly_skew_sigma"]):
+            _check_dict_number(origin, cf["lib_assembly_skew_sigma"],
+                               min_allowed=0, allow_none=True)
+    else:
+        cf = _check_dict_number("lib_assembly_skew_sigma", cf, min_allowed=0, allow_none=True)
+    cf = _check_dict_number("max_congressed_cells", cf, cast_type=int,
+                            min_allowed=0, inclusive_min=False, allow_none=True)
     cf = _check_dict_number("transformation_poisson_lambda", cf, min_allowed=0, allow_none=True)
     cf = _check_dict_number("tube_noise_sigma", cf, min_allowed=0, allow_none=True)
     cf = _check_dict_number("seed", cf, cast_type=int, min_allowed=0, allow_none=True)
@@ -307,6 +319,18 @@ def _check_cf(
     else:
         cf = _check_dict_number("cfu0", cf, allow_none=False,min_allowed=0)
     cf = _check_dict_number("total_num_reads", cf, cast_type=int, min_allowed=0, inclusive_min=False)
+    # unassigned_read_fraction: share of each tube's reads that go to
+    # __unknown__, one number or one per library
+    if isinstance(cf.get("unassigned_read_fraction"), dict):
+        cf["unassigned_read_fraction"] = dict(cf["unassigned_read_fraction"])
+        for lib_name in list(cf["unassigned_read_fraction"]):
+            _check_dict_number(lib_name, cf["unassigned_read_fraction"],
+                               min_allowed=0, max_allowed=1,
+                               inclusive_max=False)
+    else:
+        cf = _check_dict_number("unassigned_read_fraction", cf, min_allowed=0,
+                                max_allowed=1, inclusive_max=False,
+                                allow_none=True)
 
     # --- Validate nested dictionaries ---
     for key in ["transform_sizes", "library_mixture"]:
@@ -777,12 +801,109 @@ def _sim_transform(
 
     return transformants, plasmid_mask
 
+def _sim_transform_collapsed(
+    genotype_probs: np.ndarray,
+    num_transformants: int,
+    transformation_poisson_lambda: float | None = None,
+    rng: Generator | None = None,
+    max_congressed_cells: int | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Transformation with identical cells merged into weighted rows.
+
+    The same transformation as ``_sim_transform``, without one row per cell.
+    Cells with one plasmid are drawn as a clone count per genotype
+    (multinomial) and each genotype with any clones becomes one row carrying
+    that count. Nothing downstream can tell the difference: a row enters
+    growth, sequencing and cfu0 only through its starting abundance, the
+    founder draw is Poisson per cell (a sum of Poissons is Poisson with the
+    summed mean), and demographic growth is Gamma or Binomial per founder
+    (sums stay in the family). So a library can carry the realistic number
+    of transformants (hundreds per genotype) at the memory cost of one row
+    per genotype.
+
+    Cells with several plasmids (congression) are mostly distinct and stay
+    one row each. With ``max_congressed_cells``, more of them than that are
+    represented by a uniform sample of that many cells, each carrying
+    ``n_congressed / max_congressed_cells`` cells: an approximation that
+    keeps the congressed share of every genotype right on average but
+    lumps its noise.
+
+    Parameters
+    ----------
+    genotype_probs, num_transformants, transformation_poisson_lambda, rng
+        As for ``_sim_transform``.
+    max_congressed_cells : int, optional
+        Cap on the rows used for multi-plasmid cells. None (default) keeps
+        every one.
+
+    Returns
+    -------
+    transformants, plasmid_mask : numpy.ndarray
+        As for ``_sim_transform``, one row per merged clone set or
+        congressed cell.
+    cells_per_row : numpy.ndarray
+        ``(num_rows,)`` float, the number of cells each row stands for;
+        sums to ``num_transformants``.
+    """
+    if num_transformants == 0:
+        return (np.empty((0, 0), dtype=int), np.empty((0, 0), dtype=bool),
+                np.empty(0, dtype=float))
+    if rng is None:
+        rng = np.random.default_rng()
+
+    lam = transformation_poisson_lambda
+    if lam is None or lam == 0:
+        n_multi = 0
+    else:
+        # P(M >= 2 | M >= 1) for M ~ Poisson(lam)
+        p_multi = 1.0 - lam*np.exp(-lam)/(1.0 - np.exp(-lam))
+        n_multi = int(rng.binomial(num_transformants, p_multi))
+    n_single = num_transformants - n_multi
+
+    clones = rng.multinomial(n_single, genotype_probs)
+    single_geno = np.flatnonzero(clones)
+    single_cells = clones[single_geno].astype(float)
+
+    num_plas = np.empty(0, dtype=int)
+    n_rows_multi = n_multi
+    if max_congressed_cells is not None:
+        n_rows_multi = min(n_multi, int(max_congressed_cells))
+    if n_rows_multi > 0:
+        # plasmids per congressed cell: zero-truncated Poisson given >= 2
+        draws = []
+        need = n_rows_multi
+        while need > 0:
+            d = zero_truncated_poisson(max(2*need, 1000), lam, rng)
+            d = d[d >= 2][:need]
+            draws.append(d)
+            need -= len(d)
+        num_plas = np.concatenate(draws)
+    max_plas = max(1, int(num_plas.max()) if len(num_plas) else 1)
+
+    multi = rng.choice(len(genotype_probs), size=(n_rows_multi, max_plas),
+                       p=genotype_probs)
+    multi_mask = np.arange(max_plas) >= num_plas[:, np.newaxis]
+
+    single = np.zeros((len(single_geno), max_plas), dtype=int)
+    single[:, 0] = single_geno
+    single_mask = np.ones((len(single_geno), max_plas), dtype=bool)
+    single_mask[:, 0] = False
+
+    transformants = np.vstack([single, multi]).astype(int)
+    plasmid_mask = np.vstack([single_mask, multi_mask])
+    multi_cells = (np.full(n_rows_multi, n_multi/n_rows_multi)
+                   if n_rows_multi > 0 else np.empty(0))
+    cells_per_row = np.concatenate([single_cells, multi_cells])
+    return transformants, plasmid_mask, cells_per_row
+
+
 def _sim_transform_and_mix(
     lib_origin_dict: dict,
     transform_sizes: dict[str, int],
     library_mixture: dict[str, float],
     transformation_poisson_lambda: float | None,
     rng: Generator,
+    max_congressed_cells: int | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Simulate transformation for multiple source libraries and mix them.
 
@@ -804,19 +925,23 @@ def _sim_transform_and_mix(
         weight (float) in the final mixture.
     transformation_poisson_lambda : float, optional
         The lambda parameter for the multi-plasmid transformation simulation,
-        passed to `_sim_transform`.
+        passed to `_sim_transform_collapsed`.
     rng : numpy.random.Generator
         An initialized NumPy random number generator.
+    max_congressed_cells : int, optional
+        Passed to `_sim_transform_collapsed` for each origin.
 
     Returns
     -------
     transformants : numpy.ndarray
-        A 2D integer array representing the mixed population of transformants.
+        A 2D integer array representing the mixed population of
+        transformants, one row per merged clone set or congressed cell
+        (see `_sim_transform_collapsed`).
     trans_mask : numpy.ndarray
         The corresponding boolean mask for the `transformants` array.
     probs : numpy.ndarray
-        A 1D float array representing the frequency of each individual cell
-        (row) in the final mixed population. Sums to 1.0.
+        A 1D float array, the frequency of each row (all the cells it stands
+        for) in the final mixed population. Sums to 1.0.
     """
 
     # Go through all library_origin and transform. 
@@ -839,10 +964,12 @@ def _sim_transform_and_mix(
 
         # Together trans and trans_mask define a ragged array of cells with
         # (possibly) multiple plasmids
-        trans, tr_mask = _sim_transform(origin_sub_df["probs"].to_numpy(),
-                                        transform_sizes[lib_key],
-                                        this_lambda,
-                                        rng)
+        trans, tr_mask, cells = _sim_transform_collapsed(
+            origin_sub_df["probs"].to_numpy(),
+            transform_sizes[lib_key],
+            this_lambda,
+            rng,
+            max_congressed_cells=max_congressed_cells)
         all_trans.append(trans)
         all_trans_mask.append(tr_mask)
 
@@ -852,9 +979,9 @@ def _sim_transform_and_mix(
         # Without this, an origin's pool share becomes
         # library_mixture[lib_key] * transform_sizes[lib_key], entangling the
         # two config values.
-        n_cells = trans.shape[0]
+        n_cells = cells.sum()
         w = library_mixture[lib_key] / n_cells if n_cells > 0 else 0.0
-        all_weights.append(np.full(n_cells,w,dtype=float))
+        all_weights.append(cells*w)
 
     # This is vstack that accounts for the fact that these transformations 
     # might have different numbers of plasmids
@@ -1443,7 +1570,8 @@ def _simulate_library_group(
             transform_sizes,
             library_mixture,
             transformation_poisson_lambda,
-            rng)
+            rng,
+            max_congressed_cells=cf.get("max_congressed_cells"))
         if share_key is not None:
             shared_state[share_key] = (transformants, trans_mask, trans_freq)
 
@@ -1571,12 +1699,17 @@ def _simulate_library_group(
         return sample_df, counts_df.iloc[0:0][["sample","genotype"]]
 
     # -- simulate sequencing -- 
+    # Reads that call no library genotype (unassigned_read_fraction; the
+    # dev data lost 66% of kanR and 20% of pheS reads to __unknown__) are
+    # taken off each tube's budget and reported as the __unknown__ row.
+    unassigned = _unassigned_fraction(cf, sub_df)
+    assigned_reads = int(round(reads_per_sample * (1.0 - unassigned)))
     print("--> simulating sequencing",flush=True)
     read_counts_dense = _sim_sequencing(transformants,
                                         trans_mask,
                                         trans_cfu,
                                         num_genotypes,
-                                        reads_per_sample,
+                                        assigned_reads,
                                         rng,
                                         pcr_template_molecules=cf.get("pcr_template_molecules"),
                                         pcr_amplification_cv=cf.get("pcr_amplification_cv"))
@@ -1611,7 +1744,29 @@ def _simulate_library_group(
                            "dk_geno","k_pre","k_sel","theta","ln_cfu_0",
                            "counts"]]
 
+    if reads_per_sample - assigned_reads > 0:
+        unknown = pd.DataFrame({"sample": sample_df["sample"].to_numpy(),
+                                "genotype": UNKNOWN_GENOTYPE,
+                                "counts": reads_per_sample - assigned_reads})
+        counts_df["genotype"] = counts_df["genotype"].astype(str)
+        counts_df = pd.concat([counts_df, unknown], ignore_index=True)
+
     return sample_df, counts_df
+
+
+def _unassigned_fraction(cf, sub_df):
+    """This library group's unassigned_read_fraction (0 when not set)."""
+    frac = cf.get("unassigned_read_fraction")
+    if frac is None:
+        return 0.0
+    if isinstance(frac, dict):
+        libs = sub_df["library"].unique().tolist() if "library" in sub_df else []
+        if len(libs) != 1 or libs[0] not in frac:
+            raise ValueError(f"unassigned_read_fraction is given per library "
+                             f"{sorted(frac)}, but this group is library "
+                             f"{libs}.")
+        return float(frac[libs[0]])
+    return float(frac)
 
 def selection_experiment(
     cf: dict[str, Any] | str | Path,
@@ -1738,9 +1893,16 @@ def selection_experiment(
         library_df["probs"] = shared_state["assembly_probs"]
     else:
         library_df["probs"] = 0.0
-        for _, origin_sub_df in lib_origin_grouper:
-            p = _sim_plasmid_probabilities(origin_sub_df["weight"],
-                                            cf["lib_assembly_skew_sigma"], rng)
+        for origin, origin_sub_df in lib_origin_grouper:
+            origin = origin[0] if isinstance(origin, tuple) else origin
+            skew = cf["lib_assembly_skew_sigma"]
+            if isinstance(skew, dict):
+                if origin not in skew:
+                    raise ValueError(f"lib_assembly_skew_sigma is given per "
+                                     f"origin {sorted(skew)}, without "
+                                     f"'{origin}'.")
+                skew = skew[origin]
+            p = _sim_plasmid_probabilities(origin_sub_df["weight"], skew, rng)
             library_df.loc[origin_sub_df.index, "probs"] = p
         if share:
             shared_state["assembly_probs"] = library_df["probs"].to_numpy().copy()

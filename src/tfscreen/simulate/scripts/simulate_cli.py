@@ -20,6 +20,32 @@ from tfscreen.simulate.build_sample_dataframes import (
 from tfscreen.util.cli.generalized_main import generalized_main
 
 
+def replicate_read_totals(total_num_reads, rep_ids, num_replicates,
+                          design=None):
+    """
+    Each sequenced replicate's share of ``total_num_reads``, by tube count.
+
+    ``total_num_reads`` is the total over every sequenced tube. With a design
+    the replicates can have different numbers of tubes, so each gets
+    ``total * (its tubes / all tubes)``; otherwise every sequenced replicate
+    has the same tubes and gets ``total / num_replicates``. OD600-only
+    replicates (beyond ``num_replicates``) get none.
+
+    Returns
+    -------
+    dict
+        replicate id -> reads (int, at least 1) for the sequenced replicates.
+    """
+    sequenced = rep_ids[:num_replicates]
+    if design is not None:
+        tubes = design.groupby("replicate").size()
+        share = {r: tubes[r] / tubes[sequenced].sum() for r in sequenced}
+    else:
+        share = {r: 1.0 / num_replicates for r in sequenced}
+    return {r: max(1, int(round(total_num_reads * share[r])))
+            for r in sequenced}
+
+
 def run_simulation_from_config(
     config_file,
     out_prefix="tfs_sim",
@@ -162,6 +188,19 @@ def run_simulation_from_config(
     else:
         rep_ids = list(range(1, num_replicates + num_od_only + 1))
 
+    # total_num_reads is the total over every sequenced tube, so each
+    # replicate gets its share by tube count. selection_experiment divides
+    # the total it is given among one replicate's tubes, so passing every
+    # replicate the full total multiplied the reads by the number of
+    # replicates (and, with a design, gave a replicate with few tubes far
+    # more reads per tube: 2.5e9 for the dev-data design's two-tube
+    # replicate 3; 2026-10-08).
+    # (selection_experiment validates total_num_reads; none here, none split)
+    rep_reads = {}
+    if cf.get("total_num_reads") is not None:
+        rep_reads = replicate_read_totals(int(cf["total_num_reads"]), rep_ids,
+                                          num_replicates, design)
+
     for rep_num, rep in enumerate(rep_ids, start=1):
         sequenced = rep_num <= num_replicates
         label = ("" if sequenced else " (OD600 only)")
@@ -174,6 +213,8 @@ def run_simulation_from_config(
         rep_cf["seed"] = (
             base_seed * num_replicates + rep_num if base_seed is not None else None
         )
+        if rep in rep_reads:
+            rep_cf["total_num_reads"] = rep_reads[rep]
 
         rep_phenotype_df = phenotype_df.copy()
         if design is not None:

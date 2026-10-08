@@ -126,3 +126,29 @@ def test_counts_outside_library_refused(tmp_path):
     tubes, counts = _experiment(n_tubes=2)
     with pytest.raises(ValueError, match="outside the library"):
         write_raw_experiment(tubes, counts, ["wt"], str(tmp_path / "sim"))
+
+
+def test_unassigned_reads_round_trip(tmp_path):
+    """Simulated __unknown__ reads (unassigned_read_fraction) land in the raw
+    files' __unknown__ row and count toward the tube's reads, in both the
+    in-memory table and tfs-process-counts."""
+    tubes, counts = _experiment()
+    unknown = pd.DataFrame({"sample": tubes.index, "genotype": "__unknown__",
+                            "counts": 5000})
+    counts = pd.concat([counts, unknown], ignore_index=True)
+    direct = counts_to_lncfu(tubes, _as_fastq_counts(counts, tubes.index))
+    out = write_raw_experiment(tubes, counts, GENOTYPES, str(tmp_path / "sim"))
+    raw = pd.read_csv(f"{out['counts_dir']}/counts_tube0001.csv")
+    assert raw.set_index("genotype").loc["__unknown__", "counts"] == 5000
+    processed = pd.read_csv(process_counts(out["tubes"], out["counts_dir"],
+                                           out_prefix=str(tmp_path / "p"),
+                                           verbose=False))
+    assert "__unknown__" not in set(processed["genotype"])
+    assigned = counts[counts.genotype != "__unknown__"].groupby("sample")["counts"].sum()
+    reads = processed.groupby("t_sel")["sample_reads"].first()
+    assert (reads > assigned.max()).all()
+    key = ["t_sel", "titrant_conc", "genotype"]
+    m = direct.astype({"genotype": str}).merge(processed, on=key,
+                                               suffixes=("_d", "_p"))
+    for col in ("sample_reads", "ln_cfu"):
+        np.testing.assert_allclose(m[f"{col}_d"], m[f"{col}_p"], rtol=1e-12)

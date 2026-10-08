@@ -231,8 +231,17 @@ library_mixture:
   spiked: 4
 
 # Sigma of the log-normal used to draw initial genotype frequencies.  0 = flat
-# distribution; 1–2 is realistic for a typical transformation.
+# distribution; 1–2 is realistic for a typical transformation.  One number, or
+# one per tile combo (e.g. {double-1-2: 2.0, single-1: 0.8, single-2: 0.8,
+# spiked: 0.5}; a real pool of doubles was much less even than its singles).
 lib_assembly_skew_sigma: 1.25
+
+# Optional: cap on the number of multi-plasmid (congressed) cells simulated one
+# by one; more are represented by a weighted sample of this many. Single-
+# plasmid cells are always merged into one row per genotype, so transform_sizes
+# can be realistic (tens of millions) without this cap only when congression is
+# off. Omit for no cap.
+# max_congressed_cells: 2_000_000
 
 
 # Each bacterium receives a number of plasmids drawn from a zero-truncated
@@ -295,8 +304,14 @@ growth_transition:
 # Data collection parameters
 # ---------------------------------------------------------------------------
 
-# Total sequencing reads across all samples.
+# Total sequencing reads across all samples (all replicates together), split
+# evenly over the sequenced tubes.
 total_num_reads: 25_000_000
+
+# Optional: share of each tube's reads that call no library genotype and are
+# reported as __unknown__ (one number, or one per library). Real libraries
+# can lose a large share this way, e.g. to structural variants.
+# unassigned_read_fraction: {kanR: 0.66, pheS: 0.2}
 
 # Fraction of reads re-assigned to a randomly chosen genotype (index hopping).
 # Set to 0 or null to disable.

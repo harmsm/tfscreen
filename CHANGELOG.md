@@ -31,6 +31,14 @@ fall into two kinds:
 
 ### Fixed
 
+- **`total_num_reads` is the total over all replicates.** `tfs-simulate`
+  passed every replicate the full total and each split it over its own
+  tubes, so a simulation had N times the configured reads, and with a
+  design a replicate with few tubes got far more reads per tube (2.5e9 for
+  the dev-data design's two-tube replicate). Each sequenced replicate now
+  gets its share by tube count (`simulate_cli.replicate_read_totals`).
+  Multi-replicate simulations now produce the reads their config states,
+  1/N of what they produced before.
 - **Simulated wt keeps its reference curve under `hill_geno`.** The
   simulation sampler drew wt's phenotype category and perturbation like any
   genotype's, so wt could come out flat ("never binds", about 5% of seeds)
@@ -40,6 +48,20 @@ fall into two kinds:
   (`_pin_wt_reference`). Simulations with `hill_geno` change for wt only.
 
 ### Added
+
+- **Merged transformants, per-origin skew.** The simulator draws
+  single-plasmid cells as clone counts per genotype, one weighted row each
+  (`_sim_transform_collapsed`), so `transform_sizes` can be realistic (the
+  dev-data calibration has 6.7e7 double transformants) at one row per
+  genotype; founder sampling and demographic growth add up exactly over
+  merged clones. `max_congressed_cells` caps the multi-plasmid cells kept
+  one by one. `lib_assembly_skew_sigma` takes one value per library origin.
+  The random stream changed, so a seed no longer reproduces a simulation
+  made before this.
+- **`unassigned_read_fraction`** simulate key (one number or one per
+  library): that share of each tube's reads goes to `__unknown__`, as in
+  real count files, where the dev data's kanR library lost 66% of its
+  reads. The raw count files and the growth table carry it like real data.
 
 - **Tube-offset diagnostic in `tfs-summarize-fit`** (pipeline plan step 7).
   `tfs-extract-params` now writes the per-tube sample offsets,

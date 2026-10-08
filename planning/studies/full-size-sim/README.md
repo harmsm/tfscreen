@@ -24,14 +24,22 @@ short:
   names and per-replicate selection times. `tfs-simulate` follows it
   exactly through the `design` key (added for this study), so the
   simulated tube table has the real layout.
-- **Library:** the real genetics, `transform_sizes` and `library_mixture`
-  (the nine-spike config), about 218,000 genotypes.
+- **Library:** the real genetics and `transform_sizes` (the nine-spike
+  config), about 218,000 genotypes. Since 2026-10-08 the `library_mixture`
+  is the realized one, estimated from the real pre-split composition
+  (`estimate_library_mixture`; doubles 0.54, single-1 0.20, single-2 0.25,
+  against the design's 0.83/0.08/0.08), and wt is repeated in the simulated
+  `spiked_seqs` until it is 11% of the pool, as in the real one. The excess
+  wt is simulation-only: the fit is configured with the real library config
+  (`library_config.yaml`), as the real data's fit is.
 - **Growth:** linear, b and m per condition from the wt monoculture rates
   (the monokan rule); control conditions m = 0.
 - **Population:** `cfu0` per library, calibrated so the simulated tube
   totals match the real ones on average (below); total reads equal to the
-  real experiment's (5.1e9, 4.3e7 per tube); OD600 through the real
-  calibration, totals estimated from it.
+  real experiment's (5.1e9, 4.3e7 per tube; runs before 2026-10-08 had 3
+  times that, a simulator bug), with the real share of each library's reads
+  unassigned (`unassigned_read_fraction`: kanR 0.66, pheS 0.22); OD600
+  through the real calibration, totals estimated from it.
 - **Congression:** lambda 0.357, measured.
 - **Chosen:** noise (`realistic`, the default, or `poisson`), phenotypes
   (hill_geno prior draws, or `--phenotype_model` from `tfs-build-empirical`),
@@ -55,15 +63,15 @@ several GB of files. Run it on the cluster, in `planning/dev-data/`
 cp <repo>/planning/studies/full-size-sim/{make_sim_config.py,run_pilot.srun,run_full_size.srun,growth_priors_loose.csv} <repo>/planning/studies/staged-map/score_map.py .
 ```
 
-First a pilot at the first-guess `cfu0`, only to calibrate it (no raw
-files, no growth table):
+First a pilot at the first-guess `cfu0`, to calibrate it and to check the
+read depth against the real screen (raw count files, no growth table):
 
 ```bash
 sbatch run_pilot.srun
 ```
 
 It runs `make_sim_config.py --out_dir pilot_s1 --seed 1`, then
-`tfs-simulate` with `--no_write_raw --no_write_growth` inside `pilot_s1`.
+`tfs-simulate` with `--no_write_growth` inside `pilot_s1`.
 
 Then the calibrated config and the run (same seed, so the same phenotypes):
 
@@ -253,3 +261,51 @@ design's `transform_sizes` bottleneck). So:
   warning, not a measurement). Pooling is the lever there: held X
   population SDs, and mutation-level structure (`hill_mut`) that shares
   information across doubles with the same single.
+
+**Depth calibration (2026-10-08).** Three causes of the depth mismatch,
+found by comparing the real count files with the simulation's raw files
+kind by kind, and fixed:
+
+1. A simulator bug gave every replicate the full `total_num_reads`, so
+   the runs above had 3 times the configured reads (fixed in
+   `simulate_cli.replicate_read_totals`).
+2. No unassigned reads (real: kanR 66%, pheS 22%; the new
+   `unassigned_read_fraction`) and the design's pool composition instead
+   of the realized one (doubles 83% of the pool against 54%; wt 1% against
+   11%). `make_sim_config.py` now takes both from the real files.
+3. Too few clones per double and too harsh a dk_geno prior. The real
+   initial pool is very uneven among doubles (CV 5-7, 23-30% at zero out
+   of a mean of 20-50 reads) yet only 2.7% of real doubles end below 10
+   reads, and abundance is shared between the two separately transformed
+   libraries (log-count r 0.69): a wide assembly skew (sigma 2.0 for
+   doubles, 0.8 for singles) with ~300 clones per double (6.7e7
+   transformants), which the simulator now carries cheaply by merging
+   identical clones into weighted rows (`_sim_transform_collapsed`). The
+   old dk_geno prior put 31% of genotypes below -0.03 per minute (they died;
+   real well-measured genotypes span about -0.018 to -0.002); scale 0.15
+   instead of 1.0. With slower-growing mutants the pool grows less, so the
+   cfu0 calibration rose about 14-fold (2.1e8 per library).
+
+Check (local, seed 1, `--calibrate_from` a pilot; 14 minutes, 6.5 GB peak;
+every tube detectable):
+
+| doubles by total reads | real | simulated |
+|---|---|---|
+| <10 (dropped) | 5,887 | 15,327 |
+| 10-100 | 43,759 | 37,987 |
+| 1e2-1e3 | 96,201 | 89,233 |
+| 1e3-1e4 | 60,549 | 64,362 |
+| 1e4-1e5 | 15,634 | 15,283 |
+| >1e5 | 1,387 | 1,225 |
+
+Median double 446 real, 472 simulated (3.8 and 4.0 reads per tube); median
+single 868k and 623k (10th-90th percentile 166k-3.2M and 171k-2.2M). Read
+shares by kind match within a few points, except wt: 4% (kanR) and 12%
+(pheS) of real reads against 12% and 23% simulated. Real wt falls from 11%
+of the initial pool to those shares, so it grows slower than the library
+average in the screen; the simulated wt does not. Left: the dropout tail
+(7% against 2.7%; a skew of 1.9 instead of 2.0 fitted the dropout better
+in the composition fit) and the wt's growth. The tube totals' residual
+after the cfu0 level is now mostly control against selection conditions
+(control tubes -1.2 kanR, -0.7 pheS in log real/simulated).
+

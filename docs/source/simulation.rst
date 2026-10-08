@@ -110,7 +110,19 @@ Transformation and congression
 ``transform_sizes`` gives the number of transformants for each entry in
 ``tile_combos`` plus ``spiked``. ``library_mixture`` gives the ratio in
 which those sub-libraries are pooled. ``lib_assembly_skew_sigma`` spreads
-the starting genotype frequencies log-normally; 0 makes them even.
+the starting genotype frequencies log-normally; 0 makes them even. It is one
+number, or one per sub-library (``{double-1-2: 2.0, single-1: 0.8, ...}``):
+a pool of doubles is usually far less even than one of singles.
+
+Transformants are counted, not listed one by one. Cells carrying one plasmid
+are drawn as a number of clones per genotype, and each genotype becomes one
+weighted row, so a library can carry a realistic number of transformants
+(hundreds per genotype, tens of millions in all) at the cost of one row per
+genotype. Nothing downstream changes: founder sampling and demographic noise
+add up exactly over identical clones. Cells with several plasmids stay one
+row each; ``max_congressed_cells`` caps how many are kept, representing the
+rest by a weighted sample of that many cells (an approximation that lumps
+their noise).
 ``cfu0`` is the number of cells in each tube at the start of pre-growth: one
 number, or one per library (``cfu0: {kanR: 2.6e7, pheS: 5.3e7}``) when the
 libraries were grown up separately. A tube's simulated total scales with
@@ -135,8 +147,13 @@ genotype in it.
 Sequencing and sampling noise
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-``total_num_reads`` is the total number of reads across all tubes, and
-``prob_index_hop`` is the fraction of reads reassigned to a random genotype.
+``total_num_reads`` is the total number of reads across all tubes of all
+replicates, split evenly over the sequenced tubes. ``prob_index_hop`` is the
+fraction of reads reassigned to a random genotype.
+``unassigned_read_fraction`` (one number, or a map from library to a
+number) sends that share of each tube's reads to ``__unknown__``, as reads
+that call no library genotype; they count toward the tube's reads but carry
+no genotype. Real libraries can lose a large share of their reads this way.
 ``seed`` makes the run reproducible; ``tfs-simulate --seed`` overrides it.
 
 Without further settings, read counts are Poisson given each tube's
