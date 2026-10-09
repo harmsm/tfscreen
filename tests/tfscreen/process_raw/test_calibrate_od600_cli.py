@@ -36,3 +36,14 @@ def test_main_parses_flags(tmp_path):
         main()
     cal = O.read_calibration(out + ".yaml")
     assert cal["degree"] == 1 and cal["detection_threshold"] == 0.1
+
+
+@pytest.mark.filterwarnings("ignore:.*found in sys.modules:RuntimeWarning")
+def test_cli_module_runs_as_script(monkeypatch):
+    import runpy
+    import sys
+    monkeypatch.setattr(sys, "argv", ["tfs-calibrate-od600", "--help"])
+    with pytest.raises(SystemExit) as exc:
+        runpy.run_module("tfscreen.process_raw.scripts.calibrate_od600_cli",
+                         run_name="__main__")
+    assert exc.value.code == 0

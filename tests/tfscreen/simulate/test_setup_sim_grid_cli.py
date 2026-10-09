@@ -534,3 +534,14 @@ simulate:
         combo = json.load(fh)
     assert (combo["simulate"]["binding_data"]["spiked_binding"]["choose_by"]
             == "measured.csv")
+
+
+def test_phenotype_model_file_resolves_like_the_simulator(tmp_path):
+    from tfscreen.simulate.scripts.setup_sim_grid_cli import _phenotype_model_file
+    prefix = str(tmp_path / "emp")
+    # nothing on disk: the value is returned unchanged (staging then fails)
+    assert _phenotype_model_file(prefix) == prefix
+    (tmp_path / "emp_phenotype_model.json").write_text("{}")
+    assert _phenotype_model_file(prefix) == prefix + "_phenotype_model.json"
+    (tmp_path / "emp.json").write_text("{}")
+    assert _phenotype_model_file(prefix) == prefix + ".json"

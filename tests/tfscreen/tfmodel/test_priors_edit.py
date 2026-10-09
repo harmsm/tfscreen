@@ -198,3 +198,129 @@ def test_check_spikes_in_data(tmp_path):
         check_spikes_in_data(comp, growth)
     check_spikes_in_data(comp, growth, allow_missing=True)
     check_spikes_in_data(comp, pd.DataFrame({"genotype": ["wt", "M42I"]}))
+
+
+# ---------------------------------------------------------------------------
+# edge cases
+# ---------------------------------------------------------------------------
+
+def _fake_orchestrator(crm):
+    from types import SimpleNamespace
+    return SimpleNamespace(growth_tm=SimpleNamespace(
+        map_groups={"condition_rep": crm}))
+
+
+def test_condition_rep_labels_edge_cases():
+    from types import SimpleNamespace
+    # no growth model
+    assert P.condition_rep_labels(SimpleNamespace(growth_tm=None)) is None
+    # a condition_rep map without any label columns
+    crm = pd.DataFrame({"map_condition_rep": [1, 0], "other": ["x", "y"]})
+    assert P.condition_rep_labels(_fake_orchestrator(crm)) is None
+    # labels come back in map_condition_rep order
+    crm = pd.DataFrame({"map_condition_rep": [1, 0],
+                        "condition_rep": ["b", "a"], "replicate": [1, 1]})
+    out = P.condition_rep_labels(_fake_orchestrator(crm))
+    assert list(out.columns) == ["replicate", "condition_rep"]
+    assert list(out["condition_rep"]) == ["a", "b"]
+
+
+def test_apply_prior_overrides_empty_and_unindexed(tmp_path):
+    path = tmp_path / "p.csv"
+    pd.DataFrame({"parameter": ["x.sigma_fixed", "x.k_loc"],
+                  "value": [0.0, 1.0]}).to_csv(path, index=False)
+    assert P.apply_prior_overrides(str(path), {}) == {}
+    assert P.apply_prior_overrides(str(path), None) == {}
+    # a CSV with only scalar rows (no flat_index column)
+    out = P.apply_prior_overrides(str(path), {"k_loc": 2.5})
+    assert out == {"x.k_loc": 2.5}
+    df = pd.read_csv(path)
+    assert df.loc[df.parameter == "x.k_loc", "value"].item() == 2.5
+    assert df.loc[df.parameter == "x.sigma_fixed", "value"].item() == 0.0
+
+
+def test_apply_prior_overrides_same_prior_twice(tmp_path):
+    path = tmp_path / "p.csv"
+    pd.DataFrame({"parameter": ["x.sigma_fixed"],
+                  "value": [0.0]}).to_csv(path, index=False)
+    with pytest.raises(ValueError, match="set twice"):
+        P.apply_prior_overrides(str(path), {"sigma_fixed": 1.0,
+                                            "x.sigma_fixed": 2.0})
+
+
+def test_growth_prior_updates_needs_growth_model():
+    table = pd.DataFrame({"condition_rep": ["a"], "k_loc": [0.03]})
+    with pytest.raises(ValueError, match="need a growth model"):
+        P.growth_prior_updates(table, None, _DEFAULTS)
+
+
+# ---------------------------------------------------------------------------
+# configure_model_cli._edit_priors refusals
+# ---------------------------------------------------------------------------
+
+def _edit_orch(growth_tm=True):
+    from types import SimpleNamespace
+    crm = pd.DataFrame({"map_condition_rep": [0], "condition_rep": ["kanR+kan"]})
+    tm = SimpleNamespace(map_groups={"condition_rep": crm}) if growth_tm else None
+    return SimpleNamespace(growth_tm=tm,
+                           settings={"theta_gauge_conc": (0.0, 1.0)})
+
+
+def _wt_rates_csv(tmp_path):
+    rates = tmp_path / "wt.csv"
+    pd.DataFrame({"condition_sel": ["kanR+kan", "kanR+kan"],
+                  "titrant_conc": [0.0, 1.0], "rate_mean": [0.02, 0.012],
+                  "rate_sd": [0.004, 0.004], "num_replicates": [4, 4]}
+                 ).to_csv(rates, index=False)
+    return str(rates)
+
+
+def test_edit_priors_needs_growth_data(tmp_path):
+    from tfscreen.tfmodel.scripts.configure_model_cli import _edit_priors
+    with pytest.raises(ValueError, match="need growth data"):
+        _edit_priors(_edit_orch(growth_tm=False), "unused.csv",
+                     growth_priors="unused.csv")
+
+
+def test_edit_priors_needs_linear_growth(tmp_path):
+    from tfscreen.tfmodel.scripts.configure_model_cli import _edit_priors
+    with pytest.raises(ValueError, match="'linear' only"):
+        _edit_priors(_edit_orch(), "unused.csv",
+                     growth_priors_wt_rates=_wt_rates_csv(tmp_path),
+                     condition_growth_model="power")
+
+
+def test_edit_priors_wt_rates_refuse_per_replicate_table(tmp_path):
+    from tfscreen.tfmodel.scripts.configure_model_cli import _edit_priors
+    table = tmp_path / "gp.csv"
+    pd.DataFrame({"replicate": [1], "condition_rep": ["kanR+kan"],
+                  "k_loc": [0.015]}).to_csv(table, index=False)
+    with pytest.raises(ValueError, match="per-replicate"):
+        _edit_priors(_edit_orch(), "unused.csv", growth_priors=str(table),
+                     growth_priors_wt_rates=_wt_rates_csv(tmp_path),
+                     theta_model="hill_relative")
+
+
+def test_edit_priors_needs_growth_prior_rows(tmp_path):
+    from tfscreen.tfmodel.scripts.configure_model_cli import _edit_priors
+    table = tmp_path / "gp.csv"
+    pd.DataFrame({"condition_rep": ["kanR+kan"], "k_loc": [0.015]}
+                 ).to_csv(table, index=False)
+    priors = tmp_path / "priors.csv"
+    pd.DataFrame({"parameter": [P.GROWTH_PRIOR_PREFIX + "k_loc"],
+                  "value": [0.02]}).to_csv(priors, index=False)
+    with pytest.raises(ValueError, match="has no 'growth.condition_growth.k_scale' row"):
+        _edit_priors(_edit_orch(), str(priors), growth_priors=str(table))
+
+
+def test_configure_wt_rates_alone(tmp_path):
+    prefix = _configure(tmp_path, growth_priors_wt_rates=_wt_rates_csv(tmp_path))
+    o, _ = read_configuration(f"{prefix}_config.yaml")
+    g = o.priors.growth.condition_growth
+    order = list(P.condition_rep_labels(o)["condition_rep"])
+    k = dict(zip(order, np.asarray(g.k_loc)))
+    m = dict(zip(order, np.asarray(g.m_loc)))
+    assert k["kanR+kan"] == pytest.approx(0.012)
+    assert m["kanR+kan"] == pytest.approx(0.008)
+    # conditions without wt rates keep the default
+    assert k["pheS+4CP"] != pytest.approx(0.012)

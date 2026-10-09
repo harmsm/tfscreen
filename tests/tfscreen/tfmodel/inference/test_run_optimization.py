@@ -600,3 +600,143 @@ def test_exact_loss_can_be_turned_off():
     _fit(ri, svi, final_step_size=1e-4, exact_loss=False)
     header, rows = _convergence_rows()
     assert all(r[header.index("loss_exact")] in ("", "nan") for r in rows)
+
+
+# -----------------------------------------------------------------------------
+# Step size read off a hand-built SVI; runaway (unbounded) loss
+# -----------------------------------------------------------------------------
+
+def test_step_size_read_from_optimizer_when_not_set_up():
+    """An SVI not built by setup_svi gives its step size through the
+    optimizer's ``step_size`` attribute."""
+    model = ToyModel()
+    ri = RunInference(model, seed=0)
+    assert ri._step_size is None
+    optim = Adam(1e-2)
+    optim.step_size = 1e-2
+    svi = SVI(toy_model, toy_guide, optim, Trace_ELBO())
+    _fit(ri, svi, max_num_epochs=50)
+    assert ri._monitor.step_size == pytest.approx(1e-2)
+
+    # no attribute at all: the monitor has no step size
+    ri2 = RunInference(ToyModel(), seed=0)
+    svi2 = SVI(toy_model, toy_guide, Adam(1e-2), Trace_ELBO())
+    _fit(ri2, svi2, max_num_epochs=50)
+    assert np.isnan(ri2._monitor.step_size)
+
+
+def _runaway_model(priors, data):
+    """A wide prior and a factor that grows without bound."""
+    x = numpyro.sample("x", dist.Normal(0.0, 1e3))
+    numpyro.factor("pull", jnp.exp(x))
+
+
+def test_runaway_loss_stops_as_diverged(capsys):
+    model = ToyModel()
+    model.jax_model = _runaway_model
+    ri = RunInference(model, seed=0)
+    svi = ri.setup_svi(adam_step_size=0.05, guide_type="delta")
+    _, params, converged = _fit(ri, svi, final_step_size=1e-4,
+                                max_num_epochs=40000)
+    assert not converged
+    assert ri._monitor.diverged
+    out = capsys.readouterr().out
+    assert "the loss ran away" in out and "Not converged" in out
+    # it stopped at the first window, far short of max_num_epochs
+    assert ri._current_step < 40000
+    assert os.path.isfile("toy_checkpoint.pkl")
+    header, rows = _convergence_rows()
+    assert rows[-1][header.index("decision")] == "diverged"
+
+
+# -----------------------------------------------------------------------------
+# Normalizer edge cases
+# -----------------------------------------------------------------------------
+
+def test_param_transforms_without_init_is_empty():
+    assert RunInference._param_transforms(object()) == {}
+    svi = SVI(toy_model, toy_guide, Adam(1e-2), Trace_ELBO())
+    assert RunInference._param_transforms(svi) == {}
+
+
+def test_auto_continuous_normalizer_without_scale_params():
+    norm = RunInference._normalizer(("auto_continuous", None), {})
+    assert float(norm) == pytest.approx(1.0)
+    norm = RunInference._normalizer(("auto_continuous", jnp.array([0.5, 3.0])),
+                                    {})
+    np.testing.assert_allclose(norm, [1.0, 3.0])
+
+
+def test_posterior_sd_floors_skip_mismatched_shapes():
+    """A location whose shape cannot take its site's prior SD gets no floor
+    (component guide and AutoNormal alike)."""
+    for guide_type, loc in [("component", "theta_locs"),
+                            ("auto_normal", "theta_auto_loc")]:
+        ri, svi, state, _ = _specs(guide_type)
+        unconstrained = svi.optim.get_params(state.optim_state)
+        shapes = {k: jnp.shape(v) for k, v in unconstrained.items()}
+        assert loc in ri._posterior_sd_floors(svi, state, shapes)
+        shapes[loc] = (5,)
+        floors = ri._posterior_sd_floors(svi, state, shapes)
+        assert loc not in floors
+        # the other locations keep theirs
+        assert len(floors) >= 1
+
+
+def test_auto_continuous_floor_zero_for_site_without_prior_sd(monkeypatch):
+    import tfscreen.tfmodel.inference.run_inference as ri_mod
+    real = ri_mod.site_unconstrained_prior_sds
+
+    def drop_mu(sites):
+        sds = dict(real(sites))
+        sds.pop("mu", None)
+        return sds
+
+    monkeypatch.setattr(ri_mod, "site_unconstrained_prior_sds", drop_mu)
+    ri, svi, state, specs = _specs("auto_diagonal_normal")
+    floor = svi.guide._unpack_latent(jnp.asarray(specs["auto_loc"][1]))
+    assert float(floor["mu"]) == 0.0
+    np.testing.assert_allclose(floor["theta"], 0.01, rtol=1e-5)
+
+
+def _odd_guide(priors, data):
+    """toy_guide, but mu's parameters do not follow {site}_loc/_scale."""
+    m = numpyro.param("mu_center", 0.0)
+    s = numpyro.param("mu_width", 1.0, constraint=dist.constraints.positive)
+    numpyro.sample("mu", dist.Normal(m, s))
+    sigma_loc = numpyro.param("sigma_loc", 0.0)
+    sigma_scale = numpyro.param("sigma_scale", 1.0,
+                                constraint=dist.constraints.positive)
+    numpyro.sample("sigma", dist.LogNormal(sigma_loc, sigma_scale))
+    theta_locs = numpyro.param("theta_locs", jnp.zeros(data.num_genotype))
+    theta_scales = numpyro.param("theta_scales", jnp.ones(data.num_genotype),
+                                 constraint=dist.constraints.positive)
+    with numpyro.plate("toy_genotype_plate", data.num_genotype):
+        numpyro.sample("theta", dist.Normal(theta_locs, theta_scales))
+
+
+def test_unpaired_real_location_is_tracked_as_is():
+    model = ToyModel()
+    model.jax_model_guide = _odd_guide
+    ri = RunInference(model, seed=0)
+    svi = ri.setup_svi(guide_type="component")
+    state = svi.init(ri.get_key(), priors=model.priors,
+                     data=model.get_batch(model.data, model.get_random_idx()))
+    specs = ri._param_normalizer_specs(
+        svi, state, svi.optim.get_params(state.optim_state))
+    assert specs["mu_center"] == ("unit",)
+    assert specs["theta_locs"][:2] == ("scale", "theta_scales")
+
+
+def test_component_guide_start_reports_unmatched_and_skipped(capsys):
+    model = ToyModel()
+    model.jax_model_guide = _odd_guide
+    ri = RunInference(model, seed=0)
+    start = ri.component_guide_start({"mu": 2.0, "sigma": -1.0,
+                                      "theta": np.full(NUM_GENOTYPE, 1.5)})
+    out = capsys.readouterr().out
+    assert "without a recognized location parameter" in out and "mu" in out
+    assert "non-positive values for LogNormal-guided sites" in out
+    assert "sigma" in out
+    assert "mu_center" not in start and "sigma_loc" not in start
+    np.testing.assert_allclose(start["theta_locs"], 1.5)

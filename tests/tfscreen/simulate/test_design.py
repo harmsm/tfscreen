@@ -151,3 +151,9 @@ def test_cfu0_map_must_name_every_library(tmp_path, monkeypatch):
         run_simulation_from_config(str(tmp_path / "c.yaml"),
                                    out_prefix=str(tmp_path / "x"),
                                    num_replicates=1, write_raw=False)
+
+
+def test_read_design_accepts_sample_index():
+    d = read_design(_design().set_index("sample"))
+    assert d.columns[0] == "sample"
+    assert list(d["sample"]) == list(_design()["sample"])

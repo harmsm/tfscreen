@@ -2445,3 +2445,233 @@ class TestTubeOffsets:
         s = summarize_fit(run_dir)["tube_offsets"]
         assert s["sigma"] == pytest.approx(0.5)
         assert not s["structured"]
+
+
+class TestTubeOffsetHelpers:
+
+    def _priors(self, tmp_path, rows):
+        pd.DataFrame(rows, columns=["parameter", "value"]).to_csv(
+            tmp_path / "priors.csv", index=False)
+        return str(tmp_path / "cfg.yaml")
+
+    def test_held_sigma_none_without_config(self, tmp_path):
+        from tfscreen.tfmodel.scripts.summarize_fit_cli import _held_offset_sigma
+        assert _held_offset_sigma(None, "x.yaml") is None
+        assert _held_offset_sigma({"priors_file": "p.csv"}, None) is None
+
+    def test_held_sigma_none_without_priors_file_key(self, tmp_path):
+        from tfscreen.tfmodel.scripts.summarize_fit_cli import _held_offset_sigma
+        assert _held_offset_sigma({}, str(tmp_path / "cfg.yaml")) is None
+
+    def test_held_sigma_none_when_priors_missing(self, tmp_path):
+        from tfscreen.tfmodel.scripts.summarize_fit_cli import _held_offset_sigma
+        assert _held_offset_sigma({"priors_file": "absent.csv"},
+                                  str(tmp_path / "cfg.yaml")) is None
+
+    def test_held_sigma_none_without_row_or_when_zero(self, tmp_path):
+        from tfscreen.tfmodel.scripts.summarize_fit_cli import _held_offset_sigma
+        cfg = self._priors(tmp_path, [["growth.other.value", 1.0]])
+        assert _held_offset_sigma({"priors_file": "priors.csv"}, cfg) is None
+        cfg = self._priors(tmp_path, [["growth.sample_offset.sigma_fixed", 0.0]])
+        assert _held_offset_sigma({"priors_file": "priors.csv"}, cfg) is None
+        cfg = self._priors(tmp_path, [["growth.sample_offset.sigma_fixed", 0.3]])
+        assert _held_offset_sigma({"priors_file": "priors.csv"},
+                                  cfg) == pytest.approx(0.3)
+
+    def test_unwritable_outputs_warn_and_still_return_summary(self, run_dir):
+        from tfscreen.tfmodel.scripts.summarize_fit_cli import (
+            _summarize_tube_offsets)
+        _write_offsets(run_dir, pattern=True)
+        out_prefix = os.path.join(run_dir, "no_such_dir", "out")
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            summary = _summarize_tube_offsets(run_dir, out_prefix, None, None)
+        msgs = [str(x.message) for x in w]
+        assert summary["file"] == "run_params_sample_offset_offset.csv"
+        assert summary["sigma_source"] is None
+        assert any(m.startswith(f"Could not write {out_prefix}_tube_offsets.csv")
+                   for m in msgs)
+        assert any(m.startswith(f"Could not write {out_prefix}_tube_offset_trends.csv")
+                   for m in msgs)
+        assert any(m.startswith("Could not plot tube offsets") for m in msgs)
+
+    def test_plot_hides_unused_panels(self, tmp_path):
+        from tfscreen.tfmodel.scripts.summarize_fit_cli import _plot_tube_offsets
+        conds = ["a", "b", "c", "d"]
+        tubes = pd.DataFrame({
+            "condition_sel": np.repeat(conds, 2),
+            "titrant_conc": [0.0, 1.0] * 4,
+            "t_sel": [10.0, 20.0] * 4,
+            "offset": np.linspace(-1, 1, 8),
+        })
+        trends = pd.DataFrame({"condition_sel": conds,
+                               "structured": [True, False, False, False]})
+        pdf = str(tmp_path / "t.pdf")
+        import matplotlib.pyplot as plt
+        with patch.object(plt, "close") as close:
+            _plot_tube_offsets(tubes, trends, pdf)
+        fig = close.call_args[0][0]
+        axes = [a for a in fig.axes if a.get_label() != "<colorbar>"]
+        visible = [a for a in axes if a.get_visible()]
+        assert len(visible) == 4
+        assert sum(not a.get_visible() for a in axes) == 2
+        assert visible[0].get_title() == "a (trend)"
+        assert visible[0].get_ylabel() == "offset (ln)"
+        assert os.path.exists(pdf)
+        plt.close(fig)
+
+    def test_summarize_fit_warns_when_tube_offsets_fail(self, run_dir):
+        with patch("tfscreen.tfmodel.scripts.summarize_fit_cli."
+                   "_summarize_tube_offsets", side_effect=RuntimeError("boom")):
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                results = summarize_fit(run_dir)
+        assert results["tube_offsets"] is None
+        assert any("Could not summarize tube offsets: boom" in str(x.message)
+                   for x in w)
+
+
+class TestFindMultiple:
+
+    def test_multiple_tfmodel_configs_warn_and_use_first(self, tmp_path):
+        for name in ("a_config.yaml", "b_config.yaml"):
+            _make_config_yaml(str(tmp_path / name), binding_csv_path="b.csv",
+                              guesses_name="g.csv")
+        with pytest.warns(UserWarning, match="Multiple tfmodel config"):
+            result = _find_fit_config(str(tmp_path))
+        assert result == str(tmp_path / "a_config.yaml")
+
+    def test_multiple_fit_losses_warn_and_use_first(self, tmp_path):
+        for name in ("a_losses.txt", "b_losses.txt"):
+            _make_losses_txt(str(tmp_path / name))
+        with pytest.warns(UserWarning, match="Multiple fit losses"):
+            result = _find_fit_losses(str(tmp_path))
+        assert result == str(tmp_path / "a_losses.txt")
+
+
+# ---------------------------------------------------------------------------
+# Relative (X-scale) fits
+# ---------------------------------------------------------------------------
+
+_REL_CONFIG = {"components": {"theta": "hill_relative",
+                              "theta_gauge_conc": [0.0, 1000.0]}}
+
+
+def _write_wt_ref(path, concs=(0.0, 1000.0), wt=(0.9, 0.1)):
+    rows = [dict(genotype="wt", titrant_name=TITRANT_NAME, titrant_conc=c,
+                 theta_obs=v) for c, v in zip(concs, wt)]
+    rows += [dict(genotype="E4F", titrant_name=TITRANT_NAME, titrant_conc=c,
+                  theta_obs=0.5) for c in TITRANT_CONCS]
+    pd.DataFrame(rows).to_csv(path, index=False)
+
+
+class TestXGauge:
+
+    def test_not_relative_returns_none(self, tmp_path):
+        from tfscreen.tfmodel.scripts.summarize_fit_cli import _x_gauge
+        assert _x_gauge({"components": {}}, None, str(tmp_path)) is None
+
+    def test_missing_gauge_or_ref_warns(self, tmp_path):
+        from tfscreen.tfmodel.scripts.summarize_fit_cli import _x_gauge
+        cfg = {"components": {"theta": "hill_relative"}}
+        with pytest.warns(UserWarning, match="without a recorded gauge"):
+            assert _x_gauge(cfg, "ref.csv", str(tmp_path)) is None
+        with pytest.warns(UserWarning, match="without a recorded gauge"):
+            assert _x_gauge(_REL_CONFIG, None, str(tmp_path)) is None
+
+    def test_wt_missing_at_gauge_conc_warns(self, tmp_path):
+        from tfscreen.tfmodel.scripts.summarize_fit_cli import _x_gauge
+        ref = str(tmp_path / "ref.csv")
+        _write_wt_ref(ref, concs=(0.0, 10.0))
+        with pytest.warns(UserWarning, match="no wt value at the gauge "
+                                             "concentration 1000.0"):
+            assert _x_gauge(_REL_CONFIG, ref, str(tmp_path)) is None
+
+    def test_builds_gauge_with_activity(self, tmp_path):
+        from tfscreen.tfmodel.scripts.summarize_fit_cli import _x_gauge
+        ref = str(tmp_path / "ref.csv")
+        _write_wt_ref(ref)
+        pd.DataFrame({"genotype": ["wt", "E4F"], "activity": [1.0, 0.5]}).to_csv(
+            tmp_path / "run_sim_parameters.csv", index=False)
+        g = _x_gauge(_REL_CONFIG, ref, str(tmp_path))
+        assert g["gauge"] == [0.0, 1000.0]
+        assert g["wt"] == {TITRANT_NAME: (pytest.approx(0.9), pytest.approx(0.1))}
+        assert g["activity"] == {"wt": 1.0, "E4F": 0.5}
+
+
+class TestXScaleGrowthRef:
+
+    _gauge = {"wt": {TITRANT_NAME: (0.9, 0.1)}, "activity": {}}
+
+    def test_without_k_m_columns_returns_copy(self):
+        from tfscreen.tfmodel.scripts.summarize_fit_cli import _x_scale_growth_ref
+        df = pd.DataFrame({"condition_rep": ["a"], "growth_min": [0.1]})
+        out = _x_scale_growth_ref(df, self._gauge)
+        pd.testing.assert_frame_equal(out, df)
+        assert out is not df
+
+    def test_more_than_one_titrant_blanks_k_m(self):
+        from tfscreen.tfmodel.scripts.summarize_fit_cli import _x_scale_growth_ref
+        df = pd.DataFrame({"condition_rep": ["a"], "growth_k": [0.01],
+                           "growth_m": [-0.02]})
+        gauge = {"wt": {"IPTG": (0.9, 0.1), "TMG": (0.8, 0.2)}, "activity": {}}
+        with pytest.warns(UserWarning, match="more than one titrant"):
+            out = _x_scale_growth_ref(df, gauge)
+        assert out["growth_k"].isna().all() and out["growth_m"].isna().all()
+        assert df["growth_k"].iloc[0] == 0.01
+
+    def test_condition_growth_params_mapped_to_x(self, tmp_path):
+        from tfscreen.tfmodel.scripts.summarize_fit_cli import (
+            _summarize_condition_growth_params)
+        pd.DataFrame({"condition_rep": ["a"], "growth_k": [0.01],
+                      "growth_m": [-0.02]}).to_csv(
+            tmp_path / "run_sim_growth_parameters.csv", index=False)
+        for name in ("growth_k", "growth_m"):
+            pd.DataFrame({"condition_rep": ["a"], "q0.5": [0.0]}).to_csv(
+                tmp_path / f"run_params_{name}.csv", index=False)
+        out_prefix = str(tmp_path / "out")
+        _summarize_condition_growth_params(str(tmp_path), out_prefix,
+                                           x_gauge=self._gauge)
+        k = pd.read_csv(out_prefix + "_params_growth_k.csv")["ref"].iloc[0]
+        m = pd.read_csv(out_prefix + "_params_growth_m.csv")["ref"].iloc[0]
+        # k_X = k + m theta_wt(c_hi); m_X = m (theta_wt(c_lo) - theta_wt(c_hi))
+        assert k == pytest.approx(0.01 - 0.02 * 0.1)
+        assert m == pytest.approx(-0.02 * 0.8)
+
+
+class TestSummarizeFitRelative:
+
+    def _relative_run(self, run_dir):
+        cfg_path = os.path.join(run_dir, "run_config.yaml")
+        with open(cfg_path) as fh:
+            cfg = yaml.safe_load(fh)
+        cfg["components"] = dict(_REL_CONFIG["components"])
+        with open(cfg_path, "w") as fh:
+            yaml.dump(cfg, fh)
+        _make_pred_csv(os.path.join(run_dir, "run_pred_theta.csv"),
+                       n_training=3, extra_genotypes=["E4F"])
+        ref = os.path.join(run_dir, "ref.csv")
+        _write_wt_ref(ref)
+        return ref
+
+    def test_test_ref_put_on_x_scale(self, run_dir):
+        ref = self._relative_run(run_dir)
+        results = summarize_fit(run_dir, ref_theta_file=ref)
+        assert results["metadata"]["theta_scale"] == "X"
+        df = pd.read_csv(os.path.join(run_dir, "summary",
+                                      "tfs_summarize_theta_corr_test.csv"))
+        e4f = df[df["genotype"] == "E4F"]
+        assert len(e4f) == len(TITRANT_CONCS)
+        # X = (0.5 - 0.1) / (0.9 - 0.1)
+        assert np.allclose(e4f["ref"], 0.5)
+
+    def test_gauge_failure_warns_and_skips_test_stats(self, run_dir):
+        ref = self._relative_run(run_dir)
+        with patch("tfscreen.tfmodel.scripts.summarize_fit_cli._x_gauge",
+                   side_effect=RuntimeError("bad gauge")):
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                results = summarize_fit(run_dir, ref_theta_file=ref)
+        assert any("Could not build the X-scale truth: bad gauge"
+                   in str(x.message) for x in w)
+        assert results["metadata"]["n_theta_test_points"] is None

@@ -205,3 +205,39 @@ def test_accepts_path_or_dict(example, tmp_path):
     a = O.od600_to_cfu_per_mL([0.3], str(path))[0]
     b = O.od600_to_cfu_per_mL([0.3], example[0])[0]
     assert a == pytest.approx(b)
+
+
+# ---------------------------------------------------------------------------
+# input checks
+# ---------------------------------------------------------------------------
+
+def test_reading_noise_needs_two_dilutions():
+    rep = pd.DataFrame({"dilution": [1.0, 1.0], "od600": [0.5, 0.51]})
+    with pytest.raises(ValueError, match="at least two dilutions"):
+        O.reading_noise(rep)
+
+
+def test_check_calibration_missing_keys(example):
+    bad = dict(example[0])
+    del bad["covariance"]
+    with pytest.raises(ValueError, match=r"missing \['covariance'\]"):
+        O.check_calibration(bad)
+
+
+def test_check_calibration_wrong_kind(example):
+    bad = dict(example[0], kind="something_else")
+    with pytest.raises(ValueError, match="Not an OD600 calibration"):
+        O.check_calibration(bad)
+
+
+@pytest.mark.parametrize("volume", [None, 0, -1.0])
+def test_tube_totals_refuses_bad_volume(example, volume):
+    od = pd.DataFrame({"sample": ["a"], "od600": [0.3]})
+    with pytest.raises(ValueError, match="tube_volume_mL"):
+        O.tube_totals_from_od600(od, example[0], volume)
+
+
+def test_tube_totals_refuses_non_numeric_reading(example):
+    od = pd.DataFrame({"sample": ["a", "b"], "od600": ["0.3", "oops"]})
+    with pytest.raises(ValueError, match=r"no numeric reading for: \['b'\]"):
+        O.tube_totals_from_od600(od, example[0], 5.0)

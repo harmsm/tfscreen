@@ -152,3 +152,27 @@ def test_unassigned_reads_round_trip(tmp_path):
                                                suffixes=("_d", "_p"))
     for col in ("sample_reads", "ln_cfu"):
         np.testing.assert_allclose(m[f"{col}_d"], m[f"{col}_p"], rtol=1e-12)
+
+
+def test_tube_names_use_design_names_when_unique():
+    from tfscreen.simulate.raw_output import _tube_names
+    tubes = pd.DataFrame({"design_sample": ["a1", "b2", "c3"]})
+    assert _tube_names(tubes) == ["a1", "b2", "c3"]
+
+
+@pytest.mark.parametrize("names,printed", [
+    (["k1", "k10", "k2"], True),      # k1 is a substring of k10
+    (["a", "a", "b"], True),          # repeated name
+    (["a", None, "b"], False),        # a tube without a design name
+])
+def test_tube_names_fall_back_to_fixed_width(names, printed, capsys):
+    from tfscreen.simulate.raw_output import _tube_names
+    tubes = pd.DataFrame({"design_sample": names})
+    assert _tube_names(tubes) == sample_names(3)
+    out = capsys.readouterr().out
+    assert ("cannot name count files uniquely" in out) == printed
+
+
+def test_tube_names_without_design_column():
+    from tfscreen.simulate.raw_output import _tube_names
+    assert _tube_names(pd.DataFrame({"x": [1, 2]})) == sample_names(2)

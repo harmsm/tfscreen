@@ -775,3 +775,30 @@ def test_tube_offset_density_bounded_as_scale_collapses(mock_data):
         return float(lp)
 
     assert log_p(1e-8) - log_p(1e-2) < 1.0
+
+
+def test_get_extract_specs_uses_the_hierarchical_layout():
+    """The factored ln_cfu0 has the same (replicate, condition_pre, genotype)
+    array as hierarchical, so it extracts through the same spec."""
+    from types import SimpleNamespace
+    import pandas as pd
+    from tfscreen.tfmodel.generative.components.ln_cfu0 import (
+        hierarchical_factored,
+    )
+    df = pd.DataFrame(dict(replicate=[1, 1, 2], library=["kanR"] * 3,
+                           condition_pre=["kanR-kan"] * 3,
+                           genotype=["wt", "A1B", "A1B"]))
+    df["map_ln_cfu0"] = np.arange(3)
+    tm = SimpleNamespace(df=df,
+                         tensor_dim_names=["replicate", "condition_pre",
+                                           "genotype"],
+                         tensor_dim_labels=[[1, 2], ["kanR/kanR-kan"],
+                                            ["wt", "A1B"]])
+    specs = hierarchical_factored.get_extract_specs(
+        SimpleNamespace(growth_tm=tm))
+    assert len(specs) == 1
+    spec = specs[0]
+    assert spec["params_to_get"] == ["ln_cfu0"]
+    assert spec["map_column"] == "_ln_cfu0_flat"
+    # (rep, cp, geno) -> (rep * 1 + cp) * 2 + geno
+    assert list(spec["input_df"]["_ln_cfu0_flat"]) == [0, 1, 3]

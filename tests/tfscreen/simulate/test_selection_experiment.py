@@ -1,4 +1,5 @@
 import copy
+import os
 
 import pytest
 import pandas as pd
@@ -1862,3 +1863,49 @@ def test_per_origin_skew(base_config, base_library_df, base_phenotype_df):
     if len(origins) > 1:
         with pytest.raises(ValueError, match="per origin"):
             _run(cf, base_library_df, base_phenotype_df, 1)
+
+
+def test_collapsed_transform_no_transformants():
+    trans, mask, cells = _sim_transform_collapsed(np.array([0.5, 0.5]), 0,
+                                                  0.357, np.random.default_rng(0))
+    assert trans.shape == (0, 0) and mask.shape == (0, 0)
+    assert mask.dtype == bool and cells.shape == (0,)
+
+
+def test_collapsed_transform_default_rng():
+    trans, mask, cells = _sim_transform_collapsed(np.array([0.5, 0.5]), 1000,
+                                                  None)
+    assert cells.sum() == 1000
+    assert set(trans[:, 0]) <= {0, 1}
+
+
+# ---------------------------------------------------------------------------
+# od600: one simulated reading per tube
+# ---------------------------------------------------------------------------
+
+_OD600_CAL = os.path.join(os.path.dirname(__file__), "..", "..", "..",
+                          "examples", "od600", "od600_calibration.yaml")
+
+
+@pytest.mark.parametrize("from_od600", [False, True])
+def test_selection_experiment_od600_readings(base_config, base_library_df,
+                                             base_phenotype_df, from_od600):
+    from tfscreen.process_raw.od600 import od600_to_cfu_per_mL
+    cf = copy.deepcopy(base_config)
+    cf["od600"] = {"calibration": _OD600_CAL, "tube_volume_mL": 5.0,
+                   "sample_cfu_from_od600": from_od600}
+    sample_df, _ = _run(cf, base_library_df, base_phenotype_df, 1,
+                        sequence=False)
+    for col in ("sample_cfu_true", "od600", "od600_detectable",
+                "od600_in_range"):
+        assert col in sample_df.columns
+    assert (sample_df["od600"] >= 0).all()
+    if from_od600:
+        cfu, cfu_std, _ = od600_to_cfu_per_mL(sample_df["od600"].to_numpy(),
+                                              _OD600_CAL)
+        np.testing.assert_allclose(sample_df["sample_cfu"], cfu * 5.0)
+        np.testing.assert_allclose(sample_df["sample_cfu_std"], cfu_std * 5.0)
+    else:
+        np.testing.assert_allclose(sample_df["sample_cfu"],
+                                   sample_df["sample_cfu_true"])
+        assert (sample_df["sample_cfu_std"] == 0).all()

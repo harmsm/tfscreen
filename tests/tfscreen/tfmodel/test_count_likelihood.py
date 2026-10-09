@@ -93,6 +93,33 @@ def test_missing_count_columns_refused(drop, match):
         _add_count_columns(df)
 
 
+@pytest.mark.parametrize("bad", [-1.0, np.nan, np.inf])
+def test_bad_counts_refused(bad):
+    df = pd.DataFrame({"counts": [3.0, bad], "sample_reads": [1000, 1000],
+                       "sample_cfu": [1e8, 1e8],
+                       "sample_cfu_std": [1e6, 1e6]})
+    with pytest.raises(ValueError, match="finite and >= 0"):
+        _add_count_columns(df)
+
+
+@pytest.mark.parametrize("bad", [0.0, -5.0, np.nan])
+def test_bad_sample_reads_refused(bad):
+    df = pd.DataFrame({"counts": [3, 7], "sample_reads": [1000.0, bad],
+                       "sample_cfu": [1e8, 1e8],
+                       "sample_cfu_std": [1e6, 1e6]})
+    with pytest.raises(ValueError, match="total reads must be finite"):
+        _add_count_columns(df)
+
+
+def test_zero_frequency_derived_reads_refused():
+    # adjusted_counts / frequency with frequency 0 is inf: refused, not logged
+    df = pd.DataFrame({"counts": [3], "adjusted_counts": [4],
+                       "frequency": [0.0], "sample_cfu": [1e8],
+                       "sample_cfu_std": [1e6]})
+    with pytest.raises(ValueError, match="total reads must be finite"):
+        _add_count_columns(df)
+
+
 # ---------------------------------------------------------------------------
 # model
 # ---------------------------------------------------------------------------

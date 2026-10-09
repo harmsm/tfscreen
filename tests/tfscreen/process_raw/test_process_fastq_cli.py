@@ -441,3 +441,37 @@ def test_process_fastq_raises_error_for_file_as_dir(tmp_path):
 
     with pytest.raises(FileExistsError):
         process_fastq({}, "r1.fq", "r2.fq", out_dir=str(out_file))
+
+@patch('tfscreen.process_raw.scripts.process_fastq_cli._create_counts_df')
+@patch('tfscreen.process_raw.scripts.process_fastq_cli._create_stats_df')
+@patch('tfscreen.process_raw.scripts.process_fastq_cli._process_paired_fastq')
+@patch('tfscreen.process_raw.scripts.process_fastq_cli.FastqToCounts')
+def test_process_fastq_builds_library_manager_and_defaults_workers(
+        mock_ftc_cls, mock_process_paired, mock_create_stats,
+        mock_create_counts, tmp_path):
+    """A library YAML path builds a LibraryManager; num_workers=-1 -> None."""
+    config = os.path.join(os.path.dirname(__file__), "..", "..", "..",
+                          "examples", "process_raw", "library_config.yaml")
+    mock_process_paired.return_value = (Counter(), Counter())
+    mock_create_stats.return_value = pd.DataFrame({'stats': [1]})
+    mock_create_counts.return_value = pd.DataFrame({'counts': [1]})
+    mock_ftc_cls.return_value.all_expected_genotypes = ["wt"]
+
+    process_fastq(config, "r1.fq", "r2.fq", out_dir=str(tmp_path / "out"))
+
+    lm = mock_ftc_cls.call_args.args[0]
+    assert isinstance(lm, LibraryManager)
+    # num_workers (the last positional) is None, i.e. os.cpu_count() - 1
+    assert mock_process_paired.call_args.args[-1] is None
+    assert os.path.exists(tmp_path / "out" / "counts_r1.fq.csv")
+
+
+@pytest.mark.filterwarnings("ignore:.*found in sys.modules:RuntimeWarning")
+def test_cli_module_runs_as_script(monkeypatch):
+    import runpy
+    import sys
+    monkeypatch.setattr(sys, "argv", ["tfs-process-fastq", "--help"])
+    with pytest.raises(SystemExit) as exc:
+        runpy.run_module("tfscreen.process_raw.scripts.process_fastq_cli",
+                         run_name="__main__")
+    assert exc.value.code == 0

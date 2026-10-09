@@ -435,3 +435,16 @@ def test_dk_rule_gradient_is_finite(dk_rule, dk_alpha):
                                             jnp.array(population[2]))
     for grad in grads:
         assert np.all(np.isfinite(np.asarray(grad)))
+
+
+def test_cell_classes_refuses_unknown_theta_rule():
+    data, focal, population = _toy(rule="homodimer")
+    data.congression_theta_rule = "average"
+    with pytest.raises(ValueError, match="unknown congression_theta_rule 'average'"):
+        mixture.cell_classes(focal, population, jnp.array(0.357), data)
+
+
+def test_cell_classes_refuses_unknown_dk_rule():
+    data, focal, population = _toy(rule="homodimer", dk_rule="max")
+    with pytest.raises(ValueError, match="unknown congression_dk_rule 'max'"):
+        mixture.cell_classes(focal, population, jnp.array(0.357), data)

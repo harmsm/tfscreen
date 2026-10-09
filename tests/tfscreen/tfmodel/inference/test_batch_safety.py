@@ -416,3 +416,62 @@ def test_latent_dimension_matches_autocontinuous():
     seed(guide, rng_seed=0)(data=data, priors=orchestrator.priors)
 
     assert orchestrator_latent_dimension(orchestrator) == guide.latent_dim
+
+
+# ---------------------------------------------------------------------------
+# Edge cases of the checks
+# ---------------------------------------------------------------------------
+
+def test_orchestrator_dependence_check_skips_single_genotype():
+    """One genotype leaves no smaller prefix to trace against."""
+    from types import SimpleNamespace
+    orch = SimpleNamespace(data=_toy_full_data(1), priors=None,
+                           jax_model=_batch_sized_model,
+                           get_batch=_toy_get_batch)
+    assert find_orchestrator_batch_dependent_latents(orch) == {}
+
+
+def _order_dependent_shape_model(data, priors):
+    """A prediction whose shape changes with the batch order."""
+    with numpyro.plate("genotype_plate", data.num_genotype):
+        offset = numpyro.sample("offset", dist.Normal(0.0, 1.0))
+    pred = offset[data.batch_idx]
+    if int(data.batch_idx[0]) != 0:
+        pred = jnp.stack([pred, pred])
+    numpyro.deterministic("growth_pred", pred)
+
+
+def test_order_check_flags_shape_change_as_inf():
+    found = find_batch_order_mismatches(_order_dependent_shape_model, None,
+                                        _toy_full_data(), _toy_get_batch,
+                                        jnp.arange(5),
+                                        jnp.array([3, 0, 1, 4, 2]))
+    assert found == {"growth_pred": float("inf")}
+
+
+def _order_orch(num_rest, num_binding=0):
+    from types import SimpleNamespace
+    n = num_binding + num_rest
+    data = SimpleNamespace(num_genotype=n, batch_idx=jnp.arange(n),
+                           num_binding=num_binding,
+                           not_binding_idx=jnp.arange(num_binding, n))
+    return SimpleNamespace(data=data, priors=None,
+                           jax_model=_unsliced_at_full_batch_model,
+                           get_batch=_toy_get_batch)
+
+
+def test_orchestrator_order_check_skips_fewer_than_two_to_reorder():
+    """With at most one non-binding genotype there is nothing to reorder,
+    so even an order-unsafe model passes."""
+    assert find_orchestrator_batch_order_mismatches(_order_orch(1, 2)) == {}
+
+
+def test_orchestrator_order_check_reverses_an_identity_shuffle():
+    """Seed 0 permutes two genotypes to the identity; the check reverses
+    them instead, so the unsliced model is still caught."""
+    import numpy as np
+    assert np.array_equal(np.random.default_rng(0).permutation(np.arange(2)),
+                          np.arange(2))
+    found = find_orchestrator_batch_order_mismatches(_order_orch(2),
+                                                     seed_value=0)
+    assert set(found) == {"growth_pred"}

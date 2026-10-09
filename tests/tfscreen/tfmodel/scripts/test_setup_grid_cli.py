@@ -396,3 +396,19 @@ def test_stage_written_config_ignores_provenance(tmp_path):
            "components": {"theta": "hill_geno"}}
     out = _stage_written_config(cfg, {}, str(tmp_path / "run"))
     assert out["provenance"]["cwd"] == str(tmp_path)
+
+
+def test_unstageable_written_config_removes_run_dir(project, monkeypatch):
+    """A written config that cannot be staged fails and leaves no run dir."""
+    from tfscreen.tfmodel.scripts import setup_grid_cli
+
+    def refuse(cfg, path_map, subdir):
+        assert os.path.isdir(subdir)
+        raise ValueError("config names a file outside the grid")
+    monkeypatch.setattr(setup_grid_cli, "_stage_written_config", refuse)
+
+    out = project / "grid_out"
+    with pytest.raises(ValueError, match="outside the grid"):
+        setup_grid(_write_grid(project, _default_cm_blocks()), out_dir=str(out))
+    run_dirs = [p for p in os.listdir(out) if p != INPUTS_DIRNAME]
+    assert run_dirs == []

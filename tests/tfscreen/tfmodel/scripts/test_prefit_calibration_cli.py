@@ -2076,3 +2076,49 @@ class TestPrefitMainCLI:
              patch("sys.argv", ["tfs-prefit-calibration"] + argv):
             main()
         assert mock_run.call_args.kwargs["checkpoint_file"] == "/tmp/ck.pkl"
+
+
+# ---------------------------------------------------------------------------
+# _run_calibration_map
+# ---------------------------------------------------------------------------
+
+def _calibration_map_kwargs(**overrides):
+    kw = dict(init_values={"a": 1.0}, out_prefix="pre", checkpoint_file=None,
+              adam_step_size=1e-3, adam_final_step_size=1e-6,
+              adam_step_size_cut=0.1, adam_clip_norm=None,
+              elbo_num_particles=2, convergence_window_steps=2000,
+              patience=3, convergence_z=3.0, loss_rtol=1e-6,
+              param_tolerance=0.05, checkpoint_interval=10,
+              max_num_epochs=100, epoch_checkpoint_interval=0)
+    kw.update(overrides)
+    return kw
+
+
+@pytest.mark.parametrize("converged,message", [
+    (True, "Calibration MAP run converged."),
+    (False, "Calibration MAP run has not yet converged."),
+])
+def test_run_calibration_map(converged, message, capsys):
+    from tfscreen.tfmodel.scripts.prefit_calibration_cli import (
+        _run_calibration_map,
+    )
+    ri = MagicMock()
+    ri.setup_svi.return_value = "map_obj"
+    ri.run_optimization.return_value = ("state", {"p": 1}, converged)
+
+    out = _run_calibration_map(ri, **_calibration_map_kwargs())
+
+    assert out == ("state", {"p": 1}, converged)
+    ri.setup_svi.assert_called_once_with(adam_step_size=1e-3,
+                                         adam_clip_norm=None,
+                                         elbo_num_particles=2,
+                                         guide_type="delta",
+                                         init_values={"a": 1.0})
+    ri.run_optimization.assert_called_once_with(
+        "map_obj", out_prefix="pre", svi_state=None,
+        convergence_window_steps=2000, patience=3, convergence_z=3.0,
+        loss_rtol=1e-6, param_tolerance=0.05, final_step_size=1e-6,
+        step_size_cut=0.1, checkpoint_interval=10, max_num_epochs=100,
+        epoch_checkpoint_interval=0)
+    ri.write_params.assert_called_once_with({"p": 1}, out_prefix="pre")
+    assert message in capsys.readouterr().out

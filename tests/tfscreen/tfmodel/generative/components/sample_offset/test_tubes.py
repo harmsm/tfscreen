@@ -75,3 +75,16 @@ def test_extracted_offsets_match_the_model_tubes(model):
 def test_zero_offset_extracts_nothing():
     from tfscreen.tfmodel.generative.components.sample_offset import zero
     assert zero.get_extract_specs(None) == []
+
+
+def test_tube_index_refuses_rows_without_tube_columns(model):
+    _, o = model
+    tm = o.training_tm
+    from types import SimpleNamespace
+    stub = SimpleNamespace(df=tm.df.drop(columns=["time_idx", "titrant_conc_idx"]),
+                           tensor_dim_names=tm.tensor_dim_names,
+                           tensor_dim_labels=tm.tensor_dim_labels)
+    with pytest.raises(ValueError, match="lack the tube index columns") as e:
+        tube_index(stub)
+    assert "time_idx" in str(e.value) and "titrant_conc_idx" in str(e.value)
+    assert "replicate_idx" not in str(e.value)

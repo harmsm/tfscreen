@@ -300,3 +300,104 @@ def test_main_registers_list_flags():
     assert args[0] is summarize_calibration
     assert kwargs["manual_arg_nargs"] == {"replicate_keys": "+", "baseline": "+",
                                           "facet_by": "+"}
+
+
+# ---------------------------------------------------------------------------
+# Edge cases
+# ---------------------------------------------------------------------------
+
+def test_interp_quantile_outside_stored_levels_is_nan():
+    from tfscreen.analysis.calibration_grid import _interp_quantile
+    levels = np.array([0.1, 0.5, 0.9])
+    qmat = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+    assert np.all(np.isnan(_interp_quantile(qmat, levels, 0.05)))
+    assert np.all(np.isnan(_interp_quantile(qmat, levels, 0.95)))
+    np.testing.assert_allclose(_interp_quantile(qmat, levels, 0.5), [2.0, 5.0])
+    np.testing.assert_allclose(_interp_quantile(qmat, levels, 0.3), [1.5, 4.5])
+
+
+def test_read_combo_warns_on_shared_key(tmp_path):
+    from tfscreen.analysis.calibration_grid import read_combo
+    with open(tmp_path / "combo.json", "w") as fh:
+        json.dump({"simulate": {"seed": 1, "x": 2},
+                   "template": {"seed": 5}}, fh)
+    with pytest.warns(UserWarning, match="'seed' is both a simulate"):
+        flat = read_combo(str(tmp_path))
+    assert flat == {"seed": 5, "x": 2}
+
+
+def test_genotype_strata_none_without_library(tmp_path):
+    assert genotype_strata(str(tmp_path)) is None
+
+
+def test_summarize_run_empty_summary_dir(tmp_path):
+    os.makedirs(tmp_path / "summary")
+    rows, problem = summarize_run(str(tmp_path))
+    assert rows == [] and problem == "no calibration outputs"
+
+
+def test_summarize_run_warns_on_genotypes_missing_from_library(grid_dir):
+    run = os.path.join(grid_dir, "run_auto_normal_sim1")
+    lib = os.path.join(run, "tfs_sim_library.csv")
+    df = pd.read_csv(lib)
+    df[df["genotype"] != "G39V"].to_csv(lib, index=False)
+    with pytest.warns(UserWarning, match="missing from the sim library"):
+        rows, problem = summarize_run(run)
+    assert problem is None
+    pooled = [r for r in rows if r["quantity"] == "theta_test"
+              and r["purity"] == "all" and r["has_binding"] == "all"
+              and r["theta_regime"] == "all"]
+    assert pooled[0]["n"] == 40 * 25
+
+
+def test_summarize_grid_runs_requires_runs(tmp_path):
+    with pytest.raises(ValueError, match="No run directories"):
+        summarize_grid_runs(str(tmp_path))
+
+
+def test_label_skips_missing_and_integer_floats():
+    from tfscreen.analysis.calibration_grid import _label
+    row = {"a": None, "b": np.nan, "c": 160.0, "d": 0.5, "e": "x"}
+    assert _label(row, ["a", "b", "c", "d", "e"]) == "c=160, d=0.5, e=x"
+    assert _label({"a": None}, ["a"]) == "(all)"
+
+
+def test_plot_calibration_curves_nothing_to_plot(tmp_path):
+    from tfscreen.analysis.calibration_grid import plot_calibration_curves
+    arms = pd.DataFrame({"quantity": ["other"], "has_binding": ["all"],
+                         "purity": ["all"], "theta_regime": ["all"]})
+    out = str(tmp_path / "c.pdf")
+    assert plot_calibration_curves(arms, [], "theta_test", out) is None
+    assert not os.path.exists(out)
+
+
+def test_summarize_calibration_warns_on_unknown_replicate_key(grid_dir, tmp_path):
+    out_prefix = str(tmp_path / "rk")
+    with pytest.warns(UserWarning, match=r"replicate keys \['nope'\]"):
+        summarize_calibration(grid_dir, out_prefix=out_prefix,
+                              replicate_keys=["seed", "fit_seed", "nope"])
+    meta = json.load(open(out_prefix + "_metadata.json"))
+    assert meta["replicate_keys"] == ["seed", "fit_seed"]
+
+
+def test_summarize_calibration_no_finished_runs(tmp_path):
+    grid = tmp_path / "grid"
+    _write_run(str(grid / "run_a"), {"simulate": {"seed": 1}}, spread=1.0,
+               seed=0, with_summary=False)
+    out_prefix = str(tmp_path / "empty")
+    with pytest.warns(UserWarning, match="No run has calibration outputs"):
+        summarize_calibration(str(grid), out_prefix=out_prefix)
+    assert os.path.exists(out_prefix + "_run_status.csv")
+    assert not os.path.exists(out_prefix + "_runs.csv")
+    assert not os.path.exists(out_prefix + "_arms.csv")
+
+
+@pytest.mark.filterwarnings("ignore:.*found in sys.modules:RuntimeWarning")
+def test_cli_module_runs_as_script(monkeypatch):
+    import runpy
+    import sys
+    monkeypatch.setattr(sys, "argv", ["tfs-summarize-calibration", "--help"])
+    with pytest.raises(SystemExit) as exc:
+        runpy.run_module("tfscreen.analysis.scripts.summarize_calibration_cli",
+                         run_name="__main__")
+    assert exc.value.code == 0

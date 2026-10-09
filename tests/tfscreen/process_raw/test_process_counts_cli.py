@@ -224,3 +224,45 @@ def test_process_counts_default_library(tmp_path):
                                     out_prefix=str(tmp_path / "g"),
                                     verbose=False))
     assert set(df["library"]) == {"default"}
+
+
+# ---------------------------------------------------------------------------
+# sample-indexed tables and the script entry point
+# ---------------------------------------------------------------------------
+
+def test_read_tube_table_resets_sample_index():
+    from tfscreen.process_raw.scripts.process_counts_cli import _read_tube_table
+    tubes = _tubes().set_index("sample")
+    out = _read_tube_table(tubes)
+    assert "sample" in out.columns
+    assert list(out["sample"]) == ["kanR-t0", "kanR-t60"]
+
+
+def test_add_tube_totals_od600_frame_indexed_by_sample():
+    tubes = _tubes()
+    od = pd.DataFrame({"sample": tubes["sample"], "od600": [0.2, 0.4]}
+                      ).set_index("sample")
+    out = add_tube_totals(tubes, od600_file=od,
+                          od600_calibration_file=CALIBRATION, tube_volume_mL=5.0)
+    cfu, _, _ = O.od600_to_cfu_per_mL(np.array([0.2, 0.4]), CALIBRATION)
+    assert np.allclose(out["sample_cfu"], cfu * 5.0)
+
+
+def test_add_tube_totals_refuses_od600_twice(tmp_path):
+    tubes = _tubes()
+    tubes["od600"] = [0.2, 0.4]
+    od = pd.DataFrame({"sample": tubes["sample"], "od600": [0.2, 0.4]})
+    with pytest.raises(ValueError, match="OD600 is given twice"):
+        add_tube_totals(tubes, od600_file=od,
+                        od600_calibration_file=CALIBRATION, tube_volume_mL=5.0)
+
+
+@pytest.mark.filterwarnings("ignore:.*found in sys.modules:RuntimeWarning")
+def test_cli_module_runs_as_script(monkeypatch):
+    import runpy
+    import sys
+    monkeypatch.setattr(sys, "argv", ["tfs-cli", "--help"])
+    with pytest.raises(SystemExit) as exc:
+        runpy.run_module("tfscreen.process_raw.scripts.process_counts_cli",
+                         run_name="__main__")
+    assert exc.value.code == 0

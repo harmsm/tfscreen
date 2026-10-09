@@ -187,3 +187,21 @@ def test_congression_lambda_is_retired(tmp_path):
     with pytest.raises(TypeError, match="congression_lambda"):
         build_empirical("growth.csv", seed=0, congression_lambda=1.0,
                         out_prefix=str(tmp_path / "emp"))
+
+
+def test_cli_requires_seed_for_prefit(tmp_path):
+    growth_csv = tmp_path / "growth.csv"
+    _build_growth_df().to_csv(growth_csv, index=False)
+    with pytest.raises(ValueError, match="seed is required"):
+        build_empirical(str(growth_csv), out_prefix=str(tmp_path / "emp"))
+
+
+@pytest.mark.filterwarnings("ignore:.*found in sys.modules:RuntimeWarning")
+def test_cli_module_runs_as_script(monkeypatch):
+    import runpy
+    import sys
+    monkeypatch.setattr(sys, "argv", ["tfs-build-empirical", "--help"])
+    with pytest.raises(SystemExit) as exc:
+        runpy.run_module("tfscreen.simulate.scripts.build_empirical_cli",
+                         run_name="__main__")
+    assert exc.value.code == 0

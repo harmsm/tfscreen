@@ -1549,3 +1549,30 @@ def test_extract_spec_keys_rows_by_array_position_with_gaps():
         k = genos.index(r["genotype"])
         assert r["median"] == 100 * i + 10 * j + k
     assert len(out) == len(df)
+
+
+def _extract_tm(genotypes=("wt", "A1B")):
+    from types import SimpleNamespace
+    import pandas as pd
+    df = pd.DataFrame(dict(replicate=[1] * len(genotypes),
+                           library=["kanR"] * len(genotypes),
+                           condition_pre=["kanR-kan"] * len(genotypes),
+                           genotype=list(genotypes)))
+    df["map_ln_cfu0"] = np.arange(len(df))
+    return SimpleNamespace(df=df,
+                           tensor_dim_names=["replicate", "condition_pre",
+                                             "genotype"],
+                           tensor_dim_labels=[[1], ["kanR/kanR-kan"],
+                                              ["wt", "A1B"]])
+
+
+def test_extract_spec_refuses_rows_off_the_tensor_labels():
+    from types import SimpleNamespace
+    from tfscreen.tfmodel.generative.components.ln_cfu0.hierarchical import (
+        ln_cfu0_extract_spec,
+    )
+    ok = ln_cfu0_extract_spec(SimpleNamespace(growth_tm=_extract_tm()))
+    assert list(ok[0]["input_df"]["_ln_cfu0_flat"]) == [0, 1]
+    tm = _extract_tm(genotypes=("wt", "Z9Y"))
+    with pytest.raises(ValueError, match="not a label of the growth tensor"):
+        ln_cfu0_extract_spec(SimpleNamespace(growth_tm=tm))

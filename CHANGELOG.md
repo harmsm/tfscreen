@@ -51,6 +51,9 @@ fall into two kinds:
   string dtype that refused the new float (`TypeError: Invalid value ... for
   dtype 'str'`). `priors_edit.apply_priors_updates` reads it as object. This
   failed every CI job from 2026-10-04 on; pandas 2 was unaffected.
+- `python -m tfscreen.tfmodel.scripts.sample_posterior_cli` ran the command
+  twice (a duplicated `__main__` block). The `tfs-sample-posterior` console
+  script was unaffected.
 
 ### Changed
 

@@ -839,3 +839,33 @@ class TestDdGPriorPredictUnmeasured:
         np.testing.assert_allclose(
             res_ddG["median"].values, res_mut["median"].values, atol=1e-5
         )
+
+
+# ---------------------------------------------------------------------------
+# guide with pair epistasis
+# ---------------------------------------------------------------------------
+
+def test_guide_epistasis_uses_regularized_horseshoe_scale():
+    # one pair (M1, M2) on the double mutant (genotype 3)
+    data = _make_mock()._replace(
+        num_pair=1,
+        pair_nnz_pair_idx=np.array([0], dtype=np.int32),
+        pair_nnz_geno_idx=np.array([3], dtype=np.int32))
+    out, tr = _run_guide(data)
+    for site in ("theta_epi_tau", "theta_epi_c2", "theta_epi_lambda",
+                 "theta_epi_offset"):
+        assert tr[site]["type"] == "sample"
+
+    tau = np.asarray(tr["theta_epi_tau"]["value"], dtype=float)
+    c2 = np.asarray(tr["theta_epi_c2"]["value"], dtype=float)
+    lam = np.asarray(tr["theta_epi_lambda"]["value"], dtype=float)
+    off = np.asarray(tr["theta_epi_offset"]["value"], dtype=float)
+    lam_tilde = np.sqrt(c2 * lam ** 2 / (c2 + tau ** 2 * lam ** 2))
+    epi_ddG = (off * tau * lam_tilde).T                      # (P, S)
+    expected = float(np.asarray(_project_ddG(jnp.asarray(epi_ddG)))[0, 0])
+
+    K = np.asarray(out.ln_K_h_l, dtype=float)
+    # additive part cancels in the double-mutant cycle, leaving the pair term
+    cycle = K[3] - K[1] - K[2] + K[0]
+    assert np.isfinite(cycle)
+    assert cycle == pytest.approx(expected, rel=1e-4, abs=1e-5)

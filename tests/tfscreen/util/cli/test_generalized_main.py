@@ -240,3 +240,27 @@ class PatchSysArgv:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.patcher.stop()
+
+
+def test_split_docstring_without_parameters_section():
+    from tfscreen.util.cli.generalized_main import _split_docstring
+    desc, params = _split_docstring("""
+        Do a thing.
+
+        More text, no numpydoc sections.
+        """)
+    assert desc == "Do a thing.\n\nMore text, no numpydoc sections."
+    assert params == {}
+
+
+def test_capture_parser_raises_when_main_skips_generalized_main():
+    import importlib
+    gm = importlib.import_module("tfscreen.util.cli.generalized_main")
+
+    def not_a_cli():
+        return None
+
+    with pytest.raises(RuntimeError, match="did not call generalized_main"):
+        gm.capture_parser(not_a_cli)
+    # The capture flag is reset even after the failure
+    assert gm._CAPTURE_PARSER is False

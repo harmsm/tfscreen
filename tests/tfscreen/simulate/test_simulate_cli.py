@@ -672,3 +672,70 @@ def test_growth_table_can_be_skipped(patched_simulation):
                                    write_growth=False)
     # nothing needs the in-memory growth table, so it is not built
     assert c2l.call_count == 0
+
+
+# ---------------------------------------------------------------------------
+# Designs and raw-output messages
+# ---------------------------------------------------------------------------
+
+def _one_replicate_design():
+    return pd.DataFrame({
+        "sample": ["k-1", "k-2"], "library": "kanR", "replicate": 4,
+        "condition_pre": "kanR-kan", "t_pre": 30, "condition_sel": "kanR+kan",
+        "t_sel": [100, 120], "titrant_name": "iptg", "titrant_conc": 0.0})
+
+
+class _Stop(Exception):
+    pass
+
+
+def test_design_sets_num_replicates(tmp_path, capsys):
+    """A design's replicates replace num_replicates, with a message."""
+    design = _one_replicate_design()
+    design.to_csv(tmp_path / "design.csv", index=False)
+    cf = {"seed": 1, "growth": {}, "cfu0": 1e8,
+          "design": str(tmp_path / "design.csv")}
+    lib_df = pd.DataFrame({"genotype": ["wt"]})
+    pheno = design.drop(columns=["sample", "replicate"]).assign(genotype="wt")
+    params_df = pd.DataFrame({"genotype": ["wt"], "dk_geno": [0.0],
+                              "activity": [1.0]})
+    seen = {}
+
+    def fake_selection(rep_cf, library_df, phenotype_df, shared_state=None,
+                       sequence=True):
+        seen["replicate"] = phenotype_df["replicate"].unique().tolist()
+        seen["t_sel"] = sorted(phenotype_df["t_sel"])
+        raise _Stop
+
+    with patch("tfscreen.util.read_yaml", return_value=cf), \
+         patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
+               return_value=(lib_df, pheno, lib_df.copy(), params_df, None)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
+               side_effect=fake_selection):
+        with pytest.raises(_Stop):
+            run_simulation_from_config("cfg.yaml", out_prefix=str(tmp_path / "s"),
+                                       num_replicates=2)
+    assert "Design has 1 replicate(s) [4]; num_replicates (2) is ignored." \
+        in capsys.readouterr().out
+    assert seen == {"replicate": [4], "t_sel": [100, 120]}
+
+
+def test_design_refuses_od_only_replicates(tmp_path):
+    _one_replicate_design().to_csv(tmp_path / "design.csv", index=False)
+    cf = {"seed": 1, "growth": {}, "cfu0": 1e8,
+          "design": str(tmp_path / "design.csv"),
+          "od600": {"calibration": "c.yaml", "num_od_only_replicates": 1}}
+    with pytest.raises(ValueError, match="num_od_only_replicates cannot be"):
+        _od_run(tmp_path, cf)
+
+
+def test_raw_output_reports_dropped_tubes(patched_simulation, _stub_raw_output,
+                                          capsys):
+    mock_yaml, tmp_path = patched_simulation
+    _stub_raw_output.return_value = {"tubes": "t.csv", "counts_dir": "c",
+                                     "od600": "o.csv", "calibration": "cal.yaml",
+                                     "dropped": ["tube0003"], "command": "x"}
+    run_simulation_from_config("config.yaml", out_prefix=str(tmp_path / "tfs_sim"))
+    out = capsys.readouterr().out
+    assert "Wrote the raw experiment: t.csv, c/, o.csv, cal.yaml" in out
+    assert "OD600 below the detection threshold): ['tube0003']" in out

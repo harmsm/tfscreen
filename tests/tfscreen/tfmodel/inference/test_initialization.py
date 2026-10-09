@@ -282,3 +282,62 @@ def test_default_guide_start_stays_near_its_point():
         assert np.all(np.isfinite(np.asarray(u))), name
     # the test can fail: the old default started far from the point
     assert excess(0.1) > abs(at_point)
+
+
+def test_component_guide_map_skips_wrong_shape_and_unbroadcastable_params():
+    """A same-named param of the wrong shape is passed over for the one that
+    matches; a param whose shape fits the site but not the distribution's
+    own (unexpanded) location cannot match it."""
+
+    def guide(data=None, priors=None):
+        # e: a scalar e_loc of zeros would broadcast onto the loc; it is
+        # skipped on shape and e_locs is chosen
+        numpyro.param("e_loc", 0.0)
+        with numpyro.plate("p", 4):
+            numpyro.sample("e", dist.Normal(
+                numpyro.param("e_locs", jnp.zeros(4)),
+                numpyro.param("e_scales", jnp.ones(4))))
+        # f: an expanded scalar Normal; f_locs has the site's shape (4,) but
+        # cannot broadcast to the base distribution's scalar loc
+        numpyro.param("f_locs", jnp.zeros(4))
+        numpyro.sample("f", dist.Normal(numpyro.param("f_loc", 0.0),
+                                        1.0).expand([4]))
+
+    mapping, unmatched, _ = component_guide_map(guide, None, None)
+    assert mapping["e"]["loc"] == "e_locs"
+    assert mapping["e"]["scale"] == "e_scales"
+    assert "f" not in mapping
+    assert "f" in unmatched
+
+
+class _NoSupport(dist.Distribution):
+    """A distribution that cannot report its support."""
+
+    def __init__(self):
+        super().__init__(batch_shape=(), event_shape=())
+
+    @property
+    def support(self):
+        raise NotImplementedError
+
+    def sample(self, key, sample_shape=()):
+        return jnp.zeros(sample_shape + self.batch_shape)
+
+
+def test_site_unconstrained_prior_sds_skips_unusable_sites():
+    """Sites without a support, or whose prior has no spread in unconstrained
+    units, are left out; the others are kept."""
+    from numpyro.distributions.transforms import ExpTransform
+
+    def model(data=None, priors=None):
+        numpyro.sample("a", dist.Normal(1.0, 2.0))
+        numpyro.sample("nosupport", _NoSupport())
+        # exp of a point mass: positive support, every draw identical, so
+        # the unconstrained IQR is 0
+        numpyro.sample("point", dist.TransformedDistribution(
+            dist.Delta(0.0), ExpTransform()))
+
+    sites = trace_model_sites(model, None, None)
+    sds = site_unconstrained_prior_sds(sites)
+    assert set(sds) == {"a"}
+    assert float(sds["a"]) == pytest.approx(2.0)

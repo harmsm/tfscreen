@@ -200,3 +200,58 @@ def test_other_hyper_scales_fixed(h):
     X = _X(tp, data)
     assert X[0, 0, 1] == pytest.approx(1.0, abs=1e-5)
     assert X[0, -1, 1] == pytest.approx(0.0, abs=1e-5)
+
+
+def _as_h5(post):
+    """The posteriors as an in-memory HDF5 file: datasets have a shape but
+    no reshape, as in a tfs-sample-posterior .h5."""
+    import h5py
+    f = h5py.File("posterior.h5", "w", driver="core", backing_store=False)
+    for k, v in post.items():
+        f.create_dataset(k, data=np.asarray(v))
+    return f
+
+
+def test_compute_theta_samples_reads_h5_datasets():
+    data = _data()
+    with handlers.seed(rng_seed=1):
+        tp = hr.define_model("theta", data, hr.get_priors())
+    post = {"theta_X_low": np.asarray(tp.X_low)[None],
+            "theta_X_high": np.asarray(tp.X_high)[None],
+            "theta_log_hill_K": np.asarray(tp.log_hill_K)[None],
+            "theta_hill_n": np.asarray(tp.hill_n)[None]}
+    conc = np.exp(LOG_CONC)
+    calc = pd.DataFrame({"titrant_conc": np.tile(conc, 4),
+                         "map_theta_group": np.repeat(np.arange(4), len(conc))})
+    expected = hr.compute_theta_samples(calc, post)
+    with _as_h5(post) as f:
+        got = hr.compute_theta_samples(calc, f)
+    assert np.allclose(got, expected)
+
+
+def test_predict_unmeasured_reads_h5_datasets():
+    post = {"theta_X_low_hyper_loc": np.array([[1.0]]),
+            "theta_X_delta_hyper_loc": np.array([[-1.0]]),
+            "theta_log_hill_K_hyper_loc": np.array([[np.log(0.01)]]),
+            "theta_log_hill_n_hyper_loc": np.array([[np.log(2.0)]])}
+    grid = pd.DataFrame({"titrant_name": ["iptg", "iptg"],
+                         "titrant_conc": [0.0, 0.01]})
+    with _as_h5(post) as f:
+        out = hr.predict_unmeasured(["A1V"], ["iptg"], grid, None, None,
+                                    f, {"q0.5": 0.5})
+    assert np.allclose(out[out["titrant_conc"] == 0.0]["q0.5"], 1.0)
+    assert np.allclose(out[out["titrant_conc"] == 0.01]["q0.5"], 0.5)
+
+
+def test_get_extract_specs_reads_the_growth_rows():
+    df = pd.DataFrame({"genotype": ["wt"], "titrant_name": ["iptg"],
+                       "map_theta_group": [0]})
+    specs = hr.get_extract_specs(SimpleNamespace(
+        growth_tm=SimpleNamespace(df=df)))
+    assert len(specs) == 1
+    spec = specs[0]
+    assert spec["input_df"] is df
+    assert spec["params_to_get"] == ["hill_n", "log_hill_K", "X_high", "X_low"]
+    assert spec["map_column"] == "map_theta_group"
+    assert spec["get_columns"] == ["genotype", "titrant_name"]
+    assert spec["in_run_prefix"] == "theta_"

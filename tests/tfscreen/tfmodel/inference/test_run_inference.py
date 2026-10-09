@@ -955,44 +955,6 @@ def test_get_laplace_posteriors_non_auto_loc_keys_ignored(tmpdir):
     assert os.path.exists(f"{out_prefix}_posterior.h5")
 
 
-def test_get_laplace_posteriors_negative_eigenvalues_no_nan(tmpdir, mocker):
-    """An indefinite Hessian (negative eigenvalues) must not produce NaN posteriors.
-
-    Regression test: a MAP solution at a saddle point has negative Hessian
-    eigenvalues.  The old code (jitter + jnp.linalg.inv) left the covariance
-    non-PD in float32, causing jax.random.multivariate_normal to return all-NaN.
-    The fix uses numpy float64 eigendecomposition, clamps negative eigenvalues
-    to 1e-3, and samples via z @ L^T instead of multivariate_normal.
-
-    LaplaceModel(num_genotype=2) has D=3 unconstrained parameters
-    (1 global_p + 2 geno_p), so a 3x3 Hessian is injected.
-    """
-    model = LaplaceModel(num_genotype=2)
-    ri, map_params = _laplace_map_params(model)
-
-    # 3x3 symmetric matrix with one clearly negative eigenvalue (-5).
-    bad_H = jnp.array([[10., 0., 0.],
-                        [ 0., -5., 0.],
-                        [ 0.,  0.,  8.]])
-
-    # jax.hessian(fn)(x): patch so that jax.hessian(pe_fn) returns a callable
-    # that ignores x and returns bad_H regardless of fn/x.
-    mocker.patch("jax.hessian", return_value=lambda x: bad_H)
-
-    out_prefix = str(tmpdir.join("laplace_negeig"))
-    ri.get_laplace_posteriors(
-        map_params=map_params,
-        out_prefix=out_prefix,
-        num_posterior_samples=20,
-        sampling_batch_size=10,
-        forward_batch_size=2,
-    )
-
-    with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
-        for k in hf.keys():
-            assert not np.any(np.isnan(hf[k][:])), f"NaN found in posterior key '{k}'"
-
-
 # =============================================================================
 # get_nuts_posteriors
 # =============================================================================
@@ -1586,3 +1548,99 @@ def test_unscaled_batch_removes_minibatch_scale():
     assert float(jnp.max(scaled.growth.scale_vector)) > 1.0
     unscaled = ri._unscaled_batch(data, jnp.arange(G))
     np.testing.assert_array_equal(np.asarray(unscaled.growth.scale_vector), 1.0)
+
+
+# =============================================================================
+# Laplace edge cases
+# =============================================================================
+
+def test_get_laplace_posteriors_reports_negative_eigenvalues(tmpdir, mocker,
+                                                             capsys):
+    """A saddle-point MAP is named in the log, and the negative direction is
+    floored at the prior's curvature (Normal(0, 1) priors: precision 1)."""
+    model = LaplaceModel(num_genotype=2)
+    ri, map_params = _laplace_map_params(model)
+    bad_H = np.diag([10.0, -5.0, 8.0])
+    mocker.patch.object(ri, "_chunked_hessian", return_value=bad_H)
+    out_prefix = str(tmpdir.join("laplace_saddle"))
+    ri.get_laplace_posteriors(map_params=map_params, out_prefix=out_prefix,
+                              num_posterior_samples=2000,
+                              sampling_batch_size=1000,
+                              forward_batch_size=2)
+    out = capsys.readouterr().out
+    assert "1 negative Hessian eigenvalues" in out
+    assert "min=-5.000e+00" in out
+    assert "1 of 3 eigenvalues raised" in out
+    with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
+        geno = hf["geno_p"][...]
+    # ravel order: geno_p[0], geno_p[1], global_p; geno_p[0] has curvature
+    # 10, geno_p[1] the floored -5 -> prior precision 1
+    assert np.std(geno[:, 0]) == pytest.approx(np.sqrt(0.1), rel=0.1)
+    assert np.std(geno[:, 1]) == pytest.approx(1.0, rel=0.1)
+
+
+def test_laplace_prior_precision_falls_back_for_mismatched_shape(monkeypatch):
+    """An element whose prior SD cannot be broadcast onto it gets
+    LAPLACE_MIN_EIGENVALUE; the others get their prior's precision."""
+    import tfscreen.tfmodel.inference.run_inference as ri_mod
+    real = ri_mod.site_unconstrained_prior_sds
+
+    def wrong_shape_for_a(sites):
+        sds = dict(real(sites))
+        sds["a"] = np.ones(4)   # a is library-sized (6)
+        return sds
+
+    monkeypatch.setattr(ri_mod, "site_unconstrained_prior_sds",
+                        wrong_shape_for_a)
+    model = BlockModel()
+    ri, _, unc, flat, unravel, kw = _block_setup(model)
+    D = flat.shape[0]
+    prec = ri._laplace_prior_precision(unc, kw, D)
+    assert prec.shape == (D,) == (13,)
+    # ravel order: a (6), b (6), mu
+    np.testing.assert_allclose(prec[:6], LAPLACE_MIN_EIGENVALUE)
+    np.testing.assert_allclose(prec[6:], 1.0, rtol=1e-4)
+
+
+def test_block_laplace_factors_refuse_model_without_genotype_parameters():
+    model = BlockModel()
+    ri, _, unc, flat, unravel, kw = _block_setup(model)
+    with pytest.raises(ValueError, match="same number of parameters"):
+        ri.block_laplace_factors(unc, {}, model.data, flat, unravel, kw)
+
+
+def test_arrowhead_holds_negative_shared_directions(mocker, capsys):
+    """A negative direction of the Schur complement is held at the MAP: no
+    variance, named in the log and in held_shared_directions."""
+    model = BlockModel()
+    ri, _, unc, flat, unravel, kw = _block_setup(model)
+    real = ri._genotype_hessian_parts
+
+    def negative_shared(*args, **kwargs):
+        elem_idx, blocks, shared_idx, coupling, shared_block = real(*args,
+                                                                    **kwargs)
+        return (elem_idx, blocks, shared_idx, coupling,
+                shared_block - 1e3 * np.eye(shared_block.shape[0]))
+
+    mocker.patch.object(ri, "_genotype_hessian_parts",
+                        side_effect=negative_shared)
+    elem_idx, L_blocks, shared_idx, L_shared, response = \
+        ri.arrowhead_laplace_factors(unc, ri._get_genotype_dim_map(),
+                                     model.data, flat, unravel, kw)
+    out = capsys.readouterr().out
+    assert "1 of 1 directions of the Schur complement negative" in out
+    assert "eigenvalue" in out and "mu[0]" in out
+    np.testing.assert_allclose(L_shared @ L_shared.T, 0.0, atol=1e-12)
+    held = ri.held_shared_directions
+    assert list(held["parameter"]) == ["mu[0]"]
+    assert held["direction"].iloc[0] == 0
+    assert held["eigenvalue"].iloc[0] < 0
+    assert abs(held["loading"].iloc[0]) == pytest.approx(1.0)
+
+
+def test_report_nuts_diagnostics_survives_failure(capsys):
+    from unittest.mock import MagicMock
+    mcmc = MagicMock()
+    mcmc.get_samples.side_effect = RuntimeError("no chains")
+    RunInference._report_nuts_diagnostics(mcmc)
+    assert "NUTS: diagnostics unavailable (no chains)" in capsys.readouterr().out
