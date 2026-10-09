@@ -309,3 +309,59 @@ in the composition fit) and the wt's growth. The tube totals' residual
 after the cfu0 level is now mostly control against selection conditions
 (control tubes -1.2 kanR, -0.7 pheS in log real/simulated).
 
+**Calibrated arms on the cluster (2026-10-08/09, `sim_realistic_s2`,
+`sim_poisson_s2`, downloaded to the gitignored
+`planning/studies/full-size-sim-3/`).** Both ran end to end; every MAP
+stage converged on the exact loss; the arrowhead Laplace held 9 and 10
+shared directions; the tube offsets are unstructured (smallest BH q 0.45
+and 0.21; SD 0.32 and 0.35, about twice the held 0.17, from the
+simulator's per-tube rate noise). The realistic arm's read depth
+reproduces the local check exactly (same seed and code). The Poisson arm
+is evener (median double 925 reads, 614 dropped), since it has no founder
+or PCR noise.
+
+| | realistic | Poisson |
+|---|---|---|
+| X: Pearson r (all), r above 1e3 reads | 0.36, 0.94 | 0.94, 0.99 |
+| X: 95% coverage (all), above 1e3 reads | 0.66, 0.50 | 0.29, 0.14 |
+| log K: r, 95% coverage | 0.27, 0.81 | 0.59, 0.82 |
+| log n: r, bias, 95% coverage | 0.23, +0.23, 0.96 | 0.61, +0.00, 0.92 |
+| dk_geno: r, bias, 95% coverage | 0.25, -0.010, 0.67 | 0.72, -0.004, 0.39 |
+| growth k bias per minute | +0.009 | +0.003 |
+| growth m kanR+kan, pheS+4CP (truth -0.0138, +0.0141) | -0.0203, +0.0202 | -0.0182, +0.0164 |
+| k and m 95% coverage | 0 | 0 (m 0.25) |
+
+X by total reads per genotype (realistic / Poisson):
+
+| reads | genotypes | r | RMSE after affine map | slope | bias | 95% coverage |
+|---|---|---|---|---|---|---|
+| <=100 | 37,707 / 17,526 | 0.26 / 0.72 | 0.42 / 0.30 | 0.05 / 0.60 | -0.07 / -0.12 | 0.97 / 0.87 |
+| 1e2-1e3 | 89,022 / 97,548 | 0.62 / 0.96 | 0.34 / 0.12 | 0.49 / 1.10 | -0.09 / -0.12 | 0.82 / 0.51 |
+| 1e3-1e4 | 64,362 / 89,313 | 0.93 / 0.99 | 0.16 / 0.06 | 1.19 / 1.16 | -0.10 / -0.12 | 0.56 / 0.16 |
+| 1e4-1e5 | 15,325 / 17,129 | 0.99 / 0.99 | 0.07 / 0.06 | 1.36 / 1.17 | -0.10 / -0.12 | 0.29 / 0.02 |
+| >1e5 | 2,135 / 1,869 | 0.99 / 0.99 | 0.06 / 0.06 | 1.37 / 1.17 | -0.09 / -0.12 | 0.08 / 0.01 |
+
+What this says, at realistic depth:
+
+- **Ranking above 1e3 reads is good in both arms** (r 0.93-0.99). Their
+  error is shared, not per genotype: X is compressed (slope 1.2-1.4;
+  |m| 30-45% too large) and shifted (-0.09 to -0.12), and k slid up
+  against dk_geno. The arrowhead Laplace holds exactly those directions,
+  so k and m have no interval and coverage falls with depth to near 0.
+  This is the step 8 item "anchor k and m, give the held directions an
+  interval"; fixing it should bring deep coverage up without changing r.
+- **Realistic noise, not depth alone, is what costs the shallow
+  genotypes.** At 1e2-1e3 reads (89k-98k genotypes in both arms, the
+  bulk of the real doubles) Poisson counts give r 0.96 and the realistic
+  arm 0.62; at <=100 reads 0.72 against 0.26. The realistic arm's extra
+  variance is founder sampling and the PCR template bottleneck (calibrated
+  to the real counts' 5-18x overdispersion). For the next experiment's
+  design that points at the noise sources, not only at depth: with
+  templates at a tenth of the reads, the PCR bottleneck alone multiplies
+  the count variance about 13-fold, so more template DNA into PCR is
+  likely the larger lever than more reads. Not yet tested: a sweep of
+  `pcr_template_molecules` and `cfu0` on this simulation would say how
+  much each buys.
+- log n is biased up (+0.23) under realistic noise only; dk_geno is
+  poorly recovered at depth-limited genotypes and undercovers in both.
+

@@ -218,6 +218,7 @@ planning/results/
 planning/studies/recipe/
 planning/studies/full-size-sim/sim_*/
 planning/studies/full-size-sim/pilot_*/
+planning/studies/full-size-sim-*/
 
 .DS_Store 
 
