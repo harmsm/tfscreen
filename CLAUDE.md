@@ -475,6 +475,11 @@ science prioritization that takes up
 simulation (`planning/studies/full-size-sim/`) is step 8's baseline: X
 undercovers on a full library, worse with read depth, because the k/m/
 dk_geno shared errors are held at the MAP by the arrowhead Laplace.
+`planning/deep-coverage.md` (active, 2026-10-09) works on that: honest
+intervals for the well-measured genotypes from this experiment's data,
+starting with k/m priors from the wt monoculture rates
+(`planning/studies/km-anchor/`). `planning/design-noise-sweep.md` (idea)
+holds the next screen's noise-source sweep.
 
 ## YAML Standards
 
