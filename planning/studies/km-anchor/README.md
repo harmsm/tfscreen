@@ -118,4 +118,42 @@ The commit that adds this study. Every step writes its provenance.
 
 ## Results
 
-Pending.
+Run 2026-10-09 (all three arms converged at every stage; offsets clean in
+all). **The data reject the anchor, in the simulation and in the real
+data.**
+
+| arm | condition | k prior (SD) | k fit | m prior (SD) | m fit | truth k, m |
+|---|---|---|---|---|---|---|
+| unanchored sim (`sim_realistic_s2`) | kanR+kan | 0.015 (0.01) | 0.0274 | 0 (0.01) | -0.0203 | 0.0149, -0.0138 |
+| `anchor_sim` | kanR+kan | 0.0150 (0.002) | 0.0247 | -0.0141 (0.002) | -0.0184 | 0.0149, -0.0138 |
+| `anchor_sim_perturbed` | kanR+kan | 0.0156 (0.002) | 0.0255 | -0.0140 (0.002) | -0.0199 | 0.0149, -0.0138 |
+| `anchor_sim` | pheS+4CP | 0.0031 (0.002) | 0.0065 | 0.0144 (0.002) | 0.0183 | 0.0033, 0.0141 |
+| recipe (real) | kanR+kan | 0.015 (0.01) | 0.0298 | 0 (0.01) | -0.0204 | |
+| `anchor_real` | kanR+kan | 0.0150 (0.002) | 0.0249 | -0.0141 (0.002) | -0.0202 | |
+| recipe (real) | pheS+4CP | 0.015 (0.01) | 0.0226 | 0 (0.01) | 0.0097 | |
+| `anchor_real` | pheS+4CP | 0.0031 (0.002) | 0.0172 | 0.0144 (0.002) | 0.0097 | |
+
+- k moves by a pure slide: on the real data it fell by 0.005 in every
+  condition, the unanchored controls included, with dk_geno up by 0.0048
+  everywhere; it still ends five prior SDs above the monoculture.
+- m does not move. The real kanR m stays at -0.020 against a prior of
+  -0.014 +/- 0.002 (pheS 0.0097 against 0.0144), so the likelihood pins it.
+  In the simulation, given the truth as its prior, the fit still puts m at
+  -0.018 to -0.020 against -0.0138: the fitted model prefers the wrong m.
+- Deep coverage barely improves (`anchor_sim`, X 95% coverage 0.65 /
+  0.35 / 0.22 at 1e3-1e4 / 1e4-1e5 / >1e5 reads, against 0.56 / 0.29 /
+  0.08 unanchored); X slope 1.08-1.23 against 1.19-1.37.
+- The real fit is otherwise unchanged (X shifts by 0.03, log K and n by
+  under 0.01, 9 held directions).
+
+So the |m| inflation is a misspecification of the fit against how the
+simulation makes its data, not a weakly pinned ridge, and the simulation
+reproduces the real kanR numbers, so the real kanR X is most likely
+compressed by the same factor (~1.4). Ruled out: the OD-derived tube totals
+(unbiased in the simulation, drift <= 0.001 per minute, 96% of tubes in the
+calibrated range) and the 2026-10-08 simulator features (the bias is in the
+s1b arms, which had neither unassigned reads nor the excess wt). Suspects:
+congression (the simulation's lambda 0.357 with the homodimer rule; the fit
+uses `single`), per-tube rate noise (the fit has level offsets), and the
+dk_geno prior's shape. Next: a reduced-library factorial that switches each
+off (`planning/deep-coverage.md`, step 1b).

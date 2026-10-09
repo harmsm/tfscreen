@@ -43,7 +43,7 @@ is the monoculture), so the real kanR curves are likely compressed too.
 
 ## Steps
 
-1. [ ] **Anchor k and m with the monoculture rates**
+1. [x] **Anchor k and m with the monoculture rates**
    (`planning/studies/km-anchor/`). Three fit-only arms: the realistic
    simulation with the monoculture priors, the same with the rates
    perturbed by their own error, and the real data with the monoculture
@@ -52,6 +52,20 @@ is the monoculture), so the real kanR curves are likely compressed too.
    move to the monoculture with the offsets staying clean (or whether the
    data fight the anchor, which would point at a real in-pool difference
    such as the selection-onset transient).
+   Done 2026-10-09: the data reject the anchor in the simulation and the
+   real data alike. k moves only along the k/dk_geno slide; m stays about
+   40% too large in kanR (sim truth -0.0138, fit -0.018 to -0.020 even with
+   the truth as a 0.002-SD prior; real fit -0.020 against the monoculture's
+   -0.014). The bias is in the fitted likelihood, a misspecification
+   (`planning/studies/km-anchor/`).
+1b. [ ] **Find the misspecification behind |m|.** A reduced-library
+   factorial on the simulation, local and fast: the same design and
+   conditions, switching off one of congression, per-tube rate noise and
+   realistic count noise at a time (and the dk_geno prior's shape), and
+   measuring the m bias. Whatever removes it is what the fit must model or
+   correct before step 2 is worth doing. Set up 2026-10-09 as
+   `planning/studies/m-bias-factorial/` (5 arms x 2 seeds, 5,256 doubles,
+   cluster: the staged MAP was too slow on a laptop).
 2. [ ] **An interval for the held directions.** If directions are still
    held with k and m anchored, floor them at the prior instead of holding
    them, so k and m carry the monoculture's uncertainty into every X
