@@ -7,8 +7,9 @@ get_guesses, define_model (no epi / with epi), guide, get_extract_specs.
 Key differences from mwc_dimer variant:
 - ThetaParam gains ln_K_u (G,) and conc_unit_scale fields
 - ModelPriors gains theta_ln_K_u_wt_loc and theta_ln_K_u_wt_scale
-- define_model samples theta_ln_K_u_wt and broadcasts it homogeneously
-- ln_K_u[g] == ln_K_u_wt for all g (no per-mutation unfolding effect)
+- define_model samples theta_ln_K_u_wt, and each mutation shifts ln_K_u by
+  its ΔΔG_H (K_u = [U]/[H] with ΔΔG_U = 0), exposed as d_ln_K_u
+  (test_unfolding_projection.py covers the projection in depth)
 - guide samples theta_ln_K_u_wt with variational params theta_ln_K_u_wt_loc/scale
 """
 
@@ -369,12 +370,15 @@ class TestDefineModel:
         out, _ = _run_model(_make_mock())
         assert out.ln_K_u.shape == (_G,)
 
-    def test_ln_K_u_is_homogeneous(self):
-        """ln_K_u[g] must be identical for all genotypes (no per-mutation unfolding)."""
-        out, _ = _run_model(_make_mock())
+    def test_ln_K_u_shifts_by_ddG_H(self):
+        """ln_K_u[g] − ln_K_u[wt] is the summed ΔΔG_H (K_u = [U]/[H], ΔΔG_U = 0)."""
+        out, tr = _run_model(_make_mock())
+        ddG_H = np.asarray(tr["theta_ddG"]["value"])[:, 0]
         vals = np.asarray(out.ln_K_u)
-        np.testing.assert_allclose(vals, vals[0], atol=1e-6,
-                                   err_msg="ln_K_u is not homogeneous across genotypes")
+        np.testing.assert_allclose(vals - vals[0], _MUT_GENO.T @ ddG_H,
+                                   atol=1e-5)
+        np.testing.assert_allclose(tr["theta_d_ln_K_u"]["value"], ddG_H,
+                                   atol=1e-6)
 
     def test_conc_unit_scale_preserved(self):
         out, _ = _run_model(_make_mock())
@@ -403,11 +407,11 @@ class TestDefineModel:
                      "theta_ln_K_u"):   # new deterministic site
             assert site in tr, f"Missing deterministic site: {site}"
 
-    def test_theta_ln_K_u_det_site_is_homogeneous(self):
-        """The theta_ln_K_u deterministic site must be a constant-valued (G,) array."""
-        _, tr = _run_model(_make_mock())
-        ln_K_u_vals = np.asarray(tr["theta_ln_K_u"]["value"])
-        np.testing.assert_allclose(ln_K_u_vals, ln_K_u_vals[0], atol=1e-6)
+    def test_theta_ln_K_u_det_site_matches_param(self):
+        """The theta_ln_K_u deterministic site is the assembled (G,) ln_K_u."""
+        out, tr = _run_model(_make_mock())
+        np.testing.assert_allclose(np.asarray(tr["theta_ln_K_u"]["value"]),
+                                   np.asarray(out.ln_K_u), atol=1e-6)
 
     def test_wrong_struct_names_raises(self):
         data = _make_mock(struct_names=('H', 'HO', 'L', 'LO', 'HE2', 'WRONG'))
@@ -486,10 +490,11 @@ class TestGuide:
         out, _ = _run_guide(_make_mock())
         assert out.ln_K_u.shape == (_G,)
 
-    def test_ln_K_u_is_homogeneous(self):
+    def test_ln_K_u_varies_in_guide(self):
+        """The guide assembles ln_K_u from ΔΔG_H too, so genotypes differ."""
         out, _ = _run_guide(_make_mock())
         vals = np.asarray(out.ln_K_u)
-        np.testing.assert_allclose(vals, vals[0], atol=1e-6)
+        assert not np.allclose(vals, vals[0], atol=1e-6)
 
     def test_sample_sites_match_model_no_epi(self):
         data = _make_mock()

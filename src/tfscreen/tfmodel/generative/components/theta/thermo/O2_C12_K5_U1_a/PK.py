@@ -7,8 +7,8 @@ shifted by Δln_K values inferred from the observations; no structural informati
 is used.  Registry name: ``theta_mwc_dimer_unfolded_lnK_mut``.
 
 Contrast with PddG (Δln_K derived from user-supplied structural ΔΔG) and PnnC
-(Δln_K derived from NN-predicted structural ΔΔG).  Note that PddG and PnnC in
-this family hold d_ln_K_u = 0 for all mutations by design.
+(Δln_K derived from NN-predicted structural ΔΔG).  In PddG and PnnC,
+d_ln_K_u is not free: it equals ΔΔG_H, since mutations leave U unchanged.
 
 Identical to mwc_dimer/lnK_mut.py with one additional scalar parameter:
 

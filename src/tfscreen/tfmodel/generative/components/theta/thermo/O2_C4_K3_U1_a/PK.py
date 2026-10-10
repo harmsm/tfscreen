@@ -8,8 +8,8 @@ Use this when mutations may significantly destabilise the protein and a flat
 θ curve is observed.  Registry name: ``theta_lac_dimer_unfolded_lnK_mut``.
 
 Contrast with PddG (Δln_K derived from user-supplied structural ΔΔG) and PnnC
-(Δln_K derived from NN-predicted structural ΔΔG).  Note that PddG and PnnC in
-this family hold d_ln_K_U = 0 for all mutations by design.
+(Δln_K derived from NN-predicted structural ΔΔG).  In PddG and PnnC,
+d_ln_K_U is not free: it equals ΔΔG_H, since mutations leave U unchanged.
 
 Identical to lac_dimer/lnK_mut.py with one additional scalar parameter:
 

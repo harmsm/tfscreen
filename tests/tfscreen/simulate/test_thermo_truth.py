@@ -80,13 +80,16 @@ def _extract_names(component):
     return [p for spec in specs for p in spec["params_to_get"]]
 
 
-# PK covers each family; the PddG case covers the per-structure ddG truth.
+# PK covers each family; PddG cases cover the per-structure ddG truth and,
+# for U1, the unfolding shift projected from ddG_H.
 CASES = [
     ("thermo.O2_C4_K3_U0_a.PK", ["ln_K_op", "ln_K_HL"]),
     ("thermo.O2_C4_K3_U1_a.PK", ["ln_K_op", "ln_K_HL", "ln_K_U"]),
     ("thermo.O2_C12_K5_U0_a.PK", ["ln_K_h_l", "ln_K_h_o", "ln_K_l_o"]),
     ("thermo.O2_C12_K5_U1_a.PK", ["ln_K_h_l", "ln_K_h_o", "ln_K_l_o", "ln_K_u"]),
     ("thermo.O2_C4_K3_U0_a.PddG", ["ln_K_op", "ln_K_HL"]),
+    ("thermo.O2_C4_K3_U1_a.PddG", ["ln_K_op", "ln_K_HL", "ln_K_U"]),
+    ("thermo.O2_C12_K5_U1_a.PddG", ["ln_K_h_l", "ln_K_h_o", "ln_K_l_o", "ln_K_u"]),
 ]
 
 
@@ -141,6 +144,24 @@ def test_pddg_writes_per_structure_ddG(tmp_path):
     # The model's projection: d_ln_K_op = ddG_H - ddG_HD.
     np.testing.assert_allclose(mut["d_ln_K_op"], mut["ddG_H"] - mut["ddG_HD"],
                                atol=1e-5)
+
+
+@pytest.mark.parametrize("component, structs, u", [
+    ("thermo.O2_C4_K3_U1_a.PddG", _C4_STRUCTS, "ln_K_U"),
+    ("thermo.O2_C12_K5_U1_a.PddG", _C12_STRUCTS, "ln_K_u"),
+])
+def test_u1_pddg_unfolding_truth_is_ddG_H(component, structs, u, tmp_path):
+    """K_U = [U]/[H] and mutations leave U alone, so d_ln_K_U = ddG_H, and the
+    per-genotype ln_K_U truth varies across genotypes."""
+    _, _, params, truth = _draw(component,
+                                thermo_data=_ddG_csv(tmp_path / "ddG.csv",
+                                                     component))
+    mut = truth["mutation"]
+    for s in structs:
+        assert f"ddG_{s}" in mut.columns
+    np.testing.assert_allclose(mut[f"d_{u}"], mut["ddG_H"], atol=1e-5)
+    assert f"epi_{u}" in truth["pair"].columns
+    assert params[u].nunique() > 1
 
 
 def test_mutation_truth_does_not_change_the_draw():

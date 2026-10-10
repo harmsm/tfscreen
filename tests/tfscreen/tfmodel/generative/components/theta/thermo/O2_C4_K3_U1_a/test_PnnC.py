@@ -308,13 +308,14 @@ class TestDefineModel:
         out, _ = _run_model(data)
         assert out.ln_K_U.shape == (_G,)
 
-    def test_ln_K_U_homogeneous(self):
-        """All elements of ln_K_U must be equal — K_U is WT-only with no per-mut effects."""
+    def test_ln_K_U_shifts_by_ddG_H(self):
+        """ln_K_U[g] − ln_K_U[wt] is the summed ΔΔG_H (K_U = [U]/[H], ΔΔG_U = 0)."""
         data = _make_mock()
-        out, _ = _run_model(data)
+        out, tr = _run_model(data)
+        ddG_H = np.asarray(tr["theta_ddG"]["value"])[:, 0]
         vals = np.asarray(out.ln_K_U)
-        np.testing.assert_allclose(vals, vals[0], atol=1e-6,
-                                   err_msg="ln_K_U should be homogeneous across genotypes")
+        np.testing.assert_allclose(vals - vals[0], _MUT_GENO.T @ ddG_H,
+                                   atol=1e-5)
 
     def test_sample_sites_present(self):
         data = _make_mock()
@@ -380,12 +381,18 @@ class TestDefineModel:
             np.asarray(out.ln_K_op[1]), np.asarray(out.ln_K_op[2]), atol=1e-5
         )
 
-    def test_ln_K_U_homogeneous_with_epi(self):
-        """K_U homogeneity holds even when epistasis is active."""
+    def test_ln_K_U_takes_pair_epistasis_on_H(self):
+        """The double mutant's ln_K_U adds the pair's epistatic ΔΔG_H."""
         data = _make_mock(num_pair=1)
-        out, _ = _run_model(data)
+        out, tr = _run_model(data)
+        ddG_H = np.asarray(tr["theta_ddG"]["value"])[:, 0]
+        epi_H = np.asarray(tr["theta_epi_ddG"]["value"])[:, 0]
+        np.testing.assert_allclose(tr["theta_epi_ln_K_U"]["value"], epi_H,
+                                   atol=1e-6)
+        expected = _MUT_GENO.T @ ddG_H
+        expected[3] += epi_H[0]
         vals = np.asarray(out.ln_K_U)
-        np.testing.assert_allclose(vals, vals[0], atol=1e-6)
+        np.testing.assert_allclose(vals - vals[0], expected, atol=1e-5)
 
     def test_tf_op_totals_preserved(self):
         data = _make_mock()
@@ -416,11 +423,12 @@ class TestGuide:
         out, _ = _run_guide(data)
         assert out.ln_K_U.shape == (_G,)
 
-    def test_ln_K_U_homogeneous_in_guide(self):
+    def test_ln_K_U_varies_in_guide(self):
+        """The guide assembles ln_K_U from ΔΔG_H too, so genotypes differ."""
         data = _make_mock()
         out, _ = _run_guide(data)
         vals = np.asarray(out.ln_K_U)
-        np.testing.assert_allclose(vals, vals[0], atol=1e-6)
+        assert not np.allclose(vals, vals[0], atol=1e-6)
 
     def test_sample_sites_match_model(self):
         """Guide must contain exactly the same pyro.sample site names as the model."""

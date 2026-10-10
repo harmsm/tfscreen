@@ -7,8 +7,9 @@ get_priors, get_guesses, define_model, guide, get_extract_specs.
 Key differences from mwc_dimer variant:
 - ThetaParam gains ln_K_u (G,) and conc_unit_scale fields
 - ModelPriors gains theta_ln_K_u_wt_loc and theta_ln_K_u_wt_scale
-- define_model samples theta_ln_K_u_wt and broadcasts it homogeneously
-- ln_K_u[g] == ln_K_u_wt for all g (no per-mutation unfolding effect)
+- define_model samples theta_ln_K_u_wt, and each mutation shifts ln_K_u by
+  its ΔΔG_H (K_u = [U]/[H] with ΔΔG_U = 0), exposed as d_ln_K_u
+  (test_unfolding_projection.py covers the projection in depth)
 - guide samples theta_ln_K_u_wt with variational params theta_ln_K_u_wt_loc/scale
 - struct_features is (M, S) float32 ddG prior means (no NN, no epistasis)
 - get_extract_specs always returns 3 specs (no epistasis spec)
@@ -334,12 +335,15 @@ class TestDefineModel:
         out, _ = _run_model(_make_mock())
         assert out.ln_K_u.shape == (_G,)
 
-    def test_ln_K_u_is_homogeneous(self):
-        """ln_K_u[g] must be identical for all genotypes (no per-mutation unfolding)."""
-        out, _ = _run_model(_make_mock())
+    def test_ln_K_u_shifts_by_ddG_H(self):
+        """ln_K_u[g] − ln_K_u[wt] is the summed ΔΔG_H (K_u = [U]/[H], ΔΔG_U = 0)."""
+        out, tr = _run_model(_make_mock())
+        ddG_H = np.asarray(tr["theta_ddG"]["value"])[:, 0]
         vals = np.asarray(out.ln_K_u)
-        np.testing.assert_allclose(vals, vals[0], atol=1e-6,
-                                   err_msg="ln_K_u is not homogeneous across genotypes")
+        np.testing.assert_allclose(vals - vals[0], _MUT_GENO.T @ ddG_H,
+                                   atol=1e-5)
+        np.testing.assert_allclose(tr["theta_d_ln_K_u"]["value"], ddG_H,
+                                   atol=1e-6)
 
     def test_conc_unit_scale_preserved(self):
         out, _ = _run_model(_make_mock())
@@ -368,11 +372,11 @@ class TestDefineModel:
                      "theta_ln_K_u"):   # new deterministic site
             assert site in tr, f"Missing deterministic site: {site}"
 
-    def test_theta_ln_K_u_det_site_is_homogeneous(self):
-        """The theta_ln_K_u deterministic site must be constant across all genotypes."""
-        _, tr = _run_model(_make_mock())
-        ln_K_u_vals = np.asarray(tr["theta_ln_K_u"]["value"])
-        np.testing.assert_allclose(ln_K_u_vals, ln_K_u_vals[0], atol=1e-6)
+    def test_theta_ln_K_u_det_site_matches_param(self):
+        """The theta_ln_K_u deterministic site is the assembled (G,) ln_K_u."""
+        out, tr = _run_model(_make_mock())
+        np.testing.assert_allclose(np.asarray(tr["theta_ln_K_u"]["value"]),
+                                   np.asarray(out.ln_K_u), atol=1e-6)
 
     def test_no_epi_sites(self):
         """lnK_ddG_prior has no epistasis — ever."""
@@ -474,10 +478,11 @@ class TestGuide:
         out, _ = _run_guide(_make_mock())
         assert out.ln_K_u.shape == (_G,)
 
-    def test_ln_K_u_is_homogeneous(self):
+    def test_ln_K_u_varies_in_guide(self):
+        """The guide assembles ln_K_u from ΔΔG_H too, so genotypes differ."""
         out, _ = _run_guide(_make_mock())
         vals = np.asarray(out.ln_K_u)
-        np.testing.assert_allclose(vals, vals[0], atol=1e-6)
+        assert not np.allclose(vals, vals[0], atol=1e-6)
 
     def test_sample_sites_match_model(self):
         data = _make_mock()
@@ -682,7 +687,7 @@ def _make_ddG_posteriors(T, M, P=0, S=5, seed=0):
     KEY DIFFERENCES from lnK_mut:
     - d_ln_K_h_e and d_ln_K_l_e are (S, M) with no T dimension.
     - epi_h_e and epi_l_e are (S, P) with no T dimension.
-    - ln_K_u_wt is a scalar (S,) — no per-mutation delta.
+    - ln_K_u carries a per-mutation d_ln_K_u (S, M), = ΔΔG_H in the model.
     """
     rng = np.random.default_rng(seed)
     post = {}
@@ -697,8 +702,10 @@ def _make_ddG_posteriors(T, M, P=0, S=5, seed=0):
     post["theta_d_ln_K_l_o"]  = rng.standard_normal((S, M)).astype(np.float32) * 0.3
     post["theta_d_ln_K_h_e"]  = rng.standard_normal((S, M)).astype(np.float32) * 0.3  # no T
     post["theta_d_ln_K_l_e"]  = rng.standard_normal((S, M)).astype(np.float32) * 0.3  # no T
+    post["theta_d_ln_K_u"]    = rng.standard_normal((S, M)).astype(np.float32) * 0.3
     if P > 0:
-        for key in ["theta_epi_ln_K_h_l", "theta_epi_ln_K_h_o", "theta_epi_ln_K_l_o"]:
+        for key in ["theta_epi_ln_K_h_l", "theta_epi_ln_K_h_o", "theta_epi_ln_K_l_o",
+                    "theta_epi_ln_K_u"]:
             post[key] = np.zeros((S, P), dtype=np.float32)
         for key in ["theta_epi_ln_K_h_e", "theta_epi_ln_K_l_e"]:
             post[key] = np.zeros((S, P), dtype=np.float32)   # no T!
@@ -759,27 +766,32 @@ class TestDdGPriorPredictUnmeasured:
         assert (result["upper"] >= result["median"]).all()
         assert (result["median"] >= result["lower"]).all()
 
-    def test_ln_K_u_is_homogeneous(self):
-        """All target genotypes receive the same ln_K_u (WT only, no per-mutation delta)."""
+    def test_d_ln_K_u_alone_changes_prediction(self):
+        """With every folded-state delta zero, d_ln_K_u alone moves theta."""
         S = 10
         post = _make_ddG_posteriors(T=1, M=2, S=S)
-        # Zero out all mutation deltas so only WT K values differ
-        post["theta_d_ln_K_h_l"][:] = 0
-        post["theta_d_ln_K_h_o"][:] = 0
-        post["theta_d_ln_K_l_o"][:] = 0
-        post["theta_d_ln_K_h_e"][:] = 0
-        post["theta_d_ln_K_l_e"][:] = 0
+        for k in ["theta_d_ln_K_h_l", "theta_d_ln_K_h_o", "theta_d_ln_K_l_o",
+                  "theta_d_ln_K_h_e", "theta_d_ln_K_l_e"]:
+            post[k][:] = 0
+        post["theta_d_ln_K_u"][:] = 0
 
         kw = _common_kwargs_p(post)
-        kw["target_genotypes"] = ["wt", "M42I", "K84L", "M42I/K84L"]
         kw["q_to_get"] = {"median": 0.5}
-        result = ddG_predict(**kw)
-
-        # With zero mutation deltas, all genotypes get identical predictions
+        flat = ddG_predict(**kw)
         for conc in [0.0, 0.1, 1.0, 10.0]:
-            rows = result[result["titrant_conc"] == conc]["median"].values
+            rows = flat[flat["titrant_conc"] == conc]["median"].values
             np.testing.assert_allclose(rows, rows[0], atol=1e-5,
                                        err_msg=f"Predictions differ at conc={conc}")
+
+        post["theta_ln_K_u_wt"][:] = 0.0          # K_u comparable to Z
+        post["theta_d_ln_K_u"][:, 0] = 4.0        # destabilise M42I
+        kw = _common_kwargs_p(post)
+        kw["q_to_get"] = {"median": 0.5}
+        shifted = ddG_predict(**kw).set_index(["genotype", "titrant_conc"])
+        wt = shifted.loc["wt", "median"].values
+        assert np.all(shifted.loc["M42I", "median"].values < wt)
+        np.testing.assert_allclose(shifted.loc["K84L", "median"].values, wt,
+                                   atol=1e-5)
 
     def test_epistasis_shifts_double_mutant(self):
         T, M, P, S = 1, 2, 1, 30
@@ -817,7 +829,7 @@ class TestDdGPriorPredictUnmeasured:
             d_he_scalar[:, None, :], (S, T, M)).astype(np.float32)
         post_mut["theta_d_ln_K_l_e"] = np.broadcast_to(
             d_le_scalar[:, None, :], (S, T, M)).astype(np.float32)
-        post_mut["theta_d_ln_K_u"]   = np.zeros((S, M), dtype=np.float32)
+        post_mut["theta_d_ln_K_u"]   = post_ddG["theta_d_ln_K_u"].copy()
 
         kw = dict(
             target_genotypes=["wt", "M42I", "K84L"],

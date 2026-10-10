@@ -2,10 +2,8 @@
 PddG — mutation effects on equilibrium constants from user-supplied ΔΔG prior means (lac-dimer-unfolded).
 
 Extends the lac-dimer PddG model with a WT-level unfolding constant (ln_K_U_wt).
-Per-mutation effects on K_op, K_HL, and K_E are derived from user-supplied
-structural ΔΔG (CSV: columns mut, H, HD, L, LE2); K_U is held at its WT value
-for all genotypes (d_ln_K_U = 0) because structure-based predictors describe
-folded-state environments, not global stability.  Registry name:
+Per-mutation effects on K_op, K_HL, K_E, and K_U are derived from user-supplied
+structural ΔΔG (CSV: columns mut, H, HD, L, LE2).  Registry name:
 ``theta_lac_dimer_unfolded_lnK_ddG_prior``.
 
 Contrast with PK (all K shifts inferred from data, including K_U per mutation)
@@ -13,13 +11,20 @@ and PnnC (ΔΔG prior means from a per-structure MLP rather than a user CSV).
 
 Identical to lac_dimer/lnK_ddG_prior.py with one additional scalar parameter:
 
-    ln_K_U_wt  — WT H→U unfolding equilibrium constant (same for all genotypes)
+    ln_K_U_wt  — WT H→U unfolding equilibrium constant
 
-Per-mutation effects on the unfolded state are deliberately absent: structure-
-based ΔΔG predictors describe effects on the *folded* conformational equilibria,
-not global protein stability.  Setting d_ln_K_U = 0 for all mutations is an
-explicit design choice — use lac_dimer_unfolded/lnK_mut if per-mutation
-unfolding effects should be inferred from the data.
+and one additional projection row.  A mutation shifts the free energy of each
+folded structure X by ΔΔG_X and leaves the unfolded state alone (ΔΔG_U = 0,
+the standard assumption).  Because K_U = [U]/[H], the projection convention
+Δln K_{A→B} = ΔΔG_A − ΔΔG_B gives
+
+    Δln K_U = ΔΔG_H − ΔΔG_U = ΔΔG_H
+
+so ln_K_U[g] = ln_K_U_wt + Σ_m ΔΔG_H[m] (plus the pairwise ΔΔG_H epistasis).
+A mutation that raises every folded state by the same ΔΔG leaves K_op, K_HL
+and K_E unchanged and raises K_U by ΔΔG: a pure stability effect.  The
+per-mutation shift is exposed as ``d_ln_K_U`` (and ``epi_ln_K_U`` per pair),
+the same name the PK model uses for its free per-mutation unfolding shift.
 """
 
 import jax.numpy as jnp
@@ -54,6 +59,10 @@ STRUCTURE_NAMES = ('H', 'HD', 'L', 'LE2')
 _PROJ = jnp.array([[1., -1.,  0.,  0.],
                    [1.,  0., -1.,  0.],
                    [0.,  0.,  1., -1.]])
+
+# Unfolding row.  K_U = [U]/[H] and mutations do not shift U (ΔΔG_U = 0), so
+# Δln K_U = ΔΔG_H − ΔΔG_U = ΔΔG_H, in the same convention as _PROJ.
+_PROJ_U = jnp.array([1., 0., 0., 0.])
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -102,6 +111,11 @@ def _project_ddG(ddG):
     return ddG @ _PROJ.T
 
 
+def _project_unfolding(ddG):
+    """Per-mutation Δln K_U = ΔΔG_H (ΔΔG_U = 0); (..., 4) → (...,)."""
+    return ddG @ _PROJ_U
+
+
 def _assemble_K(ln_K_op_wt, ln_K_HL_wt, ln_K_E_wt, delta_lnK, mut_scatter,
                 epi_delta_lnK=None, pair_scatter=None):
     d_op = delta_lnK[:, 0]
@@ -117,6 +131,15 @@ def _assemble_K(ln_K_op_wt, ln_K_HL_wt, ln_K_E_wt, delta_lnK, mut_scatter,
     return ln_K_op, ln_K_HL, ln_K_E
 
 
+def _assemble_K_U(ln_K_U_wt, d_ln_K_U, mut_scatter,
+                  epi_ln_K_U=None, pair_scatter=None):
+    """ln_K_U (G,) from the wt value plus scattered per-mutation/pair shifts."""
+    ln_K_U = ln_K_U_wt + mut_scatter(d_ln_K_U)
+    if epi_ln_K_U is not None and pair_scatter is not None:
+        ln_K_U = ln_K_U + pair_scatter(epi_ln_K_U)
+    return ln_K_U
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Model
 # ──────────────────────────────────────────────────────────────────────────────
@@ -128,7 +151,7 @@ def define_model(name: str,
     Define the lnK_ddG_prior lac-dimer-unfolded theta model.
 
     Adds ``ln_K_U_wt`` to the standard lnK_ddG_prior model.  Per-mutation
-    effects on K_U are fixed at zero (no d_ln_K_U parameter).
+    effects on K_U follow from ΔΔG_H (``d_ln_K_U = ΔΔG_H``; ΔΔG_U = 0).
     """
     perm = _get_struct_perm(data)
     perm_idx = jnp.array(perm)
@@ -166,9 +189,12 @@ def define_model(name: str,
     pyro.deterministic(f"{name}_d_ln_K_op", delta_lnK[:, 0])
     pyro.deterministic(f"{name}_d_ln_K_HL", delta_lnK[:, 1])
     pyro.deterministic(f"{name}_d_ln_K_E",  delta_lnK[:, 2])
+    d_ln_K_U = _project_unfolding(ddG)
+    pyro.deterministic(f"{name}_d_ln_K_U",  d_ln_K_U)
 
     # ── Optional pairwise epistasis ───────────────────────────────────────────
     epi_delta_lnK = None
+    epi_ln_K_U    = None
     pair_scatter  = None
     if has_epi:
         P = data.num_pair
@@ -188,13 +214,15 @@ def define_model(name: str,
         pyro.deterministic(f"{name}_epi_ln_K_op", epi_delta_lnK[:, 0])
         pyro.deterministic(f"{name}_epi_ln_K_HL", epi_delta_lnK[:, 1])
         pyro.deterministic(f"{name}_epi_ln_K_E",  epi_delta_lnK[:, 2])
+        epi_ln_K_U = _project_unfolding(epi_ddG)  # (P,)
+        pyro.deterministic(f"{name}_epi_ln_K_U",  epi_ln_K_U)
 
     ln_K_op, ln_K_HL, ln_K_E = _assemble_K(
         ln_K_op_wt, ln_K_HL_wt, ln_K_E_wt, delta_lnK, mut_scatter,
         epi_delta_lnK=epi_delta_lnK, pair_scatter=pair_scatter,
     )
-    # K_U is homogeneous across genotypes — no per-mutation effects
-    ln_K_U = jnp.full(data.num_genotype, ln_K_U_wt)
+    ln_K_U = _assemble_K_U(ln_K_U_wt, d_ln_K_U, mut_scatter,
+                           epi_ln_K_U=epi_ln_K_U, pair_scatter=pair_scatter)
 
     pyro.deterministic(f"{name}_ln_K_op", ln_K_op)
     pyro.deterministic(f"{name}_ln_K_HL", ln_K_HL)
@@ -284,6 +312,7 @@ def guide(name: str,
 
     # ── Sample epistasis ──────────────────────────────────────────────────────
     epi_delta_lnK = None
+    epi_ln_K_U    = None
     pair_scatter  = None
     if has_epi:
         tau_loc    = pyro.param(f"{name}_epi_tau_loc",    jnp.array(-2.0))
@@ -315,6 +344,7 @@ def guide(name: str,
         epi_SP        = epi_off * tau_epi * _lam_tilde(lam)   # (S, P)
         epi_ddG       = epi_SP.T                               # (P, S)
         epi_delta_lnK = _project_ddG(epi_ddG)                 # (P, 3)
+        epi_ln_K_U    = _project_unfolding(epi_ddG)           # (P,)
 
         pair_scatter = partial(apply_pair_matrix,
                                pair_nnz_pair_idx=jnp.array(data.pair_nnz_pair_idx),
@@ -326,7 +356,8 @@ def guide(name: str,
         ln_K_op_wt, ln_K_HL_wt, ln_K_E_wt, delta_lnK, mut_scatter,
         epi_delta_lnK=epi_delta_lnK, pair_scatter=pair_scatter,
     )
-    ln_K_U = jnp.full(data.num_genotype, ln_K_U_wt)
+    ln_K_U = _assemble_K_U(ln_K_U_wt, _project_unfolding(ddG), mut_scatter,
+                           epi_ln_K_U=epi_ln_K_U, pair_scatter=pair_scatter)
 
     theta_vals = _compute_theta(ln_K_op, ln_K_HL, ln_K_E, ln_K_U,
                                 data.titrant_conc, tf_total, op_total)
@@ -397,7 +428,8 @@ def predict_unmeasured(
     """
     Predict theta for unmeasured genotypes (lac_dimer_unfolded/lnK_ddG_prior).
 
-    K_U is homogeneous across genotypes: ln_K_U_wt is broadcast to all rows.
+    ln_K_U is assembled like the folded-state constants, from ln_K_U_wt plus
+    the per-mutation ``d_ln_K_U`` (= ΔΔG_H) and per-pair ``epi_ln_K_U``.
     """
     import numpy as np
     from tfscreen.tfmodel.inference.posteriors import get_posterior_samples
@@ -432,24 +464,28 @@ def predict_unmeasured(
     d_op = _load("theta_d_ln_K_op")
     d_HL = _load("theta_d_ln_K_HL")
     d_E  = _load("theta_d_ln_K_E")
+    d_U  = _load("theta_d_ln_K_U")
 
     ln_K_op_geno = ln_K_op_wt[:, None] + np.einsum("sm,nm->sn", d_op, mut_mat)
     ln_K_HL_geno = ln_K_HL_wt[:, None] + np.einsum("sm,nm->sn", d_HL, mut_mat)
     ln_K_E_geno  = (ln_K_E_wt[:, :, None]
                     + np.einsum("sm,nm->sn", d_E, mut_mat)[:, None, :])
-    ln_K_U_rows  = ln_K_U_wt[:, None]
+    ln_K_U_geno  = ln_K_U_wt[:, None] + np.einsum("sm,nm->sn", d_U, mut_mat)
 
     if len(pair_labels) > 0:
         epi_op = _load("theta_epi_ln_K_op")   # (S, P)
         epi_HL = _load("theta_epi_ln_K_HL")   # (S, P)
         epi_E  = _load("theta_epi_ln_K_E")    # (S, P) — scalar, no T dim
+        epi_U  = _load("theta_epi_ln_K_U")    # (S, P)
         ln_K_op_geno += np.einsum("sp,np->sn", epi_op, pair_mat)
         ln_K_HL_geno += np.einsum("sp,np->sn", epi_HL, pair_mat)
         ln_K_E_geno  += np.einsum("sp,np->sn", epi_E,  pair_mat)[:, None, :]
+        ln_K_U_geno  += np.einsum("sp,np->sn", epi_U,  pair_mat)
 
     ln_K_op_rows = ln_K_op_geno[:, geno_idx]
     ln_K_HL_rows = ln_K_HL_geno[:, geno_idx]
     ln_K_E_rows  = ln_K_E_geno[:, titrant_idx, geno_idx]
+    ln_K_U_rows  = ln_K_U_geno[:, geno_idx]
 
     conc = calc_df["titrant_conc"].values.copy().astype(float)
     conc[conc == 0] = _ZERO_CONC_VALUE
@@ -500,7 +536,7 @@ def get_extract_specs(ctx):
     mut_df = pd.DataFrame({"mutation": ctx.mut_labels, "map_mut": range(num_mut)})
     specs.append(dict(
         input_df=mut_df,
-        params_to_get=["d_ln_K_op", "d_ln_K_HL", "d_ln_K_E"],
+        params_to_get=["d_ln_K_op", "d_ln_K_HL", "d_ln_K_E", "d_ln_K_U"],
         map_column="map_mut",
         get_columns=["mutation"],
         in_run_prefix="theta_",
@@ -513,7 +549,8 @@ def get_extract_specs(ctx):
         })
         specs.append(dict(
             input_df=pair_df,
-            params_to_get=["epi_ln_K_op", "epi_ln_K_HL", "epi_ln_K_E"],
+            params_to_get=["epi_ln_K_op", "epi_ln_K_HL", "epi_ln_K_E",
+                           "epi_ln_K_U"],
             map_column="map_pair",
             get_columns=["pair"],
             in_run_prefix="theta_",

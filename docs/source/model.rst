@@ -495,5 +495,18 @@ order. The implemented models are:
        features, an HDF5 file given with ``--thermo_data``. See
        :doc:`ligandmpnn-features`.
 
+In the ``U1`` models, ``PddG`` and ``PnnC`` take each mutation's effect on
+unfolding from the same ΔΔG values. A mutation shifts the free energy of each
+folded structure and leaves the unfolded state U unchanged. Because
+K\ :sub:`U` = [U]/[H], a mutation changes ln K\ :sub:`U` by its ΔΔG for H. A
+mutation that raises every folded structure by the same ΔΔG leaves the
+folded-state constants alone and raises K\ :sub:`U` by ΔΔG, a pure stability
+effect. The fit reports this shift per mutation as ``d_ln_K_U`` and per pair
+as ``epi_ln_K_U``, or ``d_ln_K_u`` and ``epi_ln_K_u`` for
+``O2_C12_K5_U1_a``. ``PK`` uses the same names for its free per-mutation
+unfolding shift. Before 2026-10-10 these models held K\ :sub:`U` at its wt
+value for every genotype, which moved U together with H and left every
+mutation's stability unchanged.
+
 Full names look like ``thermo.O2_C4_K3_U0_a.PK`` or
 ``thermo.O2_C12_K5_U1_a.PnnC``.

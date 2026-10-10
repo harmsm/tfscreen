@@ -5,8 +5,9 @@ Covers: _get_struct_perm, _project_ddG, ModelPriors, get_hyperparameters,
 get_priors, get_guesses, define_model, guide, get_extract_specs.
 
 Key difference from base lac_dimer/lnK_ddG_prior: the unfolded variant adds
-a scalar ln_K_U_wt parameter that is sampled for all genotypes but yields a
-homogeneous ln_K_U (no per-mutation effects on K_U).
+a scalar ln_K_U_wt parameter, and each mutation shifts ln_K_U by its ΔΔG_H
+(K_U = [U]/[H] with ΔΔG_U = 0).  test_unfolding_projection.py covers the
+projection in depth.
 """
 
 import pytest
@@ -310,12 +311,15 @@ class TestDefineModel:
         assert out.ln_K_E.shape  == (T, _G)
         assert out.ln_K_U.shape  == (_G,)
 
-    def test_ln_K_U_homogeneous(self):
-        """All elements of ln_K_U must be equal — no per-mutation K_U effects."""
-        out, _ = _run_model(_make_mock())
+    def test_ln_K_U_shifts_by_ddG_H(self):
+        """ln_K_U[g] − ln_K_U[wt] is the summed ΔΔG_H of g's mutations."""
+        out, tr = _run_model(_make_mock())
+        ddG_H = np.asarray(tr["theta_ddG"]["value"])[:, 0]
         vals = np.asarray(out.ln_K_U)
-        np.testing.assert_allclose(vals, vals[0], atol=1e-6,
-                                   err_msg="ln_K_U should be homogeneous across genotypes")
+        np.testing.assert_allclose(vals - vals[0], _MUT_GENO.T @ ddG_H,
+                                   atol=1e-5)
+        np.testing.assert_allclose(tr["theta_d_ln_K_U"]["value"], ddG_H,
+                                   atol=1e-6)
 
     def test_population_moment_shapes(self):
         out, _ = _run_model(_make_mock())
@@ -432,10 +436,15 @@ class TestGuide:
         assert out.ln_K_E.shape  == (T, _G)
         assert out.ln_K_U.shape  == (_G,)
 
-    def test_ln_K_U_homogeneous_in_guide(self):
-        out, _ = _run_guide(_make_mock())
+    def test_ln_K_U_shifts_by_ddG_H_in_guide(self):
+        data = _make_mock()
+        out, tr = _run_guide(data)
+        # sigma_s starts at 1, so ΔΔG = prior mean + offset.
+        ddG_H = (np.asarray(data.struct_features)[:, 0]
+                 + np.asarray(tr["theta_ddG_offset"]["value"])[0])
         vals = np.asarray(out.ln_K_U)
-        np.testing.assert_allclose(vals, vals[0], atol=1e-6)
+        np.testing.assert_allclose(vals - vals[0], _MUT_GENO.T @ ddG_H,
+                                   atol=1e-5)
 
     def test_sample_sites_match_model(self):
         data = _make_mock()
