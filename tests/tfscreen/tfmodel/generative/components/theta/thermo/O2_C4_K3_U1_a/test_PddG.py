@@ -236,7 +236,7 @@ class TestConfig:
 
     def test_physical_constants(self):
         p = get_priors()
-        assert p.theta_tf_total_M == pytest.approx(6.5e-7)
+        assert p.theta_tf_total_M == pytest.approx(6.5e-10)
         assert p.theta_op_total_M == pytest.approx(2.5e-8)
 
     def test_get_guesses_required_keys(self):
@@ -414,7 +414,7 @@ class TestDefineModel:
 
     def test_tf_op_totals_preserved(self):
         out, _ = _run_model(_make_mock())
-        assert out.tf_total == pytest.approx(6.5e-7)
+        assert out.tf_total == pytest.approx(6.5e-10)
         assert out.op_total == pytest.approx(2.5e-8)
 
 
@@ -495,7 +495,7 @@ class TestGuide:
 
     def test_tf_op_totals_preserved(self):
         out, _ = _run_guide(_make_mock())
-        assert out.tf_total == pytest.approx(6.5e-7)
+        assert out.tf_total == pytest.approx(6.5e-10)
         assert out.op_total == pytest.approx(2.5e-8)
 
     def test_permuted_features_give_same_output_as_canonical(self):

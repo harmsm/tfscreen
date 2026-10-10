@@ -132,6 +132,53 @@ def _update_dataclass(dc, prefix, flat_dict):
                 return dataclasses.replace(dc, **updates)
     return dc
 
+
+#: Flat priors-CSV key of the thermodynamic models' concentration unit scale.
+CONC_UNIT_SCALE_KEY = "theta.theta_conc_unit_scale"
+
+
+def _legacy_conc_unit_scale(priors, flat_priors, priors_path=None):
+    """
+    Read a pre-2026-10-11 thermodynamic priors CSV in its own units.
+
+    The ``O2_C4`` models used to pass mM concentrations straight into the
+    thermodynamic equations, so their priors CSVs have no
+    ``theta.theta_conc_unit_scale`` row and hold ``ln_K_E`` and
+    ``tf_total_M`` in mM-based units. The row's presence marks the current
+    convention (data in mM, scale 1e-3 to M). When the theta priors have the
+    field and the CSV lacks the row, set the scale to 1.0: with the CSV's
+    old values that reproduces the old behaviour exactly.
+
+    Parameters
+    ----------
+    priors : PriorsClass
+        Priors after the CSV values were applied.
+    flat_priors : dict
+        The flat CSV values (``_read_priors_flat``).
+    priors_path : str, optional
+        Named in the warning.
+
+    Returns
+    -------
+    PriorsClass
+        ``priors``, with ``theta_conc_unit_scale`` set to 1.0 for a legacy
+        CSV, otherwise unchanged.
+    """
+    theta = getattr(priors, "theta", None)
+    if theta is None or not hasattr(theta, "theta_conc_unit_scale"):
+        return priors
+    if CONC_UNIT_SCALE_KEY in flat_priors:
+        return priors
+    warnings.warn(
+        f"Priors file {priors_path} has no '{CONC_UNIT_SCALE_KEY}' row, so "
+        "it predates the mM-to-M unit convention of the thermodynamic theta "
+        "models. Reading it with theta_conc_unit_scale = 1.0, which keeps its "
+        "concentration-as-given units. Regenerate it with tfs-configure-model "
+        "to use the current convention."
+    )
+    return priors.replace(theta=theta.replace(theta_conc_unit_scale=1.0))
+
+
 def _extract_prior_arrays(obj, prefix=""):
     """
     Recursively collect 1-D *floating-point* array leaves from a PriorsClass,
@@ -531,6 +578,7 @@ def read_configuration(config_file):
     flat_priors = _read_priors_flat(priors_df, cond_rep_map)
 
     new_priors = _update_dataclass(orchestrator.priors, "", flat_priors)
+    new_priors = _legacy_conc_unit_scale(new_priors, flat_priors, priors_path)
     orchestrator._priors = new_priors
 
     # Construct init_params from CSV

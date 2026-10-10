@@ -202,7 +202,7 @@ class TestConfig:
 
     def test_physical_constants(self):
         priors = get_priors()
-        assert priors.theta_tf_total_M == pytest.approx(6.5e-7)
+        assert priors.theta_tf_total_M == pytest.approx(6.5e-10)
         assert priors.theta_op_total_M == pytest.approx(2.5e-8)
 
     def test_get_guesses_keys_no_epi(self):

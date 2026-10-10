@@ -32,14 +32,23 @@ ligand-free part of the partition function), which enters the cubic mass
 balance for free effector.
 
 Operator depletion approximation, free-effector cubic, and units are identical
-to lac_dimer/thermo.py.  See that module for details.
+to O2_C4_K3_U0_a/thermo.py.  See that module for details: data concentrations
+are mM and ``theta_conc_unit_scale`` (1e-3) converts them to M, so K_op is in
+M⁻¹, K_E in M⁻², tf_total and op_total in M.
 """
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pandas as pd
-from flax.struct import dataclass
+from flax.struct import dataclass, field
+
+# Unit convention and the defaults it implies are shared with the U0 model.
+from tfscreen.tfmodel.generative.components.theta.thermo.O2_C4_K3_U0_a.thermo import (  # noqa: F401
+    DEFAULT_CONC_UNIT_SCALE,
+    DEFAULT_LN_K_E_WT_LOC,
+    DEFAULT_TF_TOTAL_M,
+)
 
 NEWTON_ITERATIONS = 8
 
@@ -60,6 +69,9 @@ class ThetaParam:
     op_total: float          # M
     mu:       jnp.ndarray   # (T, C, 1) — population mean logit-theta
     sigma:    jnp.ndarray   # (T, C, 1) — population std  logit-theta
+    # Factor that converts data.titrant_conc (mM) to M before it enters the
+    # thermodynamic equations (theta_conc_unit_scale, 1e-3 by default).
+    conc_unit_scale: float = field(pytree_node=False)
 
 
 # ---------------------------------------------------------------------------
@@ -163,7 +175,7 @@ def run_model(theta_param: ThetaParam, data) -> jnp.ndarray:
         theta_param.ln_K_HL,
         theta_param.ln_K_E,
         theta_param.ln_K_U,
-        data.titrant_conc,
+        data.titrant_conc * theta_param.conc_unit_scale,
         theta_param.tf_total,
         theta_param.op_total,
     )                                              # (T, C, G)
@@ -240,7 +252,7 @@ def build_calc_df(model, manual_titrant_df):
     calc_df : pd.DataFrame
     internal_cols : list of str
     extra_kwargs : dict
-        ``tf_total`` and ``op_total`` scalars (in M).
+        ``tf_total`` and ``op_total`` scalars (in M) and ``conc_unit_scale``.
     """
     import tfscreen.util.dataframe
 
@@ -282,11 +294,13 @@ def build_calc_df(model, manual_titrant_df):
     extra = {
         "tf_total": float(model.priors.theta.theta_tf_total_M),
         "op_total": float(model.priors.theta.theta_op_total_M),
+        "conc_unit_scale": float(model.priors.theta.theta_conc_unit_scale),
     }
     return calc_df, ["genotype_idx", "titrant_name_idx"], extra
 
 
-def compute_theta_samples(calc_df, param_posteriors, *, tf_total, op_total):
+def compute_theta_samples(calc_df, param_posteriors, *, tf_total, op_total,
+                          conc_unit_scale=1.0):
     """
     Compute posterior theta samples for the lac_dimer_unfolded model.
 
@@ -299,6 +313,8 @@ def compute_theta_samples(calc_df, param_posteriors, *, tf_total, op_total):
         Posterior samples keyed by parameter name (with ``theta_`` prefix).
     tf_total : float
     op_total : float
+    conc_unit_scale : float, optional
+        Multiply ``titrant_conc`` by this factor to get M (1e-3 for mM data).
 
     Returns
     -------
@@ -309,7 +325,7 @@ def compute_theta_samples(calc_df, param_posteriors, *, tf_total, op_total):
     geno_indices    = calc_df["genotype_idx"].values.astype(int)
     titrant_indices = calc_df["titrant_name_idx"].values.astype(int)
 
-    conc = calc_df["titrant_conc"].values.copy().astype(float)
+    conc = calc_df["titrant_conc"].values.copy().astype(float) * conc_unit_scale
     conc[conc == 0] = _ZERO_CONC_VALUE
 
     def _load(key):

@@ -37,9 +37,9 @@ _C4 = dict(
     folded=("ln_K_op", "ln_K_HL", "ln_K_E"),
     unfold="ln_K_U",
     wt={"ln_K_op_wt": 23.0, "ln_K_HL_wt": -9.0, "ln_K_U_wt": 0.0,
-        "ln_K_E_wt": np.full(_T, 33.4)},
+        "ln_K_E_wt": np.full(_T, 33.4 + 2 * np.log(1e3))},
     conc=np.array([0.0, 1e-5, 1e-4]),
-    predict_kw={},
+    predict_kw={"conc_unit_scale": 1e-3},
 )
 _C12 = dict(
     family="O2_C12_K5_U1_a",

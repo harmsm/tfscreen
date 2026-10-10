@@ -47,6 +47,9 @@ from tfscreen.tfmodel.generative.components.theta.thermo.horseshoe import (
     _DEFAULT_D0,
 )
 from tfscreen.tfmodel.generative.components.theta.thermo.O2_C4_K3_U1_a.thermo import (
+    DEFAULT_CONC_UNIT_SCALE,
+    DEFAULT_LN_K_E_WT_LOC,
+    DEFAULT_TF_TOTAL_M,
     ThetaParam,
     _compute_theta,
     _population_moments,
@@ -84,6 +87,8 @@ class ModelPriors:
 
     theta_tf_total_M: float
     theta_op_total_M: float
+    # Factor converting data titrant_conc (mM) to M (1e-3); see thermo.py.
+    theta_conc_unit_scale: float
 
     # Regularised horseshoe for pairwise epistasis
     theta_epi_tau_scale:  float
@@ -168,6 +173,7 @@ def define_model(name: str,
 
     tf_total = priors.theta_tf_total_M
     op_total = priors.theta_op_total_M
+    conc_unit_scale = priors.theta_conc_unit_scale
 
     ln_K_op_wt = pyro.sample(
         f"{name}_ln_K_op_wt",
@@ -230,11 +236,13 @@ def define_model(name: str,
     pyro.deterministic(f"{name}_ln_K_U",  ln_K_U)
 
     theta_vals = _compute_theta(ln_K_op, ln_K_HL, ln_K_E, ln_K_U,
-                                data.titrant_conc, tf_total, op_total)
+                                data.titrant_conc * conc_unit_scale,
+                                tf_total, op_total)
     mu, sigma  = _population_moments(theta_vals, data)
 
     return ThetaParam(ln_K_op=ln_K_op, ln_K_HL=ln_K_HL, ln_K_E=ln_K_E, ln_K_U=ln_K_U,
-                      tf_total=tf_total, op_total=op_total, mu=mu, sigma=sigma)
+                      tf_total=tf_total, op_total=op_total, mu=mu, sigma=sigma,
+                      conc_unit_scale=conc_unit_scale)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -260,6 +268,7 @@ def guide(name: str,
 
     tf_total = priors.theta_tf_total_M
     op_total = priors.theta_op_total_M
+    conc_unit_scale = priors.theta_conc_unit_scale
     has_epi  = data.num_pair > 0
 
     ln_K_op_wt_loc   = pyro.param(f"{name}_ln_K_op_wt_loc",   jnp.array(priors.theta_ln_K_op_wt_loc))
@@ -360,11 +369,13 @@ def guide(name: str,
                            epi_ln_K_U=epi_ln_K_U, pair_scatter=pair_scatter)
 
     theta_vals = _compute_theta(ln_K_op, ln_K_HL, ln_K_E, ln_K_U,
-                                data.titrant_conc, tf_total, op_total)
+                                data.titrant_conc * conc_unit_scale,
+                                tf_total, op_total)
     mu, sigma  = _population_moments(theta_vals, data)
 
     return ThetaParam(ln_K_op=ln_K_op, ln_K_HL=ln_K_HL, ln_K_E=ln_K_E, ln_K_U=ln_K_U,
-                      tf_total=tf_total, op_total=op_total, mu=mu, sigma=sigma)
+                      tf_total=tf_total, op_total=op_total, mu=mu, sigma=sigma,
+                      conc_unit_scale=conc_unit_scale)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -377,11 +388,12 @@ def get_hyperparameters() -> Dict[str, Any]:
     p["theta_ln_K_op_wt_scale"] = 2.0
     p["theta_ln_K_HL_wt_loc"]   = -9.0
     p["theta_ln_K_HL_wt_scale"] = 3.0
-    p["theta_ln_K_E_wt_loc"]    = 33.4
+    p["theta_ln_K_E_wt_loc"]    = DEFAULT_LN_K_E_WT_LOC   # M⁻²; 33.4 in the old mM⁻² units
     p["theta_ln_K_E_wt_scale"]  = 3.0
     p["theta_ln_K_U_wt_loc"]    = -12.0
     p["theta_ln_K_U_wt_scale"]  = 3.0
-    p["theta_tf_total_M"]     = 6.5e-7
+    p["theta_tf_total_M"]     = DEFAULT_TF_TOTAL_M   # 6.5e-10 M; see thermo.py Units
+    p["theta_conc_unit_scale"] = DEFAULT_CONC_UNIT_SCALE   # titrant_conc mM → M
     p["theta_op_total_M"]     = 2.5e-8
     p["theta_epi_tau_scale"]  = 0.1
     p["theta_epi_slab_scale"] = 2.0
@@ -397,7 +409,7 @@ def get_guesses(name: str, data: Union[GrowthData, BindingData]) -> Dict[str, An
     g = {}
     g[f"{name}_ln_K_op_wt"]  = jnp.array(23.0)
     g[f"{name}_ln_K_HL_wt"]  = jnp.array(-9.0)
-    g[f"{name}_ln_K_E_wt"]   = jnp.full(T, 33.4)
+    g[f"{name}_ln_K_E_wt"]   = jnp.full(T, DEFAULT_LN_K_E_WT_LOC)
     g[f"{name}_ln_K_U_wt"]   = jnp.array(-12.0)
     g[f"{name}_ddG_offset"]   = jnp.zeros((S, M))
     if data.num_pair > 0:
@@ -424,6 +436,7 @@ def predict_unmeasured(
     *,
     tf_total,
     op_total,
+    conc_unit_scale=1.0,
 ):
     """
     Predict theta for unmeasured genotypes (lac_dimer_unfolded/lnK_ddG_prior).
@@ -487,7 +500,7 @@ def predict_unmeasured(
     ln_K_E_rows  = ln_K_E_geno[:, titrant_idx, geno_idx]
     ln_K_U_rows  = ln_K_U_geno[:, geno_idx]
 
-    conc = calc_df["titrant_conc"].values.copy().astype(float)
+    conc = calc_df["titrant_conc"].values.copy().astype(float) * conc_unit_scale
     conc[conc == 0] = _ZERO_CONC_VALUE
 
     theta_samples = _solve_theta_np(

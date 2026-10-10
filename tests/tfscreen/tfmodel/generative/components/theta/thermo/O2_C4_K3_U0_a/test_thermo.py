@@ -51,7 +51,7 @@ def theta_param(mock_data):
         ln_K_HL=jnp.full(G, -9.0),
         ln_K_E=jnp.full((T, G), -4.0),
         tf_total=650.0,
-        op_total=25.0,
+        op_total=25.0, conc_unit_scale=1.0,
         mu=jnp.zeros((T, C, 1)),
         sigma=jnp.ones((T, C, 1)),
     )
@@ -242,7 +242,7 @@ class TestRunModel:
             ln_K_HL=jnp.full(G, ln_K_HL_val),
             ln_K_E=jnp.full((T, G), -4.0),
             tf_total=650.0,
-            op_total=25.0,
+            op_total=25.0, conc_unit_scale=1.0,
             mu=jnp.zeros((T, 3, 1)),
             sigma=jnp.ones((T, 3, 1)),
         )
@@ -284,7 +284,7 @@ class TestRunModel:
         ln_K_E  = jnp.full((T, G_full), -4.0)
         tp_full = ThetaParam(
             ln_K_op=ln_K_op, ln_K_HL=ln_K_HL, ln_K_E=ln_K_E,
-            tf_total=650.0, op_total=25.0,
+            tf_total=650.0, op_total=25.0, conc_unit_scale=1.0,
             mu=jnp.zeros((T, C, 1)), sigma=jnp.ones((T, C, 1)),
         )
 

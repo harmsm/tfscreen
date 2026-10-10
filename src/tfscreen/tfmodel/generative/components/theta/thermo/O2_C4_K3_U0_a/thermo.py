@@ -18,14 +18,35 @@ Four-state partition function for the TF homodimer:
     Z     = 1 + K_op·[op_free] + K_HL + K_HL·K_E·[E_free]²
     θ     = K_op·[op_free] / Z
 
-Units: all concentrations in M; K_op in M⁻¹; K_E in M⁻²; K_HL dimensionless.
+Units
+-----
+The convention is shared with the O2_C12 models. Data concentrations
+(``data.titrant_conc``, the ``titrant_conc`` column of every growth and
+binding table) are in mM. ``run_model``, ``define_model``, ``guide``,
+``compute_theta_samples`` and ``predict_unmeasured`` multiply them by
+``theta_conc_unit_scale`` (default 1e-3) so that every concentration inside
+the equations is in M: K_op in M⁻¹, K_E in M⁻² (E² binds in one step),
+K_HL dimensionless, tf_total and op_total in M.
+
+Before 2026-10-11 these models passed mM concentrations straight in, so
+K_E was effectively in mM⁻² and tf_total in mM. The defaults below keep that
+behaviour exactly on mM data: ln_K_E moved by +2·ln(1e3) (K_E·[E]² is
+invariant when [E] is scaled by 1e-3 and K_E by 1e6) and tf_total moved
+from 6.5e-7 to 6.5e-10 M, the value the old code effectively used in the
+free-effector mass balance. K_op·op_total does not involve the titrant and
+is unchanged. A priors CSV written before the change has no
+``theta.theta_conc_unit_scale`` row; ``read_configuration`` loads it with
+scale 1.0, which reproduces the old behaviour from its old values.
 
 Operator depletion approximation
 ---------------------------------
-[TF_total] ≈ 6.5e-7 M, [op_total] ≈ 2.5e-8 M
+In vivo [TF_total] ≈ 6.5e-7 M, [op_total] ≈ 2.5e-8 M
 (Sochor, PeerJ 2014, https://doi.org/10.7717/peerj.498),
 giving [TF]/[op] ≈ 26.  Because the TF is in large excess we treat
-[op_free] ≈ [op_total] = const.
+[op_free] ≈ [op_total] = const. tf_total enters only the free-effector
+mass balance; the default (6.5e-10 M, see Units) keeps effector depletion
+negligible. Setting theta_tf_total_M to the physical 6.5e-7 M changes wt
+theta at sub-µM effector.
 
 Free effector (Newton solve)
 ----------------------------
@@ -44,11 +65,25 @@ This module is imported by all K-assembly variants
 import jax
 import jax.numpy as jnp
 import numpy as np
+import math
+
 import pandas as pd
-from flax.struct import dataclass
+from flax.struct import dataclass, field
 
 # Number of Newton iterations for the free-effector cubic solve.
 NEWTON_ITERATIONS = 8
+
+# Unit convention (see module docstring). Data concentrations are mM; this
+# factor converts them to M. Shared by every O2_C4 and O2_C12 component.
+DEFAULT_CONC_UNIT_SCALE = 1e-3
+
+# Default wt ln_K_E (M⁻²). The earlier mM⁻² default was 33.4; E binds as E²,
+# so K_E[M⁻²] = K_E[mM⁻²]·1e6 and ln_K_E shifts by 2·ln(1e3) ≈ 13.8155.
+DEFAULT_LN_K_E_WT_LOC = 33.4 + 2.0 * math.log(1.0 / DEFAULT_CONC_UNIT_SCALE)
+
+# Default tf_total (M). The earlier default, 6.5e-7, was used in mM units by
+# the free-effector mass balance, i.e. 6.5e-10 M.
+DEFAULT_TF_TOTAL_M = 6.5e-7 * DEFAULT_CONC_UNIT_SCALE
 
 
 # ---------------------------------------------------------------------------
@@ -66,6 +101,9 @@ class ThetaParam:
     op_total: float          # M
     mu:       jnp.ndarray   # (T, C, 1) — population mean logit-theta
     sigma:    jnp.ndarray   # (T, C, 1) — population std  logit-theta
+    # Factor that converts data.titrant_conc (mM) to M before it enters the
+    # thermodynamic equations (theta_conc_unit_scale, 1e-3 by default).
+    conc_unit_scale: float = field(pytree_node=False)
 
 
 # ---------------------------------------------------------------------------
@@ -120,7 +158,7 @@ def _compute_theta(ln_K_op, ln_K_HL, ln_K_E, titrant_conc, tf_total, op_total):
     ln_K_op : (G,)
     ln_K_HL : (G,)
     ln_K_E  : (T, G)
-    titrant_conc : (C,)  — effector concentrations in M
+    titrant_conc : (C,)  — effector concentrations in M (already scaled)
     tf_total : scalar
     op_total : scalar
 
@@ -187,7 +225,7 @@ def run_model(theta_param: ThetaParam, data) -> jnp.ndarray:
         theta_param.ln_K_op,
         theta_param.ln_K_HL,
         theta_param.ln_K_E,
-        data.titrant_conc,
+        data.titrant_conc * theta_param.conc_unit_scale,
         theta_param.tf_total,
         theta_param.op_total,
     )                                              # (T, C, G)
@@ -265,8 +303,8 @@ def build_calc_df(model, manual_titrant_df):
     internal_cols : list of str
         Columns to strip before returning results to the caller.
     extra_kwargs : dict
-        ``tf_total`` and ``op_total`` scalars (in M) required by
-        ``compute_theta_samples``.
+        ``tf_total`` and ``op_total`` scalars (in M) and
+        ``conc_unit_scale`` required by ``compute_theta_samples``.
     """
     import tfscreen.util.dataframe
 
@@ -308,11 +346,13 @@ def build_calc_df(model, manual_titrant_df):
     extra = {
         "tf_total": float(model.priors.theta.theta_tf_total_M),
         "op_total": float(model.priors.theta.theta_op_total_M),
+        "conc_unit_scale": float(model.priors.theta.theta_conc_unit_scale),
     }
     return calc_df, ["genotype_idx", "titrant_name_idx"], extra
 
 
-def compute_theta_samples(calc_df, param_posteriors, *, tf_total, op_total):
+def compute_theta_samples(calc_df, param_posteriors, *, tf_total, op_total,
+                          conc_unit_scale=1.0):
     """
     Compute posterior theta samples for the lac_dimer partition-function model.
 
@@ -331,6 +371,9 @@ def compute_theta_samples(calc_df, param_posteriors, *, tf_total, op_total):
         Total TF concentration in M.
     op_total : float
         Total operator concentration in M.
+    conc_unit_scale : float, optional
+        Multiply ``titrant_conc`` by this factor to get M. ``build_calc_df``
+        passes ``theta_conc_unit_scale`` (1e-3 for mM data).
 
     Returns
     -------
@@ -342,7 +385,7 @@ def compute_theta_samples(calc_df, param_posteriors, *, tf_total, op_total):
     geno_indices    = calc_df["genotype_idx"].values.astype(int)
     titrant_indices = calc_df["titrant_name_idx"].values.astype(int)
 
-    conc = calc_df["titrant_conc"].values.copy().astype(float)   # (N,)
+    conc = calc_df["titrant_conc"].values.copy().astype(float) * conc_unit_scale   # (N,)
     conc[conc == 0] = _ZERO_CONC_VALUE
 
     def _load(key):

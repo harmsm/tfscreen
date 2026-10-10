@@ -220,7 +220,7 @@ class TestConfig:
 
     def test_physical_constants(self):
         priors = get_priors()
-        assert priors.theta_tf_total_M == pytest.approx(6.5e-7)
+        assert priors.theta_tf_total_M == pytest.approx(6.5e-10)
         assert priors.theta_op_total_M == pytest.approx(2.5e-8)
 
     def test_get_guesses_keys_no_epi(self):
@@ -397,7 +397,7 @@ class TestDefineModel:
     def test_tf_op_totals_preserved(self):
         data = _make_mock()
         out, _ = _run_model(data)
-        assert out.tf_total == pytest.approx(6.5e-7)
+        assert out.tf_total == pytest.approx(6.5e-10)
         assert out.op_total == pytest.approx(2.5e-8)
 
     def test_population_moment_shapes(self):
@@ -485,7 +485,7 @@ class TestGuide:
     def test_tf_op_totals_preserved(self):
         data = _make_mock()
         out, _ = _run_guide(data)
-        assert out.tf_total == pytest.approx(6.5e-7)
+        assert out.tf_total == pytest.approx(6.5e-10)
         assert out.op_total == pytest.approx(2.5e-8)
 
     def test_K_shapes(self):

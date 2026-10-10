@@ -510,3 +510,26 @@ mutation's stability unchanged.
 
 Full names look like ``thermo.O2_C4_K3_U0_a.PK`` or
 ``thermo.O2_C12_K5_U1_a.PnnC``.
+
+All the thermodynamic models read ``titrant_conc`` in mM, the units of the
+growth and binding tables, and multiply it by the prior
+``theta_conc_unit_scale`` (default 1e-3) so that the equations run in M.
+Equilibrium constants are therefore in M-based units: for the ``O2_C4``
+models K\ :sub:`op` is in M\ :sup:`-1` and K\ :sub:`E` in M\ :sup:`-2`,
+since the effector binds as E\ :sup:`2`. ``theta_tf_total_M`` and
+``theta_op_total_M`` are in M; the ``O2_C12`` models take
+``theta_tf_total_M`` in monomer units.
+
+Before 2026-10-11 the ``O2_C4`` models skipped the conversion and used the
+mM values directly. Their defaults changed so that theta on mM data is the
+same as before. ``theta_ln_K_E_wt_loc`` moved from 33.4 to
+33.4 + 2 ln(1000) ≈ 47.22, because K\ :sub:`E`\ [E]\ :sup:`2` is unchanged
+when [E] is scaled by 10\ :sup:`-3` and K\ :sub:`E` by 10\ :sup:`6`.
+``theta_tf_total_M`` moved from 6.5e-7 to 6.5e-10, because the old code
+effectively read it in mM. The in vivo value from Sochor (2014), 6.5e-7 M,
+lets the TF bind a noticeable share of the effector below about 1 µM and
+lowers the wt's sensitivity there. A priors CSV written before the change
+has no ``theta_conc_unit_scale`` row. Such a file is read with a scale of
+1.0, with a warning, which reproduces the old behaviour from its old values.
+Regenerate it with ``tfs-configure-model`` to use the current convention.
+``theta_priors`` overrides in an older simulation YAML are not converted.

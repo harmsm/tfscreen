@@ -235,7 +235,8 @@ class TestConfig:
     def test_hyperparameters_has_no_nn_keys(self):
         hp = get_hyperparameters()
         assert "theta_nn_hidden_size" not in hp
-        assert "theta_conc_unit_scale" not in hp
+        # Shared with the O2_C12 models: data in mM, converted to M.
+        assert hp["theta_conc_unit_scale"] == pytest.approx(1e-3)
 
     def test_get_priors_returns_model_priors_instance(self):
         assert isinstance(get_priors(), ModelPriors)
@@ -243,11 +244,11 @@ class TestConfig:
     def test_model_priors_has_no_nn_fields(self):
         priors = get_priors()
         assert not hasattr(priors, "theta_nn_hidden_size")
-        assert not hasattr(priors, "theta_conc_unit_scale")
+        assert priors.theta_conc_unit_scale == pytest.approx(1e-3)
 
     def test_physical_constants(self):
         priors = get_priors()
-        assert priors.theta_tf_total_M == pytest.approx(6.5e-7)
+        assert priors.theta_tf_total_M == pytest.approx(6.5e-10)
         assert priors.theta_op_total_M == pytest.approx(2.5e-8)
 
     def test_get_guesses_required_keys(self):
@@ -361,7 +362,7 @@ class TestDefineModel:
 
     def test_tf_op_totals_preserved(self):
         out, _ = _run_model(_make_mock())
-        assert out.tf_total == pytest.approx(6.5e-7)
+        assert out.tf_total == pytest.approx(6.5e-10)
         assert out.op_total == pytest.approx(2.5e-8)
 
 
@@ -423,7 +424,7 @@ class TestGuide:
 
     def test_tf_op_totals_preserved(self):
         out, _ = _run_guide(_make_mock())
-        assert out.tf_total == pytest.approx(6.5e-7)
+        assert out.tf_total == pytest.approx(6.5e-10)
         assert out.op_total == pytest.approx(2.5e-8)
 
 

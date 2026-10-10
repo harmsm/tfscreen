@@ -222,7 +222,7 @@ def test_get_hyperparameters_K_U_defaults():
 def test_get_priors_values():
     priors = get_priors()
     assert isinstance(priors, ModelPriors)
-    assert priors.theta_tf_total_M == pytest.approx(6.5e-7)
+    assert priors.theta_tf_total_M == pytest.approx(6.5e-10)
     assert priors.theta_op_total_M == pytest.approx(2.5e-8)
     assert priors.theta_ln_K_op_wt_loc == get_hyperparameters()["theta_ln_K_op_wt_loc"]
     assert priors.theta_ln_K_U_wt_loc == pytest.approx(-12.0)
@@ -496,7 +496,7 @@ class TestGuide:
         priors = get_priors()
         with seed(rng_seed=0):
             tp = guide(name="theta", data=mock_data_no_epi, priors=priors)
-        assert tp.tf_total == pytest.approx(6.5e-7)
+        assert tp.tf_total == pytest.approx(6.5e-10)
         assert tp.op_total == pytest.approx(2.5e-8)
 
     def test_guide_has_K_U_variational_params(self, mock_data_no_epi):

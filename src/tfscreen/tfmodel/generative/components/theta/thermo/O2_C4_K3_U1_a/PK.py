@@ -37,6 +37,9 @@ from typing import Dict, Any
 from tfscreen.tfmodel.data_class import GrowthData
 from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix, apply_mut_matrix
 from tfscreen.tfmodel.generative.components.theta.thermo.O2_C4_K3_U1_a.thermo import (
+    DEFAULT_CONC_UNIT_SCALE,
+    DEFAULT_LN_K_E_WT_LOC,
+    DEFAULT_TF_TOTAL_M,
     ThetaParam,
     _compute_theta,
     _population_moments,
@@ -66,6 +69,8 @@ class ModelPriors:
     # Physical concentrations (M)
     theta_tf_total_M: float
     theta_op_total_M: float
+    # Factor converting data titrant_conc (mM) to M (1e-3); see thermo.py.
+    theta_conc_unit_scale: float
 
     # HalfNormal scales for mutation delta distributions
     theta_sigma_d_ln_K_op_scale: float
@@ -124,6 +129,7 @@ def define_model(name: str,
 
     tf_total = priors.theta_tf_total_M
     op_total = priors.theta_op_total_M
+    conc_unit_scale = priors.theta_conc_unit_scale
 
     # ── WT parameters ────────────────────────────────────────────────────────
     ln_K_op_wt = pyro.sample(
@@ -241,11 +247,13 @@ def define_model(name: str,
 
     # ── Population moments ────────────────────────────────────────────────────
     theta_for_moments = _compute_theta(ln_K_op, ln_K_HL, ln_K_E, ln_K_U,
-                                       data.titrant_conc, tf_total, op_total)
+                                       data.titrant_conc * conc_unit_scale,
+                                tf_total, op_total)
     mu, sigma = _population_moments(theta_for_moments, data)
 
     return ThetaParam(ln_K_op=ln_K_op, ln_K_HL=ln_K_HL, ln_K_E=ln_K_E, ln_K_U=ln_K_U,
-                      tf_total=tf_total, op_total=op_total, mu=mu, sigma=sigma)
+                      tf_total=tf_total, op_total=op_total, mu=mu, sigma=sigma,
+                      conc_unit_scale=conc_unit_scale)
 
 
 # ---------------------------------------------------------------------------
@@ -267,6 +275,7 @@ def guide(name: str,
 
     tf_total = priors.theta_tf_total_M
     op_total = priors.theta_op_total_M
+    conc_unit_scale = priors.theta_conc_unit_scale
 
     # ── Variational params for WT K values ────────────────────────────────────
     ln_K_op_wt_loc   = pyro.param(f"{name}_ln_K_op_wt_loc",   jnp.array(priors.theta_ln_K_op_wt_loc))
@@ -384,11 +393,13 @@ def guide(name: str,
         ln_K_E  = ln_K_E  + pair_scatter(epi_K_E_off  * tau_epi * _lam_tilde(epi_K_E_lam))
 
     theta_for_moments = _compute_theta(ln_K_op, ln_K_HL, ln_K_E, ln_K_U,
-                                       data.titrant_conc, tf_total, op_total)
+                                       data.titrant_conc * conc_unit_scale,
+                                tf_total, op_total)
     mu, sigma = _population_moments(theta_for_moments, data)
 
     return ThetaParam(ln_K_op=ln_K_op, ln_K_HL=ln_K_HL, ln_K_E=ln_K_E, ln_K_U=ln_K_U,
-                      tf_total=tf_total, op_total=op_total, mu=mu, sigma=sigma)
+                      tf_total=tf_total, op_total=op_total, mu=mu, sigma=sigma,
+                      conc_unit_scale=conc_unit_scale)
 
 
 # ---------------------------------------------------------------------------
@@ -401,12 +412,13 @@ def get_hyperparameters() -> Dict[str, Any]:
     p["theta_ln_K_op_wt_scale"] = 2.0
     p["theta_ln_K_HL_wt_loc"]   = -9.0
     p["theta_ln_K_HL_wt_scale"] = 3.0
-    p["theta_ln_K_E_wt_loc"]    = 33.4
+    p["theta_ln_K_E_wt_loc"]    = DEFAULT_LN_K_E_WT_LOC   # M⁻²; 33.4 in the old mM⁻² units
     p["theta_ln_K_E_wt_scale"]  = 3.0
     # WT unfolded state: K_U << 1 in WT (ln_K_U ≈ -12 → K_U ≈ 6e-6)
     p["theta_ln_K_U_wt_loc"]    = -12.0
     p["theta_ln_K_U_wt_scale"]  = 3.0
-    p["theta_tf_total_M"]  = 6.5e-7
+    p["theta_tf_total_M"]  = DEFAULT_TF_TOTAL_M   # 6.5e-10 M; see thermo.py Units
+    p["theta_conc_unit_scale"] = DEFAULT_CONC_UNIT_SCALE   # titrant_conc mM → M
     p["theta_op_total_M"]  = 2.5e-8
     p["theta_sigma_d_ln_K_op_scale"]  = 1.0
     p["theta_sigma_d_ln_K_HL_scale"]  = 1.0
@@ -424,7 +436,7 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, Any]:
     g = {}
     g[f"{name}_ln_K_op_wt"]       = jnp.array(23.0)
     g[f"{name}_ln_K_HL_wt"]       = jnp.array(-9.0)
-    g[f"{name}_ln_K_E_wt"]        = jnp.full(T, 33.4)
+    g[f"{name}_ln_K_E_wt"]        = jnp.full(T, DEFAULT_LN_K_E_WT_LOC)
     g[f"{name}_ln_K_U_wt"]        = jnp.array(-12.0)
     g[f"{name}_sigma_d_ln_K_op"]  = jnp.array(0.5)
     g[f"{name}_sigma_d_ln_K_HL"]  = jnp.array(0.5)
@@ -462,6 +474,7 @@ def predict_unmeasured(
     *,
     tf_total,
     op_total,
+    conc_unit_scale=1.0,
 ):
     """Predict theta for unmeasured genotypes (lac_dimer_unfolded/lnK_mut)."""
     import numpy as np
@@ -517,7 +530,7 @@ def predict_unmeasured(
     ln_K_E_rows  = ln_K_E_geno[:, titrant_idx, geno_idx]
     ln_K_U_rows  = ln_K_U_geno[:, geno_idx]
 
-    conc = calc_df["titrant_conc"].values.copy().astype(float)
+    conc = calc_df["titrant_conc"].values.copy().astype(float) * conc_unit_scale
     conc[conc == 0] = _ZERO_CONC_VALUE
 
     theta_samples = _solve_theta_np(
