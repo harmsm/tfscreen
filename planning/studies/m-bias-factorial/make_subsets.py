@@ -2,6 +2,8 @@
 Fit-side subsets of a full-size simulation (m-bias factorial, round 2).
 
     python make_subsets.py sim_realistic_s2 --out_dir m_subsets
+    python make_subsets.py recipe --out_dir m_subsets_real --arms no_doubles \
+        --library_config ../processed/library_config.yaml
 
 Each arm refits the same simulated growth table with only some genotypes.
 Given the shared parameters (k, m, tube offsets, population hypers) each
@@ -16,6 +18,10 @@ Each arm directory gets the filtered tfs_growth.csv, links to the
 simulation's tfs_sim_* files (truth, and so run_arm.sh skips simulate and
 process), and copies of simulate_config.yaml (its seed), library_config.yaml
 and growth_priors_loose.csv. Submit run_arm.srun from inside each.
+
+A real-data growth table works the same way: there are no tfs_sim_* files
+or simulate_config.yaml to carry over, so pass --library_config;
+run_arm.sh then starts at configure, with seed $SEED or 1.
 """
 
 import argparse
@@ -42,6 +48,10 @@ def main():
     ap.add_argument("sim_dir")
     ap.add_argument("--out_dir", default="m_subsets")
     ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--arms", nargs="+",
+                    default=["no_doubles", "deep_doubles", "shallow_doubles"])
+    ap.add_argument("--library_config", default=None,
+                    help="library config (default: sim_dir's)")
     args = ap.parse_args()
     growth = os.path.join(args.sim_dir, "tfs_growth.csv")
 
@@ -61,6 +71,7 @@ def main():
     arms = {"no_doubles": set(core),
             "deep_doubles": set(core) | set(deep),
             "shallow_doubles": set(core) | set(shallow)}
+    arms = {a: arms[a] for a in args.arms}
     print(f"{len(core)} wt/spike/single genotypes, {len(deep)} doubles >= "
           f"{DEEP} reads, {len(shallow)} of {len(shallow_all)} below")
 
@@ -86,8 +97,12 @@ def main():
                 link = os.path.join(d, f)
                 if not os.path.lexists(link):
                     os.symlink(os.path.join(sim, f), link)
-        for f in ("simulate_config.yaml", "library_config.yaml"):
-            shutil.copyfile(os.path.join(sim, f), os.path.join(d, f))
+        if os.path.exists(os.path.join(sim, "simulate_config.yaml")):
+            shutil.copyfile(os.path.join(sim, "simulate_config.yaml"),
+                            os.path.join(d, "simulate_config.yaml"))
+        shutil.copyfile(args.library_config
+                        or os.path.join(sim, "library_config.yaml"),
+                        os.path.join(d, "library_config.yaml"))
         shutil.copyfile(LOOSE, os.path.join(d, "growth_priors_loose.csv"))
         n = pd.read_csv(out[arm], usecols=["genotype"])["genotype"].nunique()
         print(f"{arm}: {n} genotypes")

@@ -3,9 +3,14 @@
 # directory: simulate, process, configure, MAP, extract. The chain and model
 # are the full-size simulation's (run_full_size.srun), without the Laplace.
 set -e
-SEED="$(grep '^seed:' simulate_config.yaml | awk '{print $2}')"
+# Seed from the simulation's config; a real-data arm (no simulate_config.yaml,
+# its own tfs_growth.csv) uses $SEED or 1.
+if [[ -f simulate_config.yaml ]]; then
+    SEED="$(grep '^seed:' simulate_config.yaml | awk '{print $2}')"
+fi
+SEED="${SEED:-1}"
 
-[[ -f tfs_sim_tubes.csv ]] || tfs-simulate simulate_config.yaml \
+[[ -f tfs_sim_tubes.csv || -f tfs_growth.csv ]] || tfs-simulate simulate_config.yaml \
     --out_prefix tfs_sim --seed "${SEED}" --no_write_growth > sim.log 2>&1
 
 [[ -f tfs_growth.csv ]] || tfs-process-counts tfs_sim_tubes.csv tfs_sim_counts \

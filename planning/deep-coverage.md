@@ -72,6 +72,13 @@ is the monoculture), so the real kanR curves are likely compressed too.
    dropped 25 tubes below OD600 detection. Every arm fell within seed
    noise. Round 2 refits subsets of the full-size simulation's genotypes
    instead: no doubles, plus deep doubles, plus as many shallow doubles.
+   Round 2 (2026-10-10) found it: m is right without the doubles (kanR
+   1.03, pheS 0.89), about 1.2 with 81,000 doubles of either depth, and
+   1.47 with all 208,000. Each double pulls m a little, and the pulls add.
+   That fits the joint MAP's Neyman-Scott bias, or a per-genotype
+   misspecification of the doubles. Next: the same no-doubles fit on the
+   real data (does kanR m reach the monoculture's -0.014?), then fit the
+   full library with k and m held at the no-doubles values.
 2. [ ] **An interval for the held directions.** If directions are still
    held with k and m anchored, floor them at the prior instead of holding
    them, so k and m carry the monoculture's uncertainty into every X

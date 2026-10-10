@@ -179,4 +179,74 @@ The commit that adds this study.
 
 ## Results
 
-Round 1 above (inconclusive). Round 2 pending.
+Round 1 above (inconclusive).
+
+### Round 2 results (2026-10-10)
+
+All three arms converged at every stage (about 15 minutes for
+`no_doubles`, 1.7 and 2.3 hours for the others on one GPU). m_fit / m_true
+on the X scale, `sim_realistic_s2`:
+
+| genotypes in the fit | doubles | kanR+kan | pheS+4CP |
+|---|---|---|---|
+| `no_doubles` | 0 | 1.03 | 0.89 |
+| `deep_doubles` | 80,915, all >= 1e3 reads | 1.23 | 1.16 |
+| `shallow_doubles` | 80,915, all < 1e3 reads | 1.20 | 1.10 |
+| all (the full-size fit) | 207,599 | 1.47 | 1.43 |
+
+**The doubles cause the bias, in proportion to how many there are, whatever
+their depth.** With only wt, spikes and singles the fit recovers m in kanR
+(pheS 11% shallow, within about twice round 1's seed spread). Adding 81,000
+doubles moves it to about 1.2 whether they are all deep or all shallow, and
+all 208,000 move it to 1.47. k follows m along the ridge (kanR k 0.018,
+0.022, 0.022 and 0.027 against a true 0.0149). The tube offsets look alike
+in every arm (SD 0.31-0.35).
+
+The genotypes' data are independent given the shared parameters, so each
+double adds a small, consistent pull on m, and the pulls add. A pull that
+does not depend on depth is not plain count noise. Two candidates:
+
+- **The joint MAP over many per-genotype latents.** The MAP optimizes each
+  genotype's X, K, n and dk_geno jointly with m, along the m·X ridge. The
+  hierarchical priors on those latents add one term per genotype. If a
+  steeper m with compressed X fits the population priors slightly better
+  per genotype, the preference grows with the number of genotypes, while the
+  information on the true m (wt, spikes, the tube totals) stays fixed. This
+  is the classic Neyman-Scott bias of joint estimation.
+- **A per-genotype misspecification of the doubles' model**, such as their
+  shared bulk transformation (congression; the fit uses `single`), whose
+  per-genotype effect would add the same way. Full-size Poisson counts
+  still give 1.32, so count noise accounts for at most part of it.
+
+**Practical route, whatever the mechanism:** estimate k and m (and the tube
+offsets) from wt, spikes and singles alone, then hold them for the full
+library. The first step is the same subset of the real data: does the real
+kanR m move from -0.020 to the monoculture's -0.014 when the doubles are
+dropped?
+
+### How to run the real-data `no_doubles` arm
+
+On the cluster, after pulling, next to the recipe run:
+
+```bash
+cd /gpfs/projects/harmslab/harms/studies/dev-data/real_fit
+```
+
+```bash
+python /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/make_subsets.py recipe --out_dir m_subsets_real --arms no_doubles --library_config ../processed/library_config.yaml
+```
+
+Check that it prints about 950 wt/spike/single genotypes, then:
+
+```bash
+cp /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/{run_arm.sh,run_arm.srun} m_subsets_real/
+```
+
+```bash
+cd m_subsets_real/no_doubles && sbatch ../run_arm.srun
+```
+
+It ends with `>>> Done` in `run.out` (about 15 minutes) and writes
+`tfs_params_growth_k.csv` and `tfs_params_growth_m.csv`. There is no truth,
+so compare by hand against the recipe and the monoculture (kanR+kan k
+0.0150, m -0.0141; pheS+4CP k 0.0031, m 0.0144).
