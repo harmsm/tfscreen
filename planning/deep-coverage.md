@@ -77,8 +77,14 @@ is the monoculture), so the real kanR curves are likely compressed too.
    1.47 with all 208,000. Each double pulls m a little, and the pulls add.
    That fits the joint MAP's Neyman-Scott bias, or a per-genotype
    misspecification of the doubles. Next: the same no-doubles fit on the
-   real data (does kanR m reach the monoculture's -0.014?), then fit the
-   full library with k and m held at the no-doubles values.
+   real data (does kanR m reach the monoculture's -0.014?), and on the
+   simulation the full library with k and m held at the no-doubles values
+   (round 3, `run_held.srun`).
+   Real data without doubles (2026-10-10): kanR+kan k 0.0160, m -0.0141,
+   on the wt monoculture (0.0150, -0.0141) with loose priors; the real
+   kanR curves fitted with all genotypes are compressed by about 1.45.
+   pheS+4CP moves away from the monoculture (m 0.0061 against 0.0144):
+   step 3.
 2. [ ] **An interval for the held directions.** If directions are still
    held with k and m anchored, floor them at the prior instead of holding
    them, so k and m carry the monoculture's uncertainty into every X

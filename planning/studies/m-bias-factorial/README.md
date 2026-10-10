@@ -173,6 +173,50 @@ python score_arms.py no_doubles deep_doubles shallow_doubles
 
 Inputs: `sim_realistic_s2/` (`planning/studies/full-size-sim/`).
 
+## Round 3: the full library with k and m held
+
+If the doubles bias m and wt, spikes and singles do not, then fitting the
+full library with k and m held at the no-doubles MAP should recover X for
+the doubles. `held_priors.py` turns an arm's fitted k and m into a
+`--growth_priors` table, and `run_held.srun` runs the full-size chain
+(staged MAP, arrowhead Laplace, predict, `tfs-summarize-fit`) with both
+clamped (`--set_priors m_pinned=1 k_pinned=1`). The intervals then leave
+out k and m's own uncertainty, so this checks X's slope and the coverage
+given k and m, against `sim_realistic_s2`'s summary (X slope 1.19-1.37,
+95% coverage 0.56 / 0.29 / 0.08 at 1e3-1e4 / 1e4-1e5 / >1e5 reads). A
+20-epoch smoke test of the chain with both pins ran locally (configure, MAP,
+arrowhead Laplace, extract).
+
+### How to run round 3
+
+On the cluster, from the full-size simulation's working directory:
+
+```bash
+cd /gpfs/projects/harmslab/harms/studies/full-sized-sims-v3
+```
+
+```bash
+mkdir held_s2 && cd held_s2
+```
+
+```bash
+python /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/held_priors.py ../m_subsets/no_doubles --out growth_priors_held.csv
+```
+
+It prints the four conditions' k and m; kanR+kan should read k 0.0182,
+m -0.0142. Then link the simulation's data and truth, and submit:
+
+```bash
+ln -s ../sim_realistic_s2/tfs_growth.csv ../sim_realistic_s2/tfs_sim_* . && cp ../sim_realistic_s2/library_config.yaml .
+```
+
+```bash
+cp /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/run_held.srun . && sbatch run_held.srun
+```
+
+It ends with `>>> Done` in `run.out` and a `summary/` directory, like the
+full-size runs (several hours: the full library and the Laplace).
+
 ## Commit
 
 The commit that adds this study.
@@ -250,3 +294,35 @@ It ends with `>>> Done` in `run.out` (about 15 minutes) and writes
 `tfs_params_growth_k.csv` and `tfs_params_growth_m.csv`. There is no truth,
 so compare by hand against the recipe and the monoculture (kanR+kan k
 0.0150, m -0.0141; pheS+4CP k 0.0031, m 0.0144).
+
+### Real-data `no_doubles` result (2026-10-10)
+
+The recipe's growth table without the doubles (15 minutes on one GPU).
+Stage 1 and the joint stage reached the 100,000-epoch cap still descending
+about 1 nat per window in the joint stage, led by an ln_cfu0 hyper scale
+(the hierarchical MAP's funnel, which has no finite optimum). The tube
+offsets are centered and small (SD 0.23).
+
+| condition | fit | k | m |
+|---|---|---|---|
+| kanR+kan | wt monoculture | 0.0150 | -0.0141 |
+| | recipe, all genotypes | 0.0298 | -0.0204 |
+| | recipe, monoculture priors (`anchor_real`) | 0.0249 | -0.0202 |
+| | **no doubles** | **0.0160** | **-0.0141** |
+| pheS+4CP | wt monoculture | 0.0031 | 0.0144 |
+| | recipe, all genotypes | 0.0226 | 0.0097 |
+| | recipe, monoculture priors (`anchor_real`) | 0.0172 | 0.0097 |
+| | **no doubles** | **0.0117** | **0.0061** |
+
+**In kanR+kan the real data behave as the simulation does.** Without the
+doubles, k and m land on the wt monoculture with no prior pulling them
+there (loose priors, SD 0.01), so the real kanR curves fitted with all
+genotypes are compressed by about 1.45, as in the simulation.
+
+**pheS+4CP does not.** Dropping the doubles lowers m, as in the simulation,
+but from a starting point already below the monoculture, so it moves away
+from it (0.0061 against 0.0144) and k stays high. Something in the real
+pheS data that the simulation lacks sets pheS's scale: the selection-onset
+transient (`planning/offset-mode-growth-transition.md`) or the known
+mismatch between the 4CP wt in the screen and in monoculture. That is
+`planning/deep-coverage.md` step 3.

@@ -1,0 +1,53 @@
+#!/bin/bash -l
+#SBATCH --account=harmslab
+#SBATCH --job-name=tfs_held
+#SBATCH --output=run.out
+#SBATCH --error=run.err
+#SBATCH --partition=gpulong
+#SBATCH --time=02-00:00:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --gpus=1
+#SBATCH --mem=0
+#SBATCH --ntasks-per-node=1
+
+# The full library with k and m held at a no-doubles fit's MAP
+# (planning/studies/m-bias-factorial, round 3): the full-size chain
+# (run_full_size.srun) with k and m clamped (m_pinned, k_pinned) at the
+# values in growth_priors_held.csv, from held_priors.py. Run from an arm
+# directory holding tfs_growth.csv, library_config.yaml and
+# growth_priors_held.csv, plus links to the simulation's tfs_sim_* files
+# for tfs-summarize-fit to score against. See README.md.
+
+module load cuda/12.4.1
+
+set -e
+SEED="${SEED:-1}"
+
+echo ">>> Configure (k, m held) $(date)"
+tfs-configure-model \
+    --allow_missing_spikes \
+    --growth_df tfs_growth.csv \
+    --library_config library_config.yaml \
+    --theta_model hill_relative \
+    --growth_shares_replicates \
+    --batch_size 4096 \
+    --growth_priors growth_priors_held.csv \
+    --set_priors sigma_fixed=0.17 theta_log_hill_n_hyper_scale_fixed=0.5 \
+        m_pinned=1 k_pinned=1
+
+echo ">>> Fit (staged MAP) $(date)"
+tfs-fit-model tfs_configure_config.yaml --seed "${SEED}" --analysis_method map
+
+echo ">>> Arrowhead Laplace $(date)"
+tfs-sample-posterior tfs_configure_config.yaml tfs_fit_model_checkpoint.pkl \
+    --laplace arrowhead --num_posterior_samples 500 --skip_growth_observations
+
+echo ">>> Extract and predict $(date)"
+tfs-extract-params tfs_configure_config.yaml tfs_posterior.h5
+tfs-predict-theta tfs_configure_config.yaml tfs_posterior.h5
+
+echo ">>> Summarize against the truth $(date)"
+tfs-summarize-fit .
+
+echo ">>> Done $(date)"
