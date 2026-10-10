@@ -89,6 +89,39 @@ do not shift U (ΔΔG_U = 0), so Δln K_u = ΔΔG_H. The projection rows for eac
 family are :data:`PROJ_C4`, :data:`PROJ_U_C4`, :data:`PROJ_C12` and
 :data:`PROJ_U_C12`.
 
+Default wild type
+-----------------
+The default wt constants put strong repression and near-complete induction
+at the PI's TF estimate, tf_total = 1e-5 M monomer (r = 5e-6 M dimer). The
+O2_C12 defaults keep Sochor's K_h_l = 6.3, K_h_o = 4.2e8 M⁻¹ and
+K_l_o = 0.1 M⁻¹ and set the effector selectivity ρ = K_l_e/K_h_e from the
+saturating limit. As e → ∞ only the doubly liganded HE2 and LE2 remain, so
+
+    W_sat = r·(K_h_o + K_h_l·K_l_o·ρ²) / (1 + K_h_l·ρ²)
+
+and θ_sat = W_sat/(1 + W_sat) depends on ρ alone. Asking for θ_sat = 0.05
+(W_sat = 1/19) and solving for ρ gives
+
+    ρ² = (r·K_h_o − W_sat) / (K_h_l·(W_sat − r·K_l_o))
+
+so ρ ≈ 79.6 (:data:`MWC_EFFECTOR_SELECTIVITY`). This departs from Sochor's
+fitted ρ = 7.6e5/5.6e4 ≈ 13.6. With that ρ the HE2 state still repressed:
+W_sat = r·K_h_o/(1 + K_h_l·ρ²) ≈ 1.8 and θ_sat ≈ 0.64 at 1e-5 M TF, which is
+implausible for lac. Sochor fitted ρ at a far lower TF level, where the
+residual HE2 repression did not show.
+
+The two effector constants then share one scale. K_h_e and K_l_e start at
+(SOCHOR_K_L_E/ρ, SOCHOR_K_L_E) and are multiplied by a common factor,
+:data:`MWC_EFFECTOR_SCALE` ≈ 0.393, chosen so that the midpoint is 80 µM
+IPTG. The midpoint is the total effector at which θ is halfway between θ(0)
+and θ_sat, with effector depletion at 1e-5 M TF. That gives
+K_h_e ≈ 3.7e3 M⁻¹ and K_l_e ≈ 3.0e5 M⁻¹ per site. Scaling both leaves ρ and
+so θ_sat unchanged.
+
+The O2_C4 defaults use the same K_h_l and K_h_o with K_h_e = K_l_o = 0, so
+θ_sat = 0, and calibrate K_E = K_l_e alone to the same 80 µM midpoint
+(:data:`DEFAULT_LN_K_E_C4`).
+
 Units
 -----
 Data concentrations (``titrant_conc``) are in mM. The components multiply
@@ -122,20 +155,41 @@ SOCHOR_K_L_O = 0.1
 SOCHOR_K_H_E = 5.6e4
 SOCHOR_K_L_E = 7.6e5
 
-# Calibrated wt defaults: the default wt theta(IPTG) curve has its midpoint
-# (theta halfway between theta(0) and the e → ∞ limit, theta_saturated, with
-# effector depletion at DEFAULT_TF_TOTAL_M) at 80 µM in both families.
-# O2_C12 keeps Sochor's K_h_l, K_h_o, K_l_o and K_l_e/K_h_e and scales K_h_e
-# and K_l_e by one common factor, MWC_EFFECTOR_SCALE. O2_C4 uses the same
-# K_h_l and K_h_o with K_h_e = K_l_o = 0 and calibrates K_l_e alone.
-# Regenerate with test_mwc.py::_calibrate_* if the equations change.
+# Calibrated wt defaults (see the module docstring). O2_C12 keeps Sochor's
+# K_h_l, K_h_o and K_l_o, widens the effector selectivity rho = K_l_e/K_h_e so
+# that theta_saturated = CALIBRATION_THETA_SATURATED at DEFAULT_TF_TOTAL_M, and
+# scales K_h_e and K_l_e by one common factor, MWC_EFFECTOR_SCALE, so that the
+# midpoint (theta halfway between theta(0) and theta_saturated, with effector
+# depletion at DEFAULT_TF_TOTAL_M) is at 80 µM. O2_C4 uses the same K_h_l and
+# K_h_o with K_h_e = K_l_o = 0 and calibrates K_l_e alone to the same
+# midpoint. Regenerate with test_mwc.py::_calibrate_* if the equations change.
 CALIBRATION_MIDPOINT_M = 80e-6
-MWC_EFFECTOR_SCALE = 0.3794956281766634
+CALIBRATION_THETA_SATURATED = 0.05
+
+
+def effector_selectivity_for_theta_saturated(theta_sat, K_h_l, K_h_o, K_l_o,
+                                             tf_total):
+    """
+    ρ = K_l_e/K_h_e that gives θ_sat at saturating effector.
+
+    Solves W_sat = r·(K_h_o + K_h_l·K_l_o·ρ²)/(1 + K_h_l·ρ²) for ρ, with
+    W_sat = θ_sat/(1 − θ_sat) and r = tf_total/2 (see module docstring).
+    Requires r·K_l_o < W_sat < r·K_h_o.
+    """
+    r = tf_total / 2.0
+    W = theta_sat / (1.0 - theta_sat)
+    return math.sqrt((r * K_h_o - W) / (K_h_l * (W - r * K_l_o)))
+
+
+MWC_EFFECTOR_SELECTIVITY = effector_selectivity_for_theta_saturated(
+    CALIBRATION_THETA_SATURATED, SOCHOR_K_H_L, SOCHOR_K_H_O, SOCHOR_K_L_O,
+    DEFAULT_TF_TOTAL_M)                                # ≈ 79.6
+MWC_EFFECTOR_SCALE = 0.39263690389004985
 DEFAULT_LN_K_H_L = math.log(SOCHOR_K_H_L)
 DEFAULT_LN_K_H_O = math.log(SOCHOR_K_H_O)
 DEFAULT_LN_K_L_O = math.log(SOCHOR_K_L_O)
-DEFAULT_LN_K_H_E = math.log(SOCHOR_K_H_E * MWC_EFFECTOR_SCALE)
-DEFAULT_LN_K_L_E = math.log(SOCHOR_K_L_E * MWC_EFFECTOR_SCALE)
+DEFAULT_LN_K_L_E = math.log(SOCHOR_K_L_E * MWC_EFFECTOR_SCALE)   # ≈ 3.0e5 M⁻¹
+DEFAULT_LN_K_H_E = DEFAULT_LN_K_L_E - math.log(MWC_EFFECTOR_SELECTIVITY)  # ≈ 3.7e3
 DEFAULT_LN_K_E_C4 = 12.410839287464412
 
 # Structure bases and projection rows (see module docstring).

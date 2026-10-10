@@ -534,11 +534,11 @@ def get_hyperparameters() -> Dict[str, Any]:
     p["theta_ln_K_h_l_wt_scale"] = 2.0
     p["theta_ln_K_h_o_wt_loc"]   = DEFAULT_LN_K_H_O   # Sochor: K_h_o = 4.2e8 M⁻¹
     p["theta_ln_K_h_o_wt_scale"] = 2.0
-    p["theta_ln_K_h_e_wt_loc"]   = DEFAULT_LN_K_H_E   # per site; 0.38 × Sochor, midpoint 80 µM
+    p["theta_ln_K_h_e_wt_loc"]   = DEFAULT_LN_K_H_E   # per site; ≈ 3.7e3 M⁻¹ = K_l_e/79.6, theta_sat 0.05
     p["theta_ln_K_h_e_wt_scale"] = 2.0
     p["theta_ln_K_l_o_wt_loc"]   = DEFAULT_LN_K_L_O   # Sochor: K_l_o = 0.1 M⁻¹
     p["theta_ln_K_l_o_wt_scale"] = 3.0
-    p["theta_ln_K_l_e_wt_loc"]   = DEFAULT_LN_K_L_E   # per site; 0.38 × Sochor, midpoint 80 µM
+    p["theta_ln_K_l_e_wt_loc"]   = DEFAULT_LN_K_L_E   # per site; ≈ 3.0e5 M⁻¹ = 0.39 × Sochor, midpoint 80 µM
     p["theta_ln_K_l_e_wt_scale"] = 2.0
     p["theta_tf_total_M"] = DEFAULT_TF_TOTAL_M   # M, monomer units (5e-6 M dimer)
     p["theta_conc_unit_scale"] = DEFAULT_CONC_UNIT_SCALE   # titrant_conc mM → M

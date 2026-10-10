@@ -345,8 +345,10 @@ def test_read_configuration_errors(tmpdir):
         pd.DataFrame({"parameter":["p"], "value":[1]}).to_csv(priors_path, index=False)
         with open(config_path, "w") as f:
              yaml.dump({"data":{"growth":"g", "binding":"b"}, "components":{}, "priors_file": "priors.csv"}, f)
-        with pytest.raises(ValueError, match="guesses_file not specified"):
-            read_configuration(config_path)
+        with patch("tfscreen.tfmodel.configuration_io._update_dataclass",
+                   return_value=MagicMock()):
+            with pytest.raises(ValueError, match="guesses_file not specified"):
+                read_configuration(config_path)
 
         # 5. Missing parameters in guesses
         guesses_path = os.path.join(tmpdir, "guesses.csv")
@@ -357,14 +359,18 @@ def test_read_configuration_errors(tmpdir):
         with patch("tfscreen.tfmodel.configuration_io.ModelOrchestrator") as mock_orchestrator_class:
             mock_orchestrator_inst = mock_orchestrator_class.return_value
             mock_orchestrator_inst.init_params = {"param1": 0, "param2": 0} # param2 missing in CSV
-            with pytest.raises(ValueError, match="Missing initial guesses for parameters"):
-                read_configuration(config_path)
+            with patch("tfscreen.tfmodel.configuration_io._update_dataclass",
+                       return_value=MagicMock()):
+                with pytest.raises(ValueError, match="Missing initial guesses for parameters"):
+                    read_configuration(config_path)
 
         # 6. Guesses file not found on disk
         with open(config_path, "w") as f:
              yaml.dump({"data":{"growth":"g", "binding":"b"}, "components":{}, "priors_file": "priors.csv", "guesses_file": "missing_guesses.csv"}, f)
-        with pytest.raises(FileNotFoundError, match="Guesses file not found"):
-            read_configuration(config_path)
+        with patch("tfscreen.tfmodel.configuration_io._update_dataclass",
+                   return_value=MagicMock()):
+            with pytest.raises(FileNotFoundError, match="Guesses file not found"):
+                read_configuration(config_path)
 
         # 7. Stale guesses file: array parameter has wrong number of values
         guesses_path2 = os.path.join(tmpdir, "guesses_stale.csv")
@@ -446,9 +452,13 @@ def test_update_dataclass_recursion():
     assert m2.sub.x == 10.0
     assert m2.y == 20.0
 
-    # Test no update
-    m3 = _update_dataclass(m, "", {"z": 30.0})
+    # No rows: no update
+    m3 = _update_dataclass(m, "", {})
     assert m3 == m
+
+    # A row that names no field is an error, not a silent no-op
+    with pytest.raises(ValueError, match=r"'z'.*tfs-configure-model"):
+        _update_dataclass(m, "", {"z": 30.0})
 
 
 def test_update_dataclass_dict_field_basic():
@@ -522,16 +532,20 @@ def test_update_dataclass_dict_field_empty_when_no_keys_match():
         pinned: Dict[str, float] = field(default_factory=dict)
 
     c = Comp(pinned={"existing": 5.0})
-    updated = _update_dataclass(c, "", {"unrelated": 7.0})
+    updated = _update_dataclass(c, "", {})
     # No update was queued for `pinned` → object is the original
     assert updated is c
     assert updated.pinned == {"existing": 5.0}
+    # A row outside the dict field names nothing and is an error
+    with pytest.raises(ValueError, match="unrelated"):
+        _update_dataclass(c, "", {"unrelated": 7.0})
 
 
-def test_update_dataclass_dict_field_ignores_deeper_nesting():
+def test_update_dataclass_dict_field_rejects_deeper_nesting():
     """
     Keys with more than one '.' beyond the dict-field name are NOT
-    consumed (they are reserved for nested dataclasses).
+    consumed (they are reserved for nested dataclasses), so they name
+    nothing and raise.
     """
     from dataclasses import dataclass, field
     from typing import Dict
@@ -541,10 +555,8 @@ def test_update_dataclass_dict_field_ignores_deeper_nesting():
         pinned: Dict[str, float] = field(default_factory=dict)
 
     c = Comp()
-    updated = _update_dataclass(c, "", {"pinned.too.deep": 99.0})
-    # Deep key is ignored → no update applied → original returned
-    assert updated is c
-    assert updated.pinned == {}
+    with pytest.raises(ValueError, match="pinned.too.deep"):
+        _update_dataclass(c, "", {"pinned.too.deep": 99.0})
 
 
 def test_update_dataclass_dict_field_coerces_floats():

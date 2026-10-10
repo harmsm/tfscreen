@@ -523,17 +523,33 @@ TF this matters below about 10 µM effector. The equations are in
 ``theta/thermo/mwc.py``.
 
 **Default wild type.** ``theta_tf_total_M`` is 1e-5 M monomer in both
-families. M3 takes K\ :sub:`h_l` = 6.3, K\ :sub:`h_o` = 4.2×10\ :sup:`8`
-M\ :sup:`-1` and K\ :sub:`l_o` = 0.1 M\ :sup:`-1` from Sochor (2014). It
-keeps Sochor's ratio K\ :sub:`l_e`/K\ :sub:`h_e` and scales both effector
-constants by 0.38, to 2.1×10\ :sup:`4` and 2.9×10\ :sup:`5` M\ :sup:`-1`.
-M2 takes the same K\ :sub:`h_l` and K\ :sub:`h_o` with
-K\ :sub:`l_e` = 2.5×10\ :sup:`5` M\ :sup:`-1`. Both put the midpoint of the
-default wild-type θ(IPTG) curve, where θ is halfway between θ(0) and θ at
-saturating IPTG, at 80 µM. Both start at θ(0) = 0.997. M2 falls to 0 at
-saturating IPTG. M3 falls only to 0.64, because at this TF concentration the
-H conformation that remains with two effectors bound still occupies the
-operator. A wild type that induces fully under M3 needs other constants.
+families, the PI's estimate of the in vivo TF level. The M3 defaults aim
+for strong repression and near-complete induction at that level. M3 takes
+K\ :sub:`h_l` = 6.3, K\ :sub:`h_o` = 4.2×10\ :sup:`8` M\ :sup:`-1` and
+K\ :sub:`l_o` = 0.1 M\ :sup:`-1` from Sochor (2014). At saturating IPTG only
+the doubly liganded HE2 and LE2 remain, so with
+ρ = K\ :sub:`l_e`/K\ :sub:`h_e` the operator sees
+
+    W\ :sub:`sat` = r·(K\ :sub:`h_o` + K\ :sub:`h_l`\ ·K\ :sub:`l_o`\ ·ρ\ :sup:`2`) / (1 + K\ :sub:`h_l`\ ·ρ\ :sup:`2`)
+
+and θ at saturation depends on ρ alone. We set θ(saturating) = 0.05,
+W\ :sub:`sat` = 1/19, and solved for ρ:
+
+    ρ\ :sup:`2` = (r·K\ :sub:`h_o` − W\ :sub:`sat`) / (K\ :sub:`h_l`\ ·(W\ :sub:`sat` − r·K\ :sub:`l_o`))
+
+which gives ρ ≈ 79.6. This departs from Sochor's fitted ρ ≈ 13.6. With
+Sochor's ρ the H conformation that remains with two effectors bound still
+occupies the operator at 1e-5 M TF, and θ falls only to 0.64. We then
+scaled K\ :sub:`h_e` and K\ :sub:`l_e` by one common factor, keeping ρ,
+so that the midpoint of the default wild-type θ(IPTG) curve is 80 µM IPTG.
+The midpoint is where θ is halfway between θ(0) and θ at saturating IPTG,
+with effector depletion at 1e-5 M TF. That gives K\ :sub:`h_e` ≈
+3.7×10\ :sup:`3` and K\ :sub:`l_e` ≈ 3.0×10\ :sup:`5` M\ :sup:`-1`, 0.39 times
+Sochor's K\ :sub:`l_e`. M2 takes the same K\ :sub:`h_l` and K\ :sub:`h_o`
+with K\ :sub:`l_e` = 2.5×10\ :sup:`5` M\ :sup:`-1`, also calibrated to an
+80 µM midpoint. Both start at θ(0) = 0.997. M3 falls to 0.05 at saturating
+IPTG and M2 to 0. The M3 curve has a Hill-like n of 1.7 (EC10 27 µM, EC90
+340 µM) and the M2 curve 2.1 (EC10 29 µM, EC90 230 µM).
 
 *PRIOR* sets how the equilibrium constants are parameterized:
 

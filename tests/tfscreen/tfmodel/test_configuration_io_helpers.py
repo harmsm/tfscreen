@@ -1,7 +1,8 @@
 """
 Unit tests for the internal helpers in tfscreen.tfmodel.configuration_io.
 
-_update_dataclass is tested in test_configure_and_run.py; this file covers
+_update_dataclass is tested in test_configure_and_run.py and, for priors rows
+that name no prior, here; this file also covers
 _extract_scalars and _gather_dict_field which have no prior test coverage.
 """
 
@@ -387,3 +388,114 @@ class TestUpdateDataclassStaticFields:
         assert not priors.m_pinned
         updated = _update_dataclass(priors, "", {"m_pinned": 1.0})
         assert bool(updated.m_pinned)
+
+
+# ---------------------------------------------------------------------------
+# Unknown priors rows
+# ---------------------------------------------------------------------------
+
+@dataclasses.dataclass
+class _ThetaPriors:
+    theta_ln_K_h_l_wt_loc: float = 1.84
+    theta_tf_total_M: float = 1e-5
+    max_hill_n: object = None                      # optional, left at None
+    m_is_selection: tuple = (True, False)          # static tuple, kept
+    pinned: dict = dataclasses.field(default_factory=dict)
+
+
+@dataclasses.dataclass
+class _Root:
+    theta: _ThetaPriors = dataclasses.field(default_factory=_ThetaPriors)
+    growth: _GrowthPriors = dataclasses.field(default_factory=_GrowthPriors)
+    binding: object = None                         # absent prior group
+
+
+class TestUnknownPriorRows:
+    """A priors row that names no prior of the model raises, naming it."""
+
+    def test_unknown_row_raises_with_its_name(self):
+        flat = {"theta.theta_ln_K_h_l_wt_loc": 2.0,
+                "theta.theta_op_total_M": 2.5e-8}
+        with pytest.raises(ValueError) as err:
+            _update_dataclass(_Root(), "", flat)
+        msg = str(err.value)
+        assert "theta.theta_op_total_M" in msg
+        assert "tfs-configure-model" in msg
+        assert "theta_ln_K_h_l_wt_loc" not in msg
+
+    def test_every_unknown_row_is_listed(self):
+        flat = {"theta.old_a": 1.0, "growth.condition_growth.old_b": 2.0,
+                "binding.theta_binding_noise.x": 3.0}
+        with pytest.raises(ValueError) as err:
+            _update_dataclass(_Root(), "", flat)
+        for k in flat:
+            assert k in str(err.value)
+
+    def test_known_rows_still_load(self):
+        flat = {
+            "theta.theta_ln_K_h_l_wt_loc": 2.0,          # scalar field
+            "theta.theta_tf_total_M": 2e-5,
+            "theta.max_hill_n": 5.0,                     # field left at None
+            "theta.m_is_selection": "(True, False)",     # static tuple
+            "theta.pinned.hyper_loc": 0.7,               # dict-field entry
+            "growth.condition_growth.k_loc":             # per-condition array
+                jnp.asarray([0.01, 0.02, 0.03]),
+            "growth.condition_growth.k_scale": 0.2,
+        }
+        out = _update_dataclass(_Root(), "", flat)
+        assert out.theta.theta_ln_K_h_l_wt_loc == 2.0
+        assert out.theta.theta_tf_total_M == 2e-5
+        assert out.theta.m_is_selection == (True, False)
+        assert out.theta.pinned == {"hyper_loc": 0.7}
+        assert np.allclose(out.growth.condition_growth.k_loc,
+                           [0.01, 0.02, 0.03])
+        assert out.growth.condition_growth.k_scale == 0.2
+        assert out.binding is None
+
+    def test_every_component_round_trips_its_own_rows(self):
+        """The rows _extract_scalars writes for each component are known."""
+        from tfscreen.tfmodel.generative.registry import model_registry
+
+        checked = 0
+        for group, entry in model_registry.items():
+            modules = entry.values() if isinstance(entry, dict) else [entry]
+            for module in modules:
+                get_priors = getattr(module, "get_priors", None)
+                if get_priors is None:
+                    continue
+                try:
+                    priors = get_priors()
+                except TypeError:
+                    continue
+                flat = _extract_scalars(priors)
+                _update_dataclass(priors, "", flat)
+                checked += 1
+        assert checked > 30
+
+    def test_read_configuration_rejects_a_stale_priors_row(self, tmp_path,
+                                                          mocker):
+        import yaml
+        from tfscreen.tfmodel.configuration_io import read_configuration
+
+        (tmp_path / "config.yaml").write_text(yaml.dump({
+            "data": {"growth": "g.csv", "binding": "b.csv"},
+            "components": {},
+            "priors_file": "priors.csv",
+            "guesses_file": "guesses.csv"}))
+        pd.DataFrame({
+            "parameter": ["theta.theta_ln_K_h_l_wt_loc",
+                          "theta.theta_op_total_M"],
+            "value": [1.84, 2.5e-8]}).to_csv(tmp_path / "priors.csv",
+                                             index=False)
+        pd.DataFrame({"parameter": ["p"], "value": [0.0]}).to_csv(
+            tmp_path / "guesses.csv", index=False)
+
+        orch_cls = mocker.patch(
+            "tfscreen.tfmodel.configuration_io.ModelOrchestrator")
+        orch = orch_cls.return_value
+        orch.priors = _Root()
+        orch.growth_tm = None
+        orch.init_params = {"p": 0.0}
+
+        with pytest.raises(ValueError, match=r"theta\.theta_op_total_M"):
+            read_configuration(str(tmp_path / "config.yaml"))

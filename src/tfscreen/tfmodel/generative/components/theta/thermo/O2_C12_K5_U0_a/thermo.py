@@ -25,10 +25,12 @@ K2/K1 = 1 instead of the independent-site 1/4 (see ``mwc.py``).
 Wild-type defaults
 ------------------
 K_h_l = 6.3, K_h_o = 4.2×10⁸ M⁻¹ and K_l_o = 0.1 M⁻¹ are Sochor's (Table 1).
-K_h_e and K_l_e keep Sochor's ratio K_l_e/K_h_e ≈ 13.6 and are both scaled
-by ``mwc.MWC_EFFECTOR_SCALE`` ≈ 0.38 (to 2.1×10⁴ and 2.9×10⁵ M⁻¹), which
-puts the midpoint of the default wt θ(IPTG) curve at 80 µM with effector
-depletion at tf_total = 1e-5 M.
+The effector selectivity K_l_e/K_h_e = ``mwc.MWC_EFFECTOR_SELECTIVITY``
+≈ 79.6, wider than Sochor's fitted 13.6, puts θ at saturating effector at
+0.05 for tf_total = 1e-5 M. K_h_e and K_l_e (≈ 3.7×10³ and 3.0×10⁵ M⁻¹)
+then share the scale ``mwc.MWC_EFFECTOR_SCALE`` ≈ 0.39 on Sochor's K_l_e,
+which puts the midpoint of the default wt θ(IPTG) curve at 80 µM with
+effector depletion. The derivation is in ``mwc.py``.
 
 K_h_l > 1 is required for effector-induced derepression. If K_h_l << 1,
 F(e) ≈ P_H(e) and h·P_H is about constant, so θ is flat in effector.

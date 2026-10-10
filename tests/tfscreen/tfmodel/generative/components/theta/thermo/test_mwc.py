@@ -298,16 +298,31 @@ def test_default_wt_midpoint_is_80_uM(family):
 
 
 def _calibrate_c12_scale():
-    """Common factor on Sochor's K_h_e and K_l_e that puts the midpoint at 80 µM."""
+    """
+    Common factor on (Sochor K_l_e/ρ, Sochor K_l_e) that puts the midpoint at
+    80 µM, with ρ the default selectivity.
+    """
+    rho = mwc.MWC_EFFECTOR_SELECTIVITY
+
     def mid_err(ln_f):
-        f = math.exp(ln_f)
-        args = (mwc.SOCHOR_K_H_L, mwc.SOCHOR_K_H_O, mwc.SOCHOR_K_H_E * f,
-                mwc.SOCHOR_K_L_O, mwc.SOCHOR_K_L_E * f, 0.0)
+        K_l_e = mwc.SOCHOR_K_L_E * math.exp(ln_f)
+        args = (mwc.SOCHOR_K_H_L, mwc.SOCHOR_K_H_O, K_l_e / rho,
+                mwc.SOCHOR_K_L_O, K_l_e, 0.0)
         t0 = float(mwc.mwc_theta(*args, np.array(0.0), _TF, xp=np))
         ts = float(mwc.theta_saturated(*args, _TF, xp=np))
         tm = float(mwc.mwc_theta(*args, np.array(80e-6), _TF, xp=np))
         return tm - 0.5 * (t0 + ts)
-    return math.exp(brentq(mid_err, -10.0, 5.0, xtol=1e-14))
+    return math.exp(brentq(mid_err, -5.0, 3.0, xtol=1e-15))
+
+
+def _calibrate_c12_selectivity():
+    """ρ = K_l_e/K_h_e that gives θ_sat = 0.05, by bracketing root finder."""
+    def err(ln_rho):
+        rho = math.exp(ln_rho)
+        t = mwc.theta_saturated(mwc.SOCHOR_K_H_L, mwc.SOCHOR_K_H_O, 1.0,
+                                mwc.SOCHOR_K_L_O, rho, 0.0, _TF, xp=np)
+        return float(t) - 0.05
+    return math.exp(brentq(err, 0.0, 10.0, xtol=1e-15))
 
 
 def _calibrate_c4_ln_K_E():
@@ -324,12 +339,26 @@ def test_default_constants_are_the_calibrated_ones():
                                                    rel=1e-8)
     assert mwc.DEFAULT_LN_K_E_C4 == pytest.approx(_calibrate_c4_ln_K_E(),
                                                   abs=1e-8)
-    # C12 keeps Sochor's K_h_l, K_h_o, K_l_o and K_l_e/K_h_e.
+    assert mwc.MWC_EFFECTOR_SELECTIVITY == pytest.approx(
+        _calibrate_c12_selectivity(), rel=1e-10)
+    assert mwc.MWC_EFFECTOR_SELECTIVITY == pytest.approx(79.58, abs=0.01)
+    # C12 keeps Sochor's K_h_l, K_h_o and K_l_o and widens K_l_e/K_h_e from
+    # Sochor's 13.6 to the selectivity that gives θ_sat = 0.05.
     assert math.exp(mwc.DEFAULT_LN_K_H_L) == pytest.approx(6.3)
     assert math.exp(mwc.DEFAULT_LN_K_H_O) == pytest.approx(4.2e8)
     assert math.exp(mwc.DEFAULT_LN_K_L_O) == pytest.approx(0.1)
     assert math.exp(mwc.DEFAULT_LN_K_L_E - mwc.DEFAULT_LN_K_H_E) == \
-        pytest.approx(7.6e5 / 5.6e4)
+        pytest.approx(mwc.MWC_EFFECTOR_SELECTIVITY, rel=1e-12)
+    assert math.exp(mwc.DEFAULT_LN_K_L_E) == pytest.approx(
+        mwc.SOCHOR_K_L_E * mwc.MWC_EFFECTOR_SCALE, rel=1e-12)
+
+
+def test_c12_default_wt_saturates_at_five_percent():
+    """M3's default wt falls to θ = 0.05 at saturating effector (1e-5 M TF)."""
+    f, t_sat = _wt_curve("O2_C12_K5_U0_a")
+    assert t_sat == pytest.approx(0.05, rel=1e-10)
+    assert float(f(10.0)) == pytest.approx(0.05, abs=1e-4)
+    assert float(f(0.0)) > 0.99
 
 
 @pytest.mark.parametrize("kind", ["PK", "PddG", "PnnC"])
