@@ -64,6 +64,9 @@ Simulated runs also have ground truth from ``tfs-simulate``:
 ``*_sim_parameters.csv``
     True per-genotype parameters.
 
+``*_sim_mutation_parameters.csv`` and ``*_sim_pair_parameters.csv``
+    True per-mutation and per-pair parameters of the thermodynamic models.
+
 ``*_sim_growth_parameters.csv``
     True per-condition growth parameters.
 
@@ -418,9 +421,14 @@ checked for calibration.
   ``theta_high`` and ``dk_geno`` take their truth from
   ``*_sim_parameters.csv``. Tables on a log or logit scale are matched by
   transforming the truth.
-* ``hill_mut`` per-mutation tables (``d_`` prefix) are compared with the true
-  value minus wt's. Pair tables (``epi_`` prefix) are compared with the
+* Per-mutation tables (``d_`` prefix) and pair tables (``epi_`` prefix) are
+  joined to ``*_sim_mutation_parameters.csv`` and
+  ``*_sim_pair_parameters.csv`` when those files have the column, as they do
+  for the thermodynamic models. Otherwise, as for ``hill_mut``, a ``d_`` table
+  is compared with the true value minus wt's and an ``epi_`` table with the
   additive epistasis of the true values.
+* The per-structure ``ddG_*`` truth of the PddG and PnnC models has no
+  extracted table yet, so it produces a warning and is not scored.
 * ``params_growth_k``, ``params_growth_m`` and the other growth-model tables
   are joined to ``*_sim_growth_parameters.csv`` on ``condition_rep``.
 * ``params_k_ref`` and ``params_lam`` are single values compared with

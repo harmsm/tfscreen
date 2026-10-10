@@ -258,7 +258,9 @@ Every run writes these files:
     Every genotype in the library and its origin.
 ``tfs_sim_parameters.csv``
     Ground-truth per-genotype parameters (the theta model's parameters,
-    ``dk_geno``, activity).
+    ``dk_geno``, activity). For the thermodynamic models these are the
+    per-genotype equilibrium constants, such as ``ln_K_op``, ``ln_K_HL``
+    and ``ln_K_E``.
 ``tfs_sim_genotype_theta.csv``
     Ground-truth *θ* per genotype and titrant concentration.
     ``tfs-summarize-fit`` finds this file and uses it as the reference for
@@ -272,6 +274,13 @@ Every run writes these files:
     The config as run, with ``--seed`` applied.
 ``tfs_sim_provenance.json``
     Version, git commit and command line of the run.
+
+The thermodynamic theta models also write ``tfs_sim_mutation_parameters.csv``,
+one row per mutation with its true ``d_*`` effects and, for PddG and PnnC,
+its true ``ddG_{structure}`` values. When the library has multi-mutants they
+write ``tfs_sim_pair_parameters.csv`` as well, one row per mutation pair with
+its true ``epi_*`` terms. The column names match the tables
+``tfs-extract-params`` writes, so ``tfs-summarize-fit`` can score them.
 
 The optional blocks add ``tfs_sim_binding.csv`` (and, with
 ``library_binding``, ``tfs_sim_library_binding.csv`` listing the in-library

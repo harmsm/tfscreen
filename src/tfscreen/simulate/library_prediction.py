@@ -211,7 +211,8 @@ def _spiked_stratified_binding(binding_genotypes, cf, sample_df, binding_sample_
 
 
 def library_prediction(cf: Union[Dict[str, Any], str, Path],
-                       override_keys: dict=None):
+                       override_keys: dict=None,
+                       return_mutation_truth: bool=False):
     """
     Predict the "ground-truth" phenotypes for a transcription factor screen
     experiment given a library, thermodynamic model, and map between that model
@@ -226,6 +227,10 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
         after reading the configuration file, replace keys in the configuration
         with the key/value pairs in override keys. No error checking is done
         on these keys; the user is responsible for checking their sanity.
+    return_mutation_truth : bool, default False
+        Also return the per-mutation and per-pair ground truth from
+        ``thermo_to_growth`` as a sixth value (``{"mutation": DataFrame or
+        None, "pair": DataFrame or None}``).
 
     Returns
     -------
@@ -250,6 +255,9 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
         ``titrant_name``, ``titrant_conc``, ``theta_true``.  Theta values
         here are stratified (greedy maximin) across the binding concentrations
         and are consistent with the growth phenotypes in ``phenotype_df``.
+    mutation_truth : dict
+        Only when ``return_mutation_truth`` is True; see
+        ``thermo_to_growth``.
     """
 
     # -------------------------------------------------------------------------
@@ -409,7 +417,7 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
         activity_wt = cf.get('activity_wt', 1.0)
         activity_mut_scale = cf.get('activity_mut_scale', 0.0)
 
-    phenotype_df, genotype_theta_df, parameters_df = thermo_to_growth(
+    result = thermo_to_growth(
         genotypes=library_df["genotype"],
         sim_data=sim_data,
         sample_df=sample_df,
@@ -431,6 +439,12 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
         theta_gc_override=theta_gc_override,
         theta_params_override=theta_params_override or None,
         dk_geno_override=dk_geno_override,
+        return_mutation_truth=return_mutation_truth,
     )
+    phenotype_df, genotype_theta_df, parameters_df = result[:3]
 
-    return library_df, phenotype_df, genotype_theta_df, parameters_df, binding_theta_df
+    out = (library_df, phenotype_df, genotype_theta_df, parameters_df,
+           binding_theta_df)
+    if return_mutation_truth:
+        out += (result[3],)
+    return out

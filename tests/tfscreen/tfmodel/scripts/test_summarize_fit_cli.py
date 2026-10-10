@@ -1750,6 +1750,127 @@ class TestSummarizeParams:
         assert "ref" in df.columns
 
 
+class TestSummarizeThermoTruth:
+    """Thermodynamic models: the scalar K's and the per-mutation / per-pair
+    truth written by tfs-simulate are scored against extracted tables."""
+
+    COMPONENT = "thermo.O2_C12_K5_U0_a.PK"
+    GENOTYPES = ["wt", "H29A", "H29C", "L62A", "H29A/L62A", "H29C/L62A"]
+    SCALAR_KS = ["ln_K_h_l", "ln_K_h_o", "ln_K_l_o"]
+
+    def _simulate(self, run_dir):
+        """Draw truth with the simulator and write it as tfs-simulate does."""
+        import jax
+        from tfscreen.simulate.sim_data_class import build_sim_data
+        from tfscreen.simulate.thermo_to_growth import thermo_to_growth
+
+        lib = pd.DataFrame({"genotype": self.GENOTYPES})
+        sample_df = pd.DataFrame({"titrant_name": "iptg",
+                                  "titrant_conc": [0.0, 0.01, 1.0],
+                                  "condition_pre": "pre",
+                                  "condition_sel": "sel"})
+        growth = {"pre": {"m": 0.0, "b": 0.01}, "sel": {"m": 0.01, "b": 0.01}}
+        sim_data = build_sim_data(lib, sample_df)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            _, _, params, truth = thermo_to_growth(
+                lib["genotype"], sim_data, sample_df, self.COMPONENT,
+                jax.random.PRNGKey(0), growth, rng=np.random.default_rng(0),
+                return_mutation_truth=True)
+        params.to_csv(os.path.join(run_dir, "tfs_sim_parameters.csv"), index=False)
+        truth["mutation"].to_csv(
+            os.path.join(run_dir, "tfs_sim_mutation_parameters.csv"), index=False)
+        truth["pair"].to_csv(
+            os.path.join(run_dir, "tfs_sim_pair_parameters.csv"), index=False)
+        return params, truth["mutation"], truth["pair"]
+
+    @staticmethod
+    def _write_extracted(path, key_df, values):
+        """An extracted table: key columns plus quantiles around ``values``."""
+        df = key_df.copy()
+        for q, shift in (("q0.025", -1.0), ("q0.5", 0.0), ("q0.975", 1.0)):
+            df[q] = np.asarray(values) + shift
+        df.to_csv(path, index=False)
+
+    def _write_fit(self, run_dir, params, mut, pair):
+        for col in self.SCALAR_KS:
+            self._write_extracted(os.path.join(run_dir, f"tfs_params_{col}.csv"),
+                                  params[["genotype"]], params[col])
+        for col in ["ln_K_h_e", "ln_K_l_e"]:
+            self._write_extracted(os.path.join(run_dir, f"tfs_params_{col}.csv"),
+                                  params[["genotype"]].assign(titrant_name="iptg"),
+                                  params[col])
+        for col in [c for c in mut.columns if c.startswith("d_")]:
+            self._write_extracted(os.path.join(run_dir, f"tfs_params_{col}.csv"),
+                                  mut[["mutation"]], mut[col])
+        for col in [c for c in pair.columns if c.startswith("epi_")]:
+            self._write_extracted(os.path.join(run_dir, f"tfs_params_{col}.csv"),
+                                  pair[["pair"]], pair[col])
+
+    def _run(self, tmp_path):
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _summarize_params(str(tmp_path), out_prefix)
+        return out_prefix, [str(x.message) for x in w]
+
+    def test_scalar_Ks_are_scored(self, tmp_path):
+        params, mut, pair = self._simulate(str(tmp_path))
+        self._write_fit(str(tmp_path), params, mut, pair)
+        out_prefix, msgs = self._run(tmp_path)
+
+        truth = params.set_index("genotype")
+        for col in self.SCALAR_KS + ["ln_K_h_e", "ln_K_l_e"]:
+            df = pd.read_csv(f"{out_prefix}_params_{col}.csv")
+            np.testing.assert_allclose(df["ref"], truth.loc[df["genotype"], col],
+                                       rtol=1e-6)
+            # median == truth by construction
+            np.testing.assert_allclose(df["ref"], df["q0.5"], rtol=1e-6)
+            assert os.path.exists(f"{out_prefix}_params_{col}_calibration_curve.csv") \
+                or os.path.exists(f"{out_prefix}_params_{col}.pdf")
+        # dk_geno / activity have no fake extract here; no thermo K is unmatched.
+        unmatched = [m for m in msgs if m.startswith("Expected")
+                     and "ln_K" in m]
+        assert unmatched == []
+
+    def test_mutation_and_pair_truth_are_scored(self, tmp_path):
+        params, mut, pair = self._simulate(str(tmp_path))
+        self._write_fit(str(tmp_path), params, mut, pair)
+        out_prefix, _ = self._run(tmp_path)
+
+        for col in [c for c in mut.columns if c.startswith("d_")]:
+            df = pd.read_csv(f"{out_prefix}_params_{col}.csv")
+            assert df["ref"].notna().all()
+            np.testing.assert_allclose(df["ref"], df["q0.5"], rtol=1e-6)
+        for col in [c for c in pair.columns if c.startswith("epi_")]:
+            df = pd.read_csv(f"{out_prefix}_params_{col}.csv")
+            assert df["ref"].notna().all()
+            np.testing.assert_allclose(df["ref"], df["q0.5"], rtol=1e-6)
+
+    def test_mutation_truth_used_without_single_mutants(self, tmp_path):
+        """The per-mutation file scores d_ tables even when a mutation's single
+        mutant is missing from the per-genotype truth (no sim[m] - sim[wt])."""
+        params, mut, pair = self._simulate(str(tmp_path))
+        self._write_fit(str(tmp_path), params, mut, pair)
+        params[params["genotype"] != "L62A"].to_csv(
+            tmp_path / "tfs_sim_parameters.csv", index=False)
+        out_prefix, _ = self._run(tmp_path)
+        df = pd.read_csv(f"{out_prefix}_params_d_ln_K_h_l.csv")
+        assert df.loc[df["mutation"] == "L62A", "ref"].notna().all()
+
+    def test_pair_labels_matched_after_standardizing(self, tmp_path):
+        params, mut, pair = self._simulate(str(tmp_path))
+        self._write_fit(str(tmp_path), params, mut, pair)
+        # A fit may write the pair in the other order.
+        flipped = pd.read_csv(tmp_path / "tfs_params_epi_ln_K_h_l.csv")
+        flipped["pair"] = ["/".join(p.split("/")[::-1]) for p in flipped["pair"]]
+        flipped.to_csv(tmp_path / "tfs_params_epi_ln_K_h_l.csv", index=False)
+        out_prefix, _ = self._run(tmp_path)
+        df = pd.read_csv(f"{out_prefix}_params_epi_ln_K_h_l.csv")
+        assert df["ref"].notna().all()
+
+
 # ---------------------------------------------------------------------------
 # _summarize_condition_growth_params / _summarize_k_ref / _summarize_growth_params
 # ---------------------------------------------------------------------------

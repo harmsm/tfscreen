@@ -89,7 +89,7 @@ def patched_simulation(tmp_path):
 
     with patch("tfscreen.util.read_yaml", return_value={"seed": 99, "growth": {}}) as mock_yaml, \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
-               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
+               return_value=(lib_df, pheno_df, theta_df, params_df, None, None)), \
          patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
                return_value=(sample_df, counts_df)), \
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
@@ -135,7 +135,7 @@ def test_writes_parameters_not_phenotype(tmp_path):
 
     with patch("tfscreen.util.read_yaml", return_value={"seed": 0, "growth": {}}), \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
-               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
+               return_value=(lib_df, pheno_df, theta_df, params_df, None, None)), \
          patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
                return_value=(sample_df, counts_df)), \
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
@@ -159,7 +159,7 @@ def test_output_file_names_include_expected_stems(tmp_path):
 
     with patch("tfscreen.util.read_yaml", return_value={"seed": 0, "growth": {}}), \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
-               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
+               return_value=(lib_df, pheno_df, theta_df, params_df, None, None)), \
          patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
                return_value=(sample_df, counts_df)), \
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
@@ -190,7 +190,7 @@ def test_growth_parameters_csv_always_written(tmp_path):
 
     with patch("tfscreen.util.read_yaml", return_value=cfg), \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
-               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
+               return_value=(lib_df, pheno_df, theta_df, params_df, None, None)), \
          patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
                return_value=(sample_df, counts_df)), \
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
@@ -214,7 +214,7 @@ def test_growth_parameters_csv_written_for_real(tmp_path):
 
     with patch("tfscreen.util.read_yaml", return_value=cfg), \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
-               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
+               return_value=(lib_df, pheno_df, theta_df, params_df, None, None)), \
          patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
                return_value=(sample_df, counts_df)), \
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
@@ -249,7 +249,7 @@ def test_transformation_lam_csv_always_written(tmp_path):
 
     with patch("tfscreen.util.read_yaml", return_value=cfg), \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
-               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
+               return_value=(lib_df, pheno_df, theta_df, params_df, None, None)), \
          patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
                return_value=(sample_df, counts_df)), \
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
@@ -272,7 +272,7 @@ def test_transformation_lam_csv_written_for_real(tmp_path):
 
     with patch("tfscreen.util.read_yaml", return_value=cfg), \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
-               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
+               return_value=(lib_df, pheno_df, theta_df, params_df, None, None)), \
          patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
                return_value=(sample_df, counts_df)), \
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
@@ -312,7 +312,7 @@ def test_base_growth_not_written_without_config(tmp_path):
 
     with patch("tfscreen.util.read_yaml", return_value={"seed": 0, "growth": {}}), \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
-               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
+               return_value=(lib_df, pheno_df, theta_df, params_df, None, None)), \
          patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
                return_value=(sample_df, counts_df)), \
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
@@ -338,7 +338,7 @@ def test_base_growth_written_when_configured(tmp_path):
 
     with patch("tfscreen.util.read_yaml", return_value=cfg), \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
-               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
+               return_value=(lib_df, pheno_df, theta_df, params_df, None, None)), \
          patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
                return_value=(sample_df, counts_df)), \
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
@@ -368,7 +368,7 @@ def test_k_ref_not_written_without_base_growth_config(tmp_path):
 
     with patch("tfscreen.util.read_yaml", return_value={"seed": 0, "growth": {}}), \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
-               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
+               return_value=(lib_df, pheno_df, theta_df, params_df, None, None)), \
          patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
                return_value=(sample_df, counts_df)), \
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
@@ -394,7 +394,7 @@ def test_k_ref_written_when_base_growth_configured(tmp_path):
 
     with patch("tfscreen.util.read_yaml", return_value=cfg), \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
-               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
+               return_value=(lib_df, pheno_df, theta_df, params_df, None, None)), \
          patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
                return_value=(sample_df, counts_df)), \
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
@@ -445,7 +445,7 @@ def test_run_simulation_writes_presplit_csv(tmp_path):
 
     with patch("tfscreen.util.read_yaml", return_value=cf), \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
-               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
+               return_value=(lib_df, pheno_df, theta_df, params_df, None, None)), \
          patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
                return_value=(sample_df, counts_df)), \
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
@@ -479,7 +479,7 @@ def test_run_simulation_no_presplit_without_config(tmp_path):
 
     with patch("tfscreen.util.read_yaml", return_value=cf), \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
-               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
+               return_value=(lib_df, pheno_df, theta_df, params_df, None, None)), \
          patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
                return_value=(sample_df, counts_df)), \
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
@@ -535,7 +535,7 @@ def test_writes_input_config_yaml(tmp_path):
 
     with patch("tfscreen.util.read_yaml", return_value={"seed": 5, "growth": {}}), \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
-               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
+               return_value=(lib_df, pheno_df, theta_df, params_df, None, None)), \
          patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
                return_value=(sample_df, counts_df)), \
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
@@ -557,7 +557,7 @@ def test_input_config_yaml_existence_check(tmp_path):
 
     with patch("tfscreen.util.read_yaml", return_value={"seed": 0, "growth": {}}), \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
-               return_value=(lib_df, pheno_df, theta_df, params_df, None)) as mock_lib:
+               return_value=(lib_df, pheno_df, theta_df, params_df, None, None)) as mock_lib:
         with pytest.raises(FileExistsError, match="input-config.yaml"):
             run_simulation_from_config("config.yaml", out_prefix=str(tmp_path / "tfs_sim"))
 
@@ -592,7 +592,7 @@ def _od_run(tmp_path, cf):
 
     with patch("tfscreen.util.read_yaml", return_value=cf), \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
-               return_value=(lib_df, lib_df.copy(), lib_df.copy(), params_df, None)), \
+               return_value=(lib_df, lib_df.copy(), lib_df.copy(), params_df, None, None)), \
          patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
                side_effect=fake_selection), \
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
@@ -709,7 +709,7 @@ def test_design_sets_num_replicates(tmp_path, capsys):
 
     with patch("tfscreen.util.read_yaml", return_value=cf), \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
-               return_value=(lib_df, pheno, lib_df.copy(), params_df, None)), \
+               return_value=(lib_df, pheno, lib_df.copy(), params_df, None, None)), \
          patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
                side_effect=fake_selection):
         with pytest.raises(_Stop):

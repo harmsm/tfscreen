@@ -65,7 +65,13 @@ def run_simulation_from_config(
     tfscreen.simulate.growth_parameters_output.generate_growth_parameters_df),
     and transformation_lam (single-row congression Poisson-rate ground truth;
     see tfscreen.simulate.transformation_lam_output.generate_transformation_lam_df)
-    CSV files. If the config contains a 'binding_data' block, also writes a
+    CSV files. A mutation-decomposed theta model drawn from its prior (the
+    thermodynamic models) also writes mutation_parameters (one row per
+    mutation: the true d_* deltas and, for PddG/PnnC, ddG_{structure}) and,
+    when the library has multi-mutants, pair_parameters (one row per pair:
+    the true epi_* terms); see
+    tfscreen.simulate.thermo_to_growth._mutation_truth_tables. If the config
+    contains a 'binding_data' block, also writes a
     simulated binding curve CSV (see
     tfscreen.simulate.binding_data.generate_binding_df). If it contains a
     'base_growth_data' block, also writes a simulated direct growth-rate
@@ -119,7 +125,8 @@ def run_simulation_from_config(
     config_out = f"{out_prefix}_input-config.yaml"
 
     output_names = ["library", "parameters", "genotype_theta",
-                    "growth_parameters", "transformation_lam"]
+                    "growth_parameters", "transformation_lam",
+                    "mutation_parameters", "pair_parameters"]
     if write_growth:
         output_names.append("growth")
     if "binding_data" in cf:
@@ -153,7 +160,9 @@ def run_simulation_from_config(
     # -------------------------------------------------------------------------
     # Ground-truth library and phenotypes (deterministic given the config)
 
-    library_df, phenotype_df, genotype_theta_df, parameters_df, binding_theta_df = library_prediction(cf)
+    (library_df, phenotype_df, genotype_theta_df, parameters_df,
+     binding_theta_df, mutation_truth) = \
+        library_prediction(cf, return_mutation_truth=True)
     growth_parameters_df = generate_growth_parameters_df(cf["growth"])
     transformation_lam_df = generate_transformation_lam_df(cf)
 
@@ -302,6 +311,14 @@ def run_simulation_from_config(
     transformation_lam_df.to_csv(out_path("transformation_lam"), index=False)
     written = ["library", "parameters", "genotype_theta", "growth_parameters",
                "transformation_lam"] + (["growth"] if write_growth else [])
+    # Per-mutation / per-pair truth of mutation-decomposed theta models drawn
+    # from their prior (the thermodynamic models); absent otherwise.
+    for key, name in (("mutation", "mutation_parameters"),
+                      ("pair", "pair_parameters")):
+        truth_df = (mutation_truth or {}).get(key)
+        if truth_df is not None:
+            truth_df.to_csv(out_path(name), index=False)
+            written.append(name)
     print(f"\nWrote: {', '.join(out_path(n) for n in written)}")
 
     if "binding_data" in cf:

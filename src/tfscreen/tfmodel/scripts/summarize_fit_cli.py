@@ -544,6 +544,47 @@ def _compute_epi_obs(params_df, ref_series, param_name):
     return ep_map.reindex(std_pairs).values
 
 
+def _read_keyed_truth(run_dir, name, key):
+    """
+    Read ``*_sim_{name}.csv`` (per-mutation or per-pair truth) indexed by key.
+
+    Returns None when the file is absent (real data, or a theta model with no
+    per-mutation truth) or unreadable (with a warning).  Pair labels are
+    standardized so they match ``standardize_genotypes`` of a fit's pairs.
+    """
+    path = _find_unique(run_dir, f"_sim_{name}.csv", f"sim {name}",
+                        warn_missing=False)
+    if path is None:
+        return None
+    try:
+        df = pd.read_csv(path)
+    except Exception as exc:
+        warnings.warn(f"Could not load {path}: {exc}")
+        return None
+    if key not in df.columns:
+        warnings.warn(f"{path} has no '{key}' column; ignoring it")
+        return None
+    if key == "pair":
+        from tfscreen.genetics import standardize_genotypes
+        df[key] = standardize_genotypes(df[key])
+    return df.set_index(key)
+
+
+def _compute_keyed_obs(params_df, truth_df, column, key):
+    """Return ref array for a params file joined to keyed truth on ``key``.
+
+    Returns ``None`` when params_df has no ``key`` column.  Rows whose key is
+    absent from the truth receive NaN.
+    """
+    if key not in params_df.columns:
+        return None
+    labels = params_df[key]
+    if key == "pair":
+        from tfscreen.genetics import standardize_genotypes
+        labels = pd.Series(standardize_genotypes(labels), index=params_df.index)
+    return truth_df[column].reindex(labels).values
+
+
 def _try_plot_params_corr(out_df, label, pdf_path):
     """Save a scatter correlation plot of ref vs median for a params CSV.
 
@@ -579,14 +620,21 @@ def _summarize_params(run_dir, out_prefix):
     Scans run_dir for a ``*_sim_parameters.csv`` file.  If absent the function
     returns silently (real-data runs have no ground truth).
 
-    For each non-genotype column in sim_parameters the function checks that a
-    matching ``*_params_{col}.csv`` exists and warns if it does not.
+    For each non-genotype column in sim_parameters (and each column of the
+    per-mutation ``*_sim_mutation_parameters.csv`` and per-pair
+    ``*_sim_pair_parameters.csv`` truth, when present) the function checks
+    that a matching ``*_params_{col}.csv`` exists and warns if it does not.
 
     All ``*_params_*.csv`` files in run_dir are then classified by their
     suffix as *direct* (genotype key), *diff* (``_d_`` infix, mutation key),
-    or *epi* (``_epi_`` infix, pair key).  A ``ref`` column is appended to
-    each file whose parameter name resolves via the transform registry and
-    written to the summary directory under ``{out_prefix}_params_*.csv``.
+    or *epi* (``_epi_`` infix, pair key).  A diff or epi file whose full name
+    (``d_ln_K_op``) is a column of the per-mutation or per-pair truth is
+    joined to it directly on ``mutation`` / ``pair``.  Otherwise the
+    parameter name resolves via the transform registry: direct files by
+    genotype, diff files as sim[mutation] − sim[wt], epi files as the
+    additive epistasis of the per-genotype truth.  A ``ref`` column is
+    appended to each resolved file and written to the summary directory
+    under ``{out_prefix}_params_*.csv``.
     """
     sim_path = _find_unique(run_dir, "_sim_parameters.csv", "sim_parameters",
                             warn_missing=False)
@@ -608,7 +656,17 @@ def _summarize_params(run_dir, out_prefix):
 
     sim_cols = [c for c in sim_df.columns if c != "genotype"]
 
-    for col in sim_cols:
+    # Per-mutation / per-pair truth (thermodynamic models; tfs-simulate's
+    # mutation_parameters / pair_parameters outputs), keyed like the fit's
+    # d_* / epi_* tables.
+    keyed_truth = {
+        "diff": _read_keyed_truth(run_dir, "mutation_parameters", "mutation"),
+        "epi": _read_keyed_truth(run_dir, "pair_parameters", "pair"),
+    }
+    keyed_cols = [c for t in keyed_truth.values() if t is not None
+                  for c in t.columns]
+
+    for col in sim_cols + keyed_cols:
         if not glob.glob(os.path.join(run_dir, f"*_params_{col}.csv")):
             warnings.warn(f"Expected *_params_{col}.csv in {run_dir} but none found")
 
@@ -630,10 +688,15 @@ def _summarize_params(run_dir, out_prefix):
         else:
             continue
 
-        if param_name not in transform_registry:
+        key = {"diff": "mutation", "epi": "pair"}.get(kind)
+        full_name = f"{'d' if kind == 'diff' else kind}_{param_name}"
+        truth_df = keyed_truth.get(kind)
+        use_keyed = truth_df is not None and full_name in truth_df.columns
+
+        if not use_keyed and param_name not in transform_registry:
             continue
 
-        ref_series = transform_registry[param_name]
+        ref_series = None if use_keyed else transform_registry[param_name]
 
         try:
             params_df = pd.read_csv(param_file)
@@ -643,7 +706,9 @@ def _summarize_params(run_dir, out_prefix):
 
         ref = None
         try:
-            if kind == "direct":
+            if use_keyed:
+                ref = _compute_keyed_obs(params_df, truth_df, full_name, key)
+            elif kind == "direct":
                 ref = _compute_direct_obs(params_df, ref_series)
             elif kind == "diff":
                 ref = _compute_diff_obs(params_df, ref_series)

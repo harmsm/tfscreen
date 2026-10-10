@@ -34,7 +34,8 @@ def sample_theta_prior(component_name,
                        rng_key,
                        priors_overrides=None,
                        sim_priors_overrides=None,
-                       force_prior_predictive=False):
+                       force_prior_predictive=False,
+                       return_deterministic=False):
     """
     Draw one sample of theta from a registered theta component.
 
@@ -70,6 +71,12 @@ def sample_theta_prior(component_name,
     force_prior_predictive : bool, default False
         When True, always use the prior-predictive path (``define_model`` +
         ``handlers.seed``), even if the component provides ``simulate``.
+    return_deterministic : bool, default False
+        When True, also return the values of every ``pyro.deterministic``
+        site recorded while drawing the sample (prior-predictive path), so
+        callers can write the per-mutation (``theta_d_*``), per-pair
+        (``theta_epi_*``) and per-structure (``theta_ddG``) truth that
+        ``ThetaParam`` does not carry.  Tracing does not change the draw.
 
     Returns
     -------
@@ -79,6 +86,9 @@ def sample_theta_prior(component_name,
     theta_param : ThetaParam
         Sampled parameter pytree.  When the perturbation path is used,
         ``mu`` and ``sigma`` fields are ``None``.
+    deterministic : dict[str, np.ndarray]
+        Only when ``return_deterministic`` is True: deterministic site name
+        to value.  Empty for the perturbation path, which has no trace.
 
     Raises
     ------
@@ -106,7 +116,11 @@ def sample_theta_prior(component_name,
         if sim_priors_overrides:
             sim_params.update(sim_priors_overrides)
         sim_priors = module.SimPriors(**sim_params)
-        return module.simulate("theta", sim_data, sim_priors, rng_key)
+        theta_gc, theta_param = module.simulate("theta", sim_data, sim_priors,
+                                                rng_key)
+        if return_deterministic:
+            return theta_gc, theta_param, {}
+        return theta_gc, theta_param
 
     # Prior-predictive fallback: seed the NumPyro trace and call define_model.
     # handlers.seed gives every pyro.sample site a reproducible draw
@@ -118,13 +132,20 @@ def sample_theta_prior(component_name,
         params.update(priors_overrides)
     priors = module.ModelPriors(**params)
 
-    with handlers.seed(rng_seed=rng_key):
-        theta_param = module.define_model("theta", sim_data, priors)
+    # handlers.trace only records the sites; the seeded draw is unchanged.
+    with handlers.trace() as trace:
+        with handlers.seed(rng_seed=rng_key):
+            theta_param = module.define_model("theta", sim_data, priors)
 
     # run_model returns (T=1, C, G) for simulation (scatter_theta=0).
     theta_tcg = module.run_model(theta_param, sim_data)
     theta_gc = np.array(theta_tcg[0]).T   # (G, C)
 
+    if return_deterministic:
+        deterministic = {name: np.asarray(site["value"])
+                         for name, site in trace.items()
+                         if site["type"] == "deterministic"}
+        return theta_gc, theta_param, deterministic
     return theta_gc, theta_param
 
 
