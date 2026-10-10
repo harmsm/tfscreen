@@ -1086,7 +1086,18 @@ class ModelOrchestrator:
                  congression_dk_rule="dilution",
                  congression_dk_alpha=None,
                  growth_likelihood="lncfu",
-                 theta_gauge_conc=None):
+                 theta_gauge_conc=None,
+                 mut_labels=None,
+                 pair_labels=None):
+
+        # Fixed mutation/pair index space (not a setting: never written to a
+        # configuration). copy_orchestrator passes the fitted model's labels
+        # so a model rebuilt on a genotype subset indexes per-mutation and
+        # per-pair parameters exactly as the fit did.
+        self._fixed_mut_labels = (None if mut_labels is None
+                                  else list(mut_labels))
+        self._fixed_pair_labels = (None if pair_labels is None
+                                   else list(pair_labels))
 
         self._ln_cfu_df = growth_df
         self._binding_df = binding_df
@@ -1472,7 +1483,9 @@ class ModelOrchestrator:
              mut_geno_matrix,
              pair_nnz_pair_idx,
              pair_nnz_geno_idx) = build_mut_geno_matrix(
-                _genotypes, skip_pairs=not self._epistasis
+                _genotypes, skip_pairs=not self._epistasis,
+                mut_labels=self._fixed_mut_labels,
+                pair_labels=self._fixed_pair_labels,
             )
             mut_nnz_mut_idx, mut_nnz_geno_idx = build_mut_sparse_indices(mut_geno_matrix)
             # Expose labels as model attributes for downstream interpretation
@@ -1771,7 +1784,9 @@ class ModelOrchestrator:
              mut_geno_matrix,
              pair_nnz_pair_idx,
              pair_nnz_geno_idx) = build_mut_geno_matrix(
-                _genotypes, skip_pairs=not self._epistasis
+                _genotypes, skip_pairs=not self._epistasis,
+                mut_labels=self._fixed_mut_labels,
+                pair_labels=self._fixed_pair_labels,
             )
             mut_nnz_mut_idx, mut_nnz_geno_idx = build_mut_sparse_indices(mut_geno_matrix)
             self.mut_labels = mut_labels

@@ -308,10 +308,26 @@ def copy_orchestrator(orchestrator,
             g for g in orig_spiked if str(g) in geno_set
         ]
 
+    # Per-mutation and per-pair parameters (the *_mutation_plate and
+    # *_pair_plate sites of hill_mut, the *_mut activity components and the
+    # thermodynamic theta models, and the per-structure data built from
+    # those labels) are indexed by the fitted model's mut_labels and
+    # pair_labels. Built from a genotype subset alone, the labels would be
+    # the subset's mutations in a different first-seen order, and posterior
+    # arrays would land on the wrong mutations and pairs. Keep the fitted
+    # model's index space and rebuild only the genotype columns.
+    mut_label_kwargs = {}
+    if len(getattr(orchestrator, "mut_labels", None) or []) > 0:
+        mut_label_kwargs = {
+            "mut_labels": list(orchestrator.mut_labels),
+            "pair_labels": list(orchestrator.pair_labels),
+        }
+
     return ModelOrchestrator(
         growth_df=new_growth_df,
         binding_df=new_binding_df,
-        **settings
+        **settings,
+        **mut_label_kwargs,
     )
 
 def _convert_map_params(map_params, model_trace):
@@ -766,6 +782,28 @@ def predict(orchestrator,
                 **population_references,
             )
         )
+
+    # Every posterior array must have the shape the prediction model expects.
+    # A plate the slicing loop above does not know how to remap (one sized by
+    # something other than a growth-tensor dimension or condition_rep) would
+    # otherwise be indexed silently by the wrong entries, as the mutation and
+    # pair plates were before copy_orchestrator kept the fitted labels.
+    new_trace = trace(seed(hold_model_params(new_orchestrator.jax_model,
+                                             model_params),
+                           rng_seed=0)).get_trace(data=pred_data,
+                                                  priors=orchestrator.priors)
+    for site_name, val in sliced_samples.items():
+        new_site = new_trace.get(site_name)
+        if new_site is None:
+            continue
+        expected = tuple(jnp.shape(new_site["value"]))
+        if tuple(val.shape[1:]) != expected:
+            raise ValueError(
+                f"Posterior site '{site_name}' has shape "
+                f"{tuple(val.shape[1:])} but the prediction model expects "
+                f"{expected}; its plate cannot be mapped onto the requested "
+                f"genotypes/conditions."
+            )
 
     # Use the ORIGINAL orchestrator's priors so that any pinned hyperpriors
     # (e.g. activity_hyper_loc/activity_hyper_scale in the calibration model)
