@@ -296,7 +296,9 @@ one row per mutation with its true ``d_*`` effects and, for PddG and PnnC,
 its true ``ddG_{structure}`` values. When the library has multi-mutants they
 write ``tfs_sim_pair_parameters.csv`` as well, one row per mutation pair with
 its true ``epi_*`` terms. The column names match the tables
-``tfs-extract-params`` writes, so ``tfs-summarize-fit`` can score them.
+``tfs-extract-params`` writes, so ``tfs-summarize-fit`` can score them. The
+``ddG_{structure}`` columns follow the model's structure names, whatever order
+the ΔΔG CSV or structure ensemble lists them in.
 
 The optional blocks add ``tfs_sim_binding.csv`` (and, with
 ``library_binding``, ``tfs_sim_library_binding.csv`` listing the in-library

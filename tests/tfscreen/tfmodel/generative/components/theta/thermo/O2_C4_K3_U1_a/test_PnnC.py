@@ -549,6 +549,11 @@ def _make_ctx(genotypes=None, titrant_names=None, mut_labels=None, pair_labels=N
         pair_labels=pair_labels,
     )
 
+def _base_specs(specs):
+    """Specs other than the per-structure ddG ones (tested in
+    test_ddG_extraction.py)."""
+    return [s for s in specs if "out_names" not in s]
+
 
 class TestGetExtractSpecs:
     def test_returns_list(self):
@@ -559,7 +564,7 @@ class TestGetExtractSpecs:
     def test_has_three_specs_without_epi(self):
         ctx = _make_ctx()
         specs = get_extract_specs(ctx)
-        assert len(specs) == 3
+        assert len(_base_specs(specs)) == 3
 
     def test_has_four_specs_with_epi(self):
         ctx = _make_ctx(
@@ -568,7 +573,7 @@ class TestGetExtractSpecs:
             pair_labels=["K84L/M42I"],
         )
         specs = get_extract_specs(ctx)
-        assert len(specs) == 4
+        assert len(_base_specs(specs)) == 4
 
     def test_first_spec_has_ln_K_op_and_ln_K_HL(self):
         ctx = _make_ctx()

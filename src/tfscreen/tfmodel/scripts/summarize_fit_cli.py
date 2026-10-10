@@ -614,6 +614,12 @@ def _try_plot_params_corr(out_df, label, pdf_path):
         warnings.warn(f"Could not generate parameter correlation plot {pdf_path}: {exc}")
 
 
+# Per-structure ddG truth columns (ddG_{structure}) and the fit's prior-mean
+# tables (ddG_prior_mean_{structure}); see theta/thermo/prior.py.
+_DDG_TRUTH = re.compile(r"ddG_(?!prior_mean_)(.+)")
+_DDG_PRIOR_MEAN = re.compile(r"ddG_prior_mean_(.+)")
+
+
 def _summarize_params(run_dir, out_prefix):
     """Annotate *_params_*.csv files with ground-truth ref from tfs_sim_parameters.csv.
 
@@ -629,7 +635,12 @@ def _summarize_params(run_dir, out_prefix):
     suffix as *direct* (genotype key), *diff* (``_d_`` infix, mutation key),
     or *epi* (``_epi_`` infix, pair key).  A diff or epi file whose full name
     (``d_ln_K_op``) is a column of the per-mutation or per-pair truth is
-    joined to it directly on ``mutation`` / ``pair``.  Otherwise the
+    joined to it directly on ``mutation`` / ``pair``, as is a direct file
+    named for a per-mutation truth column (the thermo models' per-structure
+    ``ddG_H`` tables).  A prior-mean table ``ddG_prior_mean_H`` is joined to
+    the ``ddG_H`` truth and gets no calibration (it is a point).  When the
+    truth has ``ddG_*`` columns but the fit wrote no ddG tables (a PK fit),
+    a note replaces the per-structure warnings.  Otherwise the
     parameter name resolves via the transform registry: direct files by
     genotype, diff files as sim[mutation] − sim[wt], epi files as the
     additive epistasis of the per-genotype truth.  A ``ref`` column is
@@ -666,6 +677,17 @@ def _summarize_params(run_dir, out_prefix):
     keyed_cols = [c for t in keyed_truth.values() if t is not None
                   for c in t.columns]
 
+    # Per-structure ddG truth (PddG/PnnC simulations).  A fit with no ddG
+    # (PK parameterizes d_ln_K directly) writes no ddG tables; that is the
+    # "no structural prior" arm, scored on d_ln_K_*, so say so once instead
+    # of warning per structure.
+    ddG_cols = [c for c in keyed_cols if _DDG_TRUTH.fullmatch(c)]
+    if ddG_cols and not glob.glob(os.path.join(run_dir, "*_params_ddG_*.csv")):
+        print(f"Truth has per-structure ddG ({', '.join(ddG_cols)}) but the "
+              f"fit wrote no *_params_ddG_*.csv; expected for a model "
+              f"without ddG (PK). Its d_ln_K_* are scored instead.")
+        keyed_cols = [c for c in keyed_cols if c not in ddG_cols]
+
     for col in sim_cols + keyed_cols:
         if not glob.glob(os.path.join(run_dir, f"*_params_{col}.csv")):
             warnings.warn(f"Expected *_params_{col}.csv in {run_dir} but none found")
@@ -691,6 +713,16 @@ def _summarize_params(run_dir, out_prefix):
         key = {"diff": "mutation", "epi": "pair"}.get(kind)
         full_name = f"{'d' if kind == 'diff' else kind}_{param_name}"
         truth_df = keyed_truth.get(kind)
+        is_prior_mean = False
+        if kind == "direct":
+            # Per-structure ddG tables (ddG_H, ...) are keyed by mutation and
+            # join the per-mutation truth by name.  A prior-mean table
+            # (ddG_prior_mean_H) is scored against the same truth (ddG_H):
+            # how well the structural prior alone predicts it.
+            m_prior = _DDG_PRIOR_MEAN.fullmatch(param_name)
+            key, truth_df = "mutation", keyed_truth["diff"]
+            full_name = f"ddG_{m_prior.group(1)}" if m_prior else param_name
+            is_prior_mean = m_prior is not None
         use_keyed = truth_df is not None and full_name in truth_df.columns
 
         if not use_keyed and param_name not in transform_registry:
@@ -743,7 +775,10 @@ def _summarize_params(run_dir, out_prefix):
 
         pdf_name = out_name.replace(".csv", ".pdf")
         _try_plot_params_corr(out_df, plot_label, pdf_name)
-        _try_calibration(out_df, "ref", out_name[:-4], plot_label)
+        # A prior mean is a point (its quantiles coincide), so it has no
+        # calibration; its r and RMSE against the truth are what count.
+        if not is_prior_mean:
+            _try_calibration(out_df, "ref", out_name[:-4], plot_label)
 
 
 # Fit-side extract names for the condition_growth component (see

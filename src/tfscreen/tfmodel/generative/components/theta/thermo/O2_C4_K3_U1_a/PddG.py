@@ -54,6 +54,7 @@ from typing import Dict, Any, Union
 from tfscreen.tfmodel.data_class import GrowthData, BindingData
 from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix, apply_mut_matrix
 from tfscreen.tfmodel.generative.components.theta.thermo.prior import (
+    ddG_extract_specs,
     sample_ddG,
 )
 from tfscreen.tfmodel.generative.components.theta.thermo.horseshoe import (
@@ -584,6 +585,10 @@ def get_extract_specs(ctx):
             get_columns=["pair"],
             in_run_prefix="theta_",
         ))
+
+    # Per-structure ddG and its prior mean, in STRUCTURE_NAMES order (the
+    # order the model samples in and the simulator labels its truth with).
+    specs.extend(ddG_extract_specs(ctx, STRUCTURE_NAMES))
 
     return specs
 

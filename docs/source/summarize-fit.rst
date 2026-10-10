@@ -427,8 +427,16 @@ checked for calibration.
   for the thermodynamic models. Otherwise, as for ``hill_mut``, a ``d_`` table
   is compared with the true value minus wt's and an ``epi_`` table with the
   additive epistasis of the true values.
-* The per-structure ``ddG_*`` truth of the PddG and PnnC models has no
-  extracted table yet, so it produces a warning and is not scored.
+* The per-structure ``ddG_{structure}`` tables of the PddG and PnnC models
+  are joined to the ``ddG_{structure}`` columns of
+  ``*_sim_mutation_parameters.csv`` on ``mutation``. Each
+  ``ddG_prior_mean_{structure}`` table, the structural prior mean, is
+  compared with the same truth to show how well the prior alone predicts it.
+  It is a point, so it gets no calibration; read its ``rmse`` and
+  ``pearson_r`` in ``tfs-summarize-calibration``. A fit without ΔΔG, such as
+  PK on a PddG simulation, writes no ddG tables. Then one note is printed in
+  place of a warning per structure, and its ``d_`` tables are scored against
+  the same truth.
 * ``params_growth_k``, ``params_growth_m`` and the other growth-model tables
   are joined to ``*_sim_growth_parameters.csv`` on ``condition_rep``.
 * ``params_k_ref`` and ``params_lam`` are single values compared with

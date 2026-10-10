@@ -77,6 +77,14 @@ keyed by its design (``replicate``, ``library``, ``condition_pre``,
 A held SD (``sigma_fixed``) is a deterministic site, so a checkpoint has no
 SD file.
 
+The thermodynamic PddG and PnnC models also write one table per structure
+of the per-mutation ΔΔG, ``tfs_params_ddG_{structure}.csv`` (for example
+``tfs_params_ddG_H.csv``), and of its structural prior mean,
+``tfs_params_ddG_prior_mean_{structure}.csv`` (the ΔΔG CSV values for PddG,
+the network's prediction for PnnC). Both are keyed by ``mutation`` and named
+by the model's structures, whatever order the input file lists them in. They
+are deterministic sites, so they need a posterior file.
+
 ``log_hill_K`` is the natural log of the Hill constant in the units of
 ``titrant_conc``. It is not a base-10 log.
 

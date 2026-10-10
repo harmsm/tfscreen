@@ -79,7 +79,11 @@ def _extract_names(component):
     ctx = types.SimpleNamespace(growth_tm=growth_tm, mut_labels=mut_labels,
                                 pair_labels=pair_labels)
     specs = model_registry["theta"][component].get_extract_specs(ctx)
-    return [p for spec in specs for p in spec["params_to_get"]]
+    names = [p for spec in specs
+             for p in spec.get("out_names", spec["params_to_get"])]
+    # A prior-mean table (ddG_prior_mean_H) is scored against the ddG truth
+    # (ddG_H); it has no truth column of its own.
+    return [n.replace("ddG_prior_mean_", "ddG_") for n in names]
 
 
 # PK covers each family; PddG cases cover the per-structure ddG truth and,
