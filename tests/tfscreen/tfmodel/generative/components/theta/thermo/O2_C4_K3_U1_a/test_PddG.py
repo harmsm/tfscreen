@@ -177,9 +177,9 @@ class TestProjectDdG:
         ddG = jnp.array([[3.0, 0.0, 1.0, 0.0]])
         assert _project_ddG(ddG)[0, 1] == pytest.approx(3.0 - 1.0)
 
-    def test_K_E_is_L_minus_LE2(self):
+    def test_K_E_is_half_L_minus_LE2(self):
         ddG = jnp.array([[0.0, 0.0, 5.0, 2.0]])
-        assert _project_ddG(ddG)[0, 2] == pytest.approx(5.0 - 2.0)
+        assert _project_ddG(ddG)[0, 2] == pytest.approx((5.0 - 2.0) / 2)
 
     def test_H_perturbation_does_not_affect_K_E(self):
         """Changing H alone should not change d_ln_K_E (which depends only on L and LE2)."""
@@ -206,7 +206,7 @@ class TestConfig:
             "theta_ln_K_HL_wt_loc", "theta_ln_K_HL_wt_scale",
             "theta_ln_K_E_wt_loc",  "theta_ln_K_E_wt_scale",
             "theta_ln_K_U_wt_loc",  "theta_ln_K_U_wt_scale",
-            "theta_tf_total_M", "theta_op_total_M",
+            "theta_tf_total_M",
         ]
         for k in required:
             assert k in hp, f"Missing key: {k}"
@@ -236,8 +236,7 @@ class TestConfig:
 
     def test_physical_constants(self):
         p = get_priors()
-        assert p.theta_tf_total_M == pytest.approx(6.5e-10)
-        assert p.theta_op_total_M == pytest.approx(2.5e-8)
+        assert p.theta_tf_total_M == pytest.approx(1e-5)
 
     def test_get_guesses_required_keys(self):
         g = get_guesses("theta", _make_mock())
@@ -412,10 +411,9 @@ class TestDefineModel:
             atol=1e-5,
         )
 
-    def test_tf_op_totals_preserved(self):
+    def test_tf_total_preserved(self):
         out, _ = _run_model(_make_mock())
-        assert out.tf_total == pytest.approx(6.5e-10)
-        assert out.op_total == pytest.approx(2.5e-8)
+        assert out.tf_total == pytest.approx(1e-5)
 
 
 # ---------------------------------------------------------------------------
@@ -493,10 +491,9 @@ class TestGuide:
         locs_val = tr["theta_ddG_offset_locs"]["value"]
         assert locs_val.shape == (_S, _M)
 
-    def test_tf_op_totals_preserved(self):
+    def test_tf_total_preserved(self):
         out, _ = _run_guide(_make_mock())
-        assert out.tf_total == pytest.approx(6.5e-10)
-        assert out.op_total == pytest.approx(2.5e-8)
+        assert out.tf_total == pytest.approx(1e-5)
 
     def test_permuted_features_give_same_output_as_canonical(self):
         canonical_prior = _make_ddG_prior()

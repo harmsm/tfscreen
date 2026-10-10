@@ -225,7 +225,7 @@ class TestConfig:
             "theta_ln_K_l_e_wt_loc", "theta_ln_K_l_e_wt_scale",
             # unfolding constant — new in mwc_dimer_unfolded
             "theta_ln_K_u_wt_loc", "theta_ln_K_u_wt_scale",
-            "theta_tf_total_M", "theta_op_total_M", "theta_conc_unit_scale",
+            "theta_tf_total_M", "theta_conc_unit_scale",
         ]
         for k in required:
             assert k in hp, f"Missing key: {k}"
@@ -253,8 +253,7 @@ class TestConfig:
 
     def test_physical_constants(self):
         p = get_priors()
-        assert p.theta_tf_total_M == pytest.approx(6.5e-7)
-        assert p.theta_op_total_M == pytest.approx(2.5e-8)
+        assert p.theta_tf_total_M == pytest.approx(1e-5)
 
     def test_get_guesses_required_keys(self):
         g = get_guesses("theta", _make_mock())
@@ -452,10 +451,9 @@ class TestDefineModel:
             np.asarray(out_s.ln_K_h_l), atol=1e-5,
         )
 
-    def test_tf_op_totals_preserved(self):
+    def test_tf_total_preserved(self):
         out, _ = _run_model(_make_mock())
-        assert out.tf_total == pytest.approx(6.5e-7)
-        assert out.op_total == pytest.approx(2.5e-8)
+        assert out.tf_total == pytest.approx(1e-5)
 
 
 # ---------------------------------------------------------------------------
@@ -526,10 +524,9 @@ class TestGuide:
         locs_val = tr["theta_ddG_offset_locs"]["value"]
         assert locs_val.shape == (_S, _M)
 
-    def test_tf_op_totals_preserved(self):
+    def test_tf_total_preserved(self):
         out, _ = _run_guide(_make_mock())
-        assert out.tf_total == pytest.approx(6.5e-7)
-        assert out.op_total == pytest.approx(2.5e-8)
+        assert out.tf_total == pytest.approx(1e-5)
 
     def test_permuted_features_give_same_output_as_canonical(self):
         canonical_prior = _make_ddG_prior()
@@ -666,7 +663,6 @@ _MUT_LABELS_P  = ["M42I", "K84L"]
 _PAIR_LABELS_P = ["K84L/M42I"]
 _TITRANT_NAMES_P = ["IPTG"]
 _TF_TOTAL  = 6.5e-7
-_OP_TOTAL  = 2.5e-8
 _CONC_SCALE = 1e-3
 
 _WT_LN_K_H_L =  1.84
@@ -727,7 +723,6 @@ def _common_kwargs_p(post, pair_labels=None):
         param_posteriors=post,
         q_to_get={"median": 0.5, "lower": 0.025, "upper": 0.975},
         tf_total=_TF_TOTAL,
-        op_total=_OP_TOTAL,
         conc_unit_scale=_CONC_SCALE,
     )
 
@@ -847,7 +842,6 @@ class TestDdGPriorPredictUnmeasured:
             pair_labels=[],
             q_to_get={"median": 0.5},
             tf_total=_TF_TOTAL,
-            op_total=_OP_TOTAL,
             conc_unit_scale=_CONC_SCALE,
         )
         res_ddG = ddG_predict(param_posteriors=post_ddG, **kw)

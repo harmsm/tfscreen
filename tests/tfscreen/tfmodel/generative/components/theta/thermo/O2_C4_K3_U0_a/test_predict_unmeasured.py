@@ -6,6 +6,8 @@ import pytest
 import numpy as np
 import pandas as pd
 
+from tfscreen.tfmodel.generative.components.theta.thermo import mwc
+
 from tfscreen.tfmodel.generative.components.theta.thermo.O2_C4_K3_U0_a.PK import (
     predict_unmeasured as lnK_mut_predict,
 )
@@ -23,14 +25,14 @@ PAIR_LABELS = ["K84L/M42I"]
 
 TITRANT_NAMES = ["IPTG"]
 
-# Physical constants matching the lnK_mut defaults
-TF_TOTAL = 6.5e-7
-OP_TOTAL = 2.5e-8
+# Physical constants matching the PK defaults (tf_total in M, monomer units;
+# concentrations below are used as M, conc_unit_scale left at 1.0)
+TF_TOTAL = mwc.DEFAULT_TF_TOTAL_M
 
-# Biophysically plausible WT values (matching lnK_mut get_hyperparameters defaults)
-WT_LN_K_OP = 23.0
-WT_LN_K_HL = -9.0
-WT_LN_K_E  = 33.4
+# WT values matching the PK get_hyperparameters defaults
+WT_LN_K_OP = mwc.DEFAULT_LN_K_H_O
+WT_LN_K_HL = mwc.DEFAULT_LN_K_H_L
+WT_LN_K_E  = mwc.DEFAULT_LN_K_E_C4
 
 
 def _make_titrant_df(concs=None):
@@ -89,7 +91,6 @@ def _common_kwargs(post, pair_labels=None):
         param_posteriors=post,
         q_to_get={"median": 0.5, "lower": 0.025, "upper": 0.975},
         tf_total=TF_TOTAL,
-        op_total=OP_TOTAL,
     )
 
 
@@ -203,7 +204,6 @@ class TestLnKNnPriorPredict:
             param_posteriors=post,
             q_to_get={"median": 0.5},
             tf_total=TF_TOTAL,
-            op_total=OP_TOTAL,
         )
         result = lnK_nn_predict(**kw)
         assert len(result) == 4   # 2 genotypes × 2 titrants
@@ -239,7 +239,6 @@ class TestLnKNnPriorPredict:
             pair_labels=[],
             q_to_get={"median": 0.5},
             tf_total=TF_TOTAL,
-            op_total=OP_TOTAL,
         )
         res_nn  = lnK_nn_predict(param_posteriors=post_nn,  **kw)
         res_mut = lnK_mut_predict(param_posteriors=post_mut, **kw)

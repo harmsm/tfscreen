@@ -272,7 +272,7 @@ class TestConfig:
             "theta_ln_K_l_o_wt_loc", "theta_ln_K_l_o_wt_scale",
             "theta_ln_K_h_e_wt_loc", "theta_ln_K_h_e_wt_scale",
             "theta_ln_K_l_e_wt_loc", "theta_ln_K_l_e_wt_scale",
-            "theta_tf_total_M", "theta_op_total_M",
+            "theta_tf_total_M",
             "theta_nn_hidden_size",
             "theta_epi_tau_scale", "theta_epi_slab_scale",
             "theta_epi_slab_df",   "theta_epi_d0",
@@ -285,8 +285,7 @@ class TestConfig:
 
     def test_physical_constants(self):
         p = get_priors()
-        assert p.theta_tf_total_M == pytest.approx(6.5e-7)
-        assert p.theta_op_total_M == pytest.approx(2.5e-8)
+        assert p.theta_tf_total_M == pytest.approx(1e-5)
 
     def test_get_guesses_no_epi_keys(self):
         data = _make_mock()
@@ -545,10 +544,9 @@ class TestGuide:
         assert "theta_epi_offset_locs"   in param_names
         assert "theta_epi_offset_scales" in param_names
 
-    def test_tf_op_totals_preserved(self):
+    def test_tf_total_preserved(self):
         out, _ = _run_guide(_make_mock())
-        assert out.tf_total == pytest.approx(6.5e-7)
-        assert out.op_total == pytest.approx(2.5e-8)
+        assert out.tf_total == pytest.approx(1e-5)
 
 
 # ---------------------------------------------------------------------------

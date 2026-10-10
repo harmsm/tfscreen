@@ -260,7 +260,8 @@ The ``theta`` component sets *θ* as a function of titrant concentration *c*.
    An independent *θ* at every titrant concentration, with no curve.
 ``thermo.*``
    Thermodynamic partition-function models. See
-   :ref:`thermo-naming` below. They need ``--thermo_data``.
+   :ref:`thermo-naming` below. The ``PddG`` and ``PnnC`` variants need
+   ``--thermo_data``.
 
 The population SD of each Hill parameter is learned by default. On real
 data a learned SD can run away and stop shrinking poorly measured genotypes:
@@ -471,10 +472,68 @@ Occupancy models built from an explicit partition function are named
 The trailing letter tells apart models with the same counts and implies no
 order. The implemented models are:
 
-* ``O2_C4_K3_U0_a``: four-state lac repressor homodimer.
-* ``O2_C4_K3_U1_a``: the same with a folding equilibrium.
-* ``O2_C12_K5_U0_a``: two-state MWC homodimer.
+* ``O2_C12_K5_U0_a`` (M3): the standard MWC lac repressor homodimer with
+  five constants.
 * ``O2_C12_K5_U1_a``: the same with a folding equilibrium.
+* ``O2_C4_K3_U0_a`` (M2): M3 restricted to three constants.
+* ``O2_C4_K3_U1_a``: the same with a folding equilibrium.
+
+The C4/K3 labels are historical. They named an earlier partition function
+for M2, which this one replaced on 2026-10-11, and no longer count M2's
+species. The registry keys keep them.
+
+**The MWC dimer.** The dimer is in a high operator affinity conformation H or
+a low affinity conformation L. K\ :sub:`h_l` = [L]/[H]. Conformation X binds
+operator with K\ :sub:`x_o` (M\ :sup:`-1`) and has two identical,
+independent effector sites, each with the microscopic (per-site) constant
+K\ :sub:`x_e` (M\ :sup:`-1`). The effector binding polynomial of
+conformation X is therefore (1 + K\ :sub:`x_e`\ ·e)\ :sup:`2` =
+1 + 2K\ :sub:`x_e`\ ·e + K\ :sub:`x_e`\ :sup:`2`\ ·e\ :sup:`2`. The 2
+counts the two ways to fill one site. Within a conformation the two sites do
+not interact, so the second macroscopic constant is one quarter of the first.
+Cooperativity comes only from the conformational equilibrium, when
+K\ :sub:`l_e` > K\ :sub:`h_e` and K\ :sub:`h_l` > 1. The ``U1`` models add an
+unfolded state U, K\ :sub:`u` = [U]/[H], that binds nothing.
+
+Until 2026-10-11 M3 used the polynomial of Sochor (2014),
+1 + K·e + K\ :sup:`2`\ ·e\ :sup:`2`, which lacks the factor of 2. That sets
+the ratio of the two macroscopic constants to 1 instead of 1/4, a fixed
+fourfold cooperativity inside each conformation that no constant can remove.
+M2 used a third form, one-step binding of two effectors to L with an
+M\ :sup:`-2` constant.
+
+M3 fits all five constants: K\ :sub:`h_l`, K\ :sub:`h_o`,
+K\ :sub:`h_e`, K\ :sub:`l_o` and K\ :sub:`l_e`. M2 is M3 with
+K\ :sub:`h_e` = 0 (H does not bind effector) and K\ :sub:`l_o` = 0 (L does
+not bind operator). Its three constants keep their older names:
+``ln_K_op`` is ln K\ :sub:`h_o`, ``ln_K_HL`` is ln K\ :sub:`h_l` and
+``ln_K_E`` is ln K\ :sub:`l_e`, a per-site constant in M\ :sup:`-1`. Both
+families compute θ with the same function, so M2 is nested in M3 exactly.
+
+TF is in large excess over operator: ``theta_tf_total_M`` defaults to
+1e-5 M of monomer, about 400 times a typical operator concentration. The
+models therefore leave operator-bound TF out of the TF mass balance, and the
+operator concentration does not enter them. With r = tf_total/2 the dimer
+concentration and F(e) the polynomial over all states not bound to operator,
+the free apo H dimer is h = r/F(e), the operator sees
+W = h·(K\ :sub:`h_o`\ ·P\ :sub:`H` + K\ :sub:`h_l`\ ·K\ :sub:`l_o`\ ·P\ :sub:`L`),
+and θ = W/(1 + W). Free effector e comes from the effector mass balance, a
+cubic in e, so effector bound to TF is subtracted from the total. At 1e-5 M
+TF this matters below about 10 µM effector. The equations are in
+``theta/thermo/mwc.py``.
+
+**Default wild type.** ``theta_tf_total_M`` is 1e-5 M monomer in both
+families. M3 takes K\ :sub:`h_l` = 6.3, K\ :sub:`h_o` = 4.2×10\ :sup:`8`
+M\ :sup:`-1` and K\ :sub:`l_o` = 0.1 M\ :sup:`-1` from Sochor (2014). It
+keeps Sochor's ratio K\ :sub:`l_e`/K\ :sub:`h_e` and scales both effector
+constants by 0.38, to 2.1×10\ :sup:`4` and 2.9×10\ :sup:`5` M\ :sup:`-1`.
+M2 takes the same K\ :sub:`h_l` and K\ :sub:`h_o` with
+K\ :sub:`l_e` = 2.5×10\ :sup:`5` M\ :sup:`-1`. Both put the midpoint of the
+default wild-type θ(IPTG) curve, where θ is halfway between θ(0) and θ at
+saturating IPTG, at 80 µM. Both start at θ(0) = 0.997. M2 falls to 0 at
+saturating IPTG. M3 falls only to 0.64, because at this TF concentration the
+H conformation that remains with two effectors bound still occupies the
+operator. A wild type that induces fully under M3 needs other constants.
 
 *PRIOR* sets how the equilibrium constants are parameterized:
 
@@ -516,22 +575,10 @@ Full names look like ``thermo.O2_C4_K3_U0_a.PK`` or
 All the thermodynamic models read ``titrant_conc`` in mM, the units of the
 growth and binding tables, and multiply it by the prior
 ``theta_conc_unit_scale`` (default 1e-3) so that the equations run in M.
-Equilibrium constants are therefore in M-based units: for the ``O2_C4``
-models K\ :sub:`op` is in M\ :sup:`-1` and K\ :sub:`E` in M\ :sup:`-2`,
-since the effector binds as E\ :sup:`2`. ``theta_tf_total_M`` and
-``theta_op_total_M`` are in M; the ``O2_C12`` models take
-``theta_tf_total_M`` in monomer units.
-
-Before 2026-10-11 the ``O2_C4`` models skipped the conversion and used the
-mM values directly. Their defaults changed so that theta on mM data is the
-same as before. ``theta_ln_K_E_wt_loc`` moved from 33.4 to
-33.4 + 2 ln(1000) ≈ 47.22, because K\ :sub:`E`\ [E]\ :sup:`2` is unchanged
-when [E] is scaled by 10\ :sup:`-3` and K\ :sub:`E` by 10\ :sup:`6`.
-``theta_tf_total_M`` moved from 6.5e-7 to 6.5e-10, because the old code
-effectively read it in mM. The in vivo value from Sochor (2014), 6.5e-7 M,
-lets the TF bind a noticeable share of the effector below about 1 µM and
-lowers the wt's sensitivity there. A priors CSV written before the change
-has no ``theta_conc_unit_scale`` row. Such a file is read with a scale of
-1.0, with a warning, which reproduces the old behaviour from its old values.
-Regenerate it with ``tfs-configure-model`` to use the current convention.
-``theta_priors`` overrides in an older simulation YAML are not converted.
+Every operator and effector constant is in M\ :sup:`-1`, and
+``theta_tf_total_M`` is in M of monomer. Priors files and checkpoints for
+these models written before 2026-10-11 hold constants with the older
+meanings. A priors file still reads, its ``theta_op_total_M`` row is
+ignored, and its old values would be taken with the new meanings, so
+regenerate it with ``tfs-configure-model``. Old checkpoints are not
+supported.

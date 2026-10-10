@@ -1,89 +1,76 @@
 """
-Shared thermodynamic functions for the lac-dimer partition-function θ model.
+Shared thermodynamic functions for the M2 lac-dimer θ model (O2_C4 U0).
 
-The TF homodimer occupies two conformations: H (high operator affinity) and
-L (low operator affinity, high effector affinity).  Effector binding shifts
-population toward L, reducing operator occupancy (θ).  Used by
-``theta_lac_dimer_lnK_mut`` (PK), ``theta_lac_dimer_lnK_ddG_prior`` (PddG),
-and ``theta_lac_dimer_lnK_nn_prior`` (PnnC).
+M2 is the standard MWC dimer of ``thermo/mwc.py`` restricted to K_h_e = 0
+(H does not bind effector) and K_l_o = 0 (L does not bind operator). The
+dimer is in conformation H, which binds operator, or L, which binds two
+effector molecules at independent, equivalent sites. Effector pulls the
+dimer into L and lowers operator occupancy θ. Used by
+``thermo.O2_C4_K3_U0_a.PK``, ``.PddG`` and ``.PnnC``.
 
-Four-state partition function for the TF homodimer:
+Three constants, named for M3's (O2_C12) constants they equal:
 
-    State      Weight
-    H          1                               (apo, high-affinity conformation)
-    H·op       K_op · [op_free]                (operator-bound, repressing state)
-    L          K_HL                            (low-affinity conformation)
-    L·E²       K_HL · K_E · [E_free]²          (effector-bound, n=2 hardcoded)
+    K_op = K_h_o   H + O → HO (M⁻¹)
+    K_HL = K_h_l   [L]/[H] (dimensionless)
+    K_E  = K_l_e   per-site effector association constant of L (M⁻¹)
 
-    Z     = 1 + K_op·[op_free] + K_HL + K_HL·K_E·[E_free]²
-    θ     = K_op·[op_free] / Z
+Species not bound to operator, with weights relative to free H (h):
+
+    H        1
+    L        K_HL
+    LE       2·K_HL·K_E·e         (two ways to fill one site)
+    LE2      K_HL·K_E²·e²
+
+    F(e) = 1 + K_HL·(1 + K_E·e)²
+
+TF (1e-5 M monomer by default) is about 400-fold in excess over operator, so
+operator-bound TF is left out of the TF mass balance and operator total does
+not enter the model. With r = tf_total/2 (tf_total in MONOMER units):
+
+    h = r / F(e),    W = h·K_op,    θ = W / (1 + W)
+
+Free effector e solves mwc.py's cubic with B0 = 1 + K_HL,
+B1 = 2·K_HL·K_E and B2 = K_HL·K_E². θ here is M3's θ with K_h_e and K_l_o at
+0, computed by the same function (``mwc.theta_c4`` calls ``mwc.mwc_theta``),
+so the nesting is exact.
+
+History. Before 2026-10-11 M2 had a different partition function,
+Z = 1 + K_op·[op_total] + K_HL + K_HL·K_E·e² with K_E in M⁻² for a one-step
+L + 2E → LE2, operator total as a fixed free-operator concentration, and a
+mass balance that counted operator-bound TF. The C4/K3 labels in the
+registry keys are historical: the model now has the species above, three
+constants and no operator-bound species in the TF mass balance.
 
 Units
 -----
-The convention is shared with the O2_C12 models. Data concentrations
-(``data.titrant_conc``, the ``titrant_conc`` column of every growth and
-binding table) are in mM. ``run_model``, ``define_model``, ``guide``,
-``compute_theta_samples`` and ``predict_unmeasured`` multiply them by
-``theta_conc_unit_scale`` (default 1e-3) so that every concentration inside
-the equations is in M: K_op in M⁻¹, K_E in M⁻² (E² binds in one step),
-K_HL dimensionless, tf_total and op_total in M.
+Data concentrations (``titrant_conc``) are mM; ``theta_conc_unit_scale``
+(1e-3) converts them to M, so K_op and K_E are in M⁻¹ and tf_total in M.
 
-Before 2026-10-11 these models passed mM concentrations straight in, so
-K_E was effectively in mM⁻² and tf_total in mM. The defaults below keep that
-behaviour exactly on mM data: ln_K_E moved by +2·ln(1e3) (K_E·[E]² is
-invariant when [E] is scaled by 1e-3 and K_E by 1e6) and tf_total moved
-from 6.5e-7 to 6.5e-10 M, the value the old code effectively used in the
-free-effector mass balance. K_op·op_total does not involve the titrant and
-is unchanged. A priors CSV written before the change has no
-``theta.theta_conc_unit_scale`` row; ``read_configuration`` loads it with
-scale 1.0, which reproduces the old behaviour from its old values.
-
-Operator depletion approximation
----------------------------------
-In vivo [TF_total] ≈ 6.5e-7 M, [op_total] ≈ 2.5e-8 M
-(Sochor, PeerJ 2014, https://doi.org/10.7717/peerj.498),
-giving [TF]/[op] ≈ 26.  Because the TF is in large excess we treat
-[op_free] ≈ [op_total] = const. tf_total enters only the free-effector
-mass balance; the default (6.5e-10 M, see Units) keeps effector depletion
-negligible. Setting theta_tf_total_M to the physical 6.5e-7 M changes wt
-theta at sub-µM effector.
-
-Free effector (Newton solve)
-----------------------------
-Free-effector concentration satisfies the cubic mass balance:
-
-    a·x³ + a·(2·[TF_total] − [E_total])·x² + Z₀·x − Z₀·[E_total] = 0
-
-where  a  = K_HL·K_E (shape T×G)  and  Z₀ = 1 + K_op·[op_total] + K_HL (shape G).
-Eight Newton iterations from x₀ = [E_total] converge for all
-biophysically plausible parameter combinations.
-
-This module is imported by all K-assembly variants
-(lnK_additive, nn_additive, …). It contains no Numpyro sample sites.
+This module contains no Numpyro sample sites.
 """
 
 import jax
 import jax.numpy as jnp
 import numpy as np
-import math
 
 import pandas as pd
 from flax.struct import dataclass, field
 
-# Number of Newton iterations for the free-effector cubic solve.
-NEWTON_ITERATIONS = 8
+from tfscreen.tfmodel.generative.components.theta.thermo import mwc
+from tfscreen.tfmodel.generative.components.theta.thermo.mwc import (  # noqa: F401
+    DEFAULT_CONC_UNIT_SCALE,
+    DEFAULT_TF_TOTAL_M,
+    DEFAULT_LN_K_H_O,
+    DEFAULT_LN_K_H_L,
+    DEFAULT_LN_K_E_C4,
+    NEWTON_ITERATIONS,
+)
 
-# Unit convention (see module docstring). Data concentrations are mM; this
-# factor converts them to M. Shared by every O2_C4 and O2_C12 component.
-DEFAULT_CONC_UNIT_SCALE = 1e-3
-
-# Default wt ln_K_E (M⁻²). The earlier mM⁻² default was 33.4; E binds as E²,
-# so K_E[M⁻²] = K_E[mM⁻²]·1e6 and ln_K_E shifts by 2·ln(1e3) ≈ 13.8155.
-DEFAULT_LN_K_E_WT_LOC = 33.4 + 2.0 * math.log(1.0 / DEFAULT_CONC_UNIT_SCALE)
-
-# Default tf_total (M). The earlier default, 6.5e-7, was used in mM units by
-# the free-effector mass balance, i.e. 6.5e-10 M.
-DEFAULT_TF_TOTAL_M = 6.5e-7 * DEFAULT_CONC_UNIT_SCALE
+# Default wt constants (see mwc.py): Sochor's K_h_o and K_h_l, and the per-site
+# K_E that puts the default wt midpoint at 80 µM IPTG.
+DEFAULT_LN_K_OP_WT_LOC = DEFAULT_LN_K_H_O
+DEFAULT_LN_K_HL_WT_LOC = DEFAULT_LN_K_H_L
+DEFAULT_LN_K_E_WT_LOC = DEFAULT_LN_K_E_C4
 
 
 # ---------------------------------------------------------------------------
@@ -94,11 +81,10 @@ DEFAULT_TF_TOTAL_M = 6.5e-7 * DEFAULT_CONC_UNIT_SCALE
 class ThetaParam:
     """Assembled partition-function parameters passed between K-assembly and thermo."""
 
-    ln_K_op:  jnp.ndarray   # (G,)    — per-genotype log protein-DNA affinity
-    ln_K_HL:  jnp.ndarray   # (G,)    — per-genotype log conformational equilibrium
-    ln_K_E:   jnp.ndarray   # (T, G)  — per-genotype log effector binding constant
-    tf_total: float          # M
-    op_total: float          # M
+    ln_K_op:  jnp.ndarray   # (G,)    — per-genotype log K_op (= K_h_o), M⁻¹
+    ln_K_HL:  jnp.ndarray   # (G,)    — per-genotype log K_HL (= K_h_l)
+    ln_K_E:   jnp.ndarray   # (T, G)  — per-genotype log per-site K_E (= K_l_e), M⁻¹
+    tf_total: float          # M, monomer units
     mu:       jnp.ndarray   # (T, C, 1) — population mean logit-theta
     sigma:    jnp.ndarray   # (T, C, 1) — population std  logit-theta
     # Factor that converts data.titrant_conc (mM) to M before it enters the
@@ -110,48 +96,9 @@ class ThetaParam:
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _solve_free_effector(e_total, tf_total, a, Z0):
+def _compute_theta(ln_K_op, ln_K_HL, ln_K_E, titrant_conc, tf_total):
     """
-    Solve the cubic mass-balance equation for free effector concentration.
-
-        a·x³ + a·(2·tf_total − e_total)·x² + Z₀·x − Z₀·e_total = 0
-
-    Uses NEWTON_ITERATIONS Newton iterations starting from x₀ = e_total.
-
-    Parameters
-    ----------
-    e_total : (1, C, 1)  — total effector concentration grid
-    tf_total : scalar    — total TF concentration (M)
-    a : (T, 1, G)        — K_HL · K_E
-    Z0 : (1, 1, G)       — 1 + K_op·[op_total] + K_HL
-
-    Returns
-    -------
-    x_free : (T, C, G)   — free effector concentration, clipped to [0, e_total]
-    """
-    coeff_a = a                                     # (T, 1, G)
-    coeff_b = a * (2.0 * tf_total - e_total)        # (T, C, G)
-    coeff_c = Z0                                    # (1, 1, G)
-    coeff_d = -Z0 * e_total                         # (1, C, G)
-
-    def f(x):
-        return coeff_a * x**3 + coeff_b * x**2 + coeff_c * x + coeff_d
-
-    def df(x):
-        return 3.0 * coeff_a * x**2 + 2.0 * coeff_b * x + coeff_c
-
-    def step(i, x):
-        dfx = df(x)
-        return x - f(x) / jnp.where(jnp.abs(dfx) < 1e-30, 1e-30, dfx)
-
-    x0 = jnp.broadcast_to(e_total, coeff_b.shape)
-    x_free = jax.lax.fori_loop(0, NEWTON_ITERATIONS, step, x0)
-    return jnp.clip(x_free, 0.0, e_total)
-
-
-def _compute_theta(ln_K_op, ln_K_HL, ln_K_E, titrant_conc, tf_total, op_total):
-    """
-    Evaluate the partition-function theta for all (T, C, G) combinations.
+    Evaluate θ for all (T, C, G) combinations.
 
     Parameters
     ----------
@@ -159,28 +106,18 @@ def _compute_theta(ln_K_op, ln_K_HL, ln_K_E, titrant_conc, tf_total, op_total):
     ln_K_HL : (G,)
     ln_K_E  : (T, G)
     titrant_conc : (C,)  — effector concentrations in M (already scaled)
-    tf_total : scalar
-    op_total : scalar
+    tf_total : scalar   — total TF in M, monomer units
 
     Returns
     -------
     theta : (T, C, G)
     """
-    K_op = jnp.exp(ln_K_op)[None, None, :]     # (1, 1, G)
-    K_HL = jnp.exp(ln_K_HL)[None, None, :]     # (1, 1, G)
-    K_E  = jnp.exp(ln_K_E)[:, None, :]         # (T, 1, G)
-    e_total = titrant_conc[None, :, None]       # (1, C, 1)
-
-    Z0 = 1.0 + K_op * op_total + K_HL          # (1, 1, G)
-    a  = K_HL * K_E                             # (T, 1, G)
-
-    e_free = _solve_free_effector(e_total, tf_total, a, Z0)  # (T, C, G)
-
-    w_Hop = K_op * op_total                     # (1, 1, G)
-    w_LE  = K_HL * K_E * e_free**2             # (T, C, G)
-    Z     = 1.0 + w_Hop + K_HL + w_LE          # (T, C, G)
-
-    return w_Hop / Z                            # (T, C, G)
+    return mwc.theta_c4(ln_K_op[None, None, :],
+                        ln_K_HL[None, None, :],
+                        ln_K_E[:, None, :],
+                        None,
+                        titrant_conc[None, :, None],
+                        tf_total)
 
 
 def _population_moments(theta, data):
@@ -227,7 +164,6 @@ def run_model(theta_param: ThetaParam, data) -> jnp.ndarray:
         theta_param.ln_K_E,
         data.titrant_conc * theta_param.conc_unit_scale,
         theta_param.tf_total,
-        theta_param.op_total,
     )                                              # (T, C, G)
 
     geno_idx = data.batch_idx[data.geno_theta_idx]
@@ -250,9 +186,9 @@ def get_population_moments(theta_param: ThetaParam, data) -> tuple:
 _ZERO_CONC_VALUE = 1e-20
 
 
-def _solve_theta_np(ln_K_op, ln_K_HL, ln_K_E, conc, tf_total, op_total):
+def _solve_theta_np(ln_K_op, ln_K_HL, ln_K_E, conc, tf_total):
     """
-    Pure-numpy Newton solve for lac_dimer theta at per-row K values.
+    Numpy θ at per-row K values (the same ``mwc.theta_c4`` as the JAX path).
 
     Parameters
     ----------
@@ -260,33 +196,16 @@ def _solve_theta_np(ln_K_op, ln_K_HL, ln_K_E, conc, tf_total, op_total):
     ln_K_HL : (S, N)
     ln_K_E  : (S, N)
     conc    : (N,)  — effector concentrations in M (zero already replaced)
-    tf_total : float
-    op_total : float
+    tf_total : float — M, monomer units
 
     Returns
     -------
     theta : np.ndarray, shape (S, N)
     """
-    K_op = np.exp(ln_K_op)
-    K_HL = np.exp(ln_K_HL)
-    K_E  = np.exp(ln_K_E)
-
-    e_total = conc[np.newaxis, :]
-    Z0      = 1.0 + K_op * op_total + K_HL
-    a       = K_HL * K_E
-    coeff_b = a * (2.0 * tf_total - e_total)
-
-    e_free = e_total * np.ones_like(a)
-    for _ in range(NEWTON_ITERATIONS):
-        f  = a * e_free**3 + coeff_b * e_free**2 + Z0 * e_free - Z0 * e_total
-        df = 3.0 * a * e_free**2 + 2.0 * coeff_b * e_free + Z0
-        e_free = e_free - f / np.where(np.abs(df) < 1e-30, 1e-30, df)
-    e_free = np.clip(e_free, 0.0, e_total)
-
-    w_Hop = K_op * op_total
-    w_LE  = a * e_free**2
-    Z     = 1.0 + w_Hop + K_HL + w_LE
-    return w_Hop / Z
+    return mwc.theta_c4(np.asarray(ln_K_op, float), np.asarray(ln_K_HL, float),
+                        np.asarray(ln_K_E, float), None,
+                        np.asarray(conc, float)[np.newaxis, :], tf_total,
+                        xp=np)
 
 
 def build_calc_df(model, manual_titrant_df):
@@ -303,8 +222,8 @@ def build_calc_df(model, manual_titrant_df):
     internal_cols : list of str
         Columns to strip before returning results to the caller.
     extra_kwargs : dict
-        ``tf_total`` and ``op_total`` scalars (in M) and
-        ``conc_unit_scale`` required by ``compute_theta_samples``.
+        ``tf_total`` (M, monomer units) and ``conc_unit_scale`` required
+        by ``compute_theta_samples``.
     """
     import tfscreen.util.dataframe
 
@@ -345,20 +264,19 @@ def build_calc_df(model, manual_titrant_df):
 
     extra = {
         "tf_total": float(model.priors.theta.theta_tf_total_M),
-        "op_total": float(model.priors.theta.theta_op_total_M),
         "conc_unit_scale": float(model.priors.theta.theta_conc_unit_scale),
     }
     return calc_df, ["genotype_idx", "titrant_name_idx"], extra
 
 
-def compute_theta_samples(calc_df, param_posteriors, *, tf_total, op_total,
+def compute_theta_samples(calc_df, param_posteriors, *, tf_total,
                           conc_unit_scale=1.0):
     """
     Compute posterior theta samples for the lac_dimer partition-function model.
 
-    Uses a pure-numpy Newton solve identical in structure to the JAX version
-    in ``_compute_theta``, operating on flattened per-row posterior slices
-    rather than the full (T, C, G) grid.
+    Uses the same equations as the JAX path (``mwc.theta_c4``) in numpy,
+    on flattened per-row posterior slices rather than the full (T, C, G)
+    grid.
 
     Parameters
     ----------
@@ -368,9 +286,7 @@ def compute_theta_samples(calc_df, param_posteriors, *, tf_total, op_total,
     param_posteriors : dict-like
         Posterior samples keyed by parameter name (with ``theta_`` prefix).
     tf_total : float
-        Total TF concentration in M.
-    op_total : float
-        Total operator concentration in M.
+        Total TF concentration in M, monomer units.
     conc_unit_scale : float, optional
         Multiply ``titrant_conc`` by this factor to get M. ``build_calc_df``
         passes ``theta_conc_unit_scale`` (1e-3 for mM data).
@@ -404,4 +320,4 @@ def compute_theta_samples(calc_df, param_posteriors, *, tf_total, op_total,
     ln_K_E_pts  = ln_K_E_all[:, titrant_indices, geno_indices]
 
     return _solve_theta_np(ln_K_op_pts, ln_K_HL_pts, ln_K_E_pts,
-                           conc, tf_total, op_total)
+                           conc, tf_total)

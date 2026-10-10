@@ -202,11 +202,11 @@ class TestProjectDdG:
         out = _project_ddG(ddG)
         assert float(out[0, 1]) == pytest.approx(4.0 - 2.0)
 
-    def test_K_E_is_L_minus_LE2(self):
-        # H=0, HD=0, L=5, LE2=2  → K_E = 5-2 = 3
+    def test_K_E_is_half_L_minus_LE2(self):
+        # H=0, HD=0, L=5, LE2=2  → per-site K_E = (5-2)/2
         ddG = jnp.array([[0.0, 0.0, 5.0, 2.0]])
         out = _project_ddG(ddG)
-        assert float(out[0, 2]) == pytest.approx(5.0 - 2.0)
+        assert float(out[0, 2]) == pytest.approx((5.0 - 2.0) / 2)
 
     def test_batch_dim(self):
         # Leading batch dim beyond (M,)
@@ -227,7 +227,7 @@ class TestConfig:
             "theta_ln_K_op_wt_loc", "theta_ln_K_op_wt_scale",
             "theta_ln_K_HL_wt_loc", "theta_ln_K_HL_wt_scale",
             "theta_ln_K_E_wt_loc",  "theta_ln_K_E_wt_scale",
-            "theta_tf_total_M", "theta_op_total_M",
+            "theta_tf_total_M",
         ]
         for k in required:
             assert k in hp, f"Missing hyperparameter key: {k}"
@@ -248,8 +248,7 @@ class TestConfig:
 
     def test_physical_constants(self):
         priors = get_priors()
-        assert priors.theta_tf_total_M == pytest.approx(6.5e-10)
-        assert priors.theta_op_total_M == pytest.approx(2.5e-8)
+        assert priors.theta_tf_total_M == pytest.approx(1e-5)
 
     def test_get_guesses_required_keys(self):
         g = get_guesses("theta", _make_mock())
@@ -360,10 +359,9 @@ class TestDefineModel:
             atol=1e-5,
         )
 
-    def test_tf_op_totals_preserved(self):
+    def test_tf_total_preserved(self):
         out, _ = _run_model(_make_mock())
-        assert out.tf_total == pytest.approx(6.5e-10)
-        assert out.op_total == pytest.approx(2.5e-8)
+        assert out.tf_total == pytest.approx(1e-5)
 
 
 # ---------------------------------------------------------------------------
@@ -422,10 +420,9 @@ class TestGuide:
         locs_val = tr["theta_ddG_offset_locs"]["value"]
         assert locs_val.shape == (_S, _M)
 
-    def test_tf_op_totals_preserved(self):
+    def test_tf_total_preserved(self):
         out, _ = _run_guide(_make_mock())
-        assert out.tf_total == pytest.approx(6.5e-10)
-        assert out.op_total == pytest.approx(2.5e-8)
+        assert out.tf_total == pytest.approx(1e-5)
 
 
 # ---------------------------------------------------------------------------

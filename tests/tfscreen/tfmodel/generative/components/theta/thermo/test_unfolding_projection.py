@@ -19,6 +19,7 @@ import pytest
 from numpyro.handlers import seed, substitute, trace
 
 from tfscreen.genetics.build_mut_geno_matrix import build_mut_sparse_indices
+from tfscreen.tfmodel.generative.components.theta.thermo import mwc
 
 _PKG = "tfscreen.tfmodel.generative.components.theta.thermo"
 
@@ -36,9 +37,9 @@ _C4 = dict(
     structs=("H", "HD", "L", "LE2"),
     folded=("ln_K_op", "ln_K_HL", "ln_K_E"),
     unfold="ln_K_U",
-    wt={"ln_K_op_wt": 23.0, "ln_K_HL_wt": -9.0, "ln_K_U_wt": 0.0,
-        "ln_K_E_wt": np.full(_T, 33.4 + 2 * np.log(1e3))},
-    conc=np.array([0.0, 1e-5, 1e-4]),
+    wt={"ln_K_op_wt": mwc.DEFAULT_LN_K_H_O, "ln_K_HL_wt": mwc.DEFAULT_LN_K_H_L,
+        "ln_K_U_wt": 0.0, "ln_K_E_wt": np.full(_T, mwc.DEFAULT_LN_K_E_C4)},
+    conc=np.array([0.0, 0.1, 1.0]),
     predict_kw={"conc_unit_scale": 1e-3},
 )
 _C12 = dict(
@@ -46,9 +47,10 @@ _C12 = dict(
     structs=("H", "HO", "L", "LO", "HE2", "LE2"),
     folded=("ln_K_h_l", "ln_K_h_o", "ln_K_h_e", "ln_K_l_o", "ln_K_l_e"),
     unfold="ln_K_u",
-    wt={"ln_K_h_l_wt": 1.84, "ln_K_h_o_wt": 19.9, "ln_K_l_o_wt": -2.3,
-        "ln_K_u_wt": 0.0, "ln_K_h_e_wt": np.full(_T, 10.9),
-        "ln_K_l_e_wt": np.full(_T, 13.5)},
+    wt={"ln_K_h_l_wt": mwc.DEFAULT_LN_K_H_L, "ln_K_h_o_wt": mwc.DEFAULT_LN_K_H_O,
+        "ln_K_l_o_wt": mwc.DEFAULT_LN_K_L_O, "ln_K_u_wt": 0.0,
+        "ln_K_h_e_wt": np.full(_T, mwc.DEFAULT_LN_K_H_E),
+        "ln_K_l_e_wt": np.full(_T, mwc.DEFAULT_LN_K_L_E)},
     conc=np.array([0.0, 0.1, 1.0]),
     predict_kw={"conc_unit_scale": 1e-3},
 )
@@ -237,7 +239,7 @@ def test_predict_unmeasured_matches_model(fam, kind, num_pair):
     result = module.predict_unmeasured(
         _GENOTYPES, ["iptg"], titrant_df, _MUT_LABELS,
         _PAIR_LABELS if num_pair else [], post, {"median": 0.5},
-        tf_total=priors.theta_tf_total_M, op_total=priors.theta_op_total_M,
+        tf_total=priors.theta_tf_total_M,
         **fam["predict_kw"])
 
     theta = _theta(fam, out)[0]           # (C, G)

@@ -312,6 +312,40 @@ is 1.69 kT, so kcal/mol values read as kT understate every effect by that
 factor. A predictor that reports folding ΔG, where negative means more
 stable, must be sign-flipped first.
 
+**Projection.** The effector constants are per site, and a doubly liganded
+structure XE2 has weight K\ :sub:`x_e`\ :sup:`2`\ ·e\ :sup:`2` relative to X,
+so ΔΔG\ :sub:`X` − ΔΔG\ :sub:`XE2` is twice Δln K\ :sub:`x_e`. The models
+map ΔΔG to constant shifts as follows:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 35 40
+
+   * - Constant
+     - ``O2_C12`` structures
+     - ``O2_C4`` structures
+   * - K\ :sub:`h_l` (C4: K\ :sub:`HL`)
+     - ΔΔG\ :sub:`H` − ΔΔG\ :sub:`L`
+     - ΔΔG\ :sub:`H` − ΔΔG\ :sub:`L`
+   * - K\ :sub:`h_o` (C4: K\ :sub:`op`)
+     - ΔΔG\ :sub:`H` − ΔΔG\ :sub:`HO`
+     - ΔΔG\ :sub:`H` − ΔΔG\ :sub:`HD`
+   * - K\ :sub:`h_e`
+     - (ΔΔG\ :sub:`H` − ΔΔG\ :sub:`HE2`)/2
+     - fixed at 0
+   * - K\ :sub:`l_o`
+     - ΔΔG\ :sub:`L` − ΔΔG\ :sub:`LO`
+     - fixed at 0
+   * - K\ :sub:`l_e` (C4: K\ :sub:`E`)
+     - (ΔΔG\ :sub:`L` − ΔΔG\ :sub:`LE2`)/2
+     - (ΔΔG\ :sub:`L` − ΔΔG\ :sub:`LE2`)/2
+   * - K\ :sub:`u` (``U1`` only)
+     - ΔΔG\ :sub:`H`
+     - ΔΔG\ :sub:`H`
+
+Before 2026-10-11 the ``O2_C4`` K\ :sub:`E` row was ΔΔG\ :sub:`L` −
+ΔΔG\ :sub:`LE2`, for a two-effector M\ :sup:`-2` constant.
+
 **Numbering and coverage.** The loader matches CSV labels to the library's
 mutations and prints how many it covers. It stops with an error when the
 CSV covers none of them, or when the CSV's wild-type residue at a library

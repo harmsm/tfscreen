@@ -32,7 +32,7 @@ A CSV with a mutation column (``mut``, ``Mutation`` or ``mutation``) and one
 column per structure (``H``, ``HD``, ``L``, ``LE2``, any order; other columns are
 ignored, and ``thermo_options`` ``column_map`` can name the column for a
 structure).  ΔΔG_X is the shift a mutation makes to state X's free energy,
-so positive destabilises X, and Δln K_{A→B} = ΔΔG_A − ΔΔG_B.  The model
+so positive destabilizes X, and Δln K_{A→B} = ΔΔG_A − ΔΔG_B.  The model
 needs kT; ``thermo_options`` ``ddG_units: kcal/mol`` (or ``kJ/mol``, with
 ``temperature_K``) converts at load, and the default ``kT`` uses the values
 as-is.  The loader (``thermo.io.load_ddG_prior_csv``) reports coverage, errors
@@ -53,6 +53,7 @@ from typing import Dict, Any, Union
 
 from tfscreen.tfmodel.data_class import GrowthData, BindingData
 from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix, apply_mut_matrix
+from tfscreen.tfmodel.generative.components.theta.thermo import mwc
 from tfscreen.tfmodel.generative.components.theta.thermo.prior import (
     ddG_extract_specs,
     sample_ddG,
@@ -64,6 +65,8 @@ from tfscreen.tfmodel.generative.components.theta.thermo.horseshoe import (
 from tfscreen.tfmodel.generative.components.theta.thermo.O2_C4_K3_U1_a.thermo import (
     DEFAULT_CONC_UNIT_SCALE,
     DEFAULT_LN_K_E_WT_LOC,
+    DEFAULT_LN_K_HL_WT_LOC,
+    DEFAULT_LN_K_OP_WT_LOC,
     DEFAULT_TF_TOTAL_M,
     ThetaParam,
     _compute_theta,
@@ -72,15 +75,16 @@ from tfscreen.tfmodel.generative.components.theta.thermo.O2_C4_K3_U1_a.thermo im
     get_population_moments,
 )
 
-STRUCTURE_NAMES = ('H', 'HD', 'L', 'LE2')
+# Structure basis and projection rows (thermo/mwc.py). Convention: ΔΔG_X
+# adds to state X's free energy (kT), Δln K_{A→B} = ΔΔG_A − ΔΔG_B, and the
+# effector rows are per site, half of ΔΔG_X − ΔΔG_XE2.
+STRUCTURE_NAMES = mwc.STRUCTURE_NAMES_C4
 
-_PROJ = jnp.array([[1., -1.,  0.,  0.],
-                   [1.,  0., -1.,  0.],
-                   [0.,  0.,  1., -1.]])
+# Δln_K = ddG @ _PROJ.T; rows = constants, cols = STRUCTURE_NAMES.
+_PROJ = jnp.asarray(mwc.PROJ_C4)
 
-# Unfolding row.  K_U = [U]/[H] and mutations do not shift U (ΔΔG_U = 0), so
-# Δln K_U = ΔΔG_H − ΔΔG_U = ΔΔG_H, in the same convention as _PROJ.
-_PROJ_U = jnp.array([1., 0., 0., 0.])
+# Unfolding row. K_U = [U]/[H] and ΔΔG_U = 0, so Δln K_U = ΔΔG_H.
+_PROJ_U = jnp.asarray(mwc.PROJ_U_C4)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -100,12 +104,11 @@ class ModelPriors:
     theta_ln_K_U_wt_loc:    float
     theta_ln_K_U_wt_scale:  float
 
-    theta_tf_total_M: float
-    theta_op_total_M: float
+    theta_tf_total_M: float   # M, monomer units; default 1e-5 (thermo/mwc.py)
     # Factor converting data titrant_conc (mM) to M (1e-3); see thermo.py.
     theta_conc_unit_scale: float
 
-    # Regularised horseshoe for pairwise epistasis
+    # Regularized horseshoe for pairwise epistasis
     theta_epi_tau_scale:  float
     theta_epi_slab_scale: float
     theta_epi_slab_df:    float
@@ -189,7 +192,6 @@ def define_model(name: str,
     ddG_prior_means = jnp.array(data.struct_features)[:, perm_idx]
 
     tf_total = priors.theta_tf_total_M
-    op_total = priors.theta_op_total_M
     conc_unit_scale = priors.theta_conc_unit_scale
 
     ln_K_op_wt = pyro.sample(
@@ -254,11 +256,11 @@ def define_model(name: str,
 
     theta_vals = _compute_theta(ln_K_op, ln_K_HL, ln_K_E, ln_K_U,
                                 data.titrant_conc * conc_unit_scale,
-                                tf_total, op_total)
+                                tf_total)
     mu, sigma  = _population_moments(theta_vals, data)
 
     return ThetaParam(ln_K_op=ln_K_op, ln_K_HL=ln_K_HL, ln_K_E=ln_K_E, ln_K_U=ln_K_U,
-                      tf_total=tf_total, op_total=op_total, mu=mu, sigma=sigma,
+                      tf_total=tf_total, mu=mu, sigma=sigma,
                       conc_unit_scale=conc_unit_scale)
 
 
@@ -284,7 +286,6 @@ def guide(name: str,
     ddG_prior_means = jnp.array(data.struct_features)[:, perm_idx]
 
     tf_total = priors.theta_tf_total_M
-    op_total = priors.theta_op_total_M
     conc_unit_scale = priors.theta_conc_unit_scale
     has_epi  = data.num_pair > 0
 
@@ -387,11 +388,11 @@ def guide(name: str,
 
     theta_vals = _compute_theta(ln_K_op, ln_K_HL, ln_K_E, ln_K_U,
                                 data.titrant_conc * conc_unit_scale,
-                                tf_total, op_total)
+                                tf_total)
     mu, sigma  = _population_moments(theta_vals, data)
 
     return ThetaParam(ln_K_op=ln_K_op, ln_K_HL=ln_K_HL, ln_K_E=ln_K_E, ln_K_U=ln_K_U,
-                      tf_total=tf_total, op_total=op_total, mu=mu, sigma=sigma,
+                      tf_total=tf_total, mu=mu, sigma=sigma,
                       conc_unit_scale=conc_unit_scale)
 
 
@@ -401,17 +402,18 @@ def guide(name: str,
 
 def get_hyperparameters() -> Dict[str, Any]:
     p = {}
-    p["theta_ln_K_op_wt_loc"]   = 23.0
+    # Wild-type defaults: see thermo/mwc.py (Sochor 2014 constants and the
+    # 80 µM midpoint calibration at tf_total = 1e-5 M monomer).
+    p["theta_ln_K_op_wt_loc"]   = DEFAULT_LN_K_OP_WT_LOC   # = K_h_o; Sochor: 4.2e8 M⁻¹
     p["theta_ln_K_op_wt_scale"] = 2.0
-    p["theta_ln_K_HL_wt_loc"]   = -9.0
+    p["theta_ln_K_HL_wt_loc"]   = DEFAULT_LN_K_HL_WT_LOC   # = K_h_l; Sochor: 6.3
     p["theta_ln_K_HL_wt_scale"] = 3.0
-    p["theta_ln_K_E_wt_loc"]    = DEFAULT_LN_K_E_WT_LOC   # M⁻²; 33.4 in the old mM⁻² units
+    p["theta_ln_K_E_wt_loc"]    = DEFAULT_LN_K_E_WT_LOC   # = K_l_e, per site (M⁻¹); midpoint 80 µM
     p["theta_ln_K_E_wt_scale"]  = 3.0
     p["theta_ln_K_U_wt_loc"]    = -12.0
     p["theta_ln_K_U_wt_scale"]  = 3.0
-    p["theta_tf_total_M"]     = DEFAULT_TF_TOTAL_M   # 6.5e-10 M; see thermo.py Units
+    p["theta_tf_total_M"]     = DEFAULT_TF_TOTAL_M   # M, monomer units (5e-6 M dimer)
     p["theta_conc_unit_scale"] = DEFAULT_CONC_UNIT_SCALE   # titrant_conc mM → M
-    p["theta_op_total_M"]     = 2.5e-8
     p["theta_epi_tau_scale"]  = 0.1
     p["theta_epi_slab_scale"] = 2.0
     p["theta_epi_slab_df"]    = 4.0
@@ -424,8 +426,8 @@ def get_guesses(name: str, data: Union[GrowthData, BindingData]) -> Dict[str, An
     M = data.num_mutation
     S = len(STRUCTURE_NAMES)
     g = {}
-    g[f"{name}_ln_K_op_wt"]  = jnp.array(23.0)
-    g[f"{name}_ln_K_HL_wt"]  = jnp.array(-9.0)
+    g[f"{name}_ln_K_op_wt"]  = jnp.array(DEFAULT_LN_K_OP_WT_LOC)
+    g[f"{name}_ln_K_HL_wt"]  = jnp.array(DEFAULT_LN_K_HL_WT_LOC)
     g[f"{name}_ln_K_E_wt"]   = jnp.full(T, DEFAULT_LN_K_E_WT_LOC)
     g[f"{name}_ln_K_U_wt"]   = jnp.array(-12.0)
     g[f"{name}_ddG_offset"]   = jnp.zeros((S, M))
@@ -452,7 +454,6 @@ def predict_unmeasured(
     q_to_get,
     *,
     tf_total,
-    op_total,
     conc_unit_scale=1.0,
 ):
     """
@@ -522,7 +523,7 @@ def predict_unmeasured(
 
     theta_samples = _solve_theta_np(
         ln_K_op_rows, ln_K_HL_rows, ln_K_E_rows, ln_K_U_rows,
-        conc, tf_total, op_total,
+        conc, tf_total,
     )
 
     theta_samples[:, ~is_valid[geno_idx]] = np.nan

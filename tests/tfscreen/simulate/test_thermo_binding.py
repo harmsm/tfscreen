@@ -113,12 +113,10 @@ def _theta_from_truth(component, params, genotypes, concs):
     for n in names:
         v = p.loc[genotypes, n].to_numpy(dtype=float)
         ks.append(v[None, :] if n.lower().endswith("e") else v)
-    # The C12 models take M (mM times theta_conc_unit_scale); C4 takes the
-    # data units as given.
+    # Both families take M (mM times theta_conc_unit_scale).
     scale = hyper.get("theta_conc_unit_scale", 1.0)
     theta = module._compute_theta(*ks, np.asarray(concs, dtype=float) * scale,
-                                  hyper["theta_tf_total_M"],
-                                  hyper["theta_op_total_M"])
+                                  hyper["theta_tf_total_M"])
     return np.asarray(theta)[0].T
 
 

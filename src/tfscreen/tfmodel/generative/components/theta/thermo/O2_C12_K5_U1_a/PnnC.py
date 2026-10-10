@@ -10,7 +10,8 @@ name:
 Contrast with PK (all K shifts inferred from data, including K_u per mutation)
 and PddG (ΔΔG prior means from a user-supplied CSV rather than a trained NN).
 
-Implements the full MWC two-state lac-dimer model (Sochor 2014) with five
+Implements the standard MWC two-state lac-dimer model (``thermo/mwc.py``;
+constants and values from Sochor 2014) with five
 equilibrium constants plus a global unfolding equilibrium, using six structural
 states as the free-energy basis:
 
@@ -79,6 +80,7 @@ from tfscreen.tfmodel.generative.components.theta.thermo.nn import (
     compute_nn_predictions,
     _DEFAULT_HIDDEN_SIZE,
 )
+from tfscreen.tfmodel.generative.components.theta.thermo import mwc
 from tfscreen.tfmodel.generative.components.theta.thermo.prior import (
     ddG_extract_specs,
     sample_ddG,
@@ -88,6 +90,13 @@ from tfscreen.tfmodel.generative.components.theta.thermo.horseshoe import (
     _DEFAULT_D0,
 )
 from tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U1_a.thermo import (
+    DEFAULT_CONC_UNIT_SCALE,
+    DEFAULT_LN_K_H_E,
+    DEFAULT_LN_K_H_L,
+    DEFAULT_LN_K_H_O,
+    DEFAULT_LN_K_L_E,
+    DEFAULT_LN_K_L_O,
+    DEFAULT_TF_TOTAL_M,
     ThetaParam,
     _compute_theta,
     _population_moments,
@@ -95,23 +104,19 @@ from tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U1_a.thermo i
     get_population_moments,
 )
 
-# Expected structure names — column order matches _PROJ below.
-STRUCTURE_NAMES = ('H', 'HO', 'L', 'LO', 'HE2', 'LE2')
+# Structure basis and projection rows (thermo/mwc.py). Convention: ΔΔG_X
+# adds to state X's free energy (kT), Δln K_{A→B} = ΔΔG_A − ΔΔG_B, and the
+# effector rows are per site, half of ΔΔG_X − ΔΔG_XE2.
+STRUCTURE_NAMES = mwc.STRUCTURE_NAMES_C12
 
-# Fixed thermodynamic projection: rows = (K_h_l, K_h_o, K_h_e, K_l_o, K_l_e),
-# cols = (H, HO, L, LO, HE2, LE2).
-# Δln_K = ddG @ _PROJ.T   where ddG is (..., 6) → result (..., 5)
-_PROJ = jnp.array([
-    [ 1.,   0., -1.,   0.,   0.,   0. ],  # K_h_l = ΔΔG_H − ΔΔG_L
-    [ 1.,  -1.,  0.,   0.,   0.,   0. ],  # K_h_o = ΔΔG_H − ΔΔG_HO
-    [ 0.5,  0.,  0.,   0.,  -0.5,  0. ],  # K_h_e = (ΔΔG_H − ΔΔG_HE2)/2
-    [ 0.,   0.,  1.,  -1.,   0.,   0. ],  # K_l_o = ΔΔG_L − ΔΔG_LO
-    [ 0.,   0.,  0.5,  0.,   0.,  -0.5],  # K_l_e = (ΔΔG_L − ΔΔG_LE2)/2
-])
+# Δln_K = ddG @ _PROJ.T; rows = constants, cols = STRUCTURE_NAMES.
+_PROJ = jnp.asarray(mwc.PROJ_C12)
+# The basis uses HE2/LE2 (both sites filled, symmetric chains) rather than
+# HE/LE (one site filled, asymmetric chains): it gives LigandMPNN one coherent
+# structural environment to score, as _aggregate_logP expects.
 
-# Unfolding row.  K_u = [U]/[H] and mutations do not shift U (ΔΔG_U = 0), so
-# Δln K_u = ΔΔG_H − ΔΔG_U = ΔΔG_H, in the same convention as _PROJ.
-_PROJ_U = jnp.array([1., 0., 0., 0., 0., 0.])
+# Unfolding row. K_u = [U]/[H] and ΔΔG_U = 0, so Δln K_u = ΔΔG_H.
+_PROJ_U = jnp.asarray(mwc.PROJ_U_C12)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -140,8 +145,7 @@ class ModelPriors:
 
     # Physical concentrations (M).
     # theta_tf_total_M is the total TF in MONOMER units.
-    theta_tf_total_M: float    # ≈ 6.5e-7 M monomer (= 325 nM dimer)
-    theta_op_total_M: float    # ≈ 2.5e-8 M (25 nM)
+    theta_tf_total_M: float   # M, monomer units; default 1e-5 (thermo/mwc.py)
 
     # Unit-conversion factor applied to data.titrant_conc before thermodynamics.
     # Default 1e-3 assumes concentrations are in mM and K values are in M⁻¹.
@@ -150,7 +154,7 @@ class ModelPriors:
     # Per-structure MLP hidden width (static shape — not a float parameter)
     theta_nn_hidden_size: int = field(pytree_node=False)
 
-    # Regularised horseshoe for pairwise epistasis
+    # Regularized horseshoe for pairwise epistasis
     theta_epi_tau_scale:  float
     theta_epi_slab_scale: float
     theta_epi_slab_df:    float
@@ -290,7 +294,6 @@ def define_model(name: str,
                 and data.struct_contact_distances is not None)
 
     tf_total        = priors.theta_tf_total_M
-    op_total        = priors.theta_op_total_M
     conc_unit_scale = priors.theta_conc_unit_scale
 
     # ── WT equilibrium constants ─────────────────────────────────────────────
@@ -393,12 +396,12 @@ def define_model(name: str,
                                 ln_K_l_o, ln_K_l_e,
                                 ln_K_u,
                                 data.titrant_conc * conc_unit_scale,
-                                tf_total, op_total)
+                                tf_total)
     mu, sigma  = _population_moments(theta_vals, data)
 
     return ThetaParam(ln_K_h_l=ln_K_h_l, ln_K_h_o=ln_K_h_o, ln_K_h_e=ln_K_h_e,
                       ln_K_l_o=ln_K_l_o, ln_K_l_e=ln_K_l_e, ln_K_u=ln_K_u,
-                      tf_total=tf_total, op_total=op_total, mu=mu, sigma=sigma,
+                      tf_total=tf_total, mu=mu, sigma=sigma,
                       conc_unit_scale=conc_unit_scale)
 
 
@@ -427,7 +430,6 @@ def guide(name: str,
                 and data.struct_contact_distances is not None)
 
     tf_total        = priors.theta_tf_total_M
-    op_total        = priors.theta_op_total_M
     conc_unit_scale = priors.theta_conc_unit_scale
 
     # ── Variational params for WT K values ────────────────────────────────────
@@ -562,12 +564,12 @@ def guide(name: str,
                                 ln_K_l_o, ln_K_l_e,
                                 ln_K_u,
                                 data.titrant_conc * conc_unit_scale,
-                                tf_total, op_total)
+                                tf_total)
     mu, sigma  = _population_moments(theta_vals, data)
 
     return ThetaParam(ln_K_h_l=ln_K_h_l, ln_K_h_o=ln_K_h_o, ln_K_h_e=ln_K_h_e,
                       ln_K_l_o=ln_K_l_o, ln_K_l_e=ln_K_l_e, ln_K_u=ln_K_u,
-                      tf_total=tf_total, op_total=op_total, mu=mu, sigma=sigma,
+                      tf_total=tf_total, mu=mu, sigma=sigma,
                       conc_unit_scale=conc_unit_scale)
 
 
@@ -577,26 +579,23 @@ def guide(name: str,
 
 def get_hyperparameters() -> Dict[str, Any]:
     p = {}
-    # All values calibrated to Sochor et al. 2014 (PeerJ 2:e498), Table 1.
-    p["theta_ln_K_h_l_wt_loc"]   = 1.84
+    # Wild-type defaults: see thermo/mwc.py (Sochor 2014 constants and the
+    # 80 µM midpoint calibration at tf_total = 1e-5 M monomer).
+    p["theta_ln_K_h_l_wt_loc"]   = DEFAULT_LN_K_H_L   # Sochor (2014) Table 1: K_h_l = 6.3
     p["theta_ln_K_h_l_wt_scale"] = 2.0
-    p["theta_ln_K_h_o_wt_loc"]   = 19.9
+    p["theta_ln_K_h_o_wt_loc"]   = DEFAULT_LN_K_H_O   # Sochor: K_h_o = 4.2e8 M⁻¹
     p["theta_ln_K_h_o_wt_scale"] = 2.0
-    p["theta_ln_K_h_e_wt_loc"]   = 10.9
+    p["theta_ln_K_h_e_wt_loc"]   = DEFAULT_LN_K_H_E   # per site; 0.38 × Sochor, midpoint 80 µM
     p["theta_ln_K_h_e_wt_scale"] = 2.0
-    p["theta_ln_K_l_o_wt_loc"]   = -2.3
+    p["theta_ln_K_l_o_wt_loc"]   = DEFAULT_LN_K_L_O   # Sochor: K_l_o = 0.1 M⁻¹
     p["theta_ln_K_l_o_wt_scale"] = 3.0
-    p["theta_ln_K_l_e_wt_loc"]   = 13.5
+    p["theta_ln_K_l_e_wt_loc"]   = DEFAULT_LN_K_L_E   # per site; 0.38 × Sochor, midpoint 80 µM
     p["theta_ln_K_l_e_wt_scale"] = 2.0
-    # Unfolding constant prior: -12.0 corresponds to K_u ~ e^{-12} ≈ 6e-6 M⁻¹,
-    # a strongly folded protein (unfolded state strongly disfavoured).
+    # WT unfolded state: K_u << 1 in WT (ln_K_u ≈ -12 → K_u ≈ 6e-6)
     p["theta_ln_K_u_wt_loc"]     = -12.0
     p["theta_ln_K_u_wt_scale"]   = 3.0
-    # Physical concentrations — theta_tf_total_M is in MONOMER units.
-    p["theta_tf_total_M"] = 6.5e-7   # monomer
-    p["theta_op_total_M"] = 2.5e-8   # operator (M)
-    # Unit-conversion factor
-    p["theta_conc_unit_scale"] = 1e-3
+    p["theta_tf_total_M"] = DEFAULT_TF_TOTAL_M   # M, monomer units (5e-6 M dimer)
+    p["theta_conc_unit_scale"] = DEFAULT_CONC_UNIT_SCALE   # titrant_conc mM → M
     # NN architecture
     p["theta_nn_hidden_size"]   = _DEFAULT_HIDDEN_SIZE
     # Horseshoe hyperparameters for pairwise epistasis
@@ -612,11 +611,11 @@ def get_guesses(name: str, data: Union[GrowthData, BindingData]) -> Dict[str, An
     M = data.num_mutation
     S = data.num_struct
     g = {}
-    g[f"{name}_ln_K_h_l_wt"]  = jnp.array(1.84)
-    g[f"{name}_ln_K_h_o_wt"]  = jnp.array(19.9)
-    g[f"{name}_ln_K_h_e_wt"]  = jnp.full(T, 10.9)
-    g[f"{name}_ln_K_l_o_wt"]  = jnp.array(-2.3)
-    g[f"{name}_ln_K_l_e_wt"]  = jnp.full(T, 13.5)
+    g[f"{name}_ln_K_h_l_wt"]  = jnp.array(DEFAULT_LN_K_H_L)
+    g[f"{name}_ln_K_h_o_wt"]  = jnp.array(DEFAULT_LN_K_H_O)
+    g[f"{name}_ln_K_h_e_wt"]  = jnp.full(T, DEFAULT_LN_K_H_E)
+    g[f"{name}_ln_K_l_o_wt"]  = jnp.array(DEFAULT_LN_K_L_O)
+    g[f"{name}_ln_K_l_e_wt"]  = jnp.full(T, DEFAULT_LN_K_L_E)
     g[f"{name}_ln_K_u_wt"]    = jnp.array(-12.0)
     g[f"{name}_ddG_offset"]    = jnp.zeros((S, M))
     if data.num_pair > 0 and data.struct_contact_distances is not None:
@@ -642,7 +641,6 @@ def predict_unmeasured(
     q_to_get,
     *,
     tf_total,
-    op_total,
     conc_unit_scale=1.0,
 ):
     """
@@ -661,7 +659,6 @@ def predict_unmeasured(
     param_posteriors : dict-like
     q_to_get : dict
     tf_total : float
-    op_total : float
     conc_unit_scale : float
 
     Returns
@@ -745,7 +742,7 @@ def predict_unmeasured(
         ln_K_h_l_rows, ln_K_h_o_rows, ln_K_h_e_rows,
         ln_K_l_o_rows, ln_K_l_e_rows,
         ln_K_u_rows,
-        conc, tf_total, op_total,
+        conc, tf_total,
     )
 
     theta_samples[:, ~is_valid[geno_idx]] = np.nan

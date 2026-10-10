@@ -27,7 +27,7 @@ identity (no T dimension).  K_h_e and K_l_e carry a T dimension to allow
 different effector species to have different WT affinities; the per-mutation
 delta is shared across effector types.
 
-Epistasis uses a regularised horseshoe prior (shared τ, slab c², per-pair λ)
+Epistasis uses a regularized horseshoe prior (shared τ, slab c², per-pair λ)
 and is only sampled when data.num_pair > 0.
 
 Thermodynamic functions (partition function, Newton solve for free effector,
@@ -46,6 +46,13 @@ from typing import Dict, Any, Union
 from tfscreen.tfmodel.data_class import GrowthData, BindingData
 from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix, apply_mut_matrix
 from tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U0_a.thermo import (
+    DEFAULT_CONC_UNIT_SCALE,
+    DEFAULT_LN_K_H_E,
+    DEFAULT_LN_K_H_L,
+    DEFAULT_LN_K_H_O,
+    DEFAULT_LN_K_L_E,
+    DEFAULT_LN_K_L_O,
+    DEFAULT_TF_TOTAL_M,
     ThetaParam,
     _compute_theta,
     _population_moments,
@@ -74,12 +81,9 @@ class ModelPriors:
     theta_ln_K_l_e_wt_loc:   float
     theta_ln_K_l_e_wt_scale: float
 
-    # Physical concentrations (M).
-    # theta_tf_total_M is the total TF in MONOMER units (same convention as
-    # MWCDimerModel.r_total in src/tfscreen/models/lac_model/mwc_dimer.py).
-    # The dimer concentration used in the mass-balance is tf_total_M / 2.
-    theta_tf_total_M: float   # ≈ 6.5e-7 M monomer (= 325 nM dimer)
-    theta_op_total_M: float   # ≈ 2.5e-8 M (25 nM)
+    # Total TF (M) in MONOMER units; the dimer concentration in the mass
+    # balance is tf_total_M / 2 (thermo/mwc.py).
+    theta_tf_total_M: float   # M, monomer units; default 1e-5 (thermo/mwc.py)
 
     # Unit-conversion factor applied to data.titrant_conc before it enters
     # the thermodynamic equations.  Set to 1e-3 when concentrations in the
@@ -93,7 +97,7 @@ class ModelPriors:
     theta_sigma_d_ln_K_h_e_scale: float
     theta_sigma_d_ln_K_l_e_scale: float
 
-    # Shared regularised horseshoe hyperparameters for pairwise epistasis
+    # Shared regularized horseshoe hyperparameters for pairwise epistasis
     theta_epi_tau_scale:  float   # HalfCauchy scale for global τ
     theta_epi_slab_scale: float   # typical size of a large epistasis effect
     theta_epi_slab_df:    float   # InvGamma shape ν (usually 4)
@@ -162,7 +166,7 @@ def define_model(name: str,
 
     Samples WT equilibrium constants and per-mutation delta parameters, then
     assembles per-genotype constants via matrix multiplication.  Epistasis uses
-    a regularised horseshoe prior (shared τ and slab c², per-pair local λ).
+    a regularized horseshoe prior (shared τ and slab c², per-pair local λ).
 
     Parameters
     ----------
@@ -187,7 +191,6 @@ def define_model(name: str,
     has_epi = data.num_pair > 0
 
     tf_total         = priors.theta_tf_total_M
-    op_total         = priors.theta_op_total_M
     conc_unit_scale  = priors.theta_conc_unit_scale
 
     # ------------------------------------------------------------------
@@ -252,7 +255,7 @@ def define_model(name: str,
         d_K_h_e_off = d_K_l_e_off = jnp.zeros((T, 0))
 
     # ------------------------------------------------------------------
-    # Optional epistasis — regularised horseshoe prior
+    # Optional epistasis — regularized horseshoe prior
     # ------------------------------------------------------------------
     if has_epi:
         pair_scatter = partial(apply_pair_matrix,
@@ -364,12 +367,12 @@ def define_model(name: str,
     theta_vals = _compute_theta(ln_K_h_l, ln_K_h_o, ln_K_h_e,
                                 ln_K_l_o, ln_K_l_e,
                                 data.titrant_conc * conc_unit_scale,
-                                tf_total, op_total)
+                                tf_total)
     mu, sigma = _population_moments(theta_vals, data)
 
     return ThetaParam(ln_K_h_l=ln_K_h_l, ln_K_h_o=ln_K_h_o, ln_K_h_e=ln_K_h_e,
                       ln_K_l_o=ln_K_l_o, ln_K_l_e=ln_K_l_e,
-                      tf_total=tf_total, op_total=op_total, mu=mu, sigma=sigma,
+                      tf_total=tf_total, mu=mu, sigma=sigma,
                       conc_unit_scale=conc_unit_scale)
 
 
@@ -391,7 +394,6 @@ def guide(name: str,
     has_epi = data.num_pair > 0
 
     tf_total         = priors.theta_tf_total_M
-    op_total         = priors.theta_op_total_M
     conc_unit_scale  = priors.theta_conc_unit_scale
 
     # ------------------------------------------------------------------
@@ -590,12 +592,12 @@ def guide(name: str,
     theta_vals = _compute_theta(ln_K_h_l, ln_K_h_o, ln_K_h_e,
                                 ln_K_l_o, ln_K_l_e,
                                 data.titrant_conc * conc_unit_scale,
-                                tf_total, op_total)
+                                tf_total)
     mu, sigma = _population_moments(theta_vals, data)
 
     return ThetaParam(ln_K_h_l=ln_K_h_l, ln_K_h_o=ln_K_h_o, ln_K_h_e=ln_K_h_e,
                       ln_K_l_o=ln_K_l_o, ln_K_l_e=ln_K_l_e,
-                      tf_total=tf_total, op_total=op_total, mu=mu, sigma=sigma,
+                      tf_total=tf_total, mu=mu, sigma=sigma,
                       conc_unit_scale=conc_unit_scale)
 
 
@@ -605,46 +607,27 @@ def guide(name: str,
 
 def get_hyperparameters() -> Dict[str, Any]:
     p = {}
-    # All values calibrated to Sochor et al. 2014 (PeerJ 2:e498), Table 1.
-    # Concentrations must be in Molar; equilibrium constants in M⁻¹.
-    #
-    # K_h_l = K_RR* = [L]/[H] ≈ 6.3 → ln ≈ 1.84
-    # The L (low-affinity) state is DOMINANT without IPTG (~86% of TF).
-    # K_h_l > 1 is required for the effector to produce derepression:
-    # when K_h_l << 1, adding effector has no effect on theta (flat curves).
-    p["theta_ln_K_h_l_wt_loc"]   = 1.84
+    # Wild-type defaults: see thermo/mwc.py (Sochor 2014 constants and the
+    # 80 µM midpoint calibration at tf_total = 1e-5 M monomer).
+    p["theta_ln_K_h_l_wt_loc"]   = DEFAULT_LN_K_H_L   # Sochor (2014) Table 1: K_h_l = 6.3
     p["theta_ln_K_h_l_wt_scale"] = 2.0
-    # K_h_o = K_RO ≈ 0.42 nM⁻¹ = 4.2×10⁸ M⁻¹ → ln ≈ 19.9
-    p["theta_ln_K_h_o_wt_loc"]   = 19.9
+    p["theta_ln_K_h_o_wt_loc"]   = DEFAULT_LN_K_H_O   # Sochor: K_h_o = 4.2e8 M⁻¹
     p["theta_ln_K_h_o_wt_scale"] = 2.0
-    # K_l_o = K_R*O ≈ 0 (L-state does not bind operator DNA).
-    # Sochor fixes this at 10⁻¹⁰ nM⁻¹ = 0.1 M⁻¹ → ln ≈ -2.3.
-    p["theta_ln_K_l_o_wt_loc"]   = -2.3
+    p["theta_ln_K_l_o_wt_loc"]   = DEFAULT_LN_K_L_O   # Sochor: K_l_o = 0.1 M⁻¹
     p["theta_ln_K_l_o_wt_scale"] = 3.0
-    # K_h_e = K_RE ≈ 5.6×10⁻⁵ nM⁻¹ = 5.6×10⁴ M⁻¹ → ln ≈ 10.9
-    p["theta_ln_K_h_e_wt_loc"]   = 10.9
+    p["theta_ln_K_h_e_wt_loc"]   = DEFAULT_LN_K_H_E   # per site; 0.38 × Sochor, midpoint 80 µM
     p["theta_ln_K_h_e_wt_scale"] = 2.0
-    # K_l_e = K_R*E ≈ 7.6×10⁻⁴ nM⁻¹ = 7.6×10⁵ M⁻¹ → ln ≈ 13.5
-    # L-state binds IPTG ~14× more tightly than H-state (K_l_e/K_h_e ≈ 13.6).
-    p["theta_ln_K_l_e_wt_loc"]   = 13.5
+    p["theta_ln_K_l_e_wt_loc"]   = DEFAULT_LN_K_L_E   # per site; 0.38 × Sochor, midpoint 80 µM
     p["theta_ln_K_l_e_wt_scale"] = 2.0
-    # Physical concentrations — theta_tf_total_M is in MONOMER units.
-    # Sochor in vitro: [TF]≈664 nM dimer = ~1328 nM monomer.
-    # 6.5e-7 M monomer = 650 nM monomer = 325 nM dimer is a round-number
-    # approximation suitable as the prior centre.
-    p["theta_tf_total_M"] = 6.5e-7   # monomer
-    p["theta_op_total_M"] = 2.5e-8   # operator (M)
-    # Unit-conversion factor: multiply data.titrant_conc by this before
-    # entering thermodynamic equations.  Default 1e-3 assumes concentrations
-    # are in mM and K values are in M⁻¹.
-    p["theta_conc_unit_scale"] = 1e-3
+    p["theta_tf_total_M"] = DEFAULT_TF_TOTAL_M   # M, monomer units (5e-6 M dimer)
+    p["theta_conc_unit_scale"] = DEFAULT_CONC_UNIT_SCALE   # titrant_conc mM → M
     # Mutation effect scales
     p["theta_sigma_d_ln_K_h_l_scale"] = 1.0
     p["theta_sigma_d_ln_K_h_o_scale"] = 1.0
     p["theta_sigma_d_ln_K_l_o_scale"] = 1.0
     p["theta_sigma_d_ln_K_h_e_scale"] = 1.0
     p["theta_sigma_d_ln_K_l_e_scale"] = 1.0
-    # Shared regularised horseshoe hyperparameters
+    # Shared regularized horseshoe hyperparameters
     p["theta_epi_tau_scale"]   = 0.1
     p["theta_epi_slab_scale"]  = 2.0
     p["theta_epi_slab_df"]     = 4.0
@@ -655,11 +638,11 @@ def get_guesses(name: str, data: Union[GrowthData, BindingData]) -> Dict[str, An
     T = data.num_titrant_name
     M = data.num_mutation
     g = {}
-    g[f"{name}_ln_K_h_l_wt"]          = jnp.array(1.84)
-    g[f"{name}_ln_K_h_o_wt"]          = jnp.array(19.9)
-    g[f"{name}_ln_K_l_o_wt"]          = jnp.array(-2.3)
-    g[f"{name}_ln_K_h_e_wt"]          = jnp.full(T, 10.9)
-    g[f"{name}_ln_K_l_e_wt"]          = jnp.full(T, 13.5)
+    g[f"{name}_ln_K_h_l_wt"]          = jnp.array(DEFAULT_LN_K_H_L)
+    g[f"{name}_ln_K_h_o_wt"]          = jnp.array(DEFAULT_LN_K_H_O)
+    g[f"{name}_ln_K_l_o_wt"]          = jnp.array(DEFAULT_LN_K_L_O)
+    g[f"{name}_ln_K_h_e_wt"]          = jnp.full(T, DEFAULT_LN_K_H_E)
+    g[f"{name}_ln_K_l_e_wt"]          = jnp.full(T, DEFAULT_LN_K_L_E)
     g[f"{name}_sigma_d_ln_K_h_l"]     = jnp.array(0.3)
     g[f"{name}_sigma_d_ln_K_h_o"]     = jnp.array(0.3)
     g[f"{name}_sigma_d_ln_K_l_o"]     = jnp.array(0.3)
@@ -701,7 +684,6 @@ def predict_unmeasured(
     q_to_get,
     *,
     tf_total,
-    op_total,
     conc_unit_scale=1.0,
 ):
     """
@@ -717,7 +699,6 @@ def predict_unmeasured(
     param_posteriors : dict-like
     q_to_get : dict
     tf_total : float — monomer units (M)
-    op_total : float
     conc_unit_scale : float
         Multiply titrant_conc by this factor before thermodynamic equations.
         Use 1e-3 when concentrations are in mM and K values are in M⁻¹.
@@ -797,7 +778,7 @@ def predict_unmeasured(
     theta_samples = _solve_theta_np(
         ln_K_h_l_rows, ln_K_h_o_rows, ln_K_h_e_rows,
         ln_K_l_o_rows, ln_K_l_e_rows,
-        conc, tf_total, op_total,
+        conc, tf_total,
     )
 
     theta_samples[:, ~is_valid[geno_idx]] = np.nan

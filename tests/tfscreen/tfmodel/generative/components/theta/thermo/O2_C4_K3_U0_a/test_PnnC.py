@@ -167,10 +167,10 @@ class TestProjectDdG:
         out = _project_ddG(ddG)
         assert out[0, 1] == pytest.approx(3.0 - 1.0)   # K_HL = H - L
 
-    def test_K_E_equals_L_minus_LE2(self):
+    def test_K_E_is_half_L_minus_LE2(self):
         ddG = jnp.array([[0.0, 0.0, 5.0, 2.0]])
         out = _project_ddG(ddG)
-        assert out[0, 2] == pytest.approx(5.0 - 2.0)   # K_E = L - LE2
+        assert out[0, 2] == pytest.approx((5.0 - 2.0) / 2)   # per-site K_E = (L - LE2)/2
 
     def test_leading_batch_dim(self):
         ddG = jnp.ones((2, 7, 4))
@@ -189,7 +189,7 @@ class TestConfig:
             "theta_ln_K_op_wt_loc", "theta_ln_K_op_wt_scale",
             "theta_ln_K_HL_wt_loc", "theta_ln_K_HL_wt_scale",
             "theta_ln_K_E_wt_loc",  "theta_ln_K_E_wt_scale",
-            "theta_tf_total_M", "theta_op_total_M",
+            "theta_tf_total_M",
             "theta_nn_hidden_size",
             "theta_epi_tau_scale", "theta_epi_slab_scale", "theta_epi_slab_df",
             "theta_epi_d0",
@@ -202,8 +202,7 @@ class TestConfig:
 
     def test_physical_constants(self):
         priors = get_priors()
-        assert priors.theta_tf_total_M == pytest.approx(6.5e-10)
-        assert priors.theta_op_total_M == pytest.approx(2.5e-8)
+        assert priors.theta_tf_total_M == pytest.approx(1e-5)
 
     def test_get_guesses_keys_no_epi(self):
         data = _make_mock()

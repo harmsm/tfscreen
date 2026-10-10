@@ -60,9 +60,9 @@ Create a YAML file with a top-level ``structures:`` mapping from short
 structure names to PDB file paths, plus ``n_chains_bearing_mut`` (the number
 of chains that carry each mutation: ``1`` for a monomer, ``2`` for a
 homodimer). The structure names must match what the downstream theta
-component expects. For the four-state (``O2_C4_*``) topologies the required
-keys are ``H``, ``HD``, ``L``, and ``LE2``, representing the four
-thermodynamic states:
+component expects. For the ``O2_C4_*`` models the required keys are ``H``,
+``HD``, ``L``, and ``LE2``, the four structures of their ΔΔG basis (HD is H
+bound to operator DNA, LE2 is L with both effector sites filled):
 
 .. code-block:: yaml
 

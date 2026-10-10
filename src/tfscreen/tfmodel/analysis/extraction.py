@@ -554,8 +554,6 @@ def extract_theta_unmeasured(orchestrator, posteriors, target_genotypes,
     theta_priors = orchestrator.priors.theta
     if hasattr(theta_priors, "theta_tf_total_M"):
         extra_kwargs["tf_total"] = float(theta_priors.theta_tf_total_M)
-    if hasattr(theta_priors, "theta_op_total_M"):
-        extra_kwargs["op_total"] = float(theta_priors.theta_op_total_M)
     if hasattr(theta_priors, "theta_conc_unit_scale"):
         extra_kwargs["conc_unit_scale"] = float(theta_priors.theta_conc_unit_scale)
 

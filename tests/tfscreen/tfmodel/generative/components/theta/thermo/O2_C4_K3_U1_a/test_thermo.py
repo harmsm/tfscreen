@@ -5,12 +5,17 @@ from collections import namedtuple
 
 from tfscreen.tfmodel.generative.components.theta.thermo.O2_C4_K3_U1_a.thermo import (
     ThetaParam,
-    _solve_free_effector,
     _compute_theta,
     _population_moments,
     run_model,
     get_population_moments,
 )
+
+
+def _apo(K_op, K_HL, K_U=0.0, tf_total=650.0):
+    """Apo θ of M2: h = (tf/2)/(1 + K_HL + K_U), W = h·K_op, θ = W/(1+W)."""
+    W = (tf_total / 2.0) * K_op / (1.0 + K_HL + K_U)
+    return W / (1.0 + W)
 
 # ---------------------------------------------------------------------------
 # Minimal mock data (only fields used by thermo functions)
@@ -47,74 +52,15 @@ def theta_param(mock_data):
     T, G = mock_data.num_titrant_name, mock_data.num_genotype
     C = mock_data.num_titrant_conc
     return ThetaParam(
-        ln_K_op=jnp.full(G, 2.3),
+        ln_K_op=jnp.full(G, -4.0),
         ln_K_HL=jnp.full(G, -9.0),
         ln_K_E=jnp.full((T, G), -4.0),
         ln_K_U=jnp.full(G, -12.0),
         tf_total=650.0,
-        op_total=25.0, conc_unit_scale=1.0,
+        conc_unit_scale=1.0,
         mu=jnp.zeros((T, C, 1)),
         sigma=jnp.ones((T, C, 1)),
     )
-
-
-# ---------------------------------------------------------------------------
-# _solve_free_effector
-# ---------------------------------------------------------------------------
-
-class TestSolveFreeEffector:
-
-    def test_zero_effector_returns_zero(self):
-        e_total = jnp.zeros((1, 3, 1))
-        a  = jnp.ones((2, 1, 4)) * 1e-4
-        # Z0 includes K_U term: 1 + K_op*op + K_HL + K_U
-        Z0 = jnp.ones((1, 1, 4)) * 252.0
-        e_free = _solve_free_effector(e_total, tf_total=650.0, a=a, Z0=Z0)
-        assert jnp.allclose(e_free, 0.0, atol=1e-6)
-
-    def test_e_free_leq_e_total(self):
-        e_total = jnp.array([0.0, 100.0, 1000.0])[None, :, None]
-        a  = jnp.ones((1, 1, 1)) * 1e-4
-        Z0 = jnp.ones((1, 1, 1)) * 252.0
-        e_free = _solve_free_effector(e_total, tf_total=650.0, a=a, Z0=Z0)
-        assert jnp.all(e_free >= 0)
-        assert jnp.all(e_free <= e_total + 1e-9)
-
-    def test_output_shape(self):
-        T, C, G = 2, 3, 4
-        e_total = jnp.ones((1, C, 1)) * 500.0
-        a  = jnp.ones((T, 1, G)) * 1e-5
-        Z0 = jnp.ones((1, 1, G)) * 252.0
-        e_free = _solve_free_effector(e_total, tf_total=650.0, a=a, Z0=Z0)
-        assert e_free.shape == (T, C, G)
-
-    def test_finite_values(self):
-        e_total = jnp.array([0.0, 100.0, 1000.0])[None, :, None]
-        a  = jnp.ones((1, 1, 1)) * 1e-4
-        Z0 = jnp.ones((1, 1, 1)) * 252.0
-        e_free = _solve_free_effector(e_total, tf_total=650.0, a=a, Z0=Z0)
-        assert jnp.all(jnp.isfinite(e_free))
-
-    def test_high_affinity_depletes_effector(self):
-        """Very high K_HL·K_E should deplete free effector significantly."""
-        e_total = jnp.array([1000.0])[None, :, None]
-        a_high = jnp.ones((1, 1, 1)) * 10.0    # high affinity
-        a_low  = jnp.ones((1, 1, 1)) * 1e-10   # negligible affinity
-        Z0 = jnp.ones((1, 1, 1)) * 252.0
-        e_free_high = _solve_free_effector(e_total, 650.0, a_high, Z0)
-        e_free_low  = _solve_free_effector(e_total, 650.0, a_low,  Z0)
-        assert jnp.all(e_free_high < e_free_low)
-
-    def test_larger_Z0_reduces_depletion(self):
-        """Larger Z0 (e.g. large K_U) means less TF sequestering effector → less depletion."""
-        e_total = jnp.array([500.0])[None, :, None]
-        a  = jnp.ones((1, 1, 1)) * 1e-3
-        Z0_small = jnp.ones((1, 1, 1)) * 10.0
-        Z0_large = jnp.ones((1, 1, 1)) * 1e6   # dominated by K_U
-        e_free_small = _solve_free_effector(e_total, 650.0, a, Z0_small)
-        e_free_large = _solve_free_effector(e_total, 650.0, a, Z0_large)
-        # More protein in unfolded state → less L state available → less effector bound
-        assert jnp.all(e_free_large >= e_free_small)
 
 
 # ---------------------------------------------------------------------------
@@ -128,7 +74,7 @@ class TestComputeTheta:
         conc = jnp.array([0.0, 100.0, 1000.0])
         theta = _compute_theta(jnp.zeros(G), jnp.full(G, -9.0),
                                jnp.full((T, G), -4.0), jnp.full(G, -12.0),
-                               conc, 650.0, 25.0)
+                               conc, 650.0)
         assert theta.shape == (T, 3, G)
 
     def test_values_in_0_1(self):
@@ -136,7 +82,7 @@ class TestComputeTheta:
         conc = jnp.array([0.0, 50.0, 500.0, 5000.0])
         theta = _compute_theta(jnp.zeros(G), jnp.full(G, -9.0),
                                jnp.full((1, G), -4.0), jnp.full(G, -12.0),
-                               conc, 650.0, 25.0)
+                               conc, 650.0)
         assert jnp.all(theta >= 0)
         assert jnp.all(theta <= 1)
 
@@ -146,32 +92,32 @@ class TestComputeTheta:
         theta = _compute_theta(jnp.linspace(0.0, 4.0, G),
                                jnp.linspace(-12.0, -6.0, G),
                                jnp.full((2, G), -5.0), jnp.full(G, -12.0),
-                               conc, 650.0, 25.0)
+                               conc, 650.0)
         assert jnp.all(jnp.isfinite(theta))
 
     def test_theta_monotone_decreasing_in_effector(self):
         """Higher effector → lower theta (effector competes with operator binding)."""
         G = 2
         conc = jnp.array([0.0, 100.0, 1000.0])
-        theta = _compute_theta(jnp.full(G, 2.3), jnp.full(G, -9.0),
+        theta = _compute_theta(jnp.full(G, -4.0), jnp.full(G, -9.0),
                                jnp.full((1, G), -4.0), jnp.full(G, -12.0),
-                               conc, 650.0, 25.0)
+                               conc, 650.0)
         assert jnp.all(theta[:, 0, :] >= theta[:, 1, :])
         assert jnp.all(theta[:, 1, :] >= theta[:, 2, :])
 
     def test_zero_effector_matches_apo_formula(self):
         """At e_total=0, theta = K_op*[op] / (1 + K_op*[op] + K_HL + K_U)."""
         G = 2
-        ln_K_op = jnp.array([2.3, 2.0])
+        ln_K_op = jnp.array([-4.0, -5.0])
         ln_K_HL = jnp.array([-9.0, -8.0])
         ln_K_U  = jnp.array([-12.0, -10.0])
         conc = jnp.array([0.0, 1.0])
         theta = _compute_theta(ln_K_op, ln_K_HL, jnp.full((1, G), -4.0), ln_K_U,
-                               conc, 650.0, 25.0)
-        K_op = np.exp(np.array([2.3, 2.0]))
+                               conc, 650.0)
+        K_op = np.exp(np.array([-4.0, -5.0]))
         K_HL = np.exp(np.array([-9.0, -8.0]))
         K_U  = np.exp(np.array([-12.0, -10.0]))
-        expected = K_op * 25.0 / (1.0 + K_op * 25.0 + K_HL + K_U)
+        expected = _apo(K_op, K_HL, K_U)
         assert jnp.allclose(theta[0, 0, :], jnp.array(expected), atol=1e-5)
 
     def test_higher_K_op_gives_higher_theta(self):
@@ -181,7 +127,7 @@ class TestComputeTheta:
         ln_K_op = jnp.array([1.0, 3.0])   # G=0 weaker, G=1 stronger
         ln_K_HL = jnp.full(G, -9.0)
         theta = _compute_theta(ln_K_op, ln_K_HL, jnp.full((1, G), -4.0), jnp.full(G, -12.0),
-                               conc, 650.0, 25.0)
+                               conc, 650.0)
         assert theta[0, 0, 1] > theta[0, 0, 0]
 
     def test_large_K_U_collapses_theta_to_zero(self):
@@ -189,37 +135,37 @@ class TestComputeTheta:
         G = 2
         conc = jnp.array([0.0, 100.0])
         ln_K_U_large = jnp.full(G, 20.0)   # K_U ≈ 5e8, completely dominates Z
-        theta = _compute_theta(jnp.full(G, 2.3), jnp.full(G, -9.0),
+        theta = _compute_theta(jnp.full(G, -4.0), jnp.full(G, -9.0),
                                jnp.full((1, G), -4.0), ln_K_U_large,
-                               conc, 650.0, 25.0)
+                               conc, 650.0)
         assert jnp.all(theta < 0.01)
 
     def test_small_K_U_matches_lac_dimer_formula(self):
         """When K_U → 0, the five-state model reduces to four-state lac_dimer."""
         G = 2
         conc = jnp.array([0.0])
-        ln_K_op = jnp.array([2.3, 2.0])
+        ln_K_op = jnp.array([-4.0, -5.0])
         ln_K_HL = jnp.array([-9.0, -8.0])
         ln_K_U_tiny = jnp.full(G, -50.0)   # K_U ≈ 2e-22, negligible
         theta = _compute_theta(ln_K_op, ln_K_HL, jnp.full((1, G), -4.0), ln_K_U_tiny,
-                               conc, 650.0, 25.0)
-        K_op = np.exp(np.array([2.3, 2.0]))
+                               conc, 650.0)
+        K_op = np.exp(np.array([-4.0, -5.0]))
         K_HL = np.exp(np.array([-9.0, -8.0]))
-        # Four-state apo formula: theta = K_op*[op] / (1 + K_op*[op] + K_HL)
-        expected_4state = K_op * 25.0 / (1.0 + K_op * 25.0 + K_HL)
+        # Apo formula without U: W = (tf/2)·K_op / (1 + K_HL)
+        expected_4state = _apo(K_op, K_HL)
         assert jnp.allclose(theta[0, 0, :], jnp.array(expected_4state), atol=1e-4)
 
     def test_K_U_lowers_theta_vs_no_K_U(self):
         """Adding K_U > 0 to the partition function reduces theta relative to K_U=0."""
         G = 2
         conc = jnp.array([0.0])
-        ln_K_op = jnp.full(G, 2.3)
+        ln_K_op = jnp.full(G, -4.0)
         ln_K_HL = jnp.full(G, -9.0)
         ln_K_E  = jnp.full((1, G), -4.0)
         theta_no_U = _compute_theta(ln_K_op, ln_K_HL, ln_K_E, jnp.full(G, -50.0),
-                                    conc, 650.0, 25.0)
+                                    conc, 650.0)
         theta_with_U = _compute_theta(ln_K_op, ln_K_HL, ln_K_E, jnp.full(G, 0.0),
-                                      conc, 650.0, 25.0)
+                                      conc, 650.0)
         assert jnp.all(theta_with_U < theta_no_U)
 
 
@@ -294,14 +240,14 @@ class TestRunModel:
         """At zero effector: theta = K_op*[op] / (1 + K_op*[op] + K_HL + K_U)."""
         G = mock_data.num_genotype
         T = mock_data.num_titrant_name
-        ln_K_op_val, ln_K_HL_val, ln_K_U_val = 2.3, -9.0, -12.0
+        ln_K_op_val, ln_K_HL_val, ln_K_U_val = -4.0, -9.0, -12.0
         tp = ThetaParam(
             ln_K_op=jnp.full(G, ln_K_op_val),
             ln_K_HL=jnp.full(G, ln_K_HL_val),
             ln_K_E=jnp.full((T, G), -4.0),
             ln_K_U=jnp.full(G, ln_K_U_val),
             tf_total=650.0,
-            op_total=25.0, conc_unit_scale=1.0,
+            conc_unit_scale=1.0,
             mu=jnp.zeros((T, 3, 1)),
             sigma=jnp.ones((T, 3, 1)),
         )
@@ -310,7 +256,7 @@ class TestRunModel:
         K_op = np.exp(ln_K_op_val)
         K_HL = np.exp(ln_K_HL_val)
         K_U  = np.exp(ln_K_U_val)
-        expected = K_op * 25.0 / (1.0 + K_op * 25.0 + K_HL + K_U)
+        expected = _apo(K_op, K_HL, K_U)
         assert jnp.allclose(result[:, 0, :], expected, atol=1e-5)
 
     def test_uses_data_titrant_conc(self, theta_param):
@@ -334,11 +280,11 @@ class TestRunModel:
         T = mock_data.num_titrant_name
         C = mock_data.num_titrant_conc
         common = dict(
-            ln_K_op=jnp.full(G, 2.3),
+            ln_K_op=jnp.full(G, -4.0),
             ln_K_HL=jnp.full(G, -9.0),
             ln_K_E=jnp.full((T, G), -4.0),
             tf_total=650.0,
-            op_total=25.0, conc_unit_scale=1.0,
+            conc_unit_scale=1.0,
             mu=jnp.zeros((T, C, 1)),
             sigma=jnp.ones((T, C, 1)),
         )
@@ -365,7 +311,7 @@ class TestRunModel:
         ln_K_U  = jnp.linspace(-15.0, -9.0, G_full)
         tp_full = ThetaParam(
             ln_K_op=ln_K_op, ln_K_HL=ln_K_HL, ln_K_E=ln_K_E, ln_K_U=ln_K_U,
-            tf_total=650.0, op_total=25.0, conc_unit_scale=1.0,
+            tf_total=650.0, conc_unit_scale=1.0,
             mu=jnp.zeros((T, C, 1)), sigma=jnp.ones((T, C, 1)),
         )
 
@@ -379,7 +325,7 @@ class TestRunModel:
 
         theta_all = _compute_theta(
             tp_full.ln_K_op, tp_full.ln_K_HL, tp_full.ln_K_E, tp_full.ln_K_U,
-            batch_data.titrant_conc, tp_full.tf_total, tp_full.op_total,
+            batch_data.titrant_conc, tp_full.tf_total,
         )   # (T, C, G_full)
 
         for local_i, global_g in enumerate(batch_idx):

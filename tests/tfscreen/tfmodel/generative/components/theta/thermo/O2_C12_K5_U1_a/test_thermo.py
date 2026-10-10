@@ -95,7 +95,6 @@ def _wt_theta_param(T=2, G=4, C=4):
         ln_K_l_e=jnp.full((T, G), 13.5),
         ln_K_u=jnp.full(G, -12.0),
         tf_total=6.5e-7,
-        op_total=2.5e-8,
         mu=jnp.zeros((T, C, 1)),
         sigma=jnp.ones((T, C, 1)),
         conc_unit_scale=1.0,   # test concentrations are already in M
@@ -114,7 +113,7 @@ class TestComputeTheta:
         theta = _compute_theta(
             jnp.full(G, -7.4), jnp.full(G, 23.0), jnp.full((T, G), 11.5),
             jnp.full(G, 13.8), jnp.full((T, G), 15.0), jnp.full(G, -12.0),
-            conc, 6.5e-7, 2.5e-8,
+            conc, 6.5e-7,
         )
         assert theta.shape == (T, len(_CONC), G)
 
@@ -124,7 +123,7 @@ class TestComputeTheta:
         theta = _compute_theta(
             jnp.full(G, -7.4), jnp.full(G, 23.0), jnp.full((T, G), 11.5),
             jnp.full(G, 13.8), jnp.full((T, G), 15.0), jnp.full(G, -12.0),
-            conc, 6.5e-7, 2.5e-8,
+            conc, 6.5e-7,
         )
         assert jnp.all(theta >= 0)
         assert jnp.all(theta <= 1)
@@ -137,7 +136,7 @@ class TestComputeTheta:
             jnp.full((T, G), 11.5),
             jnp.linspace(10.0, 16.0, G), jnp.full((T, G), 15.0),
             jnp.full(G, -12.0),
-            conc, 6.5e-7, 2.5e-8,
+            conc, 6.5e-7,
         )
         assert jnp.all(jnp.isfinite(theta))
 
@@ -151,7 +150,7 @@ class TestComputeTheta:
         theta = _compute_theta(
             jnp.full(G, 1.84), jnp.full(G, 19.9), jnp.full((1, G), 10.9),
             jnp.full(G, -2.3), jnp.full((1, G), 13.5), jnp.full(G, -12.0),
-            conc, 6.5e-7, 2.5e-8,
+            conc, 6.5e-7,
         )
         for c in range(len(conc) - 1):
             assert jnp.all(theta[:, c, :] >= theta[:, c + 1, :])
@@ -171,7 +170,7 @@ class TestComputeTheta:
             jnp.array(ln_K_l_o_vals), jnp.full((1, G), -100.0),
             jnp.full(G, ln_K_u_val),
             jnp.array([0.0, 1e-8]),     # [0] is apo; [1] ≈ apo (tiny conc)
-            tf_total, 0.0,
+            tf_total,
         )                               # (1, 2, G)
 
         for g in range(G):
@@ -190,12 +189,12 @@ class TestComputeTheta:
         theta_wt = _compute_theta(
             jnp.full(G, 1.84), jnp.full(G, 19.9), jnp.full((1, G), 10.9),
             jnp.full(G, -2.3), jnp.full((1, G), 13.5), jnp.full(G, -12.0),
-            conc, 6.5e-7, 2.5e-8,
+            conc, 6.5e-7,
         )
         theta_unfolded = _compute_theta(
             jnp.full(G, 1.84), jnp.full(G, 19.9), jnp.full((1, G), 10.9),
             jnp.full(G, -2.3), jnp.full((1, G), 13.5), jnp.full(G, 20.0),
-            conc, 6.5e-7, 2.5e-8,
+            conc, 6.5e-7,
         )
         # WT theta should be much larger than fully-unfolded theta
         assert jnp.all(theta_wt > theta_unfolded)
@@ -218,7 +217,7 @@ class TestComputeTheta:
             jnp.full(G, ln_K_l_o_val), jnp.full((1, G), -100.0),
             jnp.full(G, -50.0),         # K_u essentially 0
             jnp.array([0.0]),
-            tf_total, 0.0,
+            tf_total,
         )
         # Expected from mwc_dimer apo formula (K_u ≈ 0)
         K_h_l = np.exp(ln_K_h_l_val)
@@ -241,7 +240,7 @@ class TestComputeTheta:
                 jnp.full(G, 1.84), jnp.full(G, 19.9), jnp.full((1, G), 10.9),
                 jnp.full(G, -2.3), jnp.full((1, G), 13.5),
                 jnp.full(G, ln_K_u_val),
-                conc, 6.5e-7, 2.5e-8,
+                conc, 6.5e-7,
             )
             if prev_theta is not None:
                 assert jnp.all(theta <= prev_theta), (
@@ -258,7 +257,7 @@ class TestComputeTheta:
             jnp.array([17.0, 21.0]),   # G=0 weaker, G=1 stronger
             jnp.full((1, G), 10.9),
             jnp.full(G, -2.3), jnp.full((1, G), 13.5), jnp.full(G, -12.0),
-            conc, 6.5e-7, 2.5e-8,
+            conc, 6.5e-7,
         )
         assert theta[0, 0, 1] > theta[0, 0, 0]
 
@@ -270,7 +269,7 @@ class TestComputeTheta:
             jnp.array([-2.0, 2.0]),  # G=0 H-favored, G=1 L-favored
             jnp.full(G, 19.9), jnp.full((1, G), 10.9),
             jnp.full(G, -2.3), jnp.full((1, G), 13.5), jnp.full(G, -12.0),
-            conc, 6.5e-7, 2.5e-8,
+            conc, 6.5e-7,
         )
         assert theta[0, 0, 0] > theta[0, 0, 1]
 
@@ -284,7 +283,7 @@ class TestComputeTheta:
         theta = _compute_theta(
             jnp.full(G, 1.84), jnp.full(G, 19.9), jnp.full((1, G), 10.9),
             jnp.full(G, -2.3), jnp.full((1, G), 13.5), jnp.full(G, -12.0),
-            jnp.array([0.0]), 6.5e-7, 2.5e-8,
+            jnp.array([0.0]), 6.5e-7,
         )
         assert float(theta[0, 0, 0]) >= 0.85
 
@@ -296,7 +295,7 @@ class TestComputeTheta:
         theta = _compute_theta(
             jnp.full(G, 1.84), jnp.full(G, 19.9), jnp.full((1, G), 10.9),
             jnp.full(G, -2.3), jnp.full((1, G), 13.5), jnp.full(G, -12.0),
-            conc, 6.5e-7, 2.5e-8,
+            conc, 6.5e-7,
         )
         assert jnp.all(theta >= 0)
         assert jnp.all(theta <= 1)
@@ -315,7 +314,7 @@ class TestComputeTheta:
         theta = _compute_theta(
             jnp.full(G, 1.84), jnp.full(G, 19.9), ln_K_h_e,
             jnp.full(G, -2.3), ln_K_l_e, jnp.full(G, -12.0),
-            conc, 6.5e-7, 2.5e-8,
+            conc, 6.5e-7,
         )
         drop_t0 = theta[0, 0, 0] - theta[0, 1, 0]
         drop_t1 = theta[1, 0, 0] - theta[1, 1, 0]
@@ -405,7 +404,7 @@ class TestRunModel:
             ln_K_l_o=jnp.full(G, 13.8),
             ln_K_l_e=jnp.full((T, G), 15.0),
             ln_K_u=jnp.full(G, -12.0),
-            tf_total=6.5e-7, op_total=2.5e-8,
+            tf_total=6.5e-7,
             mu=jnp.zeros((T, C, 1)), sigma=jnp.ones((T, C, 1)),
             conc_unit_scale=1.0,
         )
@@ -419,7 +418,7 @@ class TestRunModel:
         theta_all = _compute_theta(
             tp.ln_K_h_l, tp.ln_K_h_o, tp.ln_K_h_e,
             tp.ln_K_l_o, tp.ln_K_l_e, tp.ln_K_u,
-            data.titrant_conc, tp.tf_total, tp.op_total,
+            data.titrant_conc, tp.tf_total,
         )                                          # (T, C, G)
         assert jnp.allclose(result[:, :, 0], theta_all[:, :, 3], atol=1e-6)
         assert jnp.allclose(result[:, :, 1], theta_all[:, :, 0], atol=1e-6)
@@ -443,7 +442,7 @@ class TestRunModel:
             ln_K_l_o=jnp.full(G, 13.8),
             ln_K_l_e=jnp.full((T, G), 15.0),
             ln_K_u=jnp.full(G, -12.0),
-            tf_total=6.5e-7, op_total=2.5e-8,
+            tf_total=6.5e-7,
             mu=jnp.zeros((T, C, 1)), sigma=jnp.ones((T, C, 1)),
             conc_unit_scale=1.0,
         )
@@ -457,7 +456,7 @@ class TestRunModel:
         theta_all = _compute_theta(
             tp.ln_K_h_l, tp.ln_K_h_o, tp.ln_K_h_e,
             tp.ln_K_l_o, tp.ln_K_l_e, tp.ln_K_u,
-            data.titrant_conc, tp.tf_total, tp.op_total,
+            data.titrant_conc, tp.tf_total,
         )   # (T, C, G)
 
         for local_i, global_g in enumerate(batch_idx):
@@ -477,7 +476,7 @@ class TestRunModel:
             ln_K_l_o=jnp.full(G, ln_K_l_o_val),
             ln_K_l_e=jnp.full((1, G), -100.0),
             ln_K_u=jnp.full(G, ln_K_u_val),
-            tf_total=tf_total, op_total=0.0,
+            tf_total=tf_total,
             mu=jnp.zeros((1, 2, 1)), sigma=jnp.ones((1, 2, 1)),
             conc_unit_scale=1.0,
         )
@@ -502,7 +501,7 @@ class TestRunModel:
             ln_K_l_o=jnp.full(G, -2.3),
             ln_K_l_e=jnp.full((T, G), 13.5),
             ln_K_u=jnp.full(G, 20.0),   # K_u >> 1 → TF all unfolded
-            tf_total=6.5e-7, op_total=2.5e-8,
+            tf_total=6.5e-7,
             mu=jnp.zeros((T, C, 1)), sigma=jnp.ones((T, C, 1)),
             conc_unit_scale=1.0,
         )
@@ -540,7 +539,7 @@ class TestRunModel:
             ln_K_l_o=jnp.full(G, -2.3),
             ln_K_l_e=jnp.full((T, G), 13.5),
             ln_K_u=jnp.full(G, -12.0),
-            tf_total=6.5e-7, op_total=2.5e-8,
+            tf_total=6.5e-7,
             mu=jnp.zeros((T, C, 1)), sigma=jnp.ones((T, C, 1)),
             conc_unit_scale=1e-3,
         )
@@ -552,7 +551,7 @@ class TestRunModel:
             ln_K_l_o=jnp.full(G, -2.3),
             ln_K_l_e=jnp.full((T, G), 13.5),
             ln_K_u=jnp.full(G, -12.0),
-            tf_total=6.5e-7, op_total=2.5e-8,
+            tf_total=6.5e-7,
             mu=jnp.zeros((T, C, 1)), sigma=jnp.ones((T, C, 1)),
             conc_unit_scale=1.0,
         )
