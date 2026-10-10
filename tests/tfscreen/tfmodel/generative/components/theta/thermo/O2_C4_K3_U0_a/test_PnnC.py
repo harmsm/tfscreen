@@ -522,3 +522,100 @@ class TestGetExtractSpecs:
         specs = get_extract_specs(ctx)
         for spec in specs:
             assert spec["in_run_prefix"] == "theta_"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# The NN prior learns under MAP (regression: all-zero init froze W1/b1/W2)
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestNnLearnsUnderMap:
+    """
+    A short MAP on a synthetic problem where each structure's ΔΔG is a known
+    linear function of its features.  The observations are the projected
+    single-mutant Δln_K values, so the test runs the whole PnnC path
+    (NN → ΔΔG prior → projection → per-genotype K).
+    """
+
+    M = 60
+
+    def _problem(self):
+        import numpyro
+        import numpyro.distributions as dist
+
+        M, S, F = self.M, _S, 60
+        rng = np.random.default_rng(0)
+        features = rng.standard_normal((M, S, F)).astype(np.float32)
+        coef = rng.standard_normal((S, F)).astype(np.float32) / np.sqrt(F)
+        true_ddG = np.einsum("msf,sf->ms", features, coef)
+        true_dlnK = np.asarray(_project_ddG(jnp.asarray(true_ddG)))   # (M, 3)
+
+        G = M + 1
+        mut_geno = np.zeros((M, G), dtype=np.float32)
+        mut_geno[np.arange(M), np.arange(1, G)] = 1.0      # genotype 0 is wt
+        mut_idx, geno_idx = build_mut_sparse_indices(mut_geno)
+        conc = jnp.array(_CONC)
+        data = MockData(
+            num_titrant_name=2, num_titrant_conc=len(_CONC), num_genotype=G,
+            titrant_conc=conc,
+            log_titrant_conc=jnp.log(jnp.where(conc == 0, 1e-20, conc)),
+            geno_theta_idx=jnp.arange(G, dtype=jnp.int32), scatter_theta=1,
+            num_mutation=M, num_pair=0, mut_geno_matrix=mut_geno,
+            mut_nnz_mut_idx=mut_idx, mut_nnz_geno_idx=geno_idx,
+            pair_nnz_pair_idx=np.zeros(0, dtype=np.int32),
+            pair_nnz_geno_idx=np.zeros(0, dtype=np.int32),
+            num_struct=S, struct_names=STRUCTURE_NAMES,
+            struct_features=features,
+            struct_n_chains=np.array([2, 2, 2, 2], dtype=np.int32),
+            struct_contact_pair_idx=None, struct_contact_distances=None,
+        )
+        priors = get_priors()
+
+        def model():
+            out = define_model("theta", data, priors)
+            pred = jnp.stack([out.ln_K_op[1:] - out.ln_K_op[0],
+                              out.ln_K_HL[1:] - out.ln_K_HL[0],
+                              out.ln_K_E[0, 1:] - out.ln_K_E[0, 0]], axis=-1)
+            numpyro.sample("obs", dist.Normal(pred, 0.05).to_event(2),
+                           obs=jnp.asarray(true_dlnK))
+
+        return model, data, priors, true_dlnK
+
+    def test_map_moves_weights_and_nn_tracks_truth(self):
+        import jax
+        import numpyro
+        from numpyro import handlers
+        from numpyro.infer import SVI, Trace_ELBO
+        from numpyro.infer.autoguide import AutoDelta
+        from tfscreen.tfmodel.generative.components.theta.thermo.nn import (
+            compute_nn_predictions,
+        )
+
+        model, data, priors, true_dlnK = self._problem()
+        svi = SVI(model, AutoDelta(model), numpyro.optim.Adam(0.01), Trace_ELBO())
+        state0 = svi.init(jax.random.PRNGKey(0))
+        init = svi.get_params(state0)
+        res = svi.run(jax.random.PRNGKey(0), 1000, progress_bar=False,
+                      init_state=state0)
+        fit = res.params
+
+        for s in STRUCTURE_NAMES:
+            dW1 = np.linalg.norm(np.asarray(fit[f"theta_nn_{s}_W1"]
+                                            - init[f"theta_nn_{s}_W1"]))
+            W2 = np.linalg.norm(np.asarray(fit[f"theta_nn_{s}_W2"]))
+            assert dW1 > 0.1, f"W1 for {s} did not move (|dW1|={dW1})"
+            assert W2 > 0.05, f"W2 for {s} stayed at zero (|W2|={W2})"
+
+        # NN prior mean, projected to the identifiable Δln_K
+        with handlers.substitute(data=fit):
+            nn_means = compute_nn_predictions(
+                "theta", jnp.asarray(data.struct_features),
+                list(data.struct_names), data.struct_n_chains,
+                hidden_size=priors.theta_nn_hidden_size)
+        nn_dlnK = np.asarray(_project_ddG(nn_means))
+        for k in range(3):
+            r = np.corrcoef(nn_dlnK[:, k], true_dlnK[:, k])[0, 1]
+            mse = np.mean((nn_dlnK[:, k] - true_dlnK[:, k]) ** 2)
+            const_mse = np.var(true_dlnK[:, k])   # best constant predictor
+            assert r > 0.8, f"Δln_K[{k}]: NN prior mean r={r:.3f} with truth"
+            assert mse < 0.25 * const_mse, \
+                f"Δln_K[{k}]: NN MSE {mse:.3f} vs constant {const_mse:.3f}"

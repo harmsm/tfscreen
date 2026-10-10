@@ -98,8 +98,10 @@ def test_run_svi_not_converged_stdout(mock_run_inference, capsys):
     assert "SVI run has not yet converged." in captured.out
 
 def test_run_svi_autoguide_drops_init_params(mock_run_inference):
-    """An autoguide starts from init_values; component init_params are dropped."""
+    """An autoguide starts from init_values; component init_params are dropped
+    (only the model's own params, none here, would be kept)."""
     _, ri = mock_run_inference
+    ri.model_params.return_value = {}
     _run_svi(ri, init_params={"a_loc": 1.0}, guide_type="auto_normal",
              init_values={"a": 1.0})
     ri.setup_svi.assert_called_once_with(adam_step_size=ANY,
