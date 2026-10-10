@@ -195,3 +195,31 @@ def build_sim_data(library_df,
         pair_nnz_geno_idx=pair_nnz_geno_idx,
         **struct_kw,
     )
+
+
+def with_titrant_conc(sim_data, titrant_conc):
+    """
+    Copy of a SimData evaluated at other titrant concentrations.
+
+    Genotypes, mutations and structural fields are unchanged; only the
+    concentration grid is replaced (sorted unique values, zeros given the
+    same log sentinel as ``build_sim_data``).  A theta component's
+    ``run_model`` on the copy evaluates the same drawn parameters at the new
+    concentrations, e.g. at binding-assay concentrations that differ from
+    the growth concentrations.
+
+    Parameters
+    ----------
+    sim_data : SimData
+    titrant_conc : array-like
+        Concentrations (mM, data units).
+
+    Returns
+    -------
+    SimData
+    """
+    concs = np.sort(np.unique(np.asarray(titrant_conc, dtype=float)))
+    safe_concs = np.where(concs == 0.0, _ZERO_CONC_SENTINEL, concs)
+    return sim_data.replace(num_titrant_conc=len(concs),
+                            titrant_conc=jnp.array(concs),
+                            log_titrant_conc=jnp.array(np.log(safe_concs)))

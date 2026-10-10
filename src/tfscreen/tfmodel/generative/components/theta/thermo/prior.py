@@ -63,13 +63,18 @@ def sample_ddG(name, struct_names, num_mut, nn_means):
         constraint=constraints.positive,
     )  # (S,)
 
-    # Sample offsets in nested plates → shape (S, M)
-    with pyro.plate(f"{name}_struct_plate", S, dim=-2):
-        with pyro.plate(f"{name}_mut_plate", num_mut, dim=-1):
-            offsets = pyro.sample(
-                f"{name}_ddG_offset",
-                dist.Normal(0.0, 1.0),
-            )  # (S, M)
+    # Sample offsets in nested plates → shape (S, M).  A wt-only library
+    # (num_mut == 0, e.g. a stratified binding pool) skips the site, since
+    # numpyro.plate needs size > 0; the guides skip it the same way.
+    if num_mut > 0:
+        with pyro.plate(f"{name}_struct_plate", S, dim=-2):
+            with pyro.plate(f"{name}_mut_plate", num_mut, dim=-1):
+                offsets = pyro.sample(
+                    f"{name}_ddG_offset",
+                    dist.Normal(0.0, 1.0),
+                )  # (S, M)
+    else:
+        offsets = jnp.zeros((S, 0))
 
     # Apply per-structure scale and add NN prior means
     # sigma_s[:, None] broadcasts (S,1) over (S, M)

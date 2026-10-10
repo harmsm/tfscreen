@@ -7,7 +7,10 @@ library, so their growth data carries congressional transformation.  Only a
 binding *measurement* is added here -- their phenotype (Hill theta) is whatever
 the library simulation produced (a prior-predictive draw for stratified/random
 selection, or the injected file params for the file path), so no theta override
-is needed and consistency with growth is automatic.
+is needed and consistency with growth is automatic.  That theta comes from the
+simulated theta at the binding concentrations (``theta_df``, which
+``library_prediction`` evaluates from the drawn parameters of any theta
+component); the Hill columns of ``parameters_df`` are only a fallback.
 
 Selection for the stratified/random paths is deferred until AFTER the growth
 simulation so it can be restricted to genotypes that actually survived with
@@ -50,6 +53,24 @@ def _theta_matrix(params_df, log_concs):
     return tl + (th - tl) * occupancy
 
 
+def _theta_lookup(theta_df, titrant_conc):
+    """Genotype-indexed theta matrix (columns = ``titrant_conc``) from long form.
+
+    Genotypes with any missing concentration (NaN) are dropped.
+    """
+    df = theta_df.copy()
+    df["genotype"] = df["genotype"].astype(str)
+    df["titrant_conc"] = df["titrant_conc"].astype(float)
+    wide = (df.drop_duplicates(["genotype", "titrant_conc"])
+              .pivot(index="genotype", columns="titrant_conc", values="theta"))
+    missing = [c for c in titrant_conc if c not in wide.columns]
+    if missing:
+        raise ValueError(
+            f"library_binding: theta_df has no theta at binding "
+            f"concentration(s) {missing}.")
+    return wide.loc[:, list(titrant_conc)].dropna()
+
+
 def generate_library_binding_df(library_binding_cfg,
                                 titrant_name,
                                 titrant_conc,
@@ -58,7 +79,8 @@ def generate_library_binding_df(library_binding_cfg,
                                 growth_df,
                                 spiked_genotypes,
                                 rng,
-                                clip_theta_obs=False):
+                                clip_theta_obs=False,
+                                theta_df=None):
     """
     Generate binding-curve data for in-library (bulk) genotypes.
 
@@ -75,9 +97,10 @@ def generate_library_binding_df(library_binding_cfg,
     noise : float
         Gaussian sigma on ``theta_obs`` (shared).
     parameters_df : pandas.DataFrame
-        Per-genotype ground-truth phenotype; must carry ``genotype`` plus the
-        Hill columns ``theta_low, theta_high, log_hill_K, hill_n``.  For
-        file-specified genotypes this already reflects the injected file params.
+        Per-genotype ground-truth phenotype with a ``genotype`` column.  Read
+        for theta only when ``theta_df`` is None, and then it must carry the
+        Hill columns ``theta_low, theta_high, log_hill_K, hill_n`` (for
+        file-specified genotypes these reflect the injected file params).
     growth_df : pandas.DataFrame
         The simulated growth data (post selection); its ``genotype`` column is
         the set of survivors used to guarantee coverage.
@@ -87,6 +110,12 @@ def generate_library_binding_df(library_binding_cfg,
     clip_theta_obs : bool, optional
         Clip noisy ``theta_obs`` to [0, 1] (default False; see
         ``binding_data.generate_binding_df``).
+    theta_df : pandas.DataFrame or None, optional
+        Ground-truth theta at the binding concentrations, long form with
+        columns ``genotype``, ``titrant_conc``, ``theta`` (the last value
+        ``library_prediction(..., return_binding_theta=True)`` returns).  When
+        given it supplies every theta here, so any theta component works.
+        Genotypes with NaN theta are not eligible.
 
     Returns
     -------
@@ -108,17 +137,23 @@ def generate_library_binding_df(library_binding_cfg,
     # Genotypes that actually have growth data (survived selection).
     survivors = set(growth_df["genotype"].astype(str).unique())
 
-    # Index the ground-truth phenotypes by genotype for theta lookups.
-    pdf = parameters_df.copy()
-    pdf["genotype"] = pdf["genotype"].astype(str)
-    pdf = pdf.drop_duplicates("genotype").set_index("genotype")
+    # Ground-truth theta at the binding concentrations, one row per genotype:
+    # the simulated theta when given, else the Hill curve of parameters_df.
+    if theta_df is not None:
+        theta_by_geno = _theta_lookup(theta_df, titrant_conc)
+    else:
+        pdf = parameters_df.copy()
+        pdf["genotype"] = pdf["genotype"].astype(str)
+        pdf = pdf.drop_duplicates("genotype").set_index("genotype")
+        theta_by_geno = pd.DataFrame(_theta_matrix(pdf, log_concs),
+                                     index=pdf.index, columns=titrant_conc)
 
     if _is_file_choice(choose_by):
         # The file names the genotypes; their Hill params were injected into the
         # library phenotype pre-sim, so theta comes from parameters_df.
         named = list(standardize_genotypes(
             list(read_binding_genotype_params(choose_by).keys())))
-        eligible = survivors & set(pdf.index)
+        eligible = survivors & set(theta_by_geno.index)
         missing = [g for g in named if g not in eligible]
         if missing:
             warnings.warn(
@@ -129,7 +164,7 @@ def generate_library_binding_df(library_binding_cfg,
     else:
         # Stratified / random: choose `num` from the surviving bulk
         # (non-spiked, non-wt) so every anchor has matching growth data.
-        pool = sorted((survivors & set(pdf.index)) - spiked_set - {"wt"})
+        pool = sorted((survivors & set(theta_by_geno.index)) - spiked_set - {"wt"})
         if num is None:
             raise ValueError(
                 f"library_binding requires 'num' for choose_by '{choose_by}'."
@@ -139,7 +174,7 @@ def generate_library_binding_df(library_binding_cfg,
                 f"library_binding: only {len(pool)} eligible surviving genotype(s) "
                 f"available, but num={num} requested."
             )
-        pool_theta = _theta_matrix(pdf.loc[pool], log_concs)
+        pool_theta = theta_by_geno.loc[pool].to_numpy(dtype=float)
         if choose_by == "stratified":
             sel_idx = _greedy_maximin(pool_theta, int(num))
         elif choose_by == "random":
@@ -148,8 +183,8 @@ def generate_library_binding_df(library_binding_cfg,
             raise ValueError(f"Unknown library_binding choose_by: '{choose_by}'.")
         genotypes = [pool[int(i)] for i in np.asarray(sel_idx)]
 
-    # Build binding rows: theta from Hill params + Gaussian noise.
-    theta_true = (_theta_matrix(pdf.loc[genotypes], log_concs)
+    # Build binding rows: ground-truth theta + Gaussian noise.
+    theta_true = (theta_by_geno.loc[genotypes].to_numpy(dtype=float)
                   if genotypes else np.zeros((0, len(titrant_conc))))
     rows = []
     for gi, g in enumerate(genotypes):

@@ -161,8 +161,9 @@ def run_simulation_from_config(
     # Ground-truth library and phenotypes (deterministic given the config)
 
     (library_df, phenotype_df, genotype_theta_df, parameters_df,
-     binding_theta_df, mutation_truth) = \
-        library_prediction(cf, return_mutation_truth=True)
+     binding_theta_df, mutation_truth, library_binding_theta_df) = \
+        library_prediction(cf, return_mutation_truth=True,
+                           return_binding_theta=True)
     growth_parameters_df = generate_growth_parameters_df(cf["growth"])
     transformation_lam_df = generate_transformation_lam_df(cf)
 
@@ -344,6 +345,7 @@ def run_simulation_from_config(
                 spiked_genotypes=spiked_names,
                 rng=rng,
                 clip_theta_obs=bool(binding_cfg.get("clip_theta_obs", False)),
+                theta_df=library_binding_theta_df,
             )
             binding_df = pd.concat([binding_df, lib_binding_df], ignore_index=True)
             lib_manifest.to_csv(out_path("library_binding"), index=False)

@@ -212,6 +212,16 @@ growth simulation, from those that survived with growth data. A file of
 measured parameters needs a Hill theta component (``hill_geno`` or
 ``hill_mut``).
 
+Binding theta is the true theta at the binding concentrations, which need
+not match the growth concentrations: the simulator evaluates each genotype's
+drawn parameters there, so any theta component works. For the Hill
+components, ``stratified`` and ``random`` give the chosen spikes new curves
+drawn from the prior. For the thermodynamic components (``thermo.*``) every
+genotype's theta follows from per-mutation equilibrium constants, so the
+spikes keep their own curves and K truth, and ``stratified`` or ``random``
+only chooses which ``num`` spikes are measured: ``stratified`` takes the
+spikes whose binding curves are most spread out.
+
 Presplit and base-growth data
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

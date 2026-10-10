@@ -340,12 +340,17 @@ def guide(name: str,
         ln_K_E_wt = pyro.sample(f"{name}_ln_K_E_wt", dist.Normal(ln_K_E_wt_locs, ln_K_E_wt_scales))
 
     # ── Sample ddG offsets (matches model's prior.sample_ddG plate layout) ────
-    with pyro.plate(f"{name}_struct_plate", S, dim=-2):
-        with pyro.plate(f"{name}_mut_plate", num_mut, dim=-1):
-            offsets = pyro.sample(
-                f"{name}_ddG_offset",
-                dist.Normal(ddG_offset_locs, ddG_offset_scales),
-            )  # (S, M)
+    if num_mut > 0:
+        with pyro.plate(f"{name}_struct_plate", S, dim=-2):
+            with pyro.plate(f"{name}_mut_plate", num_mut, dim=-1):
+                offsets = pyro.sample(
+                    f"{name}_ddG_offset",
+                    dist.Normal(ddG_offset_locs, ddG_offset_scales),
+                )  # (S, M)
+    else:
+        # num_mut == 0 (wt-only library): numpyro.plate needs size > 0,
+        # so skip the site (prior.sample_ddG does the same).
+        offsets = jnp.zeros((S, 0))
 
     sigma_s = pyro.param(
         f"{name}_ddG_sigma_s", jnp.ones(S), constraint=constraints.positive,

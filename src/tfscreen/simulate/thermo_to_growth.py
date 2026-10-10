@@ -230,6 +230,62 @@ def _theta_param_to_df(theta_param, unique_genotypes, sim_indices,
     return df
 
 
+
+_HILL_KEYS = ("theta_low", "theta_high", "log_hill_K", "hill_n")
+
+
+def _theta_at_concs(theta_component, theta_param, sim_data, titrant_conc,
+                    unique_genotypes, unique_sim_indices,
+                    theta_gc_override=None, theta_params_override=None):
+    """
+    Ground-truth theta of every genotype at arbitrary concentrations.
+
+    Evaluates the component's own ``run_model`` on the drawn ``theta_param``
+    with ``sim_data`` moved to ``titrant_conc``, so it works for any theta
+    component the simulator draws (Hill or thermodynamic) and at binding
+    concentrations that need not be growth concentrations.  Genotypes whose
+    growth theta was replaced through ``theta_gc_override`` follow their
+    effective Hill parameters from ``theta_params_override`` when those are
+    complete, and are NaN otherwise (their curve exists only at the growth
+    concentrations; the spiked stratified Hill path supplies their binding
+    theta separately).
+
+    Returns
+    -------
+    pandas.DataFrame
+        Long form, columns ``genotype``, ``titrant_conc``, ``theta``; rows
+        follow ``unique_genotypes`` then ascending concentration.
+    """
+    from tfscreen.tfmodel.generative.registry import model_registry
+    from tfscreen.simulate.sim_data_class import with_titrant_conc
+
+    concs = np.sort(np.unique(np.asarray(titrant_conc, dtype=float)))
+    module = model_registry["theta"][theta_component]
+    conc_data = with_titrant_conc(sim_data, concs)
+    theta_cg = np.asarray(module.run_model(theta_param, conc_data)[0],
+                          dtype=float)                        # (C, G_sim)
+    theta = theta_cg.T[np.asarray(unique_sim_indices)].copy()  # (G, C)
+
+    log_concs = np.log(np.where(concs == 0.0, 1e-20, concs))
+    gc_over = theta_gc_override or {}
+    p_over = theta_params_override or {}
+    for i, g in enumerate(unique_genotypes):
+        params = p_over.get(g)
+        if params is not None and all(k in params for k in _HILL_KEYS):
+            low, high = float(params["theta_low"]), float(params["theta_high"])
+            occ = 1.0 / (1.0 + np.exp(-float(params["hill_n"])
+                                      * (log_concs - float(params["log_hill_K"]))))
+            theta[i] = low + (high - low) * occ
+        elif g in gc_over:
+            theta[i] = np.nan
+
+    return pd.DataFrame({
+        "genotype": np.repeat(np.asarray(unique_genotypes, dtype=str), len(concs)),
+        "titrant_conc": np.tile(concs, len(unique_genotypes)),
+        "theta": theta.ravel(),
+    })
+
+
 def _site_columns(prefix, val, num_items):
     """
     Columns for one deterministic site whose last axis indexes items.
@@ -505,6 +561,7 @@ def thermo_to_growth(
     theta_params_override: Optional[dict] = None,
     dk_geno_override: Optional[dict] = None,
     return_mutation_truth: bool = False,
+    binding_titrant_conc: Optional[Iterable[float]] = None,
 ) -> tuple:
     """
     Generate phenotypes from genotypes via prior-predictive theta sampling.
@@ -609,6 +666,12 @@ def thermo_to_growth(
     return_mutation_truth : bool, default False
         Also return the per-mutation and per-pair ground truth (see
         ``_mutation_truth_tables``) as a fourth value.
+    binding_titrant_conc : array-like or None, default None
+        Binding-assay concentrations (mM).  When given, also return the
+        ground-truth theta of every genotype at these concentrations (see
+        ``_theta_at_concs``) as the last value.  Binding concentrations need
+        not match the growth concentrations: theta is evaluated from the
+        drawn parameters, not looked up.
 
     Returns
     -------
@@ -636,6 +699,9 @@ def thermo_to_growth(
         DataFrame or None, "pair": DataFrame or None}``, the per-mutation
         and per-pair truth.  Both are None for components sampled through
         ``simulate`` (hill_geno, hill_mut), which have no trace.
+    binding_theta_df : pandas.DataFrame
+        Only when ``binding_titrant_conc`` is given (always last): theta of
+        every genotype at those concentrations, from ``_theta_at_concs``.
     """
 
     print("Sampling theta from prior... ", end="", flush=True)
@@ -898,4 +964,9 @@ def thermo_to_growth(
         mutation_df, pair_df = _mutation_truth_tables(deterministic,
                                                       all_genotypes, sim_data)
         out += ({"mutation": mutation_df, "pair": pair_df},)
+    if binding_titrant_conc is not None:
+        out += (_theta_at_concs(theta_component, theta_param, sim_data,
+                                binding_titrant_conc, unique_genotypes,
+                                unique_sim_indices, theta_gc_override,
+                                theta_params_override),)
     return out

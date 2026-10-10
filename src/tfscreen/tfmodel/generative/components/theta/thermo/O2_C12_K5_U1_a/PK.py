@@ -234,17 +234,24 @@ def define_model(name: str,
     # Per-mutation delta offsets
     # Scalar K_h_l, K_h_o, K_l_o, K_u: shape (num_mutation,)
     # ------------------------------------------------------------------
-    with pyro.plate(f"{name}_mutation_scalar_plate", num_mut, dim=-1):
-        d_K_h_l_off = pyro.sample(f"{name}_d_ln_K_h_l_offset", dist.Normal(0.0, 1.0))
-        d_K_h_o_off = pyro.sample(f"{name}_d_ln_K_h_o_offset", dist.Normal(0.0, 1.0))
-        d_K_l_o_off = pyro.sample(f"{name}_d_ln_K_l_o_offset", dist.Normal(0.0, 1.0))
-        d_K_u_off   = pyro.sample(f"{name}_d_ln_K_u_offset",   dist.Normal(0.0, 1.0))
+    if num_mut > 0:
+        with pyro.plate(f"{name}_mutation_scalar_plate", num_mut, dim=-1):
+            d_K_h_l_off = pyro.sample(f"{name}_d_ln_K_h_l_offset", dist.Normal(0.0, 1.0))
+            d_K_h_o_off = pyro.sample(f"{name}_d_ln_K_h_o_offset", dist.Normal(0.0, 1.0))
+            d_K_l_o_off = pyro.sample(f"{name}_d_ln_K_l_o_offset", dist.Normal(0.0, 1.0))
+            d_K_u_off   = pyro.sample(f"{name}_d_ln_K_u_offset",   dist.Normal(0.0, 1.0))
 
-    # T-dimensional K_h_e, K_l_e: shape (T, num_mutation)
-    with pyro.plate(f"{name}_titrant_mut_outer_plate", T, dim=-2):
-        with pyro.plate(f"{name}_mutation_plate", num_mut, dim=-1):
-            d_K_h_e_off = pyro.sample(f"{name}_d_ln_K_h_e_offset", dist.Normal(0.0, 1.0))
-            d_K_l_e_off = pyro.sample(f"{name}_d_ln_K_l_e_offset", dist.Normal(0.0, 1.0))
+        # T-dimensional K_h_e, K_l_e: shape (T, num_mutation)
+        with pyro.plate(f"{name}_titrant_mut_outer_plate", T, dim=-2):
+            with pyro.plate(f"{name}_mutation_plate", num_mut, dim=-1):
+                d_K_h_e_off = pyro.sample(f"{name}_d_ln_K_h_e_offset", dist.Normal(0.0, 1.0))
+                d_K_l_e_off = pyro.sample(f"{name}_d_ln_K_l_e_offset", dist.Normal(0.0, 1.0))
+    else:
+        # num_mut == 0 (wt-only library, e.g. a stratified binding
+        # pool): numpyro.plate needs size > 0, so skip the sites.  The
+        # empty offsets scatter to zeros, so every genotype is wt.
+        d_K_h_l_off = d_K_h_o_off = d_K_l_o_off = d_K_u_off = jnp.zeros((0,))
+        d_K_h_e_off = d_K_l_e_off = jnp.zeros((T, 0))
 
     # ------------------------------------------------------------------
     # Optional epistasis — regularised horseshoe prior (folded-state only)
@@ -491,16 +498,23 @@ def guide(name: str,
         sigma_d_K_h_e = pyro.sample(f"{name}_sigma_d_ln_K_h_e", dist.LogNormal(sigma_d_K_h_e_locs, sigma_d_K_h_e_scales))
         sigma_d_K_l_e = pyro.sample(f"{name}_sigma_d_ln_K_l_e", dist.LogNormal(sigma_d_K_l_e_locs, sigma_d_K_l_e_scales))
 
-    with pyro.plate(f"{name}_mutation_scalar_plate", num_mut, dim=-1):
-        d_K_h_l_off = pyro.sample(f"{name}_d_ln_K_h_l_offset", dist.Normal(d_K_h_l_locs, d_K_h_l_scales))
-        d_K_h_o_off = pyro.sample(f"{name}_d_ln_K_h_o_offset", dist.Normal(d_K_h_o_locs, d_K_h_o_scales))
-        d_K_l_o_off = pyro.sample(f"{name}_d_ln_K_l_o_offset", dist.Normal(d_K_l_o_locs, d_K_l_o_scales))
-        d_K_u_off   = pyro.sample(f"{name}_d_ln_K_u_offset",   dist.Normal(d_K_u_locs,   d_K_u_scales))
+    if num_mut > 0:
+        with pyro.plate(f"{name}_mutation_scalar_plate", num_mut, dim=-1):
+            d_K_h_l_off = pyro.sample(f"{name}_d_ln_K_h_l_offset", dist.Normal(d_K_h_l_locs, d_K_h_l_scales))
+            d_K_h_o_off = pyro.sample(f"{name}_d_ln_K_h_o_offset", dist.Normal(d_K_h_o_locs, d_K_h_o_scales))
+            d_K_l_o_off = pyro.sample(f"{name}_d_ln_K_l_o_offset", dist.Normal(d_K_l_o_locs, d_K_l_o_scales))
+            d_K_u_off   = pyro.sample(f"{name}_d_ln_K_u_offset",   dist.Normal(d_K_u_locs,   d_K_u_scales))
 
-    with pyro.plate(f"{name}_titrant_mut_outer_plate", T, dim=-2):
-        with pyro.plate(f"{name}_mutation_plate", num_mut, dim=-1):
-            d_K_h_e_off = pyro.sample(f"{name}_d_ln_K_h_e_offset", dist.Normal(d_K_h_e_locs, d_K_h_e_scales))
-            d_K_l_e_off = pyro.sample(f"{name}_d_ln_K_l_e_offset", dist.Normal(d_K_l_e_locs, d_K_l_e_scales))
+        with pyro.plate(f"{name}_titrant_mut_outer_plate", T, dim=-2):
+            with pyro.plate(f"{name}_mutation_plate", num_mut, dim=-1):
+                d_K_h_e_off = pyro.sample(f"{name}_d_ln_K_h_e_offset", dist.Normal(d_K_h_e_locs, d_K_h_e_scales))
+                d_K_l_e_off = pyro.sample(f"{name}_d_ln_K_l_e_offset", dist.Normal(d_K_l_e_locs, d_K_l_e_scales))
+    else:
+        # num_mut == 0 (wt-only library, e.g. a stratified binding
+        # pool): numpyro.plate needs size > 0, so skip the sites.  The
+        # empty offsets scatter to zeros, so every genotype is wt.
+        d_K_h_l_off = d_K_h_o_off = d_K_l_o_off = d_K_u_off = jnp.zeros((0,))
+        d_K_h_e_off = d_K_l_e_off = jnp.zeros((T, 0))
 
     if has_epi:
         tau_epi = pyro.sample(f"{name}_epi_tau", dist.LogNormal(tau_epi_loc, tau_epi_scale))

@@ -226,7 +226,7 @@ def test_simulate_cli_writes_mutation_and_pair_truth(tmp_path):
     with patch("tfscreen.util.read_yaml", return_value={"seed": 0, "growth": {}}), \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
                return_value=(lib_df, lib_df, lib_df, params_df, None,
-                             {"mutation": mut_df, "pair": None})), \
+                             {"mutation": mut_df, "pair": None}, None)), \
          patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
                return_value=(sample_df, counts_df)):
         run_simulation_from_config("config.yaml",
