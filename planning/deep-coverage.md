@@ -58,7 +58,7 @@ is the monoculture), so the real kanR curves are likely compressed too.
    the truth as a 0.002-SD prior; real fit -0.020 against the monoculture's
    -0.014). The bias is in the fitted likelihood, a misspecification
    (`planning/studies/km-anchor/`).
-1b. [ ] **Find the misspecification behind |m|.** A reduced-library
+1b. [x] **Find the misspecification behind |m|.** A reduced-library
    factorial on the simulation, local and fast: the same design and
    conditions, switching off one of congression, per-tube rate noise and
    realistic count noise at a time (and the dk_geno prior's shape), and
@@ -85,10 +85,22 @@ is the monoculture), so the real kanR curves are likely compressed too.
    kanR curves fitted with all genotypes are compressed by about 1.45.
    pheS+4CP moves away from the monoculture (m 0.0061 against 0.0144):
    step 3.
-2. [ ] **An interval for the held directions.** If directions are still
-   held with k and m anchored, floor them at the prior instead of holding
-   them, so k and m carry the monoculture's uncertainty into every X
-   interval. Check coverage by depth again.
+   Round 3 (2026-10-10), the simulation's full library with k and m held
+   at its no-doubles MAP: above 1e4 reads X's slope 0.95 (was 1.36),
+   RMSE 0.05-0.07 (0.16), 95% coverage 0.90 / 0.65 at 1e4-1e5 / >1e5
+   (0.29 / 0.10); the k/dk_geno slide is gone. The remaining gap is k and
+   m's own error, which the held fit leaves out: step 2.
+   Round 4 (set up 2026-10-10): the real fit holds kanR only (tight prior
+   at the real no-doubles MAP; pheS loose until step 3), checked first on
+   the simulation, since X is shared and pheS's m stays free.
+2. [ ] **Carry k and m's error into X.** The held fit (step 1b, round 3)
+   gives X intervals conditional on k and m. Take k and m's uncertainty
+   from the no-doubles fit (its Laplace), refit the full library held at a
+   handful of draws, and pool the draws' posteriors, as the two-stage fit
+   of `planning/studies/svi-overconfidence/two_stage.py` did. A soft prior
+   at the no-doubles SD will not do: the doubles pulled m through a 0.002
+   prior (`planning/studies/km-anchor/`). Check coverage by depth against
+   round 3 (0.90 / 0.65 above 1e4 reads).
 3. [ ] **pheS+4CP.** The real fit's pheS selection departs from the
    monoculture differently (k much higher, |m| smaller). Decide with step
    1's real arm whether the anchor holds there or the condition needs the

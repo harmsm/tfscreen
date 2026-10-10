@@ -59,7 +59,7 @@ full-size simulation's working directory (it holds `sim_realistic_s2/` and
 the `processed/` link):
 
 ```bash
-cd /gpfs/projects/harmslab/harms/studies/full-sized-sims-v3
+cd /gpfs/projects/harmslab/harms/studies/full-sized-sims-3
 ```
 
 ```bash

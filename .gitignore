@@ -222,6 +222,8 @@ planning/studies/full-size-sim-*/
 planning/studies/m-bias-factorial/m_bias/
 planning/studies/m-bias-factorial/m_subsets/
 planning/studies/m-bias-factorial/m_subsets_real/
+planning/studies/m-bias-factorial/held_s2/
+planning/studies/m-bias-factorial/held_kanR_*/
 
 .DS_Store 
 

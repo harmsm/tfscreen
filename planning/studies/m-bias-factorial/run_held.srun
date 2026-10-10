@@ -18,13 +18,18 @@
 # directory holding tfs_growth.csv, library_config.yaml and
 # growth_priors_held.csv, plus links to the simulation's tfs_sim_* files
 # for tfs-summarize-fit to score against. See README.md.
+#
+#   PINS   the --set_priors pins (default "m_pinned=1 k_pinned=1"). For a
+#          tight-prior hold of some conditions only (held_priors.py --hold),
+#          submit with --export=ALL,PINS= so nothing is pinned.
 
 module load cuda/12.4.1
 
 set -e
 SEED="${SEED:-1}"
+PINS="${PINS-m_pinned=1 k_pinned=1}"
 
-echo ">>> Configure (k, m held) $(date)"
+echo ">>> Configure (k, m held; pins: ${PINS:-none}) $(date)"
 tfs-configure-model \
     --allow_missing_spikes \
     --growth_df tfs_growth.csv \
@@ -34,7 +39,7 @@ tfs-configure-model \
     --batch_size 4096 \
     --growth_priors growth_priors_held.csv \
     --set_priors sigma_fixed=0.17 theta_log_hill_n_hyper_scale_fixed=0.5 \
-        m_pinned=1 k_pinned=1
+        ${PINS}
 
 echo ">>> Fit (staged MAP) $(date)"
 tfs-fit-model tfs_configure_config.yaml --seed "${SEED}" --analysis_method map

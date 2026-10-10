@@ -48,7 +48,7 @@ On the cluster, after pulling this commit, from the full-size simulation's
 working directory (it holds `processed/` and `pilot_s1/`):
 
 ```bash
-cd /gpfs/projects/harmslab/harms/studies/full-sized-sims-v3
+cd /gpfs/projects/harmslab/harms/studies/full-sized-sims-3
 ```
 
 ```bash
@@ -146,7 +146,7 @@ On the cluster, after pulling this commit, from the full-size simulation's
 working directory (it holds `sim_realistic_s2/`):
 
 ```bash
-cd /gpfs/projects/harmslab/harms/studies/full-sized-sims-v3
+cd /gpfs/projects/harmslab/harms/studies/full-sized-sims-3
 ```
 
 ```bash
@@ -192,7 +192,7 @@ arrowhead Laplace, extract).
 On the cluster, from the full-size simulation's working directory:
 
 ```bash
-cd /gpfs/projects/harmslab/harms/studies/full-sized-sims-v3
+cd /gpfs/projects/harmslab/harms/studies/full-sized-sims-3
 ```
 
 ```bash
@@ -216,6 +216,77 @@ cp /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/run_held.srun . &
 
 It ends with `>>> Done` in `run.out` and a `summary/` directory, like the
 full-size runs (several hours: the full library and the Laplace).
+
+## Round 4: hold kanR only
+
+The real pheS+4CP departs from its monoculture with or without the doubles
+(`planning/deep-coverage.md` step 3), so the real fit holds kanR only:
+kanR+kan and kanR-kan at the no-doubles MAP by a tight prior (SD 1e-4;
+the doubles' pull has a likelihood SD near 0.0014, so this gives up about
+0.5% of it), pheS at the recipe's loose priors, and no pins (they act on
+every condition). X is shared across markers, so the simulated arm checks
+that holding kanR alone fixes X while pheS's m stays free: does pheS's m
+follow the kanR-pinned X, or do the doubles pull it, and X with it, steep
+again? The real arm is read only if the simulated one passes.
+
+| arm | data | held |
+|---|---|---|
+| `held_kanR_s2` | `sim_realistic_s2` | kanR at the simulated `no_doubles` MAP |
+| `held_kanR_real` | the recipe's growth table | kanR at the real `no_doubles` MAP |
+
+### How to run round 4
+
+Simulated arm, in the full-size simulation's working directory:
+
+```bash
+cd /gpfs/projects/harmslab/harms/studies/full-sized-sims-3
+```
+
+```bash
+mkdir held_kanR_s2 && cd held_kanR_s2
+```
+
+```bash
+python /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/held_priors.py ../m_subsets/no_doubles --hold kanR --loose ../growth_priors_loose.csv --out growth_priors_held.csv
+```
+
+Check: kanR+kan k 0.018182, m -0.014221 at scale 0.0001; pheS rows 0.015,
+0.01, 0, 0.01.
+
+```bash
+ln -s ../sim_realistic_s2/tfs_growth.csv ../sim_realistic_s2/tfs_sim_* . && cp ../sim_realistic_s2/library_config.yaml .
+```
+
+```bash
+cp /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/run_held.srun . && sbatch --export=ALL,PINS= run_held.srun
+```
+
+Real arm, next to the recipe run:
+
+```bash
+cd /gpfs/projects/harmslab/harms/studies/dev-data/real_fit
+```
+
+```bash
+mkdir held_kanR_real && cd held_kanR_real
+```
+
+```bash
+python /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/held_priors.py ../m_subsets_real/no_doubles --hold kanR --loose ../growth_priors_loose.csv --out growth_priors_held.csv
+```
+
+Check: kanR+kan k 0.016018, m -0.014136 at scale 0.0001.
+
+```bash
+ln -s ../recipe/tfs_growth.csv . && cp ../../processed/library_config.yaml .
+```
+
+```bash
+cp /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/run_held.srun . && sbatch --export=ALL,PINS= run_held.srun
+```
+
+The log's configure line reads `pins: none`. Each run ends with `>>> Done`
+in `run.out` and a `summary/` directory (about 2 hours, as round 3).
 
 ## Commit
 
@@ -326,3 +397,41 @@ pheS data that the simulation lacks sets pheS's scale: the selection-onset
 transient (`planning/offset-mode-growth-transition.md`) or the known
 mismatch between the 4CP wt in the screen and in monoculture. That is
 `planning/deep-coverage.md` step 3.
+
+### Round 3 result (2026-10-10)
+
+`held_s2`: the full `sim_realistic_s2` library with k and m clamped at the
+simulated `no_doubles` MAP (kanR+kan k 0.0182, m -0.0142; pheS+4CP k
+0.0057, m 0.0126). Every stage converged; about 2 hours on one GPU. X of
+the doubles against the truth, by total reads, unheld (the original
+full-size fit) against held:
+
+| reads | doubles | r | slope (truth on fit) | RMSE | 95% coverage | median 95% width |
+|---|---|---|---|---|---|---|
+| <= 1e2 | 37,707 | 0.26 / 0.28 | 0.05 / 0.05 | 2.16 / 2.25 | 0.97 / 0.98 | 4.08 / 5.74 |
+| 1e2-1e3 | 89,022 | 0.62 / 0.64 | 0.49 / 0.38 | 0.45 / 0.57 | 0.82 / 0.90 | 0.85 / 1.29 |
+| 1e3-1e4 | 64,362 | 0.93 / 0.93 | 1.19 / 0.82 | 0.20 / 0.19 | 0.56 / 0.89 | 0.35 / 0.53 |
+| 1e4-1e5 | 15,283 | 0.99 / 0.99 | 1.36 / 0.95 | 0.17 / 0.07 | 0.29 / 0.90 | 0.14 / 0.22 |
+| > 1e5 | 1,225 | 0.99 / 1.00 | 1.37 / 0.96 | 0.16 / 0.05 | 0.10 / 0.65 | 0.05 / 0.08 |
+
+**Holding k and m removes the compression.** Above 1e4 reads the slope
+goes from 1.36 to 0.95, RMSE falls about threefold and 95% coverage rises
+from 0.29 to 0.90 (1e4-1e5) and from 0.10 to 0.65 (above 1e5). The
+k/dk_geno slide is gone too: the median dk_geno error falls from -0.0057
+to -0.0008, and the held directions shrink from the k/dk_geno slide
+(eigenvalue -1.4e10) to a small dk_geno hyperparameter direction
+(-2.9e3). Tube offsets are unchanged (SD 0.32).
+
+What is left:
+
+- **The deepest genotypes still undercover (0.65 above 1e5 reads)**,
+  because the intervals leave out k and m's own error. The no-doubles m is
+  3% steep in kanR and 11% shallow in pheS, and at widths of 0.08 that is
+  as large as the interval.
+- **Below 1e3 reads the held fit is a little worse** (RMSE 0.57 against
+  0.45 at 1e2-1e3, slope 0.38): the shallow points scatter more and their
+  intervals widen to cover it (0.90). That is
+  `planning/deep-coverage.md` step 4 (hold the X population SDs).
+- At 1e3-1e4 a slope below 1 (0.82) is the expected regression dilution
+  of a noisy point, not a scale bias.
+
