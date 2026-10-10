@@ -66,6 +66,12 @@ is the monoculture), so the real kanR curves are likely compressed too.
    correct before step 2 is worth doing. Set up 2026-10-09 as
    `planning/studies/m-bias-factorial/` (5 arms x 2 seeds, 5,256 doubles,
    cluster: the staged MAP was too slow on a laptop).
+   Round 1 (2026-10-09) was inconclusive. The reduced `base` arm gave an m
+   ratio of 1.03-1.14 against 1.47 at full size, because shrinking the
+   library left wt at 81% of each tube's reads (31% at full size) and
+   dropped 25 tubes below OD600 detection. Every arm fell within seed
+   noise. Round 2 refits subsets of the full-size simulation's genotypes
+   instead: no doubles, plus deep doubles, plus as many shallow doubles.
 2. [ ] **An interval for the held directions.** If directions are still
    held with k and m anchored, floor them at the prior instead of holding
    them, so k and m carry the monoculture's uncertainty into every X

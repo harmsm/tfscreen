@@ -2,11 +2,13 @@
 Score the factorial arms: k and m against the truth on the X scale.
 
     python score_arms.py m_bias/*_s*
+    python score_arms.py no_doubles deep_doubles shallow_doubles
 
 Truth on the fit's X scale (theta: hill_relative gauges wt to X = 1 at the
 low and 0 at the high gauge concentration): m_X = m (theta_wt(c_lo) -
 theta_wt(c_hi)), k_X = b + m theta_wt(c_hi), with wt's true Hill curve. Also
-the median dk_geno error over genotypes. Writes factorial_scores.csv.
+the median dk_geno error over genotypes, when tfs_params_dk_geno.csv exists
+(a MAP checkpoint does not give it). Writes factorial_scores.csv.
 """
 
 import os
@@ -41,15 +43,21 @@ for d in sys.argv[1:]:
     truth = pd.read_csv(os.path.join(d, "tfs_sim_growth_parameters.csv")).set_index("condition_rep")
     k = pd.read_csv(os.path.join(d, "tfs_params_growth_k.csv")).groupby("condition_rep")["q0.5"].mean()
     m = pd.read_csv(os.path.join(d, "tfs_params_growth_m.csv")).groupby("condition_rep")["q0.5"].mean()
-    dk = pd.read_csv(os.path.join(d, "tfs_params_dk_geno.csv"))[["genotype", "q0.5"]].merge(
-        par[["genotype", "dk_geno"]], on="genotype")
+    dk_file = os.path.join(d, "tfs_params_dk_geno.csv")
+    dk_bias = np.nan
+    if os.path.exists(dk_file):
+        dk = pd.read_csv(dk_file)[["genotype", "q0.5"]].merge(par[["genotype", "dk_geno"]], on="genotype")
+        dk_bias = float(np.median(dk["q0.5"] - dk["dk_geno"]))
     arm = os.path.basename(os.path.normpath(d))
     for c in ("kanR+kan", "pheS+4CP"):
         b, mm = truth.loc[c, "growth_k"], truth.loc[c, "growth_m"]
         m_x, k_x = mm * (t_lo - t_hi), b + mm * t_hi
-        rows.append(dict(arm=arm.rsplit("_s", 1)[0], seed=arm.rsplit("_s", 1)[1],
+        name, _, seed = arm.rpartition("_s")
+        if not seed.isdigit():
+            name, seed = arm, ""
+        rows.append(dict(arm=name, seed=seed,
                          condition=c, k_true=k_x, k_fit=k[c], m_true=m_x, m_fit=m[c],
-                         m_ratio=m[c] / m_x, dk_bias=float(np.median(dk["q0.5"] - dk["dk_geno"]))))
+                         m_ratio=m[c] / m_x, dk_bias=dk_bias))
 df = pd.DataFrame(rows)
 df.to_csv("factorial_scores.csv", index=False)
 print(df.round(4).to_string(index=False))

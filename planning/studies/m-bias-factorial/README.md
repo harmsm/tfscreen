@@ -12,7 +12,7 @@ features the fit does not model causes it?
 has to model, or correct for, before the deep genotypes' intervals can be
 honest.
 
-## Design
+## Round 1: reduced-library simulations
 
 A reduced library (5 degenerate sites per tile, every spike site kept:
 5,256 doubles instead of 223,000), scaled with
@@ -42,7 +42,7 @@ minutes, but the staged MAP's first stage was still descending (about 1.8
 nats per window, t = 12) at step 80,000 after an hour on a laptop CPU, so
 the arms run on the cluster.
 
-## How to run
+### How to run round 1
 
 On the cluster, after pulling this commit, from the full-size simulation's
 working directory (it holds `processed/` and `pilot_s1/`):
@@ -75,10 +75,103 @@ python score_arms.py *_s1 *_s2
 
 It prints the table and writes `factorial_scores.csv`.
 
-## Inputs
+Inputs: `processed/` (the dev data, via make_sim_config.py) and the
+full-size pilot (`pilot_s1/`, for the cfu0 calibration).
 
-`processed/` (the dev data, via make_sim_config.py) and the full-size
-pilot (`pilot_s1/`, for the cfu0 calibration).
+### Round 1 results (2026-10-09)
+
+**Inconclusive: `base` did not reproduce the bias.** m_fit / m_true on the
+X scale (truth from wt's true curve at the gauge):
+
+| arm | kanR+kan s1 / s2 | pheS+4CP s1 / s2 |
+|---|---|---|
+| full size, realistic (`sim_realistic_s2`) | 1.47 | 1.43 |
+| full size, Poisson (`sim_poisson_s2`) | 1.32 | 1.16 |
+| `base` | 1.03 / 1.14 | 0.96 / 1.06 |
+| `no_cong` | 0.99 / 0.96 | 1.03 / 0.99 |
+| `no_tube` | 1.05 / 1.21 | 1.00 / 1.12 |
+| `poisson` | 1.13 / 1.14 | 1.01 / 1.02 |
+| `clean` | 1.04 / 1.05 | 1.04 / 1.05 |
+
+Every arm sits between 0.96 and 1.21. The seed-to-seed spread (`base` 1.03
+against 1.14) is as large as any difference between arms. Every fit
+converged except `clean`, whose stage 1 and joint stage both reached the
+epoch cap while still dropping a few nats per window.
+
+The reduced library changed the problem in two ways:
+
+- **Composition.** `scale_library_design` keeps each sequence's abundance,
+  so the spiked origin (wt repeated 271 times) keeps its mass while the
+  bulk shrinks. wt starts at 55% of the reduced pool against 11% at full
+  size, and doubles at 6% against 44% (`library_composition_table`). In
+  the sequenced tubes wt is 81% of reads against 31%, and doubles are 3%
+  against 35%.
+- **Detection.** cfu0 scales with the pool, so each tube's OD600 falls by
+  the same factor. 25 of 118 tubes read below the detection threshold and
+  dropped out (93 sequenced against 118).
+
+The bias weakens when wt dominates the tubes. That fits the tube totals
+pinning the absolute scale through wt when wt is most of the population,
+and the library's genotypes setting it when they are. It does not say
+which feature is misspecified.
+
+## Round 2: fit-side subsets of the full-size simulation
+
+Given the shared parameters (k, m, tube offsets, population hypers), each
+genotype's count likelihood is independent: the count model observes each
+genotype's reads against its predicted share of the tube's cells, with no
+constraint that the shares sum to one. So refitting the full-size
+`sim_realistic_s2` growth table (m ratio 1.47) with only some genotypes is a
+valid fit of the same simulated data. It changes only which genotypes
+inform k and m. `make_subsets.py` writes three arms:
+
+| arm | genotypes |
+|---|---|
+| `no_doubles` | wt, spikes and singles (952) |
+| `deep_doubles` | those plus every double with at least 1,000 total reads (80,915) |
+| `shallow_doubles` | those plus 80,915 of the 126,684 doubles below 1,000 reads, at random (seed 1) |
+
+Same chain as round 1 (`run_arm.sh` skips simulate and process because the
+arm directory links the simulation's `tfs_sim_*` files and has its own
+`tfs_growth.csv`). Readout: if `no_doubles` recovers m (ratio near 1), the
+doubles drive the bias; `deep_doubles` against `shallow_doubles` says
+whether it is the well-measured doubles or the noisy ones. If `no_doubles`
+is still at about 1.4, the bias comes from how wt, spikes and singles are
+modeled (or from the design), and congression and the dk_geno prior's
+shape become the next arms at full size.
+
+### How to run round 2
+
+On the cluster, after pulling this commit, from the full-size simulation's
+working directory (it holds `sim_realistic_s2/`):
+
+```bash
+cd /gpfs/projects/harmslab/harms/studies/full-sized-sims-v3
+```
+
+```bash
+python /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/make_subsets.py sim_realistic_s2 --out_dir m_subsets
+```
+
+It reads the 8 GB growth table twice (about 6 minutes locally) and prints
+`952 wt/spike/single genotypes, 80915 doubles >= 1000 reads, 80915 of
+126684 below`, then one genotype count per arm (952, 81867, 81867).
+
+```bash
+cp /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/{run_arm.sh,run_arm.srun,score_arms.py} m_subsets/
+```
+
+```bash
+cd m_subsets && for d in no_doubles deep_doubles shallow_doubles; do (cd $d && sbatch ../run_arm.srun); done
+```
+
+When each `run.out` ends with `>>> Done`, in `m_subsets/`:
+
+```bash
+python score_arms.py no_doubles deep_doubles shallow_doubles
+```
+
+Inputs: `sim_realistic_s2/` (`planning/studies/full-size-sim/`).
 
 ## Commit
 
@@ -86,4 +179,4 @@ The commit that adds this study.
 
 ## Results
 
-Pending.
+Round 1 above (inconclusive). Round 2 pending.

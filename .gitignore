@@ -219,6 +219,8 @@ planning/studies/recipe/
 planning/studies/full-size-sim/sim_*/
 planning/studies/full-size-sim/pilot_*/
 planning/studies/full-size-sim-*/
+planning/studies/m-bias-factorial/m_bias/
+planning/studies/m-bias-factorial/m_subsets/
 
 .DS_Store 
 
