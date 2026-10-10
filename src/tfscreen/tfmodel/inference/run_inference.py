@@ -40,6 +40,12 @@ from tfscreen.tfmodel.inference.initialization import (
     site_values,
     trace_model_sites,
 )
+from tfscreen.tfmodel.inference.model_params import (
+    hold_model_params,
+    model_param_constraints,
+    model_params,
+    write_model_params,
+)
 
 # Smallest Hessian eigenvalue the Laplace posterior keeps, for elements with
 # no usable prior SD (see laplace_eigenvalue_floor).
@@ -268,6 +274,14 @@ class RunInference:
         # Set by setup_svi and written into checkpoints.
         self._guide_type = None
         self._guide_kwargs = {}
+
+        # Learned values of the model's own pyro.param sites (thermo NN
+        # weights, sigma_s; see inference/model_params.py), held fixed
+        # whenever the model runs after a fit. Set by the posterior and
+        # Hessian entry points from the params they are given; empty for a
+        # model without such params, which then runs unchanged.
+        self.fixed_model_params = {}
+        self._model_param_constraints = None
 
 
     def setup_svi(self,
@@ -967,6 +981,26 @@ class RunInference:
         idx = jnp.asarray(self.model.data.batch_idx)[:self._batch_size]
         return self.model.get_batch(data, idx)
 
+    def model_params(self, params, unconstrained=False):
+        """
+        The learned values of the model's own ``pyro.param`` sites found in
+        ``params`` (a param store, optimizer state or MAP ``_params.npz``),
+        constrained. Empty for a model without such params. See
+        ``inference/model_params.py``.
+        """
+        if self._model_param_constraints is None:
+            data = jax.device_put(self.model.data)
+            full = self.model.get_batch(
+                data, jnp.arange(self.model.data.num_genotype))
+            self._model_param_constraints = model_param_constraints(
+                self.model.jax_model, self.model.priors, full)
+        return model_params(params, self._model_param_constraints,
+                            unconstrained=unconstrained)
+
+    def _fixed_model(self):
+        """The model with ``fixed_model_params`` held fixed."""
+        return hold_model_params(self.model.jax_model, self.fixed_model_params)
+
     def site_values(self, values):
         """
         Constrained site values found in ``values`` (guesses, a MAP result or
@@ -1065,9 +1099,11 @@ class RunInference:
         constrained = svi.get_params(svi_state)
         exact = None
         if getattr(self, "_use_exact_loss", False):
+            # the model's own params enter at their current values
             exact = self.full_batch_loss(
-                {k[:-len("_auto_loc")]: v for k, v in constrained.items()
-                 if k.endswith("_auto_loc")})
+                {**{k[:-len("_auto_loc")]: v for k, v in constrained.items()
+                    if k.endswith("_auto_loc")},
+                 **self.model_params(constrained)})
         centers = np.asarray(block_centers, dtype=float)
         floor = monitor.drift_floor(window_steps)
         excess_summary = {}
@@ -1321,7 +1357,7 @@ class RunInference:
             ``chunk_fn(data, latents, key, batch_indices)
             -> (new_key, chunk_dict)``
         """
-        model_fn = self.model.jax_model
+        model_fn = self._fixed_model()
         get_batch = self.model.get_batch
         priors = self.model.priors
         batch_positional = self._batch_positional_latents()
@@ -1398,6 +1434,9 @@ class RunInference:
         guide = svi.guide
         params = jax.device_put(svi.get_params(svi_state))
         data_on_gpu = jax.device_put(self.model.data)
+        # The model's own learned params (in the same store as the guide's)
+        # are held at their fitted values in the forward pass.
+        self.fixed_model_params = self.model_params(params)
 
         # Get the mapping of site names to genotype dimension
         dim_map = self._get_genotype_dim_map()
@@ -1494,6 +1533,7 @@ class RunInference:
 
             # Add metadata to HDF5 file
             hf.attrs["num_samples"] = samples_written
+            write_model_params(hf, self.fixed_model_params)
 
             # Force flush to disk to avoid read issues on cluster file systems
             hf.flush()
@@ -1984,6 +2024,8 @@ class RunInference:
         dim_map = self._get_genotype_dim_map()
 
         constrained = self._map_params_to_constrained(map_params)
+        self.fixed_model_params = self.model_params(map_params,
+                                                    unconstrained=True)
         # Add a leading sample dimension: (*shape) → (1, *shape)
         latent_samples = {k: jnp.expand_dims(v, 0) for k, v in constrained.items()}
 
@@ -2012,7 +2054,7 @@ class RunInference:
             }
 
             batch_data = self.model.get_batch(data_on_gpu, batch_indices)
-            forward_sampler = Predictive(self.model.jax_model,
+            forward_sampler = Predictive(self._fixed_model(),
                                          posterior_samples=model_latents)
             pred_key = self.get_key()
             batch_pred = forward_sampler(pred_key,
@@ -2048,6 +2090,7 @@ class RunInference:
                 hf.create_dataset(k, data=v, chunks=chunks,
                                   compression="gzip", compression_opts=4)
             hf.attrs["num_samples"] = 1
+            write_model_params(hf, self.fixed_model_params)
             hf.flush()
 
     def _chunked_hessian(self, pe_fn, flat_map, chunk_size):
@@ -2160,6 +2203,9 @@ class RunInference:
         if len(constrained) == 0:
             return {}
 
+        # The model's own params are held at the MAP (empirical Bayes).
+        self.fixed_model_params = self.model_params(map_params)
+
         # Per-site bijection (unconstrained -> constrained) from a model
         # trace; identity for real-valued supports.
         seeded_model = seed(self.model.jax_model, rng_seed=0)
@@ -2182,9 +2228,11 @@ class RunInference:
         flat_map, unravel = jax.flatten_util.ravel_pytree(unconstrained)
         D = flat_map.shape[0]
 
+        model_fn = self._fixed_model()
+
         def pe_fn(flat_p):
             return potential_energy(
-                self.model.jax_model, [], model_kwargs, unravel(flat_p)
+                model_fn, [], model_kwargs, unravel(flat_p)
             )
 
         print(f"Computing Hessian for {D} parameters "
@@ -2286,14 +2334,14 @@ class RunInference:
 
         fallback = np.full(D, LAPLACE_MIN_EIGENVALUE)
         try:
-            sites = trace_model_sites(self.model.jax_model,
+            sites = trace_model_sites(self._fixed_model(),
                                       model_kwargs["priors"],
                                       model_kwargs["data"])
             constrained = {
                 k: biject_to(sites[k]["fn"].support)(v)
                 for k, v in unconstrained.items() if k in sites
             }
-            sites = trace_model_sites(self.model.jax_model,
+            sites = trace_model_sites(self._fixed_model(),
                                       model_kwargs["priors"],
                                       model_kwargs["data"],
                                       substitutions=constrained)
@@ -2376,6 +2424,7 @@ class RunInference:
         from numpyro.infer.util import potential_energy
 
         G = self.model.data.num_genotype
+        model_fn = self._fixed_model()
         gid = {}
         for k, v in unconstrained.items():
             a = np.full(np.shape(v), -1.0)
@@ -2408,7 +2457,7 @@ class RunInference:
         @jax.jit
         def hvp(batch, v):
             def pe(f):
-                return potential_energy(self.model.jax_model, [],
+                return potential_energy(model_fn, [],
                                         {"priors": priors, "data": batch},
                                         unravel(f))
             return jax.jvp(jax.grad(pe), (flat_map,), (v,))[1]
@@ -2710,6 +2759,10 @@ class RunInference:
 
         Notes
         -----
+        The model's own learned ``pyro.param`` sites (thermo NN weights,
+        sigma_s; see ``inference/model_params.py``) are empirical-Bayes point
+        estimates: they are held at the MAP and are not part of the Hessian.
+
         Hessian inversion is O(D²) in memory and O(D³) in compute, where D is
         the total number of unconstrained parameters.  The Hessian is computed
         in row-chunks (see ``hessian_chunk_size``) to bound peak device memory
@@ -2739,6 +2792,12 @@ class RunInference:
         # Refuse aliased (batch-sized) latents before the costly Hessian.
         self._check_library_sized_latents(unconstrained, dim_map,
                                           total_num_genotypes)
+
+        # The model's own learned params (thermo NN weights, sigma_s) are
+        # empirical-Bayes point estimates: held at the MAP, outside the
+        # Hessian, in every model evaluation below.
+        self.fixed_model_params = self.model_params(map_params,
+                                                    unconstrained=True)
 
         # Flatten to a single vector for Hessian computation
         flat_map, unravel = jax.flatten_util.ravel_pytree(unconstrained)
@@ -2786,9 +2845,11 @@ class RunInference:
             print(f"Computing Hessian for {D} parameters "
                   f"(chunk_size={hessian_chunk_size}) ...", flush=True)
 
+            model_fn = self._fixed_model()
+
             def pe_fn(flat_p):
                 return potential_energy(
-                    self.model.jax_model, [], model_kwargs, unravel(flat_p)
+                    model_fn, [], model_kwargs, unravel(flat_p)
                 )
 
             H_np = self._chunked_hessian(pe_fn, flat_map, hessian_chunk_size)
@@ -2915,6 +2976,7 @@ class RunInference:
                 samples_written += batch_size_actual
 
             hf.attrs["num_samples"] = samples_written
+            write_model_params(hf, self.fixed_model_params)
             hf.flush()
 
     def get_nuts_posteriors(self,

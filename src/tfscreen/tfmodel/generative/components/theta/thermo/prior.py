@@ -19,6 +19,11 @@ Interpretation of σ_s
 Initialising σ_s = 1.0 places the model between these extremes and lets
 the data learn how predictive each structure's LigandMPNN features are.
 
+σ_s (and the PnnC NN weights) are empirical-Bayes point estimates: after a
+fit, posterior sampling, the Laplace and predictions hold them at their
+fitted values (``tfscreen.tfmodel.inference.model_params``); the Laplace
+does not include them in the Hessian.
+
 The guide (in lnK_nn_prior.py) must provide matching ``pyro.sample`` sites
 for all ``{name}_ddG_offset`` variables sampled here.
 """

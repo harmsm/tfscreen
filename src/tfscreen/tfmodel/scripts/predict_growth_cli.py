@@ -3,6 +3,7 @@ import pandas as pd
 from tfscreen.tfmodel.configuration_io import read_configuration
 from tfscreen.tfmodel.inference.checkpoint_io import resolve_param_file
 from tfscreen.tfmodel.inference.posteriors import load_posteriors
+from tfscreen.tfmodel.inference.model_params import sample_keys
 from tfscreen.tfmodel.analysis.prediction import predict
 from tfscreen.tfmodel.analysis.batch_sizing import estimate_genotype_batch_size
 from tfscreen.util.cli import generalized_main, read_lines
@@ -187,7 +188,7 @@ def predict_growth(config_file,
 
     if genotype_batch_size is None:
         _, resolved_posteriors = load_posteriors(param_file, q_to_get=None)
-        first_key = next(iter(resolved_posteriors.keys()))
+        first_key = sample_keys(resolved_posteriors)[0]
         total_available = resolved_posteriors[first_key].shape[0]
         n_for_quantiles = (total_available if num_marginal_samples is None
                           else min(num_marginal_samples, total_available))

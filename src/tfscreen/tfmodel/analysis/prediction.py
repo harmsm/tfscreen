@@ -3,6 +3,11 @@ import numpy as np
 import itertools
 from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator, _RELATIVE_THETA
 from tfscreen.tfmodel.inference.posteriors import load_posteriors, get_posterior_samples
+from tfscreen.tfmodel.inference.model_params import (
+    hold_model_params,
+    read_model_params,
+    sample_keys,
+)
 from tfscreen.tfmodel.tensors.batch import get_batch as _get_batch
 import jax
 from jax import numpy as jnp
@@ -381,7 +386,7 @@ def _posterior_median(param_posteriors, site, max_samples):
 
 
 def _population_theta(orchestrator, param_posteriors, pred_growth,
-                      max_samples):
+                      max_samples, model_params=None):
     """
     Every fitted genotype's theta at the prediction's titrant concentrations.
 
@@ -403,7 +408,9 @@ def _population_theta(orchestrator, param_posteriors, pred_growth,
         for name, site in theta_trace.items()
         if site["type"] == "sample" and not site.get("is_observed", False)
     }
-    theta_param = substitute(seed(sample_theta, rng_seed=0), data=latents)(
+    # the theta component's own learned params (thermo NN, sigma_s) too
+    theta_param = substitute(seed(sample_theta, rng_seed=0),
+                             data={**(model_params or {}), **latents})(
         "theta", growth, orchestrator.priors.theta)
 
     view = growth.replace(batch_idx=full,
@@ -415,7 +422,7 @@ def _population_theta(orchestrator, param_posteriors, pred_growth,
 
 
 def _build_population_references(orchestrator, param_posteriors, pred_growth,
-                                 max_samples=20):
+                                 max_samples=20, model_params=None):
     """
     Library-wide theta, dk_geno and activity references for the congression
     mixture (transformation components with ``NEEDS_POPULATION``).
@@ -468,7 +475,8 @@ def _build_population_references(orchestrator, param_posteriors, pred_growth,
         references[field_name] = jnp.asarray(values)
 
     references["external_theta_population"] = _population_theta(
-        orchestrator, param_posteriors, pred_growth, max_samples)
+        orchestrator, param_posteriors, pred_growth, max_samples,
+        model_params=model_params)
     return references
 
 
@@ -597,6 +605,14 @@ def predict(orchestrator,
     # already store constrained values keyed by bare site name and are left
     # unchanged.
 
+    # The model's own learned params (thermo NN weights, sigma_s): a
+    # posterior file stores them in its model_params group, a raw MAP params
+    # file under their own names. They are held fixed in every model run
+    # below; without them the model would use their init values.
+    model_param_names = [name for name, site in model_trace.items()
+                         if site["type"] == "param"]
+    model_params = read_model_params(param_posteriors, model_param_names)
+
     if any(str(k).endswith("_auto_loc") for k in param_posteriors.keys()):
         param_posteriors = _convert_map_params(param_posteriors, model_trace)
 
@@ -604,7 +620,7 @@ def predict(orchestrator,
     # Sample selection from posterior
 
     # Identify how many samples we have
-    first_key = next(iter(param_posteriors.keys()))
+    first_key = sample_keys(param_posteriors)[0]
     total_available = param_posteriors[first_key].shape[0]
 
     # Sample indices for running through the model (quantile computation)
@@ -707,7 +723,8 @@ def predict(orchestrator,
     # -------------------------------------------------------------------------
     # Run Prediction
     
-    predictive = Predictive(new_orchestrator.jax_model,
+    predictive = Predictive(hold_model_params(new_orchestrator.jax_model,
+                                              model_params),
                             posterior_samples=sliced_samples,
                             return_sites=predict_sites)
 
@@ -732,7 +749,8 @@ def predict(orchestrator,
 
     if transformation_needs_population:
         population_references = _build_population_references(
-            orchestrator, param_posteriors, pred_data.growth)
+            orchestrator, param_posteriors, pred_data.growth,
+            model_params=model_params)
         # The subset model draws its own co-resident sets over the subset;
         # use the fitted model's instead. Their entries index the original
         # library, which is what the external references cover.

@@ -450,6 +450,63 @@ class TestGuideSelection:
             fit_model(config_file="dummy.yaml", analysis_method="map",
                       checkpoint_file=str(ckpt), init_from="x.npz")
 
+    # The model's own learned params (thermo NN weights, sigma_s) are not
+    # sample sites; the hand-offs must carry them too.
+    SIG = "theta_ddG_sigma_s"
+
+    def _patch_ri_params(self, mocker, guesses=None):
+        ri = self._patch_ri(mocker, guesses=guesses)
+        ri.model_params.side_effect = lambda p, unconstrained=False: {
+            k: v for k, v in p.items() if k == self.SIG}
+        return ri
+
+    def test_init_from_carries_model_params(self, tmp_path, mocker):
+        npz = tmp_path / "prev_params.npz"
+        np.savez(npz, mu_auto_loc=np.array([2.0]),
+                 theta_ddG_sigma_s=np.array([0.3, 2.0]))
+        _patch_common(mocker)
+        self._patch_ri_params(mocker, guesses={"mu": 1.0})
+        run_map_mock = mocker.patch(f"{_CLI}._run_map",
+                                    return_value=(MagicMock(), {}, True))
+        fit_model(config_file="dummy.yaml", seed=1, analysis_method="map",
+                  init_from=str(npz))
+        kwargs = run_map_mock.call_args.kwargs
+        np.testing.assert_allclose(kwargs["init_params"][self.SIG], [0.3, 2.0])
+        assert self.SIG not in kwargs["init_values"]
+
+    @pytest.mark.parametrize("guide_type", ["component", "auto_normal"])
+    def test_premap_hands_model_params_to_svi(self, mocker, guide_type):
+        _patch_common(mocker)
+        ri = self._patch_ri_params(mocker,
+                                   guesses={"dk_geno_offset": jnp.zeros(3)})
+        ri.component_guide_start.return_value = {"dk_geno_offset_locs": 1}
+        map_params = {"dk_geno_offset_auto_loc": jnp.ones(3),
+                      self.SIG: jnp.array([0.4, 1.7])}
+        mocker.patch(f"{_CLI}._run_map",
+                     return_value=(MagicMock(), map_params, True))
+        run_svi_mock = self._patch_run_svi(mocker)
+        fit_model(config_file="dummy.yaml", seed=1, pre_map_num_epoch=5,
+                  guide_type=guide_type)
+        init_params = run_svi_mock.call_args.kwargs["init_params"]
+        np.testing.assert_allclose(init_params[self.SIG], [0.4, 1.7])
+        if guide_type == "component":
+            assert init_params["dk_geno_offset_locs"] == 1
+        else:
+            assert set(init_params) == {self.SIG}
+
+    def test_run_svi_autoguide_keeps_only_model_params(self, mocker):
+        ri = MagicMock()
+        ri.model_params.side_effect = lambda p, unconstrained=False: {
+            k: v for k, v in p.items() if k == self.SIG}
+        ri.run_optimization.return_value = (None, {}, True)
+        _run_svi(ri, init_params={self.SIG: 1.0, "x_locs": 2.0},
+                 guide_type="auto_normal", max_num_epochs=0)
+        assert ri.run_optimization.call_args.kwargs["init_params"] == \
+            {self.SIG: 1.0}
+        _run_svi(ri, init_params={"x_locs": 2.0}, guide_type="auto_normal",
+                 max_num_epochs=0)
+        assert ri.run_optimization.call_args.kwargs["init_params"] is None
+
     def test_resume_skips_start_translation(self, tmp_path, mocker):
         ckpt = tmp_path / "ckpt.pkl"
         with open(ckpt, "wb") as f:
