@@ -35,7 +35,8 @@ def sample_theta_prior(component_name,
                        priors_overrides=None,
                        sim_priors_overrides=None,
                        force_prior_predictive=False,
-                       return_deterministic=False):
+                       return_deterministic=False,
+                       model_params_overrides=None):
     """
     Draw one sample of theta from a registered theta component.
 
@@ -77,6 +78,12 @@ def sample_theta_prior(component_name,
         callers can write the per-mutation (``theta_d_*``), per-pair
         (``theta_epi_*``) and per-structure (``theta_ddG``) truth that
         ``ThetaParam`` does not carry.  Tracing does not change the draw.
+    model_params_overrides : dict or None
+        ``{param_name: value}`` replacing the init value of model-side
+        ``pyro.param`` sites in the draw (prior-predictive path only), e.g.
+        ``{"theta_ddG_sigma_s": ...}`` from :func:`ddG_truth_sigma_s`.  Only
+        ``param`` sites are replaced, so the random stream is unchanged.  A
+        name that is not a param site of the model is an error.
 
     Returns
     -------
@@ -132,10 +139,30 @@ def sample_theta_prior(component_name,
         params.update(priors_overrides)
     priors = module.ModelPriors(**params)
 
+    # Model-side params (e.g. the ddG truth-noise SD sigma_s) take their init
+    # value unless overridden here.  Only param sites are touched: sample
+    # sites draw exactly as without the override.
+    overrides = dict(model_params_overrides or {})
+
+    def _param_override(msg):
+        if msg["type"] == "param":
+            return overrides.get(msg["name"])
+        return None
+
     # handlers.trace only records the sites; the seeded draw is unchanged.
     with handlers.trace() as trace:
         with handlers.seed(rng_seed=rng_key):
-            theta_param = module.define_model("theta", sim_data, priors)
+            with handlers.substitute(substitute_fn=_param_override):
+                theta_param = module.define_model("theta", sim_data, priors)
+
+    if overrides:
+        params_seen = {n for n, site in trace.items() if site["type"] == "param"}
+        unknown = sorted(set(overrides) - params_seen)
+        if unknown:
+            raise ValueError(
+                f"model_params_overrides {unknown} are not param sites of "
+                f"theta component '{component_name}' (it has "
+                f"{sorted(params_seen)}).")
 
     # run_model returns (T=1, C, G) for simulation (scatter_theta=0).
     theta_tcg = module.run_model(theta_param, sim_data)
@@ -147,6 +174,82 @@ def sample_theta_prior(component_name,
                          if site["type"] == "deterministic"}
         return theta_gc, theta_param, deterministic
     return theta_gc, theta_param
+
+
+def ddG_truth_sigma_s(ddG_truth_sd, theta_component, thermo_options=None):
+    """
+    Model-param override that sets the SD of the simulated per-structure ΔΔG.
+
+    The PddG/PnnC models draw ``theta_ddG = prior_mean + sigma_s * offset``
+    with ``offset ~ Normal(0, 1)`` and ``sigma_s`` (``theta_ddG_sigma_s``) a
+    per-structure ``pyro.param`` initialized to 1 (kT).  In the simulator's
+    prior-predictive draw that sum is the ground truth, so ``sigma_s`` is
+    the SD of truth minus the structural prior mean.  This turns the
+    simulate-config ``ddG_truth_sd`` into that ``sigma_s``.
+
+    Parameters
+    ----------
+    ddG_truth_sd : float, dict or None
+        A scalar SD for every structure, or ``{structure: sd}`` naming every
+        structure in the component's ``STRUCTURE_NAMES``.  In the energy unit
+        of ``thermo_options['ddG_units']`` (kT by default) and converted to
+        kT once, like the ΔΔG table.  0 makes the truth the table exactly.
+        None keeps the init value (1 kT for every structure).
+    theta_component : str
+        Registered theta component; must be a PddG or PnnC model.
+    thermo_options : dict or None
+        Supplies ``ddG_units`` and ``temperature_K``.
+
+    Returns
+    -------
+    dict or None
+        ``{"theta_ddG_sigma_s": np.ndarray (S,)}`` in kT, in the component's
+        ``STRUCTURE_NAMES`` order, or None when ``ddG_truth_sd`` is None.
+    """
+    if ddG_truth_sd is None:
+        return None
+
+    from tfscreen.tfmodel.generative.components.theta.thermo.io import (
+        ddG_to_kT_factor,
+        normalize_thermo_options,
+        required_struct_names,
+    )
+
+    struct_names = required_struct_names(theta_component)
+    if struct_names is None:
+        raise ValueError(
+            f"ddG_truth_sd applies only to the structural thermo components "
+            f"(thermo.*.PddG, thermo.*.PnnC); theta_component is "
+            f"'{theta_component}'.")
+
+    def _sd(value, label):
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"ddG_truth_sd{label} must be a number; got "
+                             f"{value!r}.")
+        value = float(value)
+        if not np.isfinite(value) or value < 0:
+            raise ValueError(f"ddG_truth_sd{label} must be finite and >= 0; "
+                             f"got {value}.")
+        return value
+
+    if isinstance(ddG_truth_sd, dict):
+        given = {str(k): v for k, v in ddG_truth_sd.items()}
+        unknown = sorted(set(given) - set(struct_names))
+        missing = [s for s in struct_names if s not in given]
+        if unknown or missing:
+            raise ValueError(
+                f"ddG_truth_sd mapping must name every structure of "
+                f"'{theta_component}' ({list(struct_names)}); "
+                + (f"unknown {unknown}" if unknown else "")
+                + ("; " if unknown and missing else "")
+                + (f"missing {missing}" if missing else "") + ".")
+        sd = np.array([_sd(given[s], f"[{s}]") for s in struct_names])
+    else:
+        sd = np.full(len(struct_names), _sd(ddG_truth_sd, ""))
+
+    opts = normalize_thermo_options(thermo_options)
+    factor = ddG_to_kT_factor(opts["ddG_units"], opts["temperature_K"])
+    return {"theta_ddG_sigma_s": sd * factor}
 
 
 def _greedy_maximin(theta_gc, n_select):

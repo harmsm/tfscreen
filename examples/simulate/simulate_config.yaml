@@ -79,6 +79,17 @@ theta_component: "thermo.O2_C12_K5_U0_a.PK"
 #   .csv         → per-mutation per-structure ddG prior means (PddG)
 # thermo_data: null
 
+# Optional: how to read thermo_data (see docs/source/model-inputs.rst).
+# thermo_options:
+#   ddG_units: kcal/mol      # kT (default), kcal/mol or kJ/mol
+#   residue_offset: 0
+
+# Optional (PddG/PnnC only): SD of the simulated per-structure ddG truth around
+# the thermo_data values, in ddG_units. A number for every structure, or
+# {structure: sd} naming each one. 0 makes the truth the table exactly.
+# Omit for the model's init value, 1 kT per structure (as in earlier runs).
+# ddG_truth_sd: 0.5
+
 # Optional: overrides for the theta component's default model hyperparameters.
 # Any key returned by the component's get_hyperparameters() can be overridden.
 # Used by thermodynamic/hierarchical components; ignored when theta_component

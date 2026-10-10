@@ -568,6 +568,7 @@ def thermo_to_growth(
     dk_geno_override: Optional[dict] = None,
     return_mutation_truth: bool = False,
     binding_titrant_conc: Optional[Iterable[float]] = None,
+    theta_model_params_override: Optional[dict] = None,
 ) -> tuple:
     """
     Generate phenotypes from genotypes via prior-predictive theta sampling.
@@ -678,6 +679,11 @@ def thermo_to_growth(
         ``_theta_at_concs``) as the last value.  Binding concentrations need
         not match the growth concentrations: theta is evaluated from the
         drawn parameters, not looked up.
+    theta_model_params_override : dict or None
+        Init values for model-side ``pyro.param`` sites in the
+        prior-predictive draw (``sample_theta_prior``'s
+        ``model_params_overrides``), e.g. ``theta_ddG_sigma_s`` from
+        ``sample_theta.ddG_truth_sigma_s``.
 
     Returns
     -------
@@ -747,6 +753,7 @@ def thermo_to_growth(
             priors_overrides=theta_priors_overrides,
             sim_priors_overrides=theta_sim_priors_overrides,
             return_deterministic=True,
+            model_params_overrides=theta_model_params_override,
         )
     else:
         theta_gc, theta_param = sample_theta_prior(
@@ -755,6 +762,7 @@ def thermo_to_growth(
             rng_key=theta_rng_key,
             priors_overrides=theta_priors_overrides,
             sim_priors_overrides=theta_sim_priors_overrides,
+            model_params_overrides=theta_model_params_override,
         )
 
     print("Done.", flush=True)

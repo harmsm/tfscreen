@@ -8,7 +8,11 @@ from tfscreen.simulate import (
     thermo_to_growth,
 )
 from tfscreen.simulate.sim_data_class import build_sim_data
-from tfscreen.simulate.sample_theta import sample_theta_stratified, sample_theta_prior
+from tfscreen.simulate.sample_theta import (
+    ddG_truth_sigma_s,
+    sample_theta_prior,
+    sample_theta_stratified,
+)
 from tfscreen.simulate.binding_params import (
     SUPPORTED_COMPONENTS as _BINDING_PARAMS_SUPPORTED,
     read_binding_genotype_params,
@@ -382,6 +386,18 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
 
     binding_cfg = cf.get('binding_data')
     phenotype_source = cf.get('phenotype_source', 'prior')
+
+    # ddG_truth_sd: SD of the simulated per-structure ΔΔG around the table
+    # (PddG/PnnC), set as the draw's sigma_s; checked before any sampling.
+    ddG_truth_sd = cf.get('ddG_truth_sd')
+    theta_model_params_override = None
+    if ddG_truth_sd is not None:
+        if phenotype_source == 'empirical':
+            raise ValueError("ddG_truth_sd does not apply with "
+                             "phenotype_source: empirical.")
+        theta_model_params_override = ddG_truth_sigma_s(
+            ddG_truth_sd, cf.get('theta_component'), cf.get('thermo_options'))
+
     theta_gc_override = {}
     theta_params_override = {}
     dk_geno_override = None
@@ -511,6 +527,7 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
         theta_params_override=theta_params_override or None,
         dk_geno_override=dk_geno_override,
         return_mutation_truth=return_mutation_truth,
+        theta_model_params_override=theta_model_params_override,
         **({"binding_titrant_conc": binding_cfg['titrant_conc']}
            if need_binding_theta else {}),
     )

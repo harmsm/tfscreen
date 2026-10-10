@@ -56,7 +56,8 @@ SIMULATE_KNOWN_KEYS = frozenset({
     "reading_frame", "first_amplicon_residue", "wt_seq", "degen_sites",
     "tiles", "tile_combos", "spiked_seqs", "expected_5p", "expected_3p",
     # Phenotype / theta calculation
-    "theta_component", "thermo_data", "thermo_options", "theta_priors",
+    "theta_component", "thermo_data", "thermo_options", "ddG_truth_sd",
+    "theta_priors",
     "theta_rescale",
     "theta_sim_priors",
     # Empirical phenotype source (resample from a fitted PopulationModel)

@@ -366,6 +366,13 @@ The five ``--thermo_*`` flags are stored in the configuration as
 ``components.thermo_options``. A configuration without it reads the file as
 before: kT, file numbering, model column names.
 
+A fit uses the CSV values as the prior means of each mutation's ΔΔG and
+learns one SD per structure, starting at 1 kT, for how far the ΔΔG may
+stray from them. To test whether the structural prior helps, simulate with
+the simulate-config key ``ddG_truth_sd`` (see :doc:`simulation`), which
+sets how far the simulated truth sits from the same CSV, and fit with the
+unchanged CSV. The fit's starting SD does not depend on it.
+
 Prior inputs
 ------------
 

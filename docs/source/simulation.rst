@@ -49,6 +49,27 @@ An optional ``thermo_options`` block says how to read it: ``ddG_units``
 same meaning as the ``--thermo_*`` flags of ``tfs-configure-model`` (see
 :doc:`model-inputs`). Without it the CSV is read as kT, so the simulated
 truth is unchanged.
+
+The ``PddG`` and ``PnnC`` models draw each mutation's ΔΔG in each structure
+as the structural value plus Normal noise, and in a simulation that draw is
+the ground truth. ``ddG_truth_sd`` sets the SD of that noise, so it is the
+dial for how far the truth sits from the structural prior. It is in the
+unit of ``thermo_options`` ``ddG_units`` and converted once at load, like
+the CSV: with ``ddG_units: kcal/mol``, ``ddG_truth_sd: 0.5`` means
+0.5 kcal/mol. Give one number for every structure or a mapping that names
+each structure of the model, such as ``{H: 0.5, HO: 0.5, L: 1.0, LO: 1.0,
+HE2: 0.5, LE2: 0.5}``. With 0 the truth is the CSV exactly. Without the key
+the SD is the model's starting value, 1 kT in every structure, as in
+earlier runs, so a seeded simulation reproduces its old output. The noise
+is independent across mutations and structures. The setting changes only
+the simulated draw. A fit of the result still centers the prior on the
+unperturbed CSV, which its ``ddG_prior_mean_{structure}`` tables report,
+and still starts its learned SD at 1 kT. For ``PnnC`` the structural value
+in a simulation is the untrained network's output, 0. Other theta
+components refuse the key, as does ``phenotype_source: empirical``. In a
+``tfs-setup-sim-grid`` grid it is an ordinary top-level variable, and a
+mapping is given whole as one variant.
+
 ``theta_sim_priors`` overrides the simulation priors of ``hill_geno`` and
 ``hill_mut`` (wild-type curve, perturbation widths, epistasis scale), and
 ``theta_priors`` overrides the hyperparameters of the other components. The
