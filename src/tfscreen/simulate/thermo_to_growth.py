@@ -304,7 +304,8 @@ def _site_columns(prefix, val, num_items):
     return {f"{prefix}_T{t}": val[t] for t in range(val.shape[0])}
 
 
-def _mutation_truth_tables(deterministic, genotypes, sim_data, name="theta"):
+def _mutation_truth_tables(deterministic, genotypes, sim_data, name="theta",
+                           struct_names=None):
     """
     Per-mutation and per-pair ground truth from a theta draw's trace.
 
@@ -330,6 +331,10 @@ def _mutation_truth_tables(deterministic, genotypes, sim_data, name="theta"):
         Supplies ``num_mutation``, ``num_pair`` and ``struct_names``.
     name : str, default "theta"
         Site-name prefix used when the component was sampled.
+    struct_names : sequence of str, optional
+        Order of the ΔΔG site's structure axis (the component's
+        ``STRUCTURE_NAMES``; the PddG/PnnC models reorder the data's columns
+        into it).  Falls back to ``sim_data.struct_names``.
 
     Returns
     -------
@@ -365,7 +370,8 @@ def _mutation_truth_tables(deterministic, genotypes, sim_data, name="theta"):
         elif site == f"{name}_ddG":
             val = np.asarray(val)
             if val.ndim == 2 and val.shape[0] == num_mut:
-                structs = getattr(sim_data, "struct_names", None)
+                structs = (struct_names if struct_names is not None
+                           else getattr(sim_data, "struct_names", None))
                 if structs is None or len(structs) != val.shape[1]:
                     structs = [str(i) for i in range(val.shape[1])]
                 for i, struct in enumerate(structs):
@@ -961,8 +967,12 @@ def thermo_to_growth(
 
     out = (phenotype_df, genotype_theta_df, parameters_df)
     if return_mutation_truth:
-        mutation_df, pair_df = _mutation_truth_tables(deterministic,
-                                                      all_genotypes, sim_data)
+        from tfscreen.tfmodel.generative.components.theta.thermo.io import (
+            required_struct_names,
+        )
+        mutation_df, pair_df = _mutation_truth_tables(
+            deterministic, all_genotypes, sim_data,
+            struct_names=required_struct_names(theta_component))
         out += ({"mutation": mutation_df, "pair": pair_df},)
     if binding_titrant_conc is not None:
         out += (_theta_at_concs(theta_component, theta_param, sim_data,

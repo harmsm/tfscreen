@@ -666,3 +666,23 @@ class TestCheckComponentCompatibility:
                 condition_growth_model="power",
                 theta_rescale_model="logit",
             )
+
+
+def test_configure_model_forwards_thermo_options(mock_orchestrator, tmpdir):
+    """The thermo_* arguments reach the orchestrator as one thermo_options
+    dict; leaving them all out passes None (the old behaviour)."""
+    mock_orchestrator_class, _ = mock_orchestrator
+    out_prefix = os.path.join(tmpdir, "test")
+
+    configure_model("b.csv", growth_df="g.csv", library_config="lib.yaml",
+                    out_prefix=out_prefix, skip_model_stats=True)
+    assert mock_orchestrator_class.call_args.kwargs["thermo_options"] is None
+
+    configure_model("b.csv", growth_df="g.csv", library_config="lib.yaml",
+                    thermo_ddG_units="kcal/mol", thermo_temperature_K=310.0,
+                    thermo_column_map="HD=HO", thermo_residue_offset=1,
+                    thermo_max_missing_fraction=0.2,
+                    out_prefix=out_prefix, skip_model_stats=True)
+    assert mock_orchestrator_class.call_args.kwargs["thermo_options"] == {
+        "ddG_units": "kcal/mol", "temperature_K": 310.0, "column_map": "HD=HO",
+        "residue_offset": 1, "max_missing_fraction": 0.2}

@@ -33,17 +33,25 @@ Projection from per-structure ΔΔG to Δln_K is identical to lnK_nn_prior
 Data requirements
 -----------------
 ``data`` must have (stored as ``pytree_node=False`` statics):
-    struct_names            — tuple containing exactly {'H', 'HO', 'L', 'LO', 'HE2', 'LE2'}
+    struct_names            — tuple containing at least {'H', 'HO', 'L', 'LO', 'HE2', 'LE2'} (extras ignored)
     struct_features         — (M, S) float32  per-mutation per-structure ΔΔG prior means
     mut_geno_matrix         — (M, G) for mutation → genotype scatter
     num_mutation            — M
-    num_struct              — S (must equal 6)
+    num_struct              — S (at least 6)
 
 Input CSV format (passed via ``thermo_data``)
 ------------------------------------------------------
-A CSV with columns ``mut`` (mutation label) and one column per structure
-(``H``, ``HO``, ``L``, ``LO``, ``HE2``, ``LE2`` in any order).  Mutations
-absent from the CSV receive a prior mean of 0.0 (no structural prediction).
+A CSV with a mutation column (``mut``, ``Mutation`` or ``mutation``) and one
+column per structure (``H``, ``HO``, ``L``, ``LO``, ``HE2``, ``LE2``, any order; other columns are
+ignored, and ``thermo_options`` ``column_map`` can name the column for a
+structure).  ΔΔG_X is the shift a mutation makes to state X's free energy,
+so positive destabilises X, and Δln K_{A→B} = ΔΔG_A − ΔΔG_B.  The model
+needs kT; ``thermo_options`` ``ddG_units: kcal/mol`` (or ``kJ/mol``, with
+``temperature_K``) converts at load, and the default ``kT`` uses the values
+as-is.  The loader (``thermo.io.load_ddG_prior_csv``) reports coverage, errors
+on zero coverage or a wt-residue mismatch (numbering offset; see
+``residue_offset``), and gives absent mutations a prior mean of 0.0 with a
+warning when more than ``max_missing_fraction`` are absent.
 """
 
 import jax.numpy as jnp
@@ -128,14 +136,16 @@ class ModelPriors:
 
 def _get_struct_perm(data):
     """
-    Verify struct_names contains exactly the required structures and return a
-    permutation index mapping data's S ordering to STRUCTURE_NAMES order.
+    Verify struct_names contains every required structure (extras are
+    ignored) and return the index of each STRUCTURE_NAMES entry in it.
     """
-    data_names = data.struct_names
-    if set(data_names) != set(STRUCTURE_NAMES):
+    data_names = tuple(data.struct_names or ())
+    missing = [s for s in STRUCTURE_NAMES if s not in data_names]
+    if missing:
         raise ValueError(
-            f"lnK_ddG_prior (mwc_dimer) requires struct_names to contain exactly "
-            f"{set(STRUCTURE_NAMES)}; got {data_names}."
+            f"lnK_ddG_prior (mwc_dimer) needs structures {STRUCTURE_NAMES}; "
+            f"struct_names {data_names} lacks {missing}. Extra "
+            f"structures are ignored."
         )
     name_to_idx = {n: i for i, n in enumerate(data_names)}
     return [name_to_idx[s] for s in STRUCTURE_NAMES]
@@ -336,7 +346,7 @@ def guide(name: str,
                           mut_nnz_geno_idx=jnp.array(data.mut_nnz_geno_idx),
                           num_genotype=data.num_genotype)
     num_mut  = data.num_mutation
-    S        = data.num_struct
+    S        = len(STRUCTURE_NAMES)
     has_epi  = data.num_pair > 0
     ddG_prior_means = jnp.array(data.struct_features)[:, perm_idx]   # (M, S)
 
@@ -497,7 +507,7 @@ def get_hyperparameters() -> Dict[str, Any]:
 def get_guesses(name: str, data: Union[GrowthData, BindingData]) -> Dict[str, Any]:
     T = data.num_titrant_name
     M = data.num_mutation
-    S = data.num_struct
+    S = len(STRUCTURE_NAMES)
     g = {}
     g[f"{name}_ln_K_h_l_wt"]  = jnp.array(1.84)
     g[f"{name}_ln_K_h_o_wt"]  = jnp.array(19.9)

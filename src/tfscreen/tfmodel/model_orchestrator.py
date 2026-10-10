@@ -1076,6 +1076,7 @@ class ModelOrchestrator:
                  growth_shares_replicates=False,
                  epistasis=False,
                  thermo_data=None,
+                 thermo_options=None,
                  binding_weight=None,
                  presplit_df=None,
                  base_growth_df=None,
@@ -1116,6 +1117,15 @@ class ModelOrchestrator:
         self._growth_shares_replicates = growth_shares_replicates
         self._epistasis = epistasis
         self._thermo_data = thermo_data
+        # Validated up front so a bad option fails at configure time.  Stored
+        # as given (None stays None) so old configs round-trip unchanged.
+        if thermo_options is not None:
+            from tfscreen.tfmodel.generative.components.theta.thermo.io import (
+                normalize_thermo_options,
+            )
+            normalize_thermo_options(thermo_options)
+            thermo_options = dict(thermo_options)
+        self._thermo_options = thermo_options
         self._binding_weight = binding_weight
         self._congression_sets = _check_congression_sets(congression_sets)
         self._congression_seed = int(congression_seed)
@@ -1500,21 +1510,18 @@ class ModelOrchestrator:
                 else:
                     raise ValueError(
                         f"theta='{self._theta}' requires --thermo_data "
-                        f"(path to a CSV with columns 'mut' and one per structure)."
+                        f"(path to a CSV with a 'mut' column and one per structure)."
                     )
             from tfscreen.tfmodel.generative.components.theta.thermo.io import (
-                load_struct_ensemble,
-                load_ddG_prior_csv,
+                load_thermo_data,
             )
-            if self._theta in _ddG_prior_models:
-                _struct_data = load_ddG_prior_csv(
-                    self._thermo_data, mut_labels
-                )
-            else:
-                _pair_labels_for_struct = self.pair_labels if self._epistasis else None
-                _struct_data = load_struct_ensemble(
-                    self._thermo_data, mut_labels, _pair_labels_for_struct
-                )
+            _pair_labels_for_struct = self.pair_labels if self._epistasis else None
+            _struct_data = load_thermo_data(
+                self._thermo_data, mut_labels,
+                pair_labels=_pair_labels_for_struct,
+                theta_name=self._theta,
+                thermo_options=self._thermo_options,
+            )
             _struct_names_tuple = _struct_data["struct_names"]   # tuple; set via .replace()
             growth_data_sources.append({
                 "num_struct":               len(_struct_names_tuple),
@@ -1795,21 +1802,18 @@ class ModelOrchestrator:
                 else:
                     raise ValueError(
                         f"theta='{self._theta}' requires --thermo_data "
-                        f"(path to a CSV with columns 'mut' and one per structure)."
+                        f"(path to a CSV with a 'mut' column and one per structure)."
                     )
             from tfscreen.tfmodel.generative.components.theta.thermo.io import (
-                load_struct_ensemble,
-                load_ddG_prior_csv,
+                load_thermo_data,
             )
-            if self._theta in _ddG_prior_models:
-                _struct_data = load_ddG_prior_csv(
-                    self._thermo_data, self.mut_labels
-                )
-            else:
-                _pair_labels_for_struct = self.pair_labels if self._epistasis else None
-                _struct_data = load_struct_ensemble(
-                    self._thermo_data, self.mut_labels, _pair_labels_for_struct
-                )
+            _pair_labels_for_struct = self.pair_labels if self._epistasis else None
+            _struct_data = load_thermo_data(
+                self._thermo_data, self.mut_labels,
+                pair_labels=_pair_labels_for_struct,
+                theta_name=self._theta,
+                thermo_options=self._thermo_options,
+            )
             _struct_names_tuple = _struct_data["struct_names"]
             binding_data_sources.append({
                 "num_struct":               len(_struct_names_tuple),
@@ -2393,6 +2397,7 @@ class ModelOrchestrator:
             "growth_shares_replicates": self._growth_shares_replicates,
             "epistasis": self._epistasis,
             "thermo_data": self._thermo_data,
+            "thermo_options": getattr(self, "_thermo_options", None),
             "binding_weight": self._binding_weight,
             "presplit_df": getattr(self, "_presplit_df", None),
             "base_growth_df": getattr(self, "_base_growth_df", None),

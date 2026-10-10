@@ -247,6 +247,11 @@ def configure_model(binding_df=None,
                     growth_shares_replicates=False,
                     epistasis=False,
                     thermo_data=None,
+                    thermo_ddG_units=None,
+                    thermo_temperature_K=None,
+                    thermo_column_map=None,
+                    thermo_residue_offset=None,
+                    thermo_max_missing_fraction=None,
                     batch_size=1024,
                     binding_weight=None,
                     set_priors=None,
@@ -432,7 +437,28 @@ def configure_model(binding_df=None,
         structure containing pre-computed ΔΔG prior means; the required
         structure columns depend on the topology -- ``O2_C4_*`` models use
         (``H``, ``HD``, ``L``, ``LE2``) while ``O2_C12_*`` models use
-        (``H``, ``HO``, ``L``, ``LO``, ``HE2``, ``LE2``).
+        (``H``, ``HO``, ``L``, ``LO``, ``HE2``, ``LE2``).  ``Mutation`` or
+        ``mutation`` may name the mutation column, an unnamed index column
+        is dropped and other columns are ignored.  ΔΔG_X shifts state X's
+        free energy (positive destabilises X).  The loader prints how many
+        library mutations the file covers and fails on zero coverage or on
+        wt residues that disagree with the library.
+    thermo_ddG_units : str, optional
+        Unit of the PddG CSV's ΔΔG values: ``kT`` (default; used as-is),
+        ``kcal/mol`` or ``kJ/mol`` (divided by RT at load).
+    thermo_temperature_K : float, optional
+        Temperature for that conversion. Default 298.15.
+    thermo_column_map : str, optional
+        ``model_name=csv_column`` pairs, comma-separated (e.g. ``HD=HO``),
+        naming the CSV column that supplies a model structure.
+    thermo_residue_offset : int, optional
+        Added to the file's residue numbers (CSV labels or HDF5
+        ``residue_nums``) to give the library numbering, e.g. 1 for a
+        0-based file. Default 0.
+    thermo_max_missing_fraction : float, optional
+        Warn when more than this fraction of library mutations has no ΔΔG
+        in the CSV. Default 0.1.
+        These five are stored in the config as ``components.thermo_options``.
     batch_size : int, optional
         Mini-batch size for SVI. Defaults to 1024. Set to None to use the full
         dataset as a single batch.
@@ -551,6 +577,16 @@ def configure_model(binding_df=None,
             "library_mixture": read_yaml(library_config)["library_mixture"],
         }
 
+    # Structural-input loader options; None keeps the old behaviour and
+    # leaves the written config's thermo_options null.
+    thermo_options = {k: v for k, v in (
+        ("ddG_units", thermo_ddG_units),
+        ("temperature_K", thermo_temperature_K),
+        ("column_map", thermo_column_map),
+        ("residue_offset", thermo_residue_offset),
+        ("max_missing_fraction", thermo_max_missing_fraction),
+    ) if v is not None} or None
+
     # Initialize model to build mappings and get guesses
     orchestrator = ModelOrchestrator(growth_df,
                      binding_df,
@@ -579,6 +615,7 @@ def configure_model(binding_df=None,
                      growth_shares_replicates=growth_shares_replicates,
                      epistasis=epistasis,
                      thermo_data=thermo_data,
+                     thermo_options=thermo_options,
                      batch_size=batch_size,
                      binding_weight=binding_weight)
 
@@ -621,6 +658,11 @@ def main():
                                               "base_growth_df":str,
                                               "library_config":str,
                                               "thermo_data":str,
+                                              "thermo_ddG_units":str,
+                                              "thermo_temperature_K":float,
+                                              "thermo_column_map":str,
+                                              "thermo_residue_offset":int,
+                                              "thermo_max_missing_fraction":float,
                                               "batch_size":int,
                                               "binding_weight":float,
                                               "set_priors":str,

@@ -259,7 +259,8 @@ def test_stratified_output_shapes():
     binding_sample_df = pd.DataFrame({"titrant_conc": np.linspace(0, 1, n_binding_concs)})
     growth_sample_df  = pd.DataFrame({"titrant_conc": np.linspace(0, 1, n_growth_concs)})
 
-    def build_sim_data_side(library_df, sample_df, thermo_data=None, skip_pairs=False):
+    def build_sim_data_side(library_df, sample_df, thermo_data=None, skip_pairs=False,
+                            theta_component=None, thermo_options=None):
         n_conc = len(sample_df["titrant_conc"].unique())
         return _make_stratified_sim_data(n_conc)
 
@@ -296,7 +297,8 @@ def test_stratified_pool_size_calls():
     binding_sample_df = pd.DataFrame({"titrant_conc": np.linspace(0, 1, n_binding_concs)})
     growth_sample_df  = pd.DataFrame({"titrant_conc": [0.0, 1.0]})
 
-    def build_sim_data_side(library_df, sample_df, thermo_data=None, skip_pairs=False):
+    def build_sim_data_side(library_df, sample_df, thermo_data=None, skip_pairs=False,
+                            theta_component=None, thermo_options=None):
         return _make_stratified_sim_data(len(sample_df["titrant_conc"].unique()))
 
     with patch("tfscreen.simulate.sample_theta.model_registry",
@@ -337,7 +339,8 @@ def test_stratified_ignores_simulate_path():
     binding_sample_df = pd.DataFrame({"titrant_conc": np.linspace(0, 1, n_binding_concs)})
     growth_sample_df  = pd.DataFrame({"titrant_conc": [0.0, 1.0]})
 
-    def build_sim_data_side(library_df, sample_df, thermo_data=None, skip_pairs=False):
+    def build_sim_data_side(library_df, sample_df, thermo_data=None, skip_pairs=False,
+                            theta_component=None, thermo_options=None):
         return _make_stratified_sim_data(len(sample_df["titrant_conc"].unique()))
 
     with patch("tfscreen.simulate.sample_theta.model_registry",

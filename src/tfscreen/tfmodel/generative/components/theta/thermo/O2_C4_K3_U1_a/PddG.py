@@ -25,6 +25,20 @@ A mutation that raises every folded state by the same ΔΔG leaves K_op, K_HL
 and K_E unchanged and raises K_U by ΔΔG: a pure stability effect.  The
 per-mutation shift is exposed as ``d_ln_K_U`` (and ``epi_ln_K_U`` per pair),
 the same name the PK model uses for its free per-mutation unfolding shift.
+
+Input CSV format (passed via ``thermo_data``)
+------------------------------------------------------
+A CSV with a mutation column (``mut``, ``Mutation`` or ``mutation``) and one
+column per structure (``H``, ``HD``, ``L``, ``LE2``, any order; other columns are
+ignored, and ``thermo_options`` ``column_map`` can name the column for a
+structure).  ΔΔG_X is the shift a mutation makes to state X's free energy,
+so positive destabilises X, and Δln K_{A→B} = ΔΔG_A − ΔΔG_B.  The model
+needs kT; ``thermo_options`` ``ddG_units: kcal/mol`` (or ``kJ/mol``, with
+``temperature_K``) converts at load, and the default ``kT`` uses the values
+as-is.  The loader (``thermo.io.load_ddG_prior_csv``) reports coverage, errors
+on zero coverage or a wt-residue mismatch (numbering offset; see
+``residue_offset``), and gives absent mutations a prior mean of 0.0 with a
+warning when more than ``max_missing_fraction`` are absent.
 """
 
 import jax.numpy as jnp
@@ -102,11 +116,13 @@ class ModelPriors:
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _get_struct_perm(data):
-    data_names = data.struct_names
-    if set(data_names) != set(STRUCTURE_NAMES):
+    data_names = tuple(data.struct_names or ())
+    missing = [s for s in STRUCTURE_NAMES if s not in data_names]
+    if missing:
         raise ValueError(
-            f"lnK_ddG_prior (lac_dimer_unfolded) requires struct_names to contain exactly "
-            f"{set(STRUCTURE_NAMES)}; got {data_names}."
+            f"lnK_ddG_prior (lac_dimer_unfolded) needs structures {STRUCTURE_NAMES}; "
+            f"struct_names {data_names} lacks {missing}. Extra "
+            f"structures are ignored."
         )
     name_to_idx = {n: i for i, n in enumerate(data_names)}
     return [name_to_idx[s] for s in STRUCTURE_NAMES]
@@ -263,7 +279,7 @@ def guide(name: str,
                           mut_nnz_geno_idx=jnp.array(data.mut_nnz_geno_idx),
                           num_genotype=data.num_genotype)
     num_mut = data.num_mutation
-    S       = data.num_struct
+    S       = len(STRUCTURE_NAMES)
     ddG_prior_means = jnp.array(data.struct_features)[:, perm_idx]
 
     tf_total = priors.theta_tf_total_M
@@ -405,7 +421,7 @@ def get_hyperparameters() -> Dict[str, Any]:
 def get_guesses(name: str, data: Union[GrowthData, BindingData]) -> Dict[str, Any]:
     T = data.num_titrant_name
     M = data.num_mutation
-    S = data.num_struct
+    S = len(STRUCTURE_NAMES)
     g = {}
     g[f"{name}_ln_K_op_wt"]  = jnp.array(23.0)
     g[f"{name}_ln_K_HL_wt"]  = jnp.array(-9.0)

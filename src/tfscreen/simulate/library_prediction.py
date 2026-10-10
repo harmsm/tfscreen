@@ -224,6 +224,8 @@ def _spiked_stratified_binding(binding_genotypes, cf, sample_df, binding_sample_
         single_wt_df = pd.DataFrame({"genotype": ["wt"]})
         binding_wt_sim = build_sim_data(single_wt_df, binding_sample_df,
                                         thermo_data=cf.get('thermo_data'),
+                                        thermo_options=cf.get('thermo_options'),
+                                        theta_component=cf['theta_component'],
                                         skip_pairs=True)
         wt_binding_gc, _ = sample_theta_prior(
             cf['theta_component'], binding_wt_sim, theta_rng_key,
@@ -238,6 +240,7 @@ def _spiked_stratified_binding(binding_genotypes, cf, sample_df, binding_sample_
             rng_key=theta_rng_key,
             n_select=len(non_wt),
             thermo_data=cf.get('thermo_data'),
+            thermo_options=cf.get('thermo_options'),
             pool_size=cf.get('binding_stratify_pool_size', 500),
             priors_overrides=cf.get('theta_priors'),
             sim_priors_overrides=cf.get('theta_sim_priors'),
@@ -349,6 +352,8 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
         library_df=library_df,
         sample_df=sample_df,
         thermo_data=cf.get('thermo_data'),
+        thermo_options=cf.get('thermo_options'),
+        theta_component=cf.get('theta_component'),
     )
 
     # Derive both RNG objects from the single seed.  They are independent

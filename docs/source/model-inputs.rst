@@ -44,6 +44,12 @@ growth-only model; with binding only, a binding-only model.
    * - ``--thermo_data``
      - Thermodynamic *θ* models
      - Structural features of each mutation
+   * - ``--thermo_ddG_units``, ``--thermo_temperature_K``,
+       ``--thermo_column_map``, ``--thermo_residue_offset``,
+       ``--thermo_max_missing_fraction``
+     - Optional
+     - How ``--thermo_data`` is read: ΔΔG units, column names, residue
+       numbering, coverage warning
    * - ``--set_priors``, ``--growth_priors``, ``--growth_priors_wt_rates``
      - Optional
      - Prior values, without editing the priors CSV
@@ -280,11 +286,51 @@ written to the configuration. Other theta models refuse the flag.
 Structural data
 ---------------
 
-``--thermo_data`` is required by the thermodynamic partition-function theta
-models and ignored by the others. For ``PnnC`` models it is the HDF5 file
-written by ``scripts/generate_struct_ensemble.py``; see
-:doc:`ligandmpnn-features`. For ``PddG`` models it is a CSV with a ``mut``
-column and one column of prior mean ΔΔG per structure.
+``--thermo_data`` is required by the ``PddG`` and ``PnnC`` thermodynamic
+theta models and ignored by the others. For ``PnnC`` models it is the HDF5
+file written by ``scripts/generate_struct_ensemble.py``; see
+:doc:`ligandmpnn-features`. For ``PddG`` models it is a CSV with a mutation
+column and one column of prior mean ΔΔG per structure: ``H``, ``HD``, ``L``
+and ``LE2`` for the ``O2_C4`` models, and ``H``, ``HO``, ``L``, ``LO``,
+``HE2`` and ``LE2`` for the ``O2_C12`` models.
+
+The mutation column may be called ``mut``, ``Mutation`` or ``mutation``, with
+labels like ``H29A``. An unnamed pandas index column is dropped. Columns the
+model does not use are ignored, and the loader prints their names. A missing
+structure column is an error that lists the columns found.
+``--thermo_column_map HD=HO`` reads a model structure from a column with
+another name. Rows that are not single mutations are skipped.
+
+**Units and sign.** ΔΔG\ :sub:`X` is the change a mutation makes to the free
+energy of state X, so a positive value destabilizes X. For an equilibrium
+constant K\ :sub:`A→B` = [B]/[A] the models use
+Δln K\ :sub:`A→B` = ΔΔG\ :sub:`A` − ΔΔG\ :sub:`B`, which needs ΔΔG in units of
+kT. By default the CSV values are used as they are, in kT.
+``--thermo_ddG_units kcal/mol`` (or ``kJ/mol``) divides them by RT once at
+load, at ``--thermo_temperature_K`` (default 298.15 K). At 298 K one kcal/mol
+is 1.69 kT, so kcal/mol values read as kT understate every effect by that
+factor. A predictor that reports folding ΔG, where negative means more
+stable, must be sign-flipped first.
+
+**Numbering and coverage.** The loader matches CSV labels to the library's
+mutations and prints how many it covers. It stops with an error when the
+CSV covers none of them, or when the CSV's wild-type residue at a library
+position differs from the library's. Both usually mean the two number
+residues differently. The error suggests the offset that lines them up, and
+``--thermo_residue_offset N`` adds N to every CSV residue number, for
+example 1 for a 0-based file. A library mutation absent from the CSV gets a
+prior mean of 0, no structural prediction. When more than
+``--thermo_max_missing_fraction`` of them (default 0.1) are absent, a
+warning lists them.
+
+The ``PnnC`` HDF5 path applies the same residue offset. Every library
+residue must be present in every structure, since there is no neutral
+feature value for a missing one. When the file stores ``wt_aa``, the wt
+residues are checked against the library too.
+
+The five ``--thermo_*`` flags are stored in the configuration as
+``components.thermo_options``. A configuration without it reads the file as
+before: kT, file numbering, model column names.
 
 Prior inputs
 ------------

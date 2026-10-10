@@ -194,6 +194,7 @@ def sample_theta_stratified(component_name,
                              n_select,
                              thermo_data=None,
                              pool_size=500,
+                             thermo_options=None,
                              priors_overrides=None,
                              sim_priors_overrides=None,
                              select_mode="stratified"):
@@ -225,6 +226,8 @@ def sample_theta_stratified(component_name,
     n_select : int
         Number of genotypes to select (= number of calibration binding genotypes).
     thermo_data : str or None
+        Forwarded to build_sim_data.
+    thermo_options : dict or None
         Forwarded to build_sim_data.
     pool_size : int, default 500
         Number of candidate parameter sets to draw before selection.
@@ -262,9 +265,13 @@ def sample_theta_stratified(component_name,
     # regime regardless of pool_size.
     single_library_df = pd.DataFrame({"genotype": ["wt"]})
     binding_sim_data = build_sim_data(single_library_df, binding_sample_df,
-                                      thermo_data=thermo_data, skip_pairs=True)
+                                      thermo_data=thermo_data, skip_pairs=True,
+                                     theta_component=component_name,
+                                     thermo_options=thermo_options)
     growth_sim_data = build_sim_data(single_library_df, growth_sample_df,
-                                     thermo_data=thermo_data, skip_pairs=True)
+                                     thermo_data=thermo_data, skip_pairs=True,
+                                     theta_component=component_name,
+                                     thermo_options=thermo_options)
 
     # Always use the prior-predictive path for pool building.  The perturbation
     # path (simulate()) requires mutations to generate diversity; with a wt-only

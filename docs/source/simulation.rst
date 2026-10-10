@@ -43,6 +43,12 @@ when the library has double mutants, adds sparse pairwise epistasis from a
 regularized horseshoe. The ``thermo.*`` keys are thermodynamic
 partition-function models; ``PnnC`` and ``PddG`` variants also need
 ``thermo_data``, the structural ensemble (HDF5) or the per-mutation ΔΔG CSV.
+An optional ``thermo_options`` block says how to read it: ``ddG_units``
+(``kT``, the default, ``kcal/mol`` or ``kJ/mol``), ``temperature_K``,
+``column_map``, ``residue_offset`` and ``max_missing_fraction``, with the
+same meaning as the ``--thermo_*`` flags of ``tfs-configure-model`` (see
+:doc:`model-inputs`). Without it the CSV is read as kT, so the simulated
+truth is unchanged.
 ``theta_sim_priors`` overrides the simulation priors of ``hill_geno`` and
 ``hill_mut`` (wild-type curve, perturbation widths, epistasis scale), and
 ``theta_priors`` overrides the hyperparameters of the other components. The

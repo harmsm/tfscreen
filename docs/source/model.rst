@@ -489,7 +489,9 @@ order. The implemented models are:
        effects.
    * - ``PddG``
      - Priors centered on supplied ΔΔG estimates, a CSV given with
-       ``--thermo_data`` with one column per structure.
+       ``--thermo_data`` with one column per structure. Values are in kT
+       unless ``--thermo_ddG_units`` says otherwise; positive ΔΔG
+       destabilizes that structure. See :doc:`model-inputs`.
    * - ``PnnC``
      - A neural network that predicts per-conformation ΔΔG from structural
        features, an HDF5 file given with ``--thermo_data``. See

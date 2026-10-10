@@ -162,6 +162,13 @@ For each structure name ``{name}`` the file contains a group with:
 ``{name}/n_chains_bearing_mut``
     ``int32`` scalar: the ``n_chains_bearing_mut`` value from the input YAML.
 
+``{name}/wt_aa``
+    ``str`` (L,): the one-letter wild-type residue at each residue number,
+    read from the PDB (``X`` when unknown). Optional; files written before
+    it existed still load. When present, the loader checks it against the
+    library's wild-type residues and stops on a mismatch, which usually
+    means the PDB and the library number residues differently.
+
 Using the HDF5 File in a Run Config
 ------------------------------------
 
@@ -182,3 +189,7 @@ at model-build time; you do not need to edit the config by hand. See
 registry keys and their structure-name requirements (``PddG`` models instead
 take a hand-supplied ΔΔG CSV via the same flag — see
 ``load_ddG_prior_csv``).
+
+Every library residue must be in every structure. If the PDB numbering is
+offset from the library's, ``--thermo_residue_offset N`` adds N to the file's
+residue numbers.

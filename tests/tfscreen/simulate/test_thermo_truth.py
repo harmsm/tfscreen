@@ -54,9 +54,11 @@ def _ddG_csv(path, component="O2_C4"):
     return str(path)
 
 
-def _draw(component, thermo_data=None, return_mutation_truth=True, seed=0):
+def _draw(component, thermo_data=None, return_mutation_truth=True, seed=0,
+          **sim_kwargs):
     lib = pd.DataFrame({"genotype": GENOTYPES})
-    sim_data = build_sim_data(lib, SAMPLE_DF, thermo_data=thermo_data)
+    sim_data = build_sim_data(lib, SAMPLE_DF, thermo_data=thermo_data,
+                              **sim_kwargs)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         return thermo_to_growth(lib["genotype"], sim_data, SAMPLE_DF, component,
@@ -258,3 +260,75 @@ def test_simulate_cli_writes_mutation_and_pair_truth(tmp_path):
     written = pd.read_csv(tmp_path / "tfs_sim_mutation_parameters.csv")
     pd.testing.assert_frame_equal(written, mut_df)
     assert not (tmp_path / "tfs_sim_pair_parameters.csv").exists()
+
+
+# ── ΔΔG units, column handling and the default being unchanged ──────────────
+
+# Truth of the seeded C4_U0 PddG draw below at commit 9f252025, before the
+# loader options existed: the default (kT, values as-is) must reproduce it.
+_C4_PDDG_TRUTH_BEFORE = pd.DataFrame({
+    "ddG_H":   [-0.261347, -0.399871, 0.819358],
+    "ddG_HD":  [-2.974988, -0.291039, 2.898206],
+    "ddG_L":   [0.500638, -1.941736, -1.234181],
+    "ddG_LE2": [-1.335636, -0.765674, -0.370668],
+    "d_ln_K_op": [2.713641, -0.108832, -2.078848],
+})
+
+
+def test_default_ddG_units_leave_the_draw_unchanged(tmp_path):
+    comp = "thermo.O2_C4_K3_U0_a.PddG"
+    td = _ddG_csv(tmp_path / "ddG.csv", comp)
+    base = _draw(comp, thermo_data=td)
+    for kwargs in ({"theta_component": comp},
+                   {"theta_component": comp,
+                    "thermo_options": {"ddG_units": "kT"}}):
+        other = _draw(comp, thermo_data=td, **kwargs)
+        for a, b in zip(base[:3], other[:3]):
+            pd.testing.assert_frame_equal(a, b)
+        pd.testing.assert_frame_equal(base[3]["mutation"], other[3]["mutation"])
+        pd.testing.assert_frame_equal(base[3]["pair"], other[3]["pair"])
+    mut = base[3]["mutation"]
+    for col in _C4_PDDG_TRUTH_BEFORE:
+        np.testing.assert_allclose(mut[col], _C4_PDDG_TRUTH_BEFORE[col],
+                                   atol=2e-6)
+
+
+def test_kcal_ddG_matches_kT_draw(tmp_path):
+    """The same energies given in kcal/mol, with ddG_units: kcal/mol, give
+    the kT draw."""
+    comp = "thermo.O2_C4_K3_U0_a.PddG"
+    td = _ddG_csv(tmp_path / "ddG.csv", comp)
+    RT = 1.987204259e-3 * 298.15
+    df = pd.read_csv(td)
+    df[_C4_STRUCTS] = df[_C4_STRUCTS] * RT
+    td_kcal = str(tmp_path / "ddG_kcal.csv")
+    df.to_csv(td_kcal, index=False)
+    ref = _draw(comp, thermo_data=td, theta_component=comp)[3]["mutation"]
+    got = _draw(comp, thermo_data=td_kcal, theta_component=comp,
+                thermo_options={"ddG_units": "kcal/mol"})[3]["mutation"]
+    pd.testing.assert_frame_equal(ref, got, atol=1e-5, rtol=0)
+    # Read as kT, the kcal file would shrink every ΔΔG by RT.
+    raw = _draw(comp, thermo_data=td_kcal, theta_component=comp)[3]["mutation"]
+    assert not np.allclose(raw["ddG_H"], ref["ddG_H"], atol=1e-3)
+
+
+def test_reordered_csv_with_extras_labels_ddG_truth(tmp_path):
+    """Extra columns, a 'Mutation' column and a pandas index are accepted, and
+    the ddG truth columns follow the model's structure order, not the file's."""
+    comp = "thermo.O2_C12_K5_U0_a.PddG"
+    td = _ddG_csv(tmp_path / "ddG.csv", comp)
+    df = pd.read_csv(td).rename(columns={"mut": "Mutation"})
+    df["unfolded"] = 0.0
+    df = df[["Mutation", "unfolded"] + list(reversed(_C12_STRUCTS))]
+    td2 = str(tmp_path / "ddG_messy.csv")
+    df.to_csv(td2)                               # writes 'Unnamed: 0'
+    ref = _draw(comp, thermo_data=td, theta_component=comp)[3]["mutation"]
+    got = _draw(comp, thermo_data=td2, theta_component=comp)[3]["mutation"]
+    pd.testing.assert_frame_equal(ref, got)
+    # Without the component the file order is kept; the truth labels still
+    # follow the model's order.
+    rev = str(tmp_path / "rev.csv")
+    pd.read_csv(td).to_csv(rev, index=False,
+                           columns=["mut"] + list(reversed(_C12_STRUCTS)))
+    got2 = _draw(comp, thermo_data=rev)[3]["mutation"]
+    pd.testing.assert_frame_equal(ref, got2)

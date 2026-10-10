@@ -63,6 +63,8 @@ def test_library_prediction_success(mocker, mock_config):
         library_df=mock_library_df,
         sample_df=mock_sample_df,
         thermo_data=None,
+        thermo_options=None,
+        theta_component="mock_theta",
     )
     mock_jax_key.assert_called_once_with(7)   # seed value
 
