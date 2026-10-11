@@ -696,3 +696,90 @@ The intervals still leave out k and m's own uncertainty
 (`planning/deep-coverage.md` step 2), and the pheS-derived part of X waits
 on step 3.
 
+### Step 2: the stage-1 Laplace (2026-10-11)
+
+`run_km_draws.srun` on `m_subsets/no_doubles` (seed 1). The arrowhead
+Laplace held no k or m direction, and its k/m spread is far smaller than
+stage 1's actual error:
+
+| condition | stage-1 k (SD) | k truth | stage-1 m (SD) | m truth (X scale) |
+|---|---|---|---|---|
+| kanR+kan | 0.0182 (0.0008) | 0.0149 | -0.01422 (0.00008) | -0.0138 |
+| pheS+4CP | 0.0056 (0.0011) | 0.0033 | 0.01261 (0.00007) | 0.0141 |
+
+m is off by about 5 SDs in kanR and 21 in pheS; k by 4 and 2. So draws
+from this Laplace vary m by about 0.6% and cannot cover a 3-11% error.
+Either stage 1 is biased, or its error is noise much larger than its
+Laplace (the simulation's per-tube rate noise, which the fit's level offsets do not model, is
+a likely source). The second seed tells the two apart. If it is noise,
+the k/m uncertainty should come from resampling stage 1 (refits over
+tubes or replicates), not from its Laplace. The ten draw fits were
+cancelled before they ran; `km_draws/` holds only the draw tables.
+
+### Second seed: stage 1 (2026-10-11)
+
+`sim_realistic_seed2/stage1/no_doubles` converged at every stage (about 10
+minutes); the Laplace held no k or m direction (k SD 0.0003-0.0006, m SD
+under 0.0001).
+
+| | seed 1 | seed 2 |
+|---|---|---|
+| kanR+kan m / truth | 1.028 | 1.017 |
+| pheS+4CP m / truth | 0.895 | 0.897 |
+| kanR+kan k - truth | +0.0033 | -0.0024 |
+| pheS+4CP k - truth | +0.0023 | -0.0007 |
+
+**Stage 1's m error is a bias, not noise**: the same on both seeds, kanR
+about 2% steep and pheS about 10% shallow. Wider intervals cannot fix a
+bias, so step 2's draws would not help even with an honest spread. k's
+error is mostly noise: it changes sign between seeds, and its seed-to-seed
+spread (about 0.003) is several times its Laplace SD. Through the
+k/dk_geno slide that noise moves X by a constant. Next: find the pheS bias
+with stage-1-only fits (about 10 minutes each), starting with the Poisson
+simulation (`sim_poisson_s2`) to test the realistic count noise.
+
+### Stage 1 under Poisson counts (2026-10-11)
+
+`m_subsets_poisson/no_doubles` (the `sim_poisson_s2` growth table, seed
+1; the joint stage reached the epoch cap still creeping about 30 nats per
+window, led by `growth_phi` drifting toward the Poisson limit): kanR+kan m
+1.004 of the truth, pheS+4CP 0.874. The realistic count noise is not the
+cause, and neither is founder or demographic noise (the Poisson simulation
+has none). The OD600-derived tube totals are not either: against the
+simulation's true totals they are within 2% in every condition and IPTG
+level, with no trend.
+
+**Suspect: congression's asymmetry between markers.** The homodimer rule
+gives a co-transformed cell a θ that leans toward its higher-θ plasmid. In
+pheS+4CP (m > 0) higher θ grows faster, so a low-X mutant sharing a cell
+with a high-X partner grows like the partner and those cells take over:
+low-X genotypes look higher, the response compresses, and m reads
+shallow. In kanR+kan (m < 0) the shared cells grow slower and fall
+behind, so the clean cells dominate and the bias stays small. The test:
+the seed-1 simulation with `transformation_poisson_lambda` 0 (same seed,
+so the same phenotypes), stage 1 only (`run_two_stage.srun`, `STAGES=1`).
+
+### How to run the no-congression stage 1
+
+```bash
+cd /gpfs/projects/harmslab/harms/studies/full-sized-sims-3
+```
+
+```bash
+mkdir sim_realistic_nocong && cp sim_realistic_s2/{simulate_config.yaml,design.csv,od600_calibration.yaml,library_config.yaml} sim_realistic_nocong/
+```
+
+```bash
+sed -i 's/^transformation_poisson_lambda: .*/transformation_poisson_lambda: 0.0/' sim_realistic_nocong/simulate_config.yaml && grep -n "lambda\|^seed" sim_realistic_nocong/simulate_config.yaml
+```
+
+Check: `transformation_poisson_lambda: 0.0` and `seed: 1`.
+
+```bash
+cd sim_realistic_nocong && sbatch --export=ALL,SEED=1,STAGES=1 /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/run_two_stage.srun
+```
+
+About 85 minutes to simulate, then about 10 for stage 1. Read
+`stage1/no_doubles/tfs_params_growth_m.csv` against the truth with
+`score_arms.py`.
+

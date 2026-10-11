@@ -125,6 +125,13 @@ is the monoculture), so the real kanR curves are likely compressed too.
    simulation seed run through both stages (`run_two_stage.srun`) to test
    stage 1's own error, which a stage-1 Laplace may understate
    (`planning/studies/m-bias-factorial/`, "Step 2", "Second seed").
+   Found 2026-10-11: the stage-1 Laplace is far too narrow (m SD about
+   0.6%), and stage 1's m error is a bias that repeats across seeds
+   (kanR 2% steep, pheS 10% shallow; 12% under Poisson counts), so the
+   draws were cancelled. k's error is noise several times its Laplace SD.
+   Testing congression as the pheS bias's cause (a no-congression stage
+   1). Step 2 now needs (a) the stage-1 m bias fixed or corrected and (b)
+   k's uncertainty from resampling stage 1, not its Laplace.
 3. [ ] **pheS+4CP.** The real fit's pheS selection departs from the
    monoculture differently (k much higher, |m| smaller). Decide with step
    1's real arm whether the anchor holds there or the condition needs the

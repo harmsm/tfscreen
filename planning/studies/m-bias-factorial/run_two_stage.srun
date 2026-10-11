@@ -26,12 +26,15 @@
 #
 #   SEED  the simulation and fit seed (default 1; match make_sim_config's)
 #   TFS   the tfscreen checkout (default /gpfs/home/harms/tfscreen)
+#   STAGES  2 (default) runs both stages; 1 stops after stage 1 and its
+#           Laplace (enough to read stage 1's k and m)
 
 module load cuda/12.4.1
 
 set -e
 SEED="${SEED:-1}"
 TFS="${TFS:-/gpfs/home/harms/tfscreen}"
+STAGES="${STAGES:-2}"
 STUDY="${TFS}/planning/studies/m-bias-factorial"
 
 if [[ -f tfs_growth.csv ]]; then
@@ -66,7 +69,9 @@ if [[ ! -f ${S1}/tfs_posterior.h5 ]]; then
         > laplace.log 2>&1)
 fi
 
-if [[ -f stage2/summary/tfs_summarize_fit_summary.json ]]; then
+if [[ "${STAGES}" == "1" ]]; then
+    echo ">>> Stage 2: skipped (STAGES=1)"
+elif [[ -f stage2/summary/tfs_summarize_fit_summary.json ]]; then
     echo ">>> Stage 2: done, skipped"
 else
     echo ">>> Stage 2 setup $(date)"
