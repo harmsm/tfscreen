@@ -355,6 +355,17 @@ In `tfs_configure_priors.csv`, `growth.condition_growth.m_pinned` has one
 row per condition (1, 1, 0, 0 by name). After the fit,
 `tfs_params_growth_m.csv` reads kanR's held values exactly.
 
+## Round 6: the real data with every condition pinned
+
+Round 5 showed a free k on either marker reopens the k/dk_geno slide, and
+the real pheS m with X set by kanR matches pheS's own no-doubles fit. So
+the real fit pins all four conditions at the real no-doubles MAP, round
+3's setup (`held_priors.py` without `--hold`, `run_held.srun` with its
+default pins), in `real_fit/held_all_real`. The pheS curves stay
+provisional until `planning/deep-coverage.md` step 3: the pool's pheS
+selection is about half the wt monoculture's, and the simulation cannot
+say whether that is biology or a misspecification it lacks.
+
 ## Commit
 
 The commit that adds this study.
@@ -570,4 +581,35 @@ property, the same with or without the doubles, not an artifact of the
 no-doubles fit. Pinning pheS at its no-doubles values (round 3's setup) is
 what the data support, and it is the setup that closes the slide on the
 simulation.
+
+### Round 6 result (2026-10-11)
+
+`held_all_real` converged at every stage. k and m sit at the real
+no-doubles values in all four conditions; the only held Laplace direction
+left is a small one on the dk_geno population spread (eigenvalue -3.6e3;
+no k, m or slide direction). Tube offsets SD 0.21.
+
+Against the recipe fit, by total reads (the recipe's `tfs_pred_theta.csv`
+and per-genotype reads from its growth table):
+
+| genotypes | reads | n | r with recipe | slope (pinned on recipe) | median 95% width, recipe / pinned |
+|---|---|---|---|---|---|
+| doubles | <= 1e2 | 43,713 | 0.977 | 1.48 | 1.61 / 2.44 |
+| doubles | 1e2-1e3 | 95,717 | 0.990 | 1.47 | 0.63 / 0.94 |
+| doubles | 1e3-1e4 | 60,542 | 0.997 | 1.47 | 0.31 / 0.46 |
+| doubles | 1e4-1e5 | 15,634 | 0.999 | 1.48 | 0.18 / 0.27 |
+| doubles | > 1e5 | 1,387 | 0.999 | 1.48 | 0.13 / 0.21 |
+| singles | > 1e5 | 904 | 1.000 | 1.47 | 0.13 / 0.19 |
+
+**The real X stretches by a uniform 1.47**, at every depth, singles and
+doubles alike: between kanR's m ratio (0.0204 / 0.0141 = 1.45) and pheS's
+(0.0097 / 0.0061 = 1.59), as a single X shared across markers should be,
+and the factor the simulation predicted for the recipe's compression
+(about 1.45). Ranking is unchanged (r 0.99-1.00 above 100 reads) and the
+widths stretch with X. Deep doubles' median X runs from 0.53 at no IPTG to
+0.13 at 1 mM, against 0.42 to 0.14 in the recipe.
+
+The intervals still leave out k and m's own uncertainty
+(`planning/deep-coverage.md` step 2), and the pheS-derived part of X waits
+on step 3.
 

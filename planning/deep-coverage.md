@@ -104,6 +104,14 @@ is the monoculture), so the real kanR curves are likely compressed too.
    no-doubles fit (round 3) closes it, and the real pheS no-doubles m is
    what the data give with X set by kanR, so the real fit should pin all
    four conditions.
+   Round 6 (2026-10-11), the real fit with all four pinned: every
+   genotype's X stretches by a uniform 1.47 against the recipe fit (r
+   0.99-1.00 above 100 reads), the factor the simulation predicted; no k,
+   m or slide direction is held. The two-stage fit (k and m from wt,
+   spikes and singles; the full library at those values) is the route.
+   Still open: k/m uncertainty in X (step 2), a second simulation seed for
+   stage 1 (pheS m 0.89 of the truth on seed 2), pheS (step 3), and
+   moving the two stages into the pipeline once step 2 settles how.
 2. [ ] **Carry k and m's error into X.** The held fit (step 1b, round 3)
    gives X intervals conditional on k and m. Take k and m's uncertainty
    from the no-doubles fit (its Laplace), refit the full library held at a
