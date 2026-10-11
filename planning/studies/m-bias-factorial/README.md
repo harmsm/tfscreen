@@ -857,3 +857,72 @@ real data, whether pheS m rises toward the monoculture's 0.0144 says how
 much of the real pheS gap is congression (the simulation's congression
 alone takes about 14% off pheS m; the real gap is about 2x).
 
+### Second seed: stage 2 (2026-10-11)
+
+`sim_realistic_seed2/stage2` (every condition pinned at seed 2's stage 1)
+converged at every stage (about 1.7 hours). The doubles' X by total reads
+(`score_x.py`, reads from `depth.py` on seed 2's growth table):
+
+| doubles | seed 1 (round 3) | seed 2 |
+|---|---|---|
+| 1e3-1e4: slope / RMSE / 95% coverage | 0.82 / 0.19 / 0.89 | 0.83 / 0.19 / 0.88 |
+| 1e4-1e5: slope / RMSE / 95% coverage | 0.95 / 0.07 / 0.90 | 0.97 / 0.07 / 0.87 |
+| > 1e5: slope / RMSE / 95% coverage | 0.96 / 0.05 / 0.65 | 0.98 / 0.06 / 0.51 |
+| deep X error at 0 / 1 mM | +0.02 / -0.05 | +0.05 / +0.01 |
+
+The two-stage fit's gain reproduces on a new seed: slope near 1 and RMSE
+0.06-0.07 above 1e4 reads, against 1.36 and 0.16 for the one-stage fit.
+What is left is an X offset of up to about 0.05 that changes between
+seeds (stage 1's k noise, through the k/dk_geno slide) on top of pheS's
+congression bias; the deepest genotypes' intervals (widths about 0.08)
+do not cover it (0.65, 0.51).
+
+### Spikes-only stage 1 (2026-10-11)
+
+wt plus the spiked genotypes (`make_subsets.py --arms spikes`), about 10
+minutes each. Simulation (m / truth):
+
+| | seed 1 | seed 2 |
+|---|---|---|
+| all singles, kanR+kan | 1.028 | 1.017 |
+| all singles, pheS+4CP | 0.895 | 0.897 |
+| spikes only, kanR+kan | 1.040 | 0.969 |
+| spikes only, pheS+4CP | 1.037 | 0.988 |
+
+**In the simulation, spikes only removes the congression bias** (pheS as
+with congression off), at the cost of noise: about ±4% between seeds
+against about ±1% with all singles. Seed 1's joint stage reached the
+epoch cap still descending about 8 nats per window (a count-noise
+parameter moving), so its numbers are provisional.
+
+**On the real data it fails.** All nine spikes are deep (wt 3.9e8 reads,
+each spike 1.3-6.2e6), but the fit settled in another solution: kanR+kan
+m -0.0051, the control kanR-kan m -0.0123 with that condition's tube
+offsets spread to SD 0.64 (the others 0.14-0.23), and pheS+4CP m about 0
+(stage 1 at the epoch cap, nearly flat). With nine genotypes the model
+can trade slope between the selection and control conditions, and the
+loose priors give the controls' m the same SD (0.01) as selection's. Next:
+the same fit with the control slopes held near 0 (SD 0.001, `linear`'s
+default for control conditions).
+
+### How to run the real spikes-only fit with tight controls
+
+```bash
+cd /gpfs/projects/harmslab/harms/studies/dev-data/real_fit/m_subsets_real
+```
+
+```bash
+mkdir spikes_tightctl && cd spikes_tightctl && ln -s ../spikes/tfs_growth.csv . && cp ../spikes/library_config.yaml .
+```
+
+```bash
+printf "condition_rep,k_loc,k_scale,m_loc,m_scale\nkanR+kan,0.015,0.01,0.0,0.01\nkanR-kan,0.015,0.01,0.0,0.001\npheS+4CP,0.015,0.01,0.0,0.01\npheS-4CP,0.015,0.01,0.0,0.001\n" > growth_priors_loose.csv && cat growth_priors_loose.csv
+```
+
+Check that the two control rows (`-kan`, `-4CP`) have m_scale 0.001.
+`run_arm.sh` reads the file by that name.
+
+```bash
+sbatch ../run_arm.srun
+```
+
