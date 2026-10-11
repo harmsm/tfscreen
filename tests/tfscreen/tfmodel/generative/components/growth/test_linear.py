@@ -772,3 +772,91 @@ def test_k_pinned_alone_keeps_m_sampled(mock_data):
             name=name, data=mock_data, priors=priors)
     assert model_trace[f"{name}_k"]["type"] == "deterministic"
     assert model_trace[f"{name}_m"]["type"] == "sample"
+
+
+# --- per-condition pins (a tuple of flags) ---
+
+def _mixed_priors():
+    """k pinned in condition 0 only, m pinned in conditions 0 and 2."""
+    return get_priors().replace(k_loc=jnp.array([0.01, 0.02, 0.03]),
+                                m_loc=jnp.array([0.1, 0.2, 0.3]),
+                                k_pinned=(True, False, False),
+                                m_pinned=(True, False, True))
+
+
+def test_per_condition_pins_sample_only_free_conditions(mock_data):
+    """The free conditions are a '{name}_{param}_free' sample site sized to
+    them; '{name}_{param}' is deterministic, pinned entries at their loc and
+    free entries the sampled values."""
+    name = "pin"
+    priors = _mixed_priors()
+    with seed(rng_seed=0):
+        model_trace = trace(define_model).get_trace(
+            name=name, data=mock_data, priors=priors)
+
+    k_free = model_trace[f"{name}_k_free"]
+    m_free = model_trace[f"{name}_m_free"]
+    assert k_free["type"] == "sample" and k_free["value"].shape == (2,)
+    assert m_free["type"] == "sample" and m_free["value"].shape == (1,)
+    np.testing.assert_allclose(_site_loc(k_free), [0.02, 0.03])
+    np.testing.assert_allclose(_site_loc(m_free), [0.2])
+
+    k = np.asarray(model_trace[f"{name}_k"]["value"])
+    m = np.asarray(model_trace[f"{name}_m"]["value"])
+    assert model_trace[f"{name}_k"]["type"] == "deterministic"
+    assert model_trace[f"{name}_m"]["type"] == "deterministic"
+    np.testing.assert_allclose(k, [0.01, *np.asarray(k_free["value"])])
+    np.testing.assert_allclose(m, [0.1, float(m_free["value"][0]), 0.3])
+
+
+def test_per_condition_pins_guide_matches_model(mock_data):
+    """Model and guide agree on the free sample sites; the guide's free
+    params follow the '{site}_locs' convention and start at the free locs;
+    the guide's full k and m hold the pinned locs."""
+    name = "pin"
+    priors = _mixed_priors()
+    with seed(rng_seed=0):
+        model_trace = trace(define_model).get_trace(
+            name=name, data=mock_data, priors=priors)
+    with seed(rng_seed=0):
+        guide_trace = trace(guide).get_trace(
+            name=name, data=mock_data, priors=priors)
+
+    model_samples = {n for n, s in model_trace.items()
+                     if s["type"] == "sample" and not s.get("is_observed", False)}
+    guide_samples = {n for n, s in guide_trace.items() if s["type"] == "sample"}
+    assert model_samples == guide_samples == {f"{name}_k_free", f"{name}_m_free"}
+    np.testing.assert_allclose(
+        np.asarray(guide_trace[f"{name}_k_free_locs"]["value"]), [0.02, 0.03])
+    np.testing.assert_allclose(
+        np.asarray(guide_trace[f"{name}_m_free_locs"]["value"]), [0.2])
+    assert f"{name}_k_locs" not in guide_trace
+
+    with seed(rng_seed=0):
+        params = guide(name=name, data=mock_data, priors=priors)
+    k_full = np.asarray(params.k_sel)
+    sel = np.asarray(mock_data.map_condition_sel)
+    np.testing.assert_allclose(k_full[sel == 0], 0.01)
+    m_full = np.asarray(params.m_sel)
+    np.testing.assert_allclose(m_full[sel == 0], 0.1)
+    np.testing.assert_allclose(m_full[sel == 2], 0.3)
+
+
+def test_uniform_pin_tuples_match_the_bool(mock_data):
+    """A tuple with every flag the same behaves as the bool."""
+    name = "pin"
+    base = get_priors().replace(m_loc=jnp.array([0.1, 0.2, 0.3]))
+    for flags, expected in (((True,) * 3, "deterministic"),
+                            ((False,) * 3, "sample")):
+        with seed(rng_seed=0):
+            tr = trace(define_model).get_trace(
+                name=name, data=mock_data, priors=base.replace(m_pinned=flags))
+        assert tr[f"{name}_m"]["type"] == expected
+        assert f"{name}_m_free" not in tr
+
+
+def test_pin_tuple_of_wrong_length_raises(mock_data):
+    priors = get_priors().replace(m_pinned=(True, False))
+    with pytest.raises(ValueError, match="do not match"):
+        with seed(rng_seed=0):
+            define_model(name="pin", data=mock_data, priors=priors)

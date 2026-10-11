@@ -68,6 +68,17 @@ fall into two kinds:
 
 ### Added
 
+- **Per-condition k/m pins in `linear` growth.** `m_pinned` and `k_pinned`
+  take one flag per `condition_rep` as well as a single bool, so one
+  marker's k and m can be held at an independent estimate while the
+  other's are fitted. `tfs-configure-model --growth_priors` takes 0/1
+  `k_pinned`/`m_pinned` columns (indexed rows in the priors CSV, read back
+  as a tuple; flags that all agree collapse to the bool). The free
+  conditions are sampled as `condition_growth_{k,m}_free` and
+  `condition_growth_{k,m}` is a deterministic site holding every condition,
+  so it is read from a posterior file, not a MAP checkpoint. Configs
+  without per-condition pins trace exactly as before.
+
 - **Merged transformants, per-origin skew.** The simulator draws
   single-plasmid cells as clone counts per genotype, one weighted row each
   (`_sim_transform_collapsed`), so `transform_sizes` can be realistic (the

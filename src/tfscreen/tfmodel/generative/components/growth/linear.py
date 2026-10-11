@@ -63,20 +63,26 @@ class ModelPriors:
         conditions, ``False`` for control ('-') conditions.  ``None``
         disables the per-condition logic and uses ``m_scale`` for all
         conditions (backward-compatible default).
-    m_pinned : bool
+    m_pinned : bool or tuple of bool
         When ``True``, the per-condition slope m is *clamped* to ``m_loc``
         (a ``deterministic`` site) instead of sampled, so the growth
         likelihood cannot inflate it away from the calibration-pinned value.
         A soft Normal prior — however tight — is only a KL penalty in SVI and
         the likelihood over many observations can override it; this is a hard
-        clamp.  ``k`` is not clamped this way in production fits: it carries
-        real per-experiment (tube-noise) variance and sits in the additive
+        clamp.  A tuple (one flag per ``condition_rep``) clamps only the
+        conditions flagged; the others are sampled as ``{name}_m_free`` and
+        ``{name}_m`` becomes a deterministic site holding every condition
+        (indexed 0/1 rows in the priors CSV; ``tfs-configure-model
+        --growth_priors`` takes ``k_pinned``/``m_pinned`` columns).  ``k`` is
+        not clamped this way in production fits: it carries real
+        per-experiment (tube-noise) variance and sits in the additive
         k/dk_geno slide, so it keeps a floored soft prior.  Default ``False``.
-    k_pinned : bool
-        When ``True``, ``k`` is clamped to ``k_loc`` the same way.  For
-        conditional fits at a fixed draw of (k, m), such as the two-stage fit
-        of ``planning/studies/svi-overconfidence/``, not for production.
-        Default ``False``.
+    k_pinned : bool or tuple of bool
+        When ``True``, ``k`` is clamped to ``k_loc`` the same way, per
+        condition with a tuple.  For conditional fits at a fixed (k, m), such
+        as the two-stage fit of ``planning/studies/svi-overconfidence/`` or a
+        fit holding one marker's k and m at an independent estimate
+        (``planning/studies/m-bias-factorial/``).  Default ``False``.
     """
     k_loc: float
     k_scale: float
@@ -85,8 +91,8 @@ class ModelPriors:
     m_scale_minus: float
     m_scale_plus: float
     m_is_selection: tuple = field(pytree_node=False, default=None)
-    m_pinned: bool = field(pytree_node=False, default=False)
-    k_pinned: bool = field(pytree_node=False, default=False)
+    m_pinned: bool | tuple = field(pytree_node=False, default=False)
+    k_pinned: bool | tuple = field(pytree_node=False, default=False)
 
 
 # ---------------------------------------------------------------------------
@@ -143,6 +149,71 @@ def _parse_condition_label(label: str) -> bool:
     )
 
 
+def _pin_mask(pinned, num_cr: int) -> np.ndarray:
+    """
+    Per-condition pin flags as a static numpy bool array.
+
+    ``pinned`` is a bool (every condition) or a tuple with one flag per
+    ``condition_rep``.
+    """
+    mask = np.asarray(pinned, dtype=bool)
+    if mask.ndim == 0:
+        return np.full(num_cr, bool(mask))
+    if mask.shape != (num_cr,):
+        raise ValueError(f"Per-condition pin flags {tuple(mask)} do not match "
+                         f"the model's {num_cr} condition(s).")
+    return mask
+
+
+def _with_free(loc_arr, free, values, num_cr):
+    """``loc_arr`` with the free conditions' entries replaced by ``values``."""
+    full = jnp.broadcast_to(loc_arr, values.shape[:-1] + (num_cr,))
+    return full.at[..., free].set(values)
+
+
+def _sample_condition_param(name, param, loc_arr, scale_arr, mask, num_cr):
+    """
+    Model side of k or m: sampled per condition, clamped to ``loc_arr``
+    (deterministic), or, with some conditions pinned, the free ones sampled
+    as ``{name}_{param}_free`` and the full array a deterministic site.
+    """
+    site = f"{name}_{param}"
+    if not mask.any():
+        with pyro.plate(f"{name}_condition_parameters", num_cr) as idx:
+            return pyro.sample(site, dist.Normal(loc_arr[idx], scale_arr[idx]))
+    if mask.all():
+        # Hard clamp, registered as a site so extraction / posterior sampling
+        # still find "{name}_{param}".
+        return pyro.deterministic(site, loc_arr)
+    free = np.flatnonzero(~mask)
+    with pyro.plate(f"{name}_{param}_free_conditions", free.size):
+        values = pyro.sample(f"{site}_free",
+                             dist.Normal(loc_arr[free], scale_arr[free]))
+    return pyro.deterministic(site, _with_free(loc_arr, free, values, num_cr))
+
+
+def _guide_condition_param(name, param, loc_arr, scale_arr, mask, num_cr):
+    """Guide side of ``_sample_condition_param``."""
+    site = f"{name}_{param}"
+    if mask.all():
+        # Clamped in the model (deterministic); no variational site here.
+        return loc_arr
+    if not mask.any():
+        locs = pyro.param(f"{site}_locs", loc_arr)
+        scales = pyro.param(f"{site}_scales", scale_arr,
+                            constraint=dist.constraints.positive)
+        with pyro.plate(f"{name}_condition_parameters", num_cr) as idx:
+            return pyro.sample(site, dist.Normal(locs[..., idx],
+                                                 scales[..., idx]))
+    free = np.flatnonzero(~mask)
+    locs = pyro.param(f"{site}_free_locs", loc_arr[free])
+    scales = pyro.param(f"{site}_free_scales", scale_arr[free],
+                        constraint=dist.constraints.positive)
+    with pyro.plate(f"{name}_{param}_free_conditions", free.size):
+        values = pyro.sample(f"{site}_free", dist.Normal(locs, scales))
+    return _with_free(loc_arr, free, values, num_cr)
+
+
 def define_model(name: str,
                  data: GrowthData,
                  priors: ModelPriors) -> LinearParams:
@@ -187,24 +258,10 @@ def define_model(name: str,
     k_scale_arr = jnp.broadcast_to(jnp.asarray(priors.k_scale, dtype=float), (num_cr,))
     m_loc_arr = jnp.broadcast_to(jnp.asarray(priors.m_loc, dtype=float), (num_cr,))
 
-    m_pinned = bool(priors.m_pinned)
-    k_pinned = bool(priors.k_pinned)
-
-    with pyro.plate(f"{name}_condition_parameters", num_cr) as idx:
-        if not k_pinned:
-            growth_k = pyro.sample(f"{name}_k",
-                                   dist.Normal(k_loc_arr[idx], k_scale_arr[idx]))
-        if not m_pinned:
-            growth_m = pyro.sample(f"{name}_m",
-                                   dist.Normal(m_loc_arr[idx], m_scale_arr[idx]))
-
-    if m_pinned:
-        # Hard clamp: hold m at its per-condition loc (deterministic) rather
-        # than sampling it.  Registered as a site so extraction / posterior
-        # sampling still find "{name}_m".
-        growth_m = pyro.deterministic(f"{name}_m", m_loc_arr)
-    if k_pinned:
-        growth_k = pyro.deterministic(f"{name}_k", k_loc_arr)
+    growth_k = _sample_condition_param(name, "k", k_loc_arr, k_scale_arr,
+                                       _pin_mask(priors.k_pinned, num_cr), num_cr)
+    growth_m = _sample_condition_param(name, "m", m_loc_arr, m_scale_arr,
+                                       _pin_mask(priors.m_pinned, num_cr), num_cr)
 
     k_pre = growth_k[data.map_condition_pre]
     m_pre = growth_m[data.map_condition_pre]
@@ -223,34 +280,16 @@ def guide(name: str,
     Maintains per-condition variational parameters for k and m.
     """
     num_cr = data.num_condition_rep
-    m_pinned = bool(priors.m_pinned)
-    k_pinned = bool(priors.k_pinned)
-    if not k_pinned:
-        k_locs = pyro.param(f"{name}_k_locs",
-                            jnp.broadcast_to(jnp.asarray(priors.k_loc, dtype=float), (num_cr,)))
-        k_scales = pyro.param(f"{name}_k_scales",
-                              jnp.broadcast_to(jnp.asarray(priors.k_scale, dtype=float), (num_cr,)),
-                              constraint=dist.constraints.positive)
-    if not m_pinned:
-        m_locs = pyro.param(f"{name}_m_locs",
-                            jnp.broadcast_to(jnp.asarray(priors.m_loc, dtype=float), (num_cr,)))
-        m_scales = pyro.param(f"{name}_m_scales",
-                              jnp.broadcast_to(jnp.asarray(priors.m_scale, dtype=float), (num_cr,)),
-                              constraint=dist.constraints.positive)
 
-    with pyro.plate(f"{name}_condition_parameters", data.num_condition_rep) as idx:
-        if not k_pinned:
-            growth_k = pyro.sample(f"{name}_k",
-                                   dist.Normal(k_locs[..., idx], k_scales[..., idx]))
-        if not m_pinned:
-            growth_m = pyro.sample(f"{name}_m",
-                                   dist.Normal(m_locs[..., idx], m_scales[..., idx]))
+    def _arr(v):
+        return jnp.broadcast_to(jnp.asarray(v, dtype=float), (num_cr,))
 
-    if m_pinned:
-        # Clamped in the model (deterministic); no variational site here.
-        growth_m = jnp.broadcast_to(jnp.asarray(priors.m_loc, dtype=float), (num_cr,))
-    if k_pinned:
-        growth_k = jnp.broadcast_to(jnp.asarray(priors.k_loc, dtype=float), (num_cr,))
+    growth_k = _guide_condition_param(name, "k", _arr(priors.k_loc),
+                                      _arr(priors.k_scale),
+                                      _pin_mask(priors.k_pinned, num_cr), num_cr)
+    growth_m = _guide_condition_param(name, "m", _arr(priors.m_loc),
+                                      _arr(priors.m_scale),
+                                      _pin_mask(priors.m_pinned, num_cr), num_cr)
 
     k_pre = growth_k[data.map_condition_pre]
     m_pre = growth_m[data.map_condition_pre]
@@ -302,8 +341,8 @@ def get_hyperparameters():
     parameters["m_scale"] = 0.01        # used when m_is_selection is None
     parameters["m_scale_minus"] = 0.001 # tight prior for '-' control conditions
     parameters["m_scale_plus"] = 0.01   # normal prior for '+' selection conditions
-    parameters["m_pinned"] = False      # hard-clamp m to m_loc when True
-    parameters["k_pinned"] = False      # hard-clamp k to k_loc when True
+    parameters["m_pinned"] = False      # hard-clamp m to m_loc (bool or per-condition tuple)
+    parameters["k_pinned"] = False      # hard-clamp k to k_loc (bool or per-condition tuple)
 
     return parameters
 

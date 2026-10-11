@@ -1,6 +1,7 @@
 from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
 from tfscreen.tfmodel.configuration_io import write_configuration
 from tfscreen.tfmodel.priors_edit import (
+    GROWTH_PIN_FIELDS,
     GROWTH_PRIOR_FIELDS,
     GROWTH_PRIOR_PREFIX,
     apply_prior_overrides,
@@ -206,7 +207,11 @@ def _edit_priors(orchestrator, priors_path, set_priors=None, growth_priors=None,
                 row = scalar[scalar["parameter"] == GROWTH_PRIOR_PREFIX + f]
                 if row.empty:
                     raise ValueError(f"Priors CSV has no '{GROWTH_PRIOR_PREFIX + f}' row.")
-                defaults[f] = float(row["value"].iloc[0])
+                value = row["value"].iloc[0]
+                if f in GROWTH_PIN_FIELDS:
+                    # Flags may be written as 0/1 or True/False.
+                    value = str(value).strip().lower() in ("1", "1.0", "true")
+                defaults[f] = float(value)
 
         labels = condition_rep_labels(orchestrator)
         updates = growth_prior_updates(table, labels, defaults)
@@ -462,7 +467,10 @@ def configure_model(binding_df=None,
         CSV of per-condition growth priors for linear condition growth: a
         ``condition_rep`` column (and ``replicate``, if conditions are not
         shared across replicates) plus any of ``k_loc``, ``k_scale``,
-        ``m_loc``, ``m_scale``. Conditions or values it leaves out keep the
+        ``m_loc``, ``m_scale``, and the 0/1 flags ``k_pinned``, ``m_pinned``,
+        which hold that condition's k or m at its loc instead of fitting it
+        (say, one marker's k and m held at an independent estimate while the
+        other's are fitted). Conditions or values it leaves out keep the
         defaults. Use it where tfs-prefit-calibration does not run (a
         growth-only model); the pre-fit overwrites k_loc and m_loc.
     growth_priors_wt_rates : str, optional

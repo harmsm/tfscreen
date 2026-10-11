@@ -450,9 +450,13 @@ tfs-configure-model
                            CSV of per-condition growth priors for linear condition
                            growth: a condition_rep column (and replicate, if conditions
                            are not shared across replicates) plus any of k_loc, k_scale,
-                           m_loc, m_scale. Conditions or values it leaves out keep the
-                           defaults. Use it where tfs-prefit-calibration does not run (a
-                           growth-only model); the pre-fit overwrites k_loc and m_loc.
+                           m_loc, m_scale, and the 0/1 flags k_pinned, m_pinned, which
+                           hold that condition's k or m at its loc instead of fitting it
+                           (say, one marker's k and m held at an independent estimate
+                           while the other's are fitted). Conditions or values it leaves
+                           out keep the defaults. Use it where tfs-prefit-calibration
+                           does not run (a growth-only model); the pre-fit overwrites
+                           k_loc and m_loc.
      --growth_priors_wt_rates GROWTH_PRIORS_WT_RATES
                            CSV of wt monoculture growth rates (condition_sel,
                            titrant_conc, rate_mean, rate_sd, num_replicates), for

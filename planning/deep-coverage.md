@@ -93,6 +93,11 @@ is the monoculture), so the real kanR curves are likely compressed too.
    Round 4 (set up 2026-10-10): the real fit holds kanR only (tight prior
    at the real no-doubles MAP; pheS loose until step 3), checked first on
    the simulation, since X is shared and pheS's m stays free.
+   Round 4 result: holding kanR alone is enough (the free pheS m follows
+   to 1.04 of the truth), but the tight prior leaked about 11% of the
+   doubles' pull (deep coverage 0.82 / 0.42 against the pins' 0.90 /
+   0.65). Real: kanR m -0.0133, pheS m 0.0064, half the monoculture's.
+   Round 5 repeats both arms with `linear`'s new per-condition pins.
 2. [ ] **Carry k and m's error into X.** The held fit (step 1b, round 3)
    gives X intervals conditional on k and m. Take k and m's uncertainty
    from the no-doubles fit (its Laplace), refit the full library held at a

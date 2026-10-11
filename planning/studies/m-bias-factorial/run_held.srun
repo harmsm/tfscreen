@@ -19,9 +19,10 @@
 # growth_priors_held.csv, plus links to the simulation's tfs_sim_* files
 # for tfs-summarize-fit to score against. See README.md.
 #
-#   PINS   the --set_priors pins (default "m_pinned=1 k_pinned=1"). For a
-#          tight-prior hold of some conditions only (held_priors.py --hold),
-#          submit with --export=ALL,PINS= so nothing is pinned.
+#   PINS   the --set_priors pins (default "m_pinned=1 k_pinned=1", every
+#          condition). When held_priors.py --hold pins some conditions
+#          through the table's pin columns, submit with --export=ALL,PINS=
+#          so the global pins do not override them.
 
 module load cuda/12.4.1
 

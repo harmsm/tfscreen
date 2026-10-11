@@ -236,6 +236,10 @@ again? The real arm is read only if the simulated one passes.
 
 ### How to run round 4
 
+`held_priors.py --hold` has since changed to write pin columns (round 5);
+round 4 ran it at commit 75611b08, where `--hold` held the named
+conditions by a tight prior (`--scale`, default 1e-4).
+
 Simulated arm, in the full-size simulation's working directory:
 
 ```bash
@@ -287,6 +291,69 @@ cp /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/run_held.srun . &
 
 The log's configure line reads `pins: none`. Each run ends with `>>> Done`
 in `run.out` and a `summary/` directory (about 2 hours, as round 3).
+
+## Round 5: kanR pinned per condition
+
+Round 4's tight prior leaked (see its result below), so round 5 repeats it
+with `linear`'s per-condition pins: `held_priors.py --hold kanR` now writes
+`k_pinned`/`m_pinned` columns (1 for kanR, 0 for pheS) into the growth
+priors table, which `tfs-configure-model --growth_priors` turns into
+per-condition clamps. kanR's k and m are then exact and leave the
+Laplace; pheS's are fitted. It needs the commit that adds per-condition
+pins on the cluster.
+
+### How to run round 5
+
+Simulated arm:
+
+```bash
+cd /gpfs/projects/harmslab/harms/studies/full-sized-sims-3
+```
+
+```bash
+mkdir held_kanR_pin_s2 && cd held_kanR_pin_s2
+```
+
+```bash
+python /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/held_priors.py ../m_subsets/no_doubles --hold kanR --loose ../growth_priors_loose.csv --out growth_priors_held.csv
+```
+
+Check: the table has `k_pinned` and `m_pinned` columns, 1 for both kanR
+rows and 0 for pheS.
+
+```bash
+ln -s ../sim_realistic_s2/tfs_growth.csv ../sim_realistic_s2/tfs_sim_* . && cp ../sim_realistic_s2/library_config.yaml .
+```
+
+```bash
+cp /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/run_held.srun . && sbatch --export=ALL,PINS= run_held.srun
+```
+
+Real arm:
+
+```bash
+cd /gpfs/projects/harmslab/harms/studies/dev-data/real_fit
+```
+
+```bash
+mkdir held_kanR_pin_real && cd held_kanR_pin_real
+```
+
+```bash
+python /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/held_priors.py ../m_subsets_real/no_doubles --hold kanR --loose ../growth_priors_loose.csv --out growth_priors_held.csv
+```
+
+```bash
+ln -s ../recipe/tfs_growth.csv . && cp ../../processed/library_config.yaml .
+```
+
+```bash
+cp /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/run_held.srun . && sbatch --export=ALL,PINS= run_held.srun
+```
+
+In `tfs_configure_priors.csv`, `growth.condition_growth.m_pinned` has one
+row per condition (1, 1, 0, 0 by name). After the fit,
+`tfs_params_growth_m.csv` reads kanR's held values exactly.
 
 ## Commit
 
@@ -434,4 +501,36 @@ What is left:
   `planning/deep-coverage.md` step 4 (hold the X population SDs).
 - At 1e3-1e4 a slope below 1 (0.82) is the expected regression dilution
   of a noisy point, not a scale bias.
+
+### Round 4 result (2026-10-10)
+
+Both arms converged at every stage (4.9 and 5.7 hours). The configure
+lines read `pins: none`.
+
+| condition | truth (sim) | unheld | all pinned (round 3) | kanR held (round 4) |
+|---|---|---|---|---|
+| kanR+kan m | -0.0138 | -0.0203 | -0.0142 (held) | -0.0149 |
+| pheS+4CP m (free in round 4) | 0.0141 | 0.0202 | 0.0126 (held) | 0.0147 |
+
+| doubles' X (sim) | unheld | all pinned | kanR held |
+|---|---|---|---|
+| 1e4-1e5 reads: slope / RMSE / 95% coverage | 1.36 / 0.17 / 0.29 | 0.95 / 0.07 / 0.90 | 1.00 / 0.08 / 0.82 |
+| > 1e5 reads: slope / RMSE / 95% coverage | 1.37 / 0.16 / 0.10 | 0.96 / 0.05 / 0.65 | 1.01 / 0.07 / 0.42 |
+
+- **Holding kanR alone is enough.** With X fixed through kanR, the free
+  pheS m settles at 1.04 of the truth, closer than when it was held at its
+  own no-doubles value (0.89).
+- **The tight prior leaked.** kanR m moved from the held -0.0142 to
+  -0.0149, seven prior SDs and about 11% of the doubles' pull, not the
+  0.5% estimated from the k/m anchor study. That costs deep coverage
+  against the pinned run, and k and m came back as held Laplace directions
+  (eigenvalues near -1e10).
+- **Real data.** kanR m leaked shallow (-0.0133 against the held -0.0141,
+  k 0.0162), so the real kanR X comes out about 1.5 times wider than in the
+  recipe fit (0.0204 / 0.0133). The free pheS m settled at 0.0064 (k
+  0.0099), as in the no-doubles fit: with X set by kanR, the real pool's
+  pheS selection is about half the wt monoculture's, a property of the
+  data (`planning/deep-coverage.md` step 3).
+
+So round 5 pins kanR per condition instead.
 
