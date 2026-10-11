@@ -7,8 +7,9 @@ nobody edits the file by hand:
 
 - ``apply_prior_overrides``: set scalar priors by name
   (``tfs-configure-model --set_priors name=value ...``), such as a held
-  population SD (``theta_log_hill_n_hyper_scale_fixed``) or the tube-offset
-  SD (``sigma_fixed``).
+  population SD (``theta_log_hill_n_hyper_scale_fixed``), the tube-offset
+  SD (``sigma_fixed``) or the thermo models' ΔΔG scale
+  (``theta_ddG_sigma_fixed``).
 - ``growth_prior_updates``: per-condition growth k/m priors from a table
   (``--growth_priors``), for models the pre-fit does not calibrate.
 - ``growth_priors_from_wt_rates``: such a table from wt monoculture growth

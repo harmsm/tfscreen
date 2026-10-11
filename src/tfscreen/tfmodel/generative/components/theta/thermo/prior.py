@@ -96,9 +96,25 @@ small QR plus M triangular solves of size C ≤ 6.  No non-centered option is
 offered; for NUTS on weakly informed problems a reparameterization of
 ``{name}_dlnK`` can be added without changing this module.
 
+Holding σ_s
+-----------
+The priors field ``theta_ddG_sigma_fixed`` (kT, default 0) holds every
+state's σ_s at one known value instead of sampling it, e.g. as an oracle
+arm of a simulation study where the truth noise is known.  With
+``sigma_fixed`` > 0 :func:`sample_dlnK` records ``{name}_ddG_sigma`` as a
+deterministic site (S,) filled with the held value, :func:`guide_dlnK`
+registers no σ_s parameters and samples no σ_s, and the Laplace (which
+sees only sample sites) leaves it out.  Posteriors still carry the
+deterministic site, so the ``ddG_sigma`` table is still extracted, with
+the held value in every row.  The value is a Python float read once per
+trace (``ddG_sigma_fixed``; a ``pytree_node=False`` field of every
+ModelPriors), so under jit it is static.  One scalar applies to all
+states; there is no per-state hold.
+
 Recorded sites
 --------------
-``{name}_ddG_sigma`` (S,) and ``{name}_dlnK`` (M, C) are sample sites;
+``{name}_ddG_sigma`` (S,) and ``{name}_dlnK`` (M, C) are sample sites
+(``{name}_ddG_sigma`` is deterministic when held);
 ``{name}_ddG_prior_mean`` (M, S) and ``{name}_ddG`` (M, S, the post-hoc
 ΔΔG) are deterministic.  The state axis is in the order of the
 ``struct_names`` passed in (every model passes its ``STRUCTURE_NAMES``).
@@ -125,6 +141,11 @@ DEFAULT_DDG_SIGMA_SCALE = 1.2
 
 # Starting SD of the component guide's LogNormal on σ_s (log units).
 _GUIDE_SIGMA_SCALE_INIT = 0.1
+
+
+def ddG_sigma_fixed(priors):
+    """The held σ_s (kT) from a ModelPriors, or 0.0 when σ_s is sampled."""
+    return float(getattr(priors, "theta_ddG_sigma_fixed", 0.0))
 
 
 def ddG_sigma_site(name="theta"):
@@ -243,7 +264,7 @@ def posthoc_ddG(dlnK, prior_means, sigma, proj):
 
 def sample_dlnK(name, struct_names, num_mut, prior_means, proj,
                 sigma_loc=DEFAULT_DDG_SIGMA_LOC,
-                sigma_scale=DEFAULT_DDG_SIGMA_SCALE):
+                sigma_scale=DEFAULT_DDG_SIGMA_SCALE, sigma_fixed=0.0):
     """
     Sample σ_s per state and the per-mutation Δln K under the structural prior.
 
@@ -262,6 +283,10 @@ def sample_dlnK(name, struct_names, num_mut, prior_means, proj,
     sigma_loc, sigma_scale : float
         LogNormal prior on σ_s, in log kT (the models' priors
         ``theta_ddG_sigma_loc`` and ``theta_ddG_sigma_scale``).
+    sigma_fixed : float, default 0.0
+        If > 0, every σ_s is held at this value (kT): ``{name}_ddG_sigma``
+        is a deterministic site and the LogNormal prior is unused.  0
+        samples σ_s.  A Python float (static under jit).
 
     Returns
     -------
@@ -273,9 +298,14 @@ def sample_dlnK(name, struct_names, num_mut, prior_means, proj,
     P = jnp.asarray(proj, dtype=jnp.float32)
     C = P.shape[0]
 
-    with pyro.plate(f"{name}_struct_plate", S, dim=-1):
-        sigma_s = pyro.sample(ddG_sigma_site(name),
-                              dist.LogNormal(sigma_loc, sigma_scale))   # (S,)
+    sigma_fixed = float(sigma_fixed)
+    if sigma_fixed > 0:
+        sigma_s = pyro.deterministic(ddG_sigma_site(name),
+                                     jnp.full(S, sigma_fixed, dtype=P.dtype))
+    else:
+        with pyro.plate(f"{name}_struct_plate", S, dim=-1):
+            sigma_s = pyro.sample(ddG_sigma_site(name),
+                                  dist.LogNormal(sigma_loc, sigma_scale))   # (S,)
 
     pyro.deterministic(f"{name}_ddG_prior_mean", prior_means)
 
@@ -301,7 +331,8 @@ def sample_dlnK(name, struct_names, num_mut, prior_means, proj,
     return dlnK
 
 
-def guide_dlnK(name, num_mut, num_struct, proj, prior_means_init):
+def guide_dlnK(name, num_mut, num_struct, proj, prior_means_init,
+               sigma_fixed=0.0):
     """
     Component-guide block matching :func:`sample_dlnK`.
 
@@ -322,6 +353,8 @@ def guide_dlnK(name, num_mut, num_struct, proj, prior_means_init):
     prior_means_init : array, shape (M, S)
         Per-state prior means at the start of the fit; the Δln K locations
         start at P · prior_means_init.
+    sigma_fixed : float, default 0.0
+        If > 0 (σ_s held in the model), no σ_s parameters or site.
 
     Returns
     -------
@@ -331,13 +364,14 @@ def guide_dlnK(name, num_mut, num_struct, proj, prior_means_init):
     S = num_struct
     P = jnp.asarray(proj, dtype=jnp.float32)
     C = P.shape[0]
-    sigma_locs = pyro.param(f"{name}_ddG_sigma_locs", jnp.zeros(S))
-    sigma_scales = pyro.param(f"{name}_ddG_sigma_scales",
-                              jnp.full(S, _GUIDE_SIGMA_SCALE_INIT),
-                              constraint=constraints.positive)
-    with pyro.plate(f"{name}_struct_plate", S, dim=-1):
-        pyro.sample(ddG_sigma_site(name),
-                    dist.LogNormal(sigma_locs, sigma_scales))
+    if not float(sigma_fixed) > 0:
+        sigma_locs = pyro.param(f"{name}_ddG_sigma_locs", jnp.zeros(S))
+        sigma_scales = pyro.param(f"{name}_ddG_sigma_scales",
+                                  jnp.full(S, _GUIDE_SIGMA_SCALE_INIT),
+                                  constraint=constraints.positive)
+        with pyro.plate(f"{name}_struct_plate", S, dim=-1):
+            pyro.sample(ddG_sigma_site(name),
+                        dist.LogNormal(sigma_locs, sigma_scales))
     if num_mut == 0:
         return jnp.zeros((0, C))
     loc_init = jnp.asarray(prior_means_init, dtype=jnp.float32) @ P.T
@@ -352,6 +386,8 @@ def guide_dlnK(name, num_mut, num_struct, proj, prior_means_init):
 def dlnK_guesses(name, prior_means, proj):
     """
     Starting values: Δln K at P · prior means, σ_s at 1 kT.
+
+    The σ_s entry is unused when σ_s is held (no sample site matches it).
 
     Parameters
     ----------
@@ -412,7 +448,8 @@ def ddG_extract_specs(ctx, struct_names, name="theta"):
     models, whose per-state ΔΔG common mode comes from the prior).  The (S,)
     site ``{name}_ddG_sigma`` becomes one table, ``ddG_sigma``, with one row
     per state keyed by ``structure``; it matches the simulator's
-    ``*_sim_ddG_sigma.csv`` truth.
+    ``*_sim_ddG_sigma.csv`` truth.  With σ_s held the site is deterministic
+    and the table gives the held value.
 
     Parameters
     ----------

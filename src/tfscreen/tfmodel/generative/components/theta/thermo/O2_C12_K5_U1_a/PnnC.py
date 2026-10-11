@@ -93,6 +93,7 @@ from tfscreen.tfmodel.generative.components.theta.thermo import mwc
 from tfscreen.tfmodel.generative.components.theta.thermo.prior import (
     DEFAULT_DDG_SIGMA_LOC,
     DEFAULT_DDG_SIGMA_SCALE,
+    ddG_sigma_fixed,
     ddG_extract_specs,
     dlnK_guesses,
     guide_dlnK,
@@ -184,6 +185,9 @@ class ModelPriors:
     # thermo/prior.py.
     theta_ddG_sigma_loc:   float
     theta_ddG_sigma_scale: float
+    # > 0 holds every σ_s at this value (kT) instead of sampling it;
+    # 0 (default) samples σ_s (thermo/prior.py, "Holding σ_s").
+    theta_ddG_sigma_fixed: float = field(pytree_node=False, default=0.0)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -354,7 +358,8 @@ def define_model(name: str,
     # (thermo/prior.py); the post-hoc per-state ΔΔG is the site {name}_ddG.
     dlnK = sample_dlnK(name, list(data.struct_names), num_mut, nn_means, DLNK_PROJ,
                        sigma_loc=priors.theta_ddG_sigma_loc,
-                       sigma_scale=priors.theta_ddG_sigma_scale)  # (M, C)
+                       sigma_scale=priors.theta_ddG_sigma_scale,
+                       sigma_fixed=ddG_sigma_fixed(priors))  # (M, C)
     delta_lnK  = dlnK[:, :5]
     d_ln_K_h_l = delta_lnK[:, 0]           # (M,)
     d_ln_K_h_o = delta_lnK[:, 1]           # (M,)
@@ -503,7 +508,8 @@ def guide(name: str,
     ln_K_u_wt = pyro.sample(f"{name}_ln_K_u_wt", dist.Normal(ln_K_u_wt_loc, ln_K_u_wt_scale))
 
     # ── Sample σ_s and Δln K (matches prior.sample_dlnK) ────────────────────
-    dlnK = guide_dlnK(name, num_mut, S, DLNK_PROJ, jnp.zeros((num_mut, S)))   # (M, C)
+    dlnK = guide_dlnK(name, num_mut, S, DLNK_PROJ, jnp.zeros((num_mut, S)),
+                      sigma_fixed=ddG_sigma_fixed(priors))   # (M, C)
 
     # ── Sample epistasis ──────────────────────────────────────────────────────
     epi_delta_lnK = None
@@ -602,6 +608,7 @@ def get_hyperparameters() -> Dict[str, Any]:
     p["theta_epi_d0"]          = float(_DEFAULT_D0)
     p["theta_ddG_sigma_loc"]   = DEFAULT_DDG_SIGMA_LOC     # median σ_s 1 kT
     p["theta_ddG_sigma_scale"] = DEFAULT_DDG_SIGMA_SCALE   # 95%: 0.1-10 kT
+    p["theta_ddG_sigma_fixed"] = 0.0   # > 0 holds σ_s (kT)
     return p
 
 

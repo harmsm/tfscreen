@@ -472,7 +472,9 @@ tfs-configure-model
                            population SD of log(hill_n) (and, for hill_relative,
                            theta_X_low_hyper_scale_fixed,
                            theta_X_delta_hyper_scale_fixed,
-                           theta_log_hill_K_hyper_scale_fixed). (default: None)
+                           theta_log_hill_K_hyper_scale_fixed); for the PddG/PnnC thermo
+                           models, theta_ddG_sigma_fixed=1.69 holds every structure's ΔΔG
+                           scale σ_s at 1.69 kT. (default: None)
      --growth_priors GROWTH_PRIORS
                            CSV of per-condition growth priors for linear condition
                            growth: a condition_rep column (and replicate, if conditions

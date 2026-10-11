@@ -72,7 +72,7 @@ import numpyro.distributions as dist
 from tfscreen.tfmodel.generative.components._horseshoe import regularized_scale
 import numpyro.distributions.constraints as constraints
 import pandas as pd
-from flax.struct import dataclass
+from flax.struct import dataclass, field
 from functools import partial
 from typing import Dict, Any, Union
 
@@ -82,6 +82,7 @@ from tfscreen.tfmodel.generative.components.theta.thermo import mwc
 from tfscreen.tfmodel.generative.components.theta.thermo.prior import (
     DEFAULT_DDG_SIGMA_LOC,
     DEFAULT_DDG_SIGMA_SCALE,
+    ddG_sigma_fixed,
     ddG_extract_specs,
     dlnK_guesses,
     guide_dlnK,
@@ -148,6 +149,9 @@ class ModelPriors:
     # thermo/prior.py.
     theta_ddG_sigma_loc:   float
     theta_ddG_sigma_scale: float
+    # > 0 holds every σ_s at this value (kT) instead of sampling it;
+    # 0 (default) samples σ_s (thermo/prior.py, "Holding σ_s").
+    theta_ddG_sigma_fixed: float = field(pytree_node=False, default=0.0)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -274,7 +278,8 @@ def define_model(name: str,
     # (thermo/prior.py); the post-hoc per-state ΔΔG is the site {name}_ddG.
     dlnK = sample_dlnK(name, list(STRUCTURE_NAMES), num_mut, ddG_prior_means, DLNK_PROJ,
                        sigma_loc=priors.theta_ddG_sigma_loc,
-                       sigma_scale=priors.theta_ddG_sigma_scale)  # (M, C)
+                       sigma_scale=priors.theta_ddG_sigma_scale,
+                       sigma_fixed=ddG_sigma_fixed(priors))  # (M, C)
     delta_lnK = dlnK[:, :3]
 
     pyro.deterministic(f"{name}_d_ln_K_op", delta_lnK[:, 0])
@@ -376,7 +381,8 @@ def guide(name: str,
         ln_K_E_wt = pyro.sample(f"{name}_ln_K_E_wt", dist.Normal(ln_K_E_wt_locs, ln_K_E_wt_scales))
 
     # ── Sample σ_s and Δln K (matches prior.sample_dlnK) ────────────────────
-    dlnK = guide_dlnK(name, num_mut, S, DLNK_PROJ, ddG_prior_means)   # (M, C)
+    dlnK = guide_dlnK(name, num_mut, S, DLNK_PROJ, ddG_prior_means,
+                      sigma_fixed=ddG_sigma_fixed(priors))   # (M, C)
 
     # ── Sample epistasis ──────────────────────────────────────────────────────
     epi_delta_lnK = None
@@ -456,6 +462,7 @@ def get_hyperparameters() -> Dict[str, Any]:
     p["theta_epi_d0"]         = float(_DEFAULT_D0)
     p["theta_ddG_sigma_loc"]   = DEFAULT_DDG_SIGMA_LOC     # median σ_s 1 kT
     p["theta_ddG_sigma_scale"] = DEFAULT_DDG_SIGMA_SCALE   # 95%: 0.1-10 kT
+    p["theta_ddG_sigma_fixed"] = 0.0   # > 0 holds σ_s (kT)
     return p
 
 
