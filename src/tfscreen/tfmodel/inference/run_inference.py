@@ -37,6 +37,7 @@ from tfscreen.tfmodel.inference.initialization import (
     component_guide_map,
     site_prior_sds,
     site_unconstrained_prior_sds,
+    structure_trace,
     site_values,
     trace_model_sites,
 )
@@ -1199,10 +1200,8 @@ class RunInference:
         probe_idx = jnp.arange(probe_size)
         probe_data = self.model.get_batch(data_on_gpu, probe_idx)
 
-        seeded_model = seed(self.model.jax_model, rng_seed=0)
-        traced_model = trace(seeded_model)
-        model_trace = traced_model.get_trace(data=probe_data,
-                                             priors=self.model.priors)
+        model_trace = structure_trace(self.model.jax_model, data=probe_data,
+                                      priors=self.model.priors)
 
         dim_map = {}
         genotype_dim = -1 # default fallback
@@ -1946,9 +1945,7 @@ class RunInference:
             if k.endswith("_auto_loc")
         }
 
-        seeded_model = seed(self.model.jax_model, rng_seed=0)
-        traced_model = trace(seeded_model)
-        model_trace = traced_model.get_trace(**model_kwargs)
+        model_trace = structure_trace(self.model.jax_model, **model_kwargs)
 
         site_transforms = {
             name: biject_to(site["fn"].support)
@@ -2208,9 +2205,7 @@ class RunInference:
 
         # Per-site bijection (unconstrained -> constrained) from a model
         # trace; identity for real-valued supports.
-        seeded_model = seed(self.model.jax_model, rng_seed=0)
-        traced_model = trace(seeded_model)
-        model_trace = traced_model.get_trace(**model_kwargs)
+        model_trace = structure_trace(self.model.jax_model, **model_kwargs)
         site_transforms = {
             name: biject_to(site["fn"].support)
             for name, site in model_trace.items()
@@ -2323,35 +2318,57 @@ class RunInference:
         """
         Prior precision of each flattened unconstrained MAP element.
 
-        The prior SD comes from ``site_unconstrained_prior_sds`` with the MAP
-        values substituted, so a hierarchical latent's prior is conditional
-        on the MAP's hyperparameters. Elements without a finite, positive
-        prior SD get ``LAPLACE_MIN_EIGENVALUE``. Returns a length-``D``
-        numpy array in the order of ``ravel_pytree(unconstrained)``.
+        The prior SD comes from ``site_unconstrained_prior_sds`` on a trace
+        with every latent site set to its MAP value (``trace_model_sites``
+        with ``unconstrained=``), so a hierarchical latent's prior is
+        conditional on the MAP's hyperparameters and no site is drawn from
+        the prior. The trace is a structure trace, so the observation model
+        never has to accept the values.
+
+        Until 2026-10-11 the supports came from a first trace with every
+        site drawn from the prior. On the PddG fits that draw (ddG prior
+        widened by the learned ``sigma_s``, ln K_op from -38 to 61) gave a
+        non-finite ``ln_cfu``, the count likelihood refused it, and with only
+        a printed note the floor fell back to ``LAPLACE_MIN_EIGENVALUE``:
+        16-38 negative eigenvalues became directions with SD ~30.
+
+        A failure is an error unless ``self.allow_flat_laplace_floor`` (set
+        by ``get_laplace_posteriors(allow_flat_floor=True)``), which falls
+        back to ``LAPLACE_MIN_EIGENVALUE`` for every element with a warning.
+        Elements without a finite, positive prior SD get
+        ``LAPLACE_MIN_EIGENVALUE``, named by site in a warning. Returns a
+        length-``D`` numpy array in the order of
+        ``ravel_pytree(unconstrained)``.
         """
         import jax.flatten_util
-        from numpyro.distributions.transforms import biject_to
 
-        fallback = np.full(D, LAPLACE_MIN_EIGENVALUE)
+        allow_flat = getattr(self, "allow_flat_laplace_floor", False)
         try:
             sites = trace_model_sites(self._fixed_model(),
                                       model_kwargs["priors"],
-                                      model_kwargs["data"])
-            constrained = {
-                k: biject_to(sites[k]["fn"].support)(v)
-                for k, v in unconstrained.items() if k in sites
-            }
-            sites = trace_model_sites(self._fixed_model(),
-                                      model_kwargs["priors"],
                                       model_kwargs["data"],
-                                      substitutions=constrained)
+                                      unconstrained=unconstrained)
             sds = site_unconstrained_prior_sds(sites)
-        except Exception as err:  # pragma: no cover - defensive
-            print(f"  Could not compute prior SDs for the Laplace floor "
-                  f"({err}); using {LAPLACE_MIN_EIGENVALUE}.", flush=True)
-            return fallback
+        except Exception as err:
+            msg = (f"Could not compute prior SDs for the Laplace floor "
+                   f"({type(err).__name__}: {err}).")
+            if not allow_flat:
+                raise RuntimeError(
+                    msg + " Without them every Hessian eigenvalue is floored "
+                    f"at a flat {LAPLACE_MIN_EIGENVALUE}, which turns a "
+                    "negative eigenvalue into a direction with SD "
+                    f"{LAPLACE_MIN_EIGENVALUE ** -0.5:.0f}. Pass "
+                    "allow_flat_floor=True (tfs-sample-posterior "
+                    "--allow_flat_laplace_floor) to accept that.") from err
+            warnings.warn(msg + f" Using a flat floor of "
+                          f"{LAPLACE_MIN_EIGENVALUE} for every element "
+                          "(allow_flat_floor).", RuntimeWarning, stacklevel=2)
+            print(f"  WARNING: {msg} Using a flat floor of "
+                  f"{LAPLACE_MIN_EIGENVALUE}.", flush=True)
+            return np.full(D, LAPLACE_MIN_EIGENVALUE)
 
         prec = {}
+        missing = {}
         for k, v in unconstrained.items():
             p = np.full(np.shape(v), np.nan)
             if k in sds:
@@ -2360,13 +2377,24 @@ class RunInference:
                                               np.shape(v)) ** 2
                 except ValueError:
                     pass
+            bad_k = ~np.isfinite(p) | (p <= 0)
+            if np.any(bad_k):
+                missing[k] = int(np.sum(bad_k))
             prec[k] = jnp.asarray(p)
         flat, _ = jax.flatten_util.ravel_pytree(prec)
         flat = np.asarray(flat, dtype=float)
         if flat.shape[0] != D:  # pragma: no cover - defensive
-            return fallback
+            raise RuntimeError(f"Laplace prior precision has {flat.shape[0]} "
+                               f"elements; the MAP has {D}.")
         bad = ~np.isfinite(flat) | (flat <= 0)
         flat[bad] = LAPLACE_MIN_EIGENVALUE
+        if missing:
+            listed = ", ".join(f"{k} ({n})" for k, n in sorted(missing.items()))
+            msg = (f"No usable prior SD for {int(bad.sum())} of {D} MAP "
+                   f"elements; their Laplace floor is the flat "
+                   f"{LAPLACE_MIN_EIGENVALUE}: {listed}.")
+            warnings.warn(msg, RuntimeWarning, stacklevel=2)
+            print(f"  WARNING: {msg}", flush=True)
         return flat
 
     def _unscaled_batch(self, data, idx):
@@ -2701,7 +2729,8 @@ class RunInference:
                                sites_to_save=None,
                                block_genotypes=False,
                                genotype_chunk_size=None,
-                               block_shared=False):
+                               block_shared=False,
+                               allow_flat_floor=False):
         """
         Generate posterior samples from a MAP solution using the Laplace approximation.
 
@@ -2756,6 +2785,11 @@ class RunInference:
             genotype from its conditional given that draw, which is the full
             Laplace. Costs one more Hessian-vector product per shared
             parameter per genotype chunk.
+        allow_flat_floor : bool, optional
+            If the prior SDs behind the eigenvalue floor cannot be computed,
+            fall back to the flat ``LAPLACE_MIN_EIGENVALUE`` floor with a
+            warning instead of raising (default False). See
+            ``_laplace_prior_precision``.
 
         Notes
         -----
@@ -2773,6 +2807,7 @@ class RunInference:
         from numpyro.distributions.transforms import biject_to
         import jax.flatten_util
 
+        self.allow_flat_laplace_floor = bool(allow_flat_floor)
         data_on_gpu = jax.device_put(self.model.data)
         total_num_genotypes = self.model.data.num_genotype
         dim_map = self._get_genotype_dim_map()
@@ -2842,6 +2877,10 @@ class RunInference:
                 base = jnp.broadcast_to(flat_map, (n, D))
                 return base.at[:, elem_flat].add(delta.reshape(n, -1))
         else:
+            # The prior SDs first: a failure there stops the run before the
+            # Hessian, not after it.
+            prior_precision = self._laplace_prior_precision(unconstrained,
+                                                            model_kwargs, D)
             print(f"Computing Hessian for {D} parameters "
                   f"(chunk_size={hessian_chunk_size}) ...", flush=True)
 
@@ -2878,8 +2917,6 @@ class RunInference:
             print("Projecting Hessian to PD cone and computing Cholesky ...", flush=True)
             eigenvalues_np, eigenvectors_np = np.linalg.eigh(H_np)
             n_negative = int(np.sum(eigenvalues_np < 0))
-            prior_precision = self._laplace_prior_precision(unconstrained,
-                                                            model_kwargs, D)
             eigenvalues_pd, n_floored = laplace_eigenvalue_floor(
                 eigenvalues_np, eigenvectors_np, prior_precision)
             if n_negative > 0:
@@ -2900,9 +2937,7 @@ class RunInference:
                 return flat_map + z @ L.T
 
         # Get unconstrained → constrained transform for each latent site
-        seeded_model = seed(self.model.jax_model, rng_seed=0)
-        traced_model = trace(seeded_model)
-        model_trace = traced_model.get_trace(**model_kwargs)
+        model_trace = structure_trace(self.model.jax_model, **model_kwargs)
 
         site_transforms = {
             name: biject_to(site["fn"].support)

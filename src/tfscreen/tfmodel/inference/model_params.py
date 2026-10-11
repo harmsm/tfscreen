@@ -46,8 +46,10 @@ def model_param_constraints(model, priors, data, seed=0):
     seed : int, optional
         PRNG seed for the trace.
     """
-    tr = handlers.trace(handlers.seed(model, seed)).get_trace(priors=priors,
-                                                              data=data)
+    from tfscreen.tfmodel.inference.initialization import structure_trace
+
+    # a structure trace: a prior draw the observation refuses must not stop it
+    tr = structure_trace(model, seed=seed, priors=priors, data=data)
     return {name: site["kwargs"].get("constraint", constraints.real)
             for name, site in tr.items() if site["type"] == "param"}
 
