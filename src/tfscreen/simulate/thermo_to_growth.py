@@ -388,6 +388,40 @@ def _mutation_truth_tables(deterministic, genotypes, sim_data, name="theta",
     return mutation_df, pair_df
 
 
+def _ddG_sigma_truth_table(sites, struct_names, name="theta"):
+    """
+    The per-structure σ_s truth of a PddG/PnnC draw.
+
+    σ_s (``{name}_ddG_sigma``, shape S) is the SD of the true ΔΔG about the
+    structural prior mean; the simulator conditions it (``ddG_truth_sd``,
+    1 kT by default).  The table matches the fit's extracted ``ddG_sigma``
+    table (``thermo/prior.py``), which ``tfs-summarize-fit`` joins on
+    ``structure``.
+
+    Parameters
+    ----------
+    sites : dict[str, np.ndarray]
+        Site values from ``sample_theta_prior(..., return_deterministic=True)``.
+    struct_names : sequence of str or None
+        The component's ``STRUCTURE_NAMES`` (the order of the site).
+    name : str, default "theta"
+        Site-name prefix.
+
+    Returns
+    -------
+    pandas.DataFrame or None
+        Columns ``structure`` and ``ddG_sigma`` (kT), or None when the draw
+        has no σ_s site.
+    """
+    val = sites.get(f"{name}_ddG_sigma") if sites else None
+    if val is None:
+        return None
+    val = np.asarray(val, dtype=float).reshape(-1)
+    if struct_names is None or len(struct_names) != len(val):
+        struct_names = [str(i) for i in range(len(val))]
+    return pd.DataFrame({"structure": list(struct_names), "ddG_sigma": val})
+
+
 def _assign_dk_geno(unique_genotypes,
                     hyper_loc=-3.5,
                     hyper_scale=1.0,
@@ -568,7 +602,7 @@ def thermo_to_growth(
     dk_geno_override: Optional[dict] = None,
     return_mutation_truth: bool = False,
     binding_titrant_conc: Optional[Iterable[float]] = None,
-    theta_model_params_override: Optional[dict] = None,
+    theta_conditions: Optional[dict] = None,
 ) -> tuple:
     """
     Generate phenotypes from genotypes via prior-predictive theta sampling.
@@ -679,11 +713,10 @@ def thermo_to_growth(
         ``_theta_at_concs``) as the last value.  Binding concentrations need
         not match the growth concentrations: theta is evaluated from the
         drawn parameters, not looked up.
-    theta_model_params_override : dict or None
-        Init values for model-side ``pyro.param`` sites in the
-        prior-predictive draw (``sample_theta_prior``'s
-        ``model_params_overrides``), e.g. ``theta_ddG_sigma_s`` from
-        ``sample_theta.ddG_truth_sigma_s``.
+    theta_conditions : dict or None
+        Sample-site values fixed in the prior-predictive draw
+        (``sample_theta_prior``'s ``conditions``), e.g. ``theta_ddG_sigma``
+        from ``sample_theta.ddG_truth_conditions``.
 
     Returns
     -------
@@ -708,9 +741,11 @@ def thermo_to_growth(
         C4 thermodynamic models).
     mutation_truth : dict
         Only when ``return_mutation_truth`` is True: ``{"mutation":
-        DataFrame or None, "pair": DataFrame or None}``, the per-mutation
-        and per-pair truth.  Both are None for components sampled through
-        ``simulate`` (hill_geno, hill_mut), which have no trace.
+        DataFrame or None, "pair": DataFrame or None, "ddG_sigma":
+        DataFrame or None}``, the per-mutation, per-pair and (PddG/PnnC)
+        per-structure σ_s truth (``_ddG_sigma_truth_table``).  All are None
+        for components sampled through ``simulate`` (hill_geno, hill_mut),
+        which have no trace.
     binding_theta_df : pandas.DataFrame
         Only when ``binding_titrant_conc`` is given (always last): theta of
         every genotype at those concentrations, from ``_theta_at_concs``.
@@ -753,7 +788,7 @@ def thermo_to_growth(
             priors_overrides=theta_priors_overrides,
             sim_priors_overrides=theta_sim_priors_overrides,
             return_deterministic=True,
-            model_params_overrides=theta_model_params_override,
+            conditions=theta_conditions,
         )
     else:
         theta_gc, theta_param = sample_theta_prior(
@@ -762,7 +797,7 @@ def thermo_to_growth(
             rng_key=theta_rng_key,
             priors_overrides=theta_priors_overrides,
             sim_priors_overrides=theta_sim_priors_overrides,
-            model_params_overrides=theta_model_params_override,
+            conditions=theta_conditions,
         )
 
     print("Done.", flush=True)
@@ -978,10 +1013,12 @@ def thermo_to_growth(
         from tfscreen.tfmodel.generative.components.theta.thermo.io import (
             required_struct_names,
         )
+        struct_names = required_struct_names(theta_component)
         mutation_df, pair_df = _mutation_truth_tables(
-            deterministic, all_genotypes, sim_data,
-            struct_names=required_struct_names(theta_component))
-        out += ({"mutation": mutation_df, "pair": pair_df},)
+            deterministic, all_genotypes, sim_data, struct_names=struct_names)
+        out += ({"mutation": mutation_df, "pair": pair_df,
+                 "ddG_sigma": _ddG_sigma_truth_table(deterministic,
+                                                     struct_names)},)
     if binding_titrant_conc is not None:
         out += (_theta_at_concs(theta_component, theta_param, sim_data,
                                 binding_titrant_conc, unique_genotypes,

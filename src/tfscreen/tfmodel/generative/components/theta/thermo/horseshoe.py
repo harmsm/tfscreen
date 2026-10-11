@@ -23,6 +23,14 @@ support it.
 The guide (in lnK_nn_prior.py) must provide matching ``pyro.sample`` sites
 for all variables sampled here.
 
+Unlike the per-mutation ΔΔG (``prior.py``), this stays non-centered.  Its
+scales τ, λ and c² are sample sites with proper priors, not free
+``pyro.param`` values, so under MAP raising them to shrink the offsets
+costs their heavy-tailed log priors and has a finite optimum.  A centered
+horseshoe, epi ~ Normal(0, τ·λ̃), would instead put an unbounded joint
+density at τ·λ̃ → 0 with epi = 0, so MAP would zero every weakly measured
+pair.
+
 Reference
 ---------
 Piironen & Vehtari, 2017. "Sparsity information and regularization in the

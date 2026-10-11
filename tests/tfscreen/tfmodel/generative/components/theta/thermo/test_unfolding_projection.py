@@ -94,11 +94,12 @@ def _data(fam, kind, ddG_means, num_pair=0):
     )
 
 
-def _fixed_sites(fam, num_pair=0, epi_H=0.0):
+def _fixed_sites(fam, ddG_means, num_pair=0, epi_H=0.0):
     """Values for every sample site so model and guide see the same draw."""
     S = len(fam["structs"])
     sites = {f"theta_{k}": jnp.asarray(v) for k, v in fam["wt"].items()}
-    sites["theta_ddG_offset"] = jnp.zeros((S, _M))   # ddG = prior means
+    sites["theta_ddG"] = jnp.asarray(ddG_means)      # ddG = prior means
+    sites["theta_ddG_sigma"] = jnp.ones(S)
     if num_pair:
         offset = np.full((S, num_pair), 0.3)
         offset[0] = epi_H                            # H column of epi ddG
@@ -115,7 +116,7 @@ def _run(fam, kind, ddG_means, fn="define_model", num_pair=0, epi_H=0.0):
     module, _ = _modules(fam, kind)
     data = _data(fam, kind, ddG_means, num_pair=num_pair)
     priors = module.get_priors()
-    sites = _fixed_sites(fam, num_pair=num_pair, epi_H=epi_H)
+    sites = _fixed_sites(fam, ddG_means, num_pair=num_pair, epi_H=epi_H)
     target = getattr(module, fn)
 
     def _call():

@@ -9,7 +9,7 @@ from tfscreen.simulate import (
 )
 from tfscreen.simulate.sim_data_class import build_sim_data
 from tfscreen.simulate.sample_theta import (
-    ddG_truth_sigma_s,
+    ddG_truth_conditions,
     sample_theta_prior,
     sample_theta_stratified,
 )
@@ -283,9 +283,10 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
         with the key/value pairs in override keys. No error checking is done
         on these keys; the user is responsible for checking their sanity.
     return_mutation_truth : bool, default False
-        Also return the per-mutation and per-pair ground truth from
-        ``thermo_to_growth`` as a sixth value (``{"mutation": DataFrame or
-        None, "pair": DataFrame or None}``).
+        Also return the per-mutation, per-pair and per-structure ground
+        truth from ``thermo_to_growth`` as a sixth value (``{"mutation":
+        DataFrame or None, "pair": DataFrame or None, "ddG_sigma": DataFrame
+        or None}``).
     return_binding_theta : bool, default False
         Also return, last, the ground-truth theta of every library genotype
         at the ``binding_data`` concentrations (None without a
@@ -388,14 +389,16 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
     phenotype_source = cf.get('phenotype_source', 'prior')
 
     # ddG_truth_sd: SD of the simulated per-structure ΔΔG around the table
-    # (PddG/PnnC), set as the draw's sigma_s; checked before any sampling.
+    # (PddG/PnnC), conditioned as the draw's sigma_s (1 kT when absent);
+    # checked before any sampling.
     ddG_truth_sd = cf.get('ddG_truth_sd')
-    theta_model_params_override = None
-    if ddG_truth_sd is not None:
-        if phenotype_source == 'empirical':
+    theta_conditions = None
+    if phenotype_source == 'empirical':
+        if ddG_truth_sd is not None:
             raise ValueError("ddG_truth_sd does not apply with "
                              "phenotype_source: empirical.")
-        theta_model_params_override = ddG_truth_sigma_s(
+    else:
+        theta_conditions = ddG_truth_conditions(
             ddG_truth_sd, cf.get('theta_component'), cf.get('thermo_options'))
 
     theta_gc_override = {}
@@ -527,7 +530,7 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
         theta_params_override=theta_params_override or None,
         dk_geno_override=dk_geno_override,
         return_mutation_truth=return_mutation_truth,
-        theta_model_params_override=theta_model_params_override,
+        theta_conditions=theta_conditions,
         **({"binding_titrant_conc": binding_cfg['titrant_conc']}
            if need_binding_theta else {}),
     )

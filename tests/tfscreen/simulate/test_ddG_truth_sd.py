@@ -1,10 +1,11 @@
 """
 The ``ddG_truth_sd`` simulate setting: SD of the simulated per-structure ΔΔG.
 
-PddG/PnnC draw ``theta_ddG = prior_mean + sigma_s * offset`` with
-``offset ~ Normal(0, 1)``; in the simulator's draw that sum is the ground
-truth.  ``ddG_truth_sd`` sets ``sigma_s`` for the draw only (default: the
-init value, 1 kT), in the unit of ``thermo_options['ddG_units']``.
+PddG/PnnC sample ``theta_ddG_sigma`` (sigma_s, one per structure) and
+``theta_ddG ~ Normal(prior_mean, sigma_s)``; in the simulator's draw that
+ΔΔG is the ground truth.  The simulator conditions sigma_s on
+``ddG_truth_sd`` (default 1 kT), in the unit of
+``thermo_options['ddG_units']``, and writes it as the ``ddG_sigma`` truth.
 """
 import os
 import warnings
@@ -17,7 +18,7 @@ import pytest
 import yaml
 from numpyro import handlers
 
-from tfscreen.simulate.sample_theta import ddG_truth_sigma_s, sample_theta_prior
+from tfscreen.simulate.sample_theta import ddG_truth_conditions, sample_theta_prior
 from tfscreen.simulate.sim_data_class import build_sim_data
 from tfscreen.simulate.thermo_to_growth import thermo_to_growth
 from tfscreen.tfmodel.generative.registry import model_registry
@@ -60,14 +61,14 @@ def _draw(component, genotypes, thermo_data, thermo_options=None,
     sim_data = build_sim_data(lib, SAMPLE_DF, thermo_data=thermo_data,
                               theta_component=component,
                               thermo_options=thermo_options)
-    override = ddG_truth_sigma_s(ddG_truth_sd, component, thermo_options)
+    conditions = ddG_truth_conditions(ddG_truth_sd, component, thermo_options)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         return thermo_to_growth(lib["genotype"], sim_data, SAMPLE_DF,
                                 component, jax.random.PRNGKey(seed), GROWTH,
                                 rng=np.random.default_rng(seed),
                                 return_mutation_truth=True,
-                                theta_model_params_override=override)
+                                theta_conditions=conditions)
 
 
 def _truth_minus_table(truth, table, structs, factor=1.0):
@@ -127,10 +128,10 @@ def test_sd_in_kcal_is_converted_like_the_table(tmp_path):
     got = _draw(C4, genotypes, str(tmp_path / "kcal.csv"),
                 {"ddG_units": "kcal/mol"}, ddG_truth_sd=0.5)[3]["mutation"]
     pd.testing.assert_frame_equal(ref, got, atol=1e-5, rtol=0)
-    sig = ddG_truth_sigma_s(0.5, C4, {"ddG_units": "kcal/mol"})
-    np.testing.assert_allclose(sig["theta_ddG_sigma_s"], 0.5 / RT, rtol=1e-6)
-    sig = ddG_truth_sigma_s(0.5, C4, {"ddG_units": "kJ/mol"})
-    np.testing.assert_allclose(sig["theta_ddG_sigma_s"],
+    sig = ddG_truth_conditions(0.5, C4, {"ddG_units": "kcal/mol"})
+    np.testing.assert_allclose(sig["theta_ddG_sigma"], 0.5 / RT, rtol=1e-6)
+    sig = ddG_truth_conditions(0.5, C4, {"ddG_units": "kJ/mol"})
+    np.testing.assert_allclose(sig["theta_ddG_sigma"],
                                0.5 / (8.314462618e-3 * 298.15), rtol=1e-6)
 
 
@@ -145,58 +146,74 @@ def test_prior_mean_stays_the_table(tmp_path):
                               thermo_options=opts)
     _, _, det = sample_theta_prior(
         C12, sim_data, jax.random.PRNGKey(0), return_deterministic=True,
-        model_params_overrides=ddG_truth_sigma_s(0.7, C12, opts))
+        conditions=ddG_truth_conditions(0.7, C12, opts))
     np.testing.assert_allclose(det["theta_ddG_prior_mean"],
                                table.loc[muts, C12_STRUCTS].to_numpy() / RT,
                                rtol=1e-6)
 
 
-# ── default and the fit side are unchanged ───────────────────────────────────
+# ── default, the σ_s truth table, and the fit side ─────────────────────────
 
-# Seeded C4_U0 PddG truth from test_thermo_truth (commit 9f252025): the
-# default and an explicit 1 kT must both reproduce it.
-_C4_PDDG_TRUTH_BEFORE = pd.DataFrame({
-    "ddG_H":   [-0.261347, -0.399871, 0.819358],
-    "ddG_HD":  [-2.974988, -0.291039, 2.898206],
-    "ddG_L":   [0.500638, -1.941736, -1.234181],
-    "ddG_LE2": [-1.335636, -0.765674, -0.370668],
-})
+@pytest.mark.parametrize("sd, expected", [
+    (None, [1.0] * 6),
+    (0.0, [0.0] * 6),
+    ({"LE2": 2.0, "H": 0.0, "HO": 0.25, "L": 1.0, "LO": 0.5, "HE2": 0.0},
+     [0.0, 0.25, 1.0, 0.5, 0.0, 2.0]),
+])
+def test_truth_records_sigma_per_structure(sd, expected, tmp_path):
+    genotypes, muts = _library(1)
+    path, _ = _table(tmp_path / "ddG.csv", muts, C12_STRUCTS)
+    sigma = _draw(C12, genotypes, path, ddG_truth_sd=sd)[3]["ddG_sigma"]
+    assert list(sigma.columns) == ["structure", "ddG_sigma"]
+    assert list(sigma["structure"]) == C12_STRUCTS
+    np.testing.assert_allclose(sigma["ddG_sigma"], expected)
 
 
-@pytest.mark.parametrize("sd", [None, 1.0, {s: 1 for s in C4_STRUCTS}])
-def test_default_and_one_kT_reproduce_the_seeded_truth(sd, tmp_path):
+def test_sigma_truth_is_in_kT(tmp_path):
+    genotypes, muts = _library(1)
+    path, _ = _table(tmp_path / "ddG.csv", muts, C4_STRUCTS)
+    sigma = _draw(C4, genotypes, path, {"ddG_units": "kcal/mol"},
+                  ddG_truth_sd=0.5)[3]["ddG_sigma"]
+    np.testing.assert_allclose(sigma["ddG_sigma"], 0.5 / RT, rtol=1e-6)
+
+
+@pytest.mark.parametrize("sd", [1.0, {s: 1 for s in C4_STRUCTS}])
+def test_default_is_one_kT(sd, tmp_path):
+    """No ddG_truth_sd draws the same truth as an explicit 1 kT."""
     genotypes = ["wt", "H29A", "H29C", "L62A", "H29A/L62A", "H29C/L62A"]
     muts = ["H29A", "H29C", "L62A"]
     path, _ = _table(tmp_path / "ddG.csv", muts, C4_STRUCTS)
-    mut = _draw(C4, genotypes, path, ddG_truth_sd=sd)[3]["mutation"]
-    for col in _C4_PDDG_TRUTH_BEFORE:
-        np.testing.assert_allclose(mut[col], _C4_PDDG_TRUTH_BEFORE[col],
-                                   atol=2e-6)
+    ref = _draw(C4, genotypes, path)[3]["mutation"]
+    got = _draw(C4, genotypes, path, ddG_truth_sd=sd)[3]["mutation"]
+    pd.testing.assert_frame_equal(ref, got)
 
 
-def test_override_leaves_the_fit_side_init_alone(tmp_path):
-    """sigma_s starts at 1 in the model whenever nothing overrides it (the
-    fit), also after a simulator draw that did override it."""
+def test_conditioning_leaves_the_fit_side_alone(tmp_path):
+    """sigma_s is a free sample site of the model (the fit), also after a
+    simulator draw that conditioned it."""
     genotypes, muts = _library(1)
     path, _ = _table(tmp_path / "ddG.csv", muts, C12_STRUCTS)
     sim_data = build_sim_data(pd.DataFrame({"genotype": genotypes}), SAMPLE_DF,
                               thermo_data=path, theta_component=C12)
     sample_theta_prior(C12, sim_data, jax.random.PRNGKey(0),
-                       model_params_overrides=ddG_truth_sigma_s(0.0, C12))
+                       conditions=ddG_truth_conditions(0.0, C12))
     module = model_registry["theta"][C12]
     priors = module.ModelPriors(**module.get_hyperparameters())
     with handlers.trace() as tr, handlers.seed(rng_seed=0):
         module.define_model("theta", sim_data, priors)
-    site = tr["theta_ddG_sigma_s"]
-    assert site["type"] == "param"
-    np.testing.assert_array_equal(site["value"], np.ones(len(C12_STRUCTS)))
+    site = tr["theta_ddG_sigma"]
+    assert site["type"] == "sample"
+    assert not site["is_observed"]
+    assert (np.asarray(site["value"]) > 0).all()
 
 
 # ── validation ───────────────────────────────────────────────────────────────
 
-def test_none_is_no_override():
-    assert ddG_truth_sigma_s(None, C12) is None
-    assert ddG_truth_sigma_s(None, "hill_geno") is None
+def test_none_is_one_kT_for_structural_models_only():
+    np.testing.assert_allclose(
+        ddG_truth_conditions(None, C12)["theta_ddG_sigma"], [1.0] * 6)
+    assert ddG_truth_conditions(None, "hill_geno") is None
+    assert ddG_truth_conditions(None, "thermo.O2_C12_K5_U0_a.PK") is None
 
 
 @pytest.mark.parametrize("value, match", [
@@ -210,28 +227,28 @@ def test_none_is_no_override():
 ])
 def test_bad_values_raise(value, match):
     with pytest.raises(ValueError, match=match):
-        ddG_truth_sigma_s(value, C12)
+        ddG_truth_conditions(value, C12)
 
 
 @pytest.mark.parametrize("component", ["hill_geno", "thermo.O2_C12_K5_U0_a.PK"])
 def test_non_structural_component_raises(component):
     with pytest.raises(ValueError, match="PddG"):
-        ddG_truth_sigma_s(0.5, component)
+        ddG_truth_conditions(0.5, component)
 
 
 def test_pnnc_accepts_it():
-    sig = ddG_truth_sigma_s(0.5, "thermo.O2_C4_K3_U0_a.PnnC")
-    np.testing.assert_allclose(sig["theta_ddG_sigma_s"], [0.5] * 4)
+    sig = ddG_truth_conditions(0.5, "thermo.O2_C4_K3_U0_a.PnnC")
+    np.testing.assert_allclose(sig["theta_ddG_sigma"], [0.5] * 4)
 
 
-def test_unknown_override_name_raises(tmp_path):
+def test_unknown_condition_name_raises(tmp_path):
     genotypes, muts = _library(1)
     path, _ = _table(tmp_path / "ddG.csv", muts, C12_STRUCTS)
     sim_data = build_sim_data(pd.DataFrame({"genotype": genotypes}), SAMPLE_DF,
                               thermo_data=path, theta_component=C12)
-    with pytest.raises(ValueError, match="not param sites"):
+    with pytest.raises(ValueError, match="not sample sites"):
         sample_theta_prior(C12, sim_data, jax.random.PRNGKey(0),
-                           model_params_overrides={"theta_nope": 1.0})
+                           conditions={"theta_nope": 1.0})
 
 
 # ── config plumbing: tfs-simulate and tfs-setup-sim-grid ─────────────────────
@@ -262,21 +279,25 @@ _CF = {"condition_blocks": [{}], "theta_component": C12, "growth": {},
 
 
 @pytest.mark.parametrize("cf_extra, expected", [
-    ({}, None),
+    ({}, [1.0] * 6),
     ({"ddG_truth_sd": 0.5}, [0.5] * 6),
     ({"ddG_truth_sd": 0.5, "thermo_options": {"ddG_units": "kcal/mol"}},
      [0.5 / RT] * 6),
 ])
-def test_library_prediction_passes_the_override(mocker, cf_extra, expected):
+def test_library_prediction_passes_the_conditions(mocker, cf_extra, expected):
     from tfscreen.simulate.library_prediction import library_prediction
     thermo = _mock_library_prediction(mocker, {**_CF, **cf_extra})
     library_prediction(cf="config.yaml")
-    got = thermo.call_args.kwargs["theta_model_params_override"]
-    if expected is None:
-        assert got is None
-    else:
-        np.testing.assert_allclose(got["theta_ddG_sigma_s"], expected,
-                                   rtol=1e-6)
+    got = thermo.call_args.kwargs["theta_conditions"]
+    np.testing.assert_allclose(got["theta_ddG_sigma"], expected, rtol=1e-6)
+
+
+def test_library_prediction_no_conditions_for_other_models(mocker):
+    from tfscreen.simulate.library_prediction import library_prediction
+    thermo = _mock_library_prediction(
+        mocker, {**_CF, "theta_component": "hill_geno"})
+    library_prediction(cf="config.yaml")
+    assert thermo.call_args.kwargs["theta_conditions"] is None
 
 
 @pytest.mark.parametrize("cf_extra", [

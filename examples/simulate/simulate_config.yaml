@@ -87,7 +87,7 @@ theta_component: "thermo.O2_C12_K5_U0_a.PK"
 # Optional (PddG/PnnC only): SD of the simulated per-structure ddG truth around
 # the thermo_data values, in ddG_units. A number for every structure, or
 # {structure: sd} naming each one. 0 makes the truth the table exactly.
-# Omit for the model's init value, 1 kT per structure (as in earlier runs).
+# Omit for 1 kT per structure. The true SDs go to tfs_sim_ddG_sigma.csv.
 # ddG_truth_sd: 0.5
 
 # Optional: overrides for the theta component's default model hyperparameters.

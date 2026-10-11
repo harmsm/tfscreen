@@ -7,7 +7,7 @@ import pandas as pd
 from collections import namedtuple
 from dataclasses import dataclass
 from functools import partial
-from numpyro.handlers import trace, seed
+from numpyro.handlers import condition, trace, seed
 
 from tfscreen.genetics.build_mut_geno_matrix import build_mut_sparse_indices
 from tfscreen.tfmodel.generative.components.theta.thermo.O2_C4_K3_U0_a.PnnC import (
@@ -32,6 +32,11 @@ from tfscreen.tfmodel.generative.components.theta.thermo.O2_C4_K3_U0_a.thermo im
 # ──────────────────────────────────────────────────────────────────────────────
 
 _S = 4   # number of structures
+
+
+def _sigma_zero(fn):
+    """``fn`` with every structure's σ_s conditioned to 0: ΔΔG = prior means."""
+    return condition(fn, data={"theta_ddG_sigma": jnp.zeros(_S)})
 _M = 2   # number of mutations
 _G = 4   # number of genotypes: wt, mut0, mut1, double
 
@@ -210,7 +215,7 @@ class TestConfig:
         assert "theta_ln_K_op_wt"  in g
         assert "theta_ln_K_HL_wt"  in g
         assert "theta_ln_K_E_wt"   in g
-        assert "theta_ddG_offset"  in g
+        assert "theta_ddG"  in g
         assert "theta_epi_tau" not in g
 
     def test_get_guesses_keys_with_epi(self):
@@ -221,10 +226,10 @@ class TestConfig:
         assert "theta_epi_lambda" in g
         assert "theta_epi_offset" in g
 
-    def test_get_guesses_ddG_offset_shape(self):
+    def test_get_guesses_ddG_shape(self):
         data = _make_mock()
         g = get_guesses("theta", data)
-        assert g["theta_ddG_offset"].shape == (_S, _M)
+        assert g["theta_ddG"].shape == (_M, _S)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -269,7 +274,7 @@ class TestDefineModel:
         assert "theta_ln_K_op_wt"  in tr
         assert "theta_ln_K_HL_wt"  in tr
         assert "theta_ln_K_E_wt"   in tr
-        assert "theta_ddG_offset"  in tr
+        assert "theta_ddG"  in tr
 
     def test_deterministic_sites_present(self):
         data = _make_mock()
@@ -288,7 +293,7 @@ class TestDefineModel:
             _run_model(data)
 
     def test_zero_nn_weights_zero_offsets_all_genotypes_at_wt(self):
-        """With NN weights=0 and ddG_offset=0, all mutations have zero effect."""
+        """With NN weights=0 and σ_s=0, all mutations have zero effect."""
         data = _make_mock()
         priors = get_priors()
 
@@ -301,7 +306,7 @@ class TestDefineModel:
 
         with mock.patch("numpyro.param", side_effect=mock_param):
             with seed(rng_seed=0):
-                out = define_model("theta", data, priors)
+                out = _sigma_zero(define_model)("theta", data, priors)
 
         # All four genotypes should have the same K values when all effects are zero
         np.testing.assert_allclose(
@@ -379,14 +384,16 @@ class TestGuide:
         param_names = {k for k, v in tr.items() if v["type"] == "param"}
         assert "theta_ln_K_op_wt_loc"   in param_names
         assert "theta_ln_K_op_wt_scale" in param_names
-        assert "theta_ddG_offset_locs"  in param_names
-        assert "theta_ddG_offset_scales" in param_names
+        assert "theta_ddG_locs"   in param_names
+        assert "theta_ddG_scales" in param_names
 
-    def test_sigma_s_param_registered_in_guide(self):
+    def test_sigma_guide_params_registered(self):
         data = _make_mock()
         _, tr = _run_guide(data)
         param_names = {k for k, v in tr.items() if v["type"] == "param"}
-        assert "theta_ddG_sigma_s" in param_names
+        assert "theta_ddG_sigma_locs" in param_names
+        assert "theta_ddG_sigma_scales" in param_names
+        assert tr["theta_ddG_sigma"]["type"] == "sample"
 
     def test_nn_params_registered_in_guide(self):
         data = _make_mock()

@@ -424,7 +424,7 @@ def _population_theta(orchestrator, param_posteriors, pred_growth,
         for name, site in theta_trace.items()
         if site["type"] == "sample" and not site.get("is_observed", False)
     }
-    # the theta component's own learned params (thermo NN, sigma_s) too
+    # the theta component's own learned params (thermo PnnC NN) too
     theta_param = substitute(seed(sample_theta, rng_seed=0),
                              data={**(model_params or {}), **latents})(
         "theta", growth, orchestrator.priors.theta)
@@ -621,7 +621,7 @@ def predict(orchestrator,
     # already store constrained values keyed by bare site name and are left
     # unchanged.
 
-    # The model's own learned params (thermo NN weights, sigma_s): a
+    # The model's own learned params (thermo PnnC NN weights): a
     # posterior file stores them in its model_params group, a raw MAP params
     # file under their own names. They are held fixed in every model run
     # below; without them the model would use their init values.

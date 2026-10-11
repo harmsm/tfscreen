@@ -28,6 +28,14 @@ from tfscreen.simulate.sim_data_class import build_sim_data
 # Components excluded from simulation (calibration-only, no generative prior).
 _EXCLUDED = frozenset({"_simple"})
 
+# Sample sites returned with the deterministic sites (return_deterministic):
+# the PddG/PnnC per-structure ΔΔG and its SD sigma_s, which are latent
+# sample sites (thermo/prior.py) but part of the simulation's truth.
+_TRUTH_SAMPLE_SITES = frozenset({"theta_ddG", "theta_ddG_sigma"})
+
+# SD (kT) of the simulated ΔΔG about the table when ddG_truth_sd is absent.
+DEFAULT_DDG_TRUTH_SD = 1.0
+
 
 def sample_theta_prior(component_name,
                        sim_data,
@@ -36,7 +44,7 @@ def sample_theta_prior(component_name,
                        sim_priors_overrides=None,
                        force_prior_predictive=False,
                        return_deterministic=False,
-                       model_params_overrides=None):
+                       conditions=None):
     """
     Draw one sample of theta from a registered theta component.
 
@@ -74,16 +82,19 @@ def sample_theta_prior(component_name,
         ``handlers.seed``), even if the component provides ``simulate``.
     return_deterministic : bool, default False
         When True, also return the values of every ``pyro.deterministic``
-        site recorded while drawing the sample (prior-predictive path), so
-        callers can write the per-mutation (``theta_d_*``), per-pair
-        (``theta_epi_*``) and per-structure (``theta_ddG``) truth that
+        site recorded while drawing the sample (prior-predictive path), plus
+        the structural models' latent ΔΔG sample sites (``theta_ddG``,
+        ``theta_ddG_sigma``; see ``_TRUTH_SAMPLE_SITES``), so callers can
+        write the per-mutation (``theta_d_*``), per-pair (``theta_epi_*``)
+        and per-structure (``theta_ddG``, ``theta_ddG_sigma``) truth that
         ``ThetaParam`` does not carry.  Tracing does not change the draw.
-    model_params_overrides : dict or None
-        ``{param_name: value}`` replacing the init value of model-side
-        ``pyro.param`` sites in the draw (prior-predictive path only), e.g.
-        ``{"theta_ddG_sigma_s": ...}`` from :func:`ddG_truth_sigma_s`.  Only
-        ``param`` sites are replaced, so the random stream is unchanged.  A
-        name that is not a param site of the model is an error.
+    conditions : dict or None
+        ``{sample_site: value}`` fixing sample sites of the draw
+        (prior-predictive path only; ``numpyro.handlers.condition``), e.g.
+        ``{"theta_ddG_sigma": ...}`` from :func:`ddG_truth_conditions`.  A
+        conditioned site draws no random number; every other site draws as
+        it would with the same value sampled.  A name that is not a sample
+        site of the model is an error.
 
     Returns
     -------
@@ -139,30 +150,24 @@ def sample_theta_prior(component_name,
         params.update(priors_overrides)
     priors = module.ModelPriors(**params)
 
-    # Model-side params (e.g. the ddG truth-noise SD sigma_s) take their init
-    # value unless overridden here.  Only param sites are touched: sample
-    # sites draw exactly as without the override.
-    overrides = dict(model_params_overrides or {})
-
-    def _param_override(msg):
-        if msg["type"] == "param":
-            return overrides.get(msg["name"])
-        return None
+    # Conditioned sample sites (e.g. the ddG truth-noise SD sigma_s) take
+    # the given value; condition sits inside seed, so they draw no key.
+    conditions = dict(conditions or {})
 
     # handlers.trace only records the sites; the seeded draw is unchanged.
     with handlers.trace() as trace:
         with handlers.seed(rng_seed=rng_key):
-            with handlers.substitute(substitute_fn=_param_override):
+            with handlers.condition(data=conditions):
                 theta_param = module.define_model("theta", sim_data, priors)
 
-    if overrides:
-        params_seen = {n for n, site in trace.items() if site["type"] == "param"}
-        unknown = sorted(set(overrides) - params_seen)
+    if conditions:
+        samples_seen = {n for n, site in trace.items()
+                        if site["type"] == "sample"}
+        unknown = sorted(set(conditions) - samples_seen)
         if unknown:
             raise ValueError(
-                f"model_params_overrides {unknown} are not param sites of "
-                f"theta component '{component_name}' (it has "
-                f"{sorted(params_seen)}).")
+                f"conditions {unknown} are not sample sites of theta "
+                f"component '{component_name}'.")
 
     # run_model returns (T=1, C, G) for simulation (scatter_theta=0).
     theta_tcg = module.run_model(theta_param, sim_data)
@@ -171,21 +176,23 @@ def sample_theta_prior(component_name,
     if return_deterministic:
         deterministic = {name: np.asarray(site["value"])
                          for name, site in trace.items()
-                         if site["type"] == "deterministic"}
+                         if site["type"] == "deterministic"
+                         or (site["type"] == "sample"
+                             and name in _TRUTH_SAMPLE_SITES)}
         return theta_gc, theta_param, deterministic
     return theta_gc, theta_param
 
 
-def ddG_truth_sigma_s(ddG_truth_sd, theta_component, thermo_options=None):
+def ddG_truth_conditions(ddG_truth_sd, theta_component, thermo_options=None):
     """
-    Model-param override that sets the SD of the simulated per-structure ΔΔG.
+    Site conditions that set the SD of the simulated per-structure ΔΔG.
 
-    The PddG/PnnC models draw ``theta_ddG = prior_mean + sigma_s * offset``
-    with ``offset ~ Normal(0, 1)`` and ``sigma_s`` (``theta_ddG_sigma_s``) a
-    per-structure ``pyro.param`` initialized to 1 (kT).  In the simulator's
-    prior-predictive draw that sum is the ground truth, so ``sigma_s`` is
-    the SD of truth minus the structural prior mean.  This turns the
-    simulate-config ``ddG_truth_sd`` into that ``sigma_s``.
+    The PddG/PnnC models sample ``theta_ddG_sigma`` (σ_s, one per
+    structure) and then ``theta_ddG ~ Normal(prior_mean, σ_s)``
+    (``thermo/prior.py``).  In the simulator's prior-predictive draw that
+    ΔΔG is the ground truth, so σ_s is the SD of truth minus the structural
+    prior mean.  The simulation conditions σ_s rather than drawing it from
+    its LogNormal prior, so the truth noise is a known dial.
 
     Parameters
     ----------
@@ -194,33 +201,46 @@ def ddG_truth_sigma_s(ddG_truth_sd, theta_component, thermo_options=None):
         structure in the component's ``STRUCTURE_NAMES``.  In the energy unit
         of ``thermo_options['ddG_units']`` (kT by default) and converted to
         kT once, like the ΔΔG table.  0 makes the truth the table exactly.
-        None keeps the init value (1 kT for every structure).
+        None gives 1 kT for every structure (the default truth noise).
     theta_component : str
-        Registered theta component; must be a PddG or PnnC model.
+        Registered theta component.
     thermo_options : dict or None
         Supplies ``ddG_units`` and ``temperature_K``.
 
     Returns
     -------
     dict or None
-        ``{"theta_ddG_sigma_s": np.ndarray (S,)}`` in kT, in the component's
-        ``STRUCTURE_NAMES`` order, or None when ``ddG_truth_sd`` is None.
-    """
-    if ddG_truth_sd is None:
-        return None
+        ``{"theta_ddG_sigma": np.ndarray (S,)}`` in kT, in the component's
+        ``STRUCTURE_NAMES`` order.  None for a component without the site
+        when ``ddG_truth_sd`` is None.
 
+    Raises
+    ------
+    ValueError
+        ``ddG_truth_sd`` given for a component that is not PddG/PnnC, or
+        not a finite number >= 0, or a mapping that does not name exactly
+        the component's structures.
+    """
     from tfscreen.tfmodel.generative.components.theta.thermo.io import (
         ddG_to_kT_factor,
         normalize_thermo_options,
         required_struct_names,
     )
+    from tfscreen.tfmodel.generative.components.theta.thermo.prior import (
+        ddG_sigma_site,
+    )
 
-    struct_names = required_struct_names(theta_component)
+    struct_names = (required_struct_names(theta_component)
+                    if theta_component is not None else None)
     if struct_names is None:
+        if ddG_truth_sd is None:
+            return None
         raise ValueError(
             f"ddG_truth_sd applies only to the structural thermo components "
             f"(thermo.*.PddG, thermo.*.PnnC); theta_component is "
             f"'{theta_component}'.")
+    if ddG_truth_sd is None:
+        return {ddG_sigma_site(): np.full(len(struct_names), DEFAULT_DDG_TRUTH_SD)}
 
     def _sd(value, label):
         if isinstance(value, bool) or not isinstance(value, (int, float)):
@@ -249,7 +269,7 @@ def ddG_truth_sigma_s(ddG_truth_sd, theta_component, thermo_options=None):
 
     opts = normalize_thermo_options(thermo_options)
     factor = ddG_to_kT_factor(opts["ddG_units"], opts["temperature_K"])
-    return {"theta_ddG_sigma_s": sd * factor}
+    return {ddG_sigma_site(): sd * factor}
 
 
 def _greedy_maximin(theta_gc, n_select):

@@ -17,7 +17,8 @@ equilibrium constants, using six structural states as the free-energy basis:
     Structures: H, HO, L, LO, HE2, LE2
 
     ΔΔG[m, s]  ~ Normal( MLP_s(features[m, s, :]) · n_chains[s],  σ_s )
-    σ_s        — per-structure trust scale (``pyro.param``, init=1.0)
+    σ_s        ~ LogNormal(theta_ddG_sigma_loc, theta_ddG_sigma_scale), one per
+                 structure (SD of ΔΔG about its prior mean; thermo/prior.py)
 
 Projection from per-structure ΔΔG to Δln_K (rows = K, cols = structures):
 
@@ -74,7 +75,11 @@ from tfscreen.tfmodel.generative.components.theta.thermo.nn import (
 )
 from tfscreen.tfmodel.generative.components.theta.thermo import mwc
 from tfscreen.tfmodel.generative.components.theta.thermo.prior import (
+    DEFAULT_DDG_SIGMA_LOC,
+    DEFAULT_DDG_SIGMA_SCALE,
     ddG_extract_specs,
+    ddG_guesses,
+    guide_ddG,
     sample_ddG,
 )
 from tfscreen.tfmodel.generative.components.theta.thermo.horseshoe import (
@@ -146,6 +151,11 @@ class ModelPriors:
 
     # Distance scale for distance-dependent λ prior (Å)
     theta_epi_d0: float
+
+    # LogNormal prior on the per-structure ΔΔG scale σ_s (log kT); see
+    # thermo/prior.py.
+    theta_ddG_sigma_loc:   float
+    theta_ddG_sigma_scale: float
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -297,7 +307,9 @@ def define_model(name: str,
     )  # (M, S)
 
     # ── Per-mutation per-structure ΔΔG latent variables ──────────────────────
-    ddG = sample_ddG(name, list(data.struct_names), num_mut, nn_means)  # (M, S)
+    ddG = sample_ddG(name, list(data.struct_names), num_mut, nn_means,
+                     sigma_loc=priors.theta_ddG_sigma_loc,
+                     sigma_scale=priors.theta_ddG_sigma_scale)  # (M, S)
 
     # Project (M, 6) → (M, 5) Δln_K
     delta_lnK  = _project_ddG(ddG)         # (M, 5)
@@ -411,18 +423,6 @@ def guide(name: str,
         hidden_size=priors.theta_nn_hidden_size,
     )  # (M, S)
 
-    # ── Register sigma_s so the param store includes it before sampling ───────
-    pyro.param(
-        f"{name}_ddG_sigma_s", jnp.ones(S), constraint=constraints.positive,
-    )
-
-    # ── Variational params for ddG offsets, shape (S, M) in plate layout ─────
-    ddG_offset_locs   = pyro.param(f"{name}_ddG_offset_locs",
-                                   jnp.zeros((S, num_mut)))
-    ddG_offset_scales = pyro.param(f"{name}_ddG_offset_scales",
-                                   jnp.ones((S, num_mut)),
-                                   constraint=constraints.positive)
-
     # ── Optional epistasis variational params ─────────────────────────────────
     if has_epi:
         num_pair = data.num_pair
@@ -443,24 +443,8 @@ def guide(name: str,
         ln_K_h_e_wt = pyro.sample(f"{name}_ln_K_h_e_wt", dist.Normal(ln_K_h_e_wt_locs, ln_K_h_e_wt_scales))
         ln_K_l_e_wt = pyro.sample(f"{name}_ln_K_l_e_wt", dist.Normal(ln_K_l_e_wt_locs, ln_K_l_e_wt_scales))
 
-    # ── Sample ddG offsets (matches model's prior.sample_ddG plate layout) ────
-    if num_mut > 0:
-        with pyro.plate(f"{name}_struct_plate", S, dim=-2):
-            with pyro.plate(f"{name}_mut_plate", num_mut, dim=-1):
-                offsets = pyro.sample(
-                    f"{name}_ddG_offset",
-                    dist.Normal(ddG_offset_locs, ddG_offset_scales),
-                )  # (S, M)
-    else:
-        # num_mut == 0 (wt-only library): numpyro.plate needs size > 0,
-        # so skip the site (prior.sample_ddG does the same).
-        offsets = jnp.zeros((S, 0))
-
-    sigma_s = pyro.param(
-        f"{name}_ddG_sigma_s", jnp.ones(S), constraint=constraints.positive,
-    )
-    ddG_SM = nn_means.T + sigma_s[:, None] * offsets   # (S, M)
-    ddG    = ddG_SM.T                                   # (M, S)
+    # ── Sample σ_s and ΔΔG (matches prior.sample_ddG) ───────────────────────
+    ddG = guide_ddG(name, num_mut, S, jnp.zeros((num_mut, S)))   # (M, S)
 
     # ── Sample epistasis ──────────────────────────────────────────────────────
     epi_delta_lnK = None
@@ -549,6 +533,8 @@ def get_hyperparameters() -> Dict[str, Any]:
     p["theta_epi_slab_scale"]  = 2.0
     p["theta_epi_slab_df"]     = 4.0
     p["theta_epi_d0"]          = float(_DEFAULT_D0)
+    p["theta_ddG_sigma_loc"]   = DEFAULT_DDG_SIGMA_LOC     # median σ_s 1 kT
+    p["theta_ddG_sigma_scale"] = DEFAULT_DDG_SIGMA_SCALE   # 95%: 0.1-10 kT
     return p
 
 
@@ -562,7 +548,8 @@ def get_guesses(name: str, data: Union[GrowthData, BindingData]) -> Dict[str, An
     g[f"{name}_ln_K_h_e_wt"]  = jnp.full(T, DEFAULT_LN_K_H_E)
     g[f"{name}_ln_K_l_o_wt"]  = jnp.array(DEFAULT_LN_K_L_O)
     g[f"{name}_ln_K_l_e_wt"]  = jnp.full(T, DEFAULT_LN_K_L_E)
-    g[f"{name}_ddG_offset"]    = jnp.zeros((S, M))
+    # ΔΔG starts at its prior means, σ_s at 1 kT.
+    g.update(ddG_guesses(name, jnp.zeros((M, S))))
     if data.num_pair > 0 and data.struct_contact_distances is not None:
         P = data.num_pair
         g[f"{name}_epi_tau"]    = jnp.array(0.05)

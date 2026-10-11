@@ -201,7 +201,7 @@ def test_interrupted_stage_resumes(tmp_path):
 
 
 def test_model_params_follow_the_stages(tmp_path):
-    """The model's own learned params (thermo NN, sigma_s) are not sites:
+    """The model's own learned params (thermo PnnC NN) are not sites:
     stage 2 holds them at stage 1's values and stage 3 starts from them."""
     import numpyro
     from numpyro import handlers
@@ -211,10 +211,10 @@ def test_model_params_follow_the_stages(tmp_path):
                      out_prefix=None, label=None, **kwargs):
             out = super().__call__(ri, init_values, checkpoint_file,
                                    out_prefix, label, **kwargs)
-            if out_prefix.endswith("stage1"):     # stage 1 learned sigma_s
+            if out_prefix.endswith("stage1"):     # stage 1 learned NN weights
                 np.savez(f"{out_prefix}_params.npz",
                          **{k: v for k, v in out[1].items()},
-                         theta_ddG_sigma_s=np.array([0.5, 2.0]))
+                         theta_nn_H_b2=np.array([0.5, 2.0]))
             self.calls[-1]["model"] = ri.model
             return out
 
@@ -225,14 +225,14 @@ def test_model_params_follow_the_stages(tmp_path):
     s1, s2, s3 = fake.calls
     assert "init_params" not in s1["kwargs"]
     assert "init_params" not in s2["kwargs"]
-    np.testing.assert_allclose(s3["kwargs"]["init_params"]["theta_ddG_sigma_s"],
+    np.testing.assert_allclose(s3["kwargs"]["init_params"]["theta_nn_H_b2"],
                                [0.5, 2.0])
 
     # stage 2's model holds them: an outer substitute cannot replace them
     class _M:
         def jax_model(self):
-            return numpyro.param("theta_ddG_sigma_s", np.ones(2))
-    held = S.HeldModel(_M(), {}, params={"theta_ddG_sigma_s": np.array([0.5, 2.0])})
+            return numpyro.param("theta_nn_H_b2", np.ones(2))
+    held = S.HeldModel(_M(), {}, params={"theta_nn_H_b2": np.array([0.5, 2.0])})
     out = handlers.substitute(handlers.seed(held.jax_model, 0),
-                              data={"theta_ddG_sigma_s": np.zeros(2)})()
+                              data={"theta_nn_H_b2": np.zeros(2)})()
     np.testing.assert_allclose(out, [0.5, 2.0])

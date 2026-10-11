@@ -781,6 +781,48 @@ def _summarize_params(run_dir, out_prefix):
             _try_calibration(out_df, "ref", out_name[:-4], plot_label)
 
 
+def _summarize_ddG_sigma(run_dir, out_prefix):
+    """Annotate *_params_ddG_sigma.csv with the truth in *_sim_ddG_sigma.csv.
+
+    A PddG/PnnC simulation writes the true per-structure σ_s (the SD of the
+    true ΔΔG about the structural prior mean) as ``*_sim_ddG_sigma.csv``
+    (``structure``, ``ddG_sigma``); a PddG/PnnC fit extracts its σ_s as
+    ``*_params_ddG_sigma.csv``, one row per structure (``thermo/prior.py``).
+    They are joined on ``structure``.  Silently skips without the truth
+    (real data, other models) or when the fit wrote no ddG tables at all (a
+    PK fit; ``_summarize_params`` prints the note for that).  No
+    correlation plot: there are only a handful of structures.
+    """
+    sim_path = _find_unique(run_dir, "_sim_ddG_sigma.csv", "sim ddG_sigma",
+                            warn_missing=False)
+    if sim_path is None:
+        return
+    param_file = _find_unique(run_dir, "_params_ddG_sigma.csv",
+                              "ddG_sigma params", warn_missing=False)
+    if param_file is None:
+        if glob.glob(os.path.join(run_dir, "*_params_ddG_*.csv")):
+            warnings.warn(f"Expected *_params_ddG_sigma.csv in {run_dir} "
+                          f"but none found")
+        return
+    try:
+        truth = pd.read_csv(sim_path).set_index("structure")["ddG_sigma"]
+        params_df = pd.read_csv(param_file)
+        out_df = params_df.copy()
+        out_df["ref"] = truth.reindex(params_df["structure"].astype(str)).values
+    except Exception as exc:
+        warnings.warn(f"Could not join ddG_sigma truth: {exc}")
+        return
+
+    out_name = f"{out_prefix}_params_ddG_sigma.csv"
+    try:
+        out_df.to_csv(out_name, index=False)
+        print(f"Wrote parameter summary to {out_name}")
+    except Exception as exc:
+        warnings.warn(f"Could not write {out_name}: {exc}")
+        return
+    _try_calibration(out_df, "ref", out_name[:-4], "ddG_sigma")
+
+
 # Fit-side extract names for the condition_growth component (see
 # generative/components/growth/{linear,power,saturation}.py's
 # get_extract_specs and simulate/growth_parameters_output.py, which writes
@@ -1513,6 +1555,7 @@ def summarize_fit(run_dir,
 
     # --- Sim-parameter correlation CSVs ---
     _summarize_params(run_dir, out_prefix)
+    _summarize_ddG_sigma(run_dir, out_prefix)
     _summarize_growth_params(run_dir, out_prefix, x_gauge)
     _summarize_transformation_lam(run_dir, out_prefix)
 
