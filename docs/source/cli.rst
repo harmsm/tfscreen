@@ -216,8 +216,13 @@ tfs-configure-model
                               [--theta_gauge_conc THETA_GAUGE_CONC THETA_GAUGE_CONC]
                               [--library_config LIBRARY_CONFIG]
                               [--growth_shares_replicates] [--epistasis]
-                              [--thermo_data THERMO_DATA] [--batch_size BATCH_SIZE]
-                              [--binding_weight BINDING_WEIGHT]
+                              [--thermo_data THERMO_DATA]
+                              [--thermo_ddG_units THERMO_DDG_UNITS]
+                              [--thermo_temperature_K THERMO_TEMPERATURE_K]
+                              [--thermo_column_map THERMO_COLUMN_MAP]
+                              [--thermo_residue_offset THERMO_RESIDUE_OFFSET]
+                              [--thermo_max_missing_fraction THERMO_MAX_MISSING_FRACTION]
+                              [--batch_size BATCH_SIZE] [--binding_weight BINDING_WEIGHT]
                               [--set_priors SET_PRIORS [SET_PRIORS ...]]
                               [--growth_priors GROWTH_PRIORS]
                               [--growth_priors_wt_rates GROWTH_PRIORS_WT_RATES]
@@ -417,7 +422,29 @@ tfs-configure-model
                            containing pre-computed ΔΔG prior means; the required
                            structure columns depend on the topology -- O2_C4_* models use
                            (H, HD, L, LE2) while O2_C12_* models use (H, HO, L, LO, HE2,
-                           LE2). (default: None)
+                           LE2). Mutation or mutation may name the mutation column, an
+                           unnamed index column is dropped and other columns are ignored.
+                           ΔΔG_X shifts state X's free energy (positive destabilises X).
+                           The loader prints how many library mutations the file covers
+                           and fails on zero coverage or on wt residues that disagree
+                           with the library. (default: None)
+     --thermo_ddG_units THERMO_DDG_UNITS
+                           Unit of the PddG CSV's ΔΔG values: kT (default; used as-is),
+                           kcal/mol or kJ/mol (divided by RT at load).
+     --thermo_temperature_K THERMO_TEMPERATURE_K
+                           Temperature for that conversion. Default 298.15.
+     --thermo_column_map THERMO_COLUMN_MAP
+                           model_name=csv_column pairs, comma-separated (e.g. HD=HO),
+                           naming the CSV column that supplies a model structure.
+                           (default: None)
+     --thermo_residue_offset THERMO_RESIDUE_OFFSET
+                           Added to the file's residue numbers (CSV labels or HDF5
+                           residue_nums) to give the library numbering, e.g. 1 for a
+                           0-based file. Default 0.
+     --thermo_max_missing_fraction THERMO_MAX_MISSING_FRACTION
+                           Warn when more than this fraction of library mutations has no
+                           ΔΔG in the CSV. Default 0.1. These five are stored in the
+                           config as components.thermo_options.
      --batch_size BATCH_SIZE
                            Mini-batch size for SVI. Defaults to 1024. Set to None to use
                            the full dataset as a single batch.
@@ -823,6 +850,7 @@ tfs-sample-posterior
                                [--laplace_max_params LAPLACE_MAX_PARAMS]
                                [--skip_growth_observations]
                                [--genotype_chunk_size GENOTYPE_CHUNK_SIZE]
+                               [--allow_flat_laplace_floor]
                                config_file checkpoint_file
 
    Draw posterior samples from an existing MAP, SVI, or NUTS checkpoint.
@@ -901,6 +929,14 @@ tfs-sample-posterior
                            Genotypes per Hessian-vector-product pass for the arrowhead
                            and blocks Laplace (default None, all at once). Lower it on
                            device OOM.
+     --allow_flat_laplace_floor
+                           If the prior SDs that floor the Laplace's Hessian eigenvalues
+                           cannot be computed, warn and floor every eigenvalue at a flat
+                           1e-3 instead of stopping with an error (default False). The
+                           flat floor turns a negative eigenvalue into a direction with
+                           SD ~30 in unconstrained units, so use it only to get a
+                           posterior out of a model whose prior SDs fail for a reason you
+                           understand.
 
 tfs-extract-params
 ------------------
@@ -922,7 +958,15 @@ tfs-extract-params
    q0.95, q0.975, q0.99, q0.995, q0.999.
 
    Writes one CSV per parameter group named {out_prefix}_{param_name}.csv
-   (e.g. tfs_params_activity.csv, tfs_params_theta.csv).
+   (e.g. tfs_params_activity.csv, tfs_params_theta.csv; thermo PddG/PnnC
+   also give one ddG_{structure} and ddG_prior_mean_{structure}
+   table per structure, both deterministic sites that need a posterior
+   file, plus one ddG_sigma table of the per-structure SD σ_s keyed by
+   structure; the ΔΔG is computed from the fitted constants,
+   thermo/prior.py). A model with its own learned
+   pyro.param sites (the thermo PnnC NN weights) also gets
+   {out_prefix}_model_params.csv: one row per element (parameter,
+   index, value).
 
    positional arguments:
      config_file           Path to the YAML configuration file used when fitting the
@@ -1630,7 +1674,16 @@ tfs-simulate
    tfscreen.simulate.growth_parameters_output.generate_growth_parameters_df),
    and transformation_lam (single-row congression Poisson-rate ground truth;
    see tfscreen.simulate.transformation_lam_output.generate_transformation_lam_df)
-   CSV files. If the config contains a 'binding_data' block, also writes a
+   CSV files. A mutation-decomposed theta model drawn from its prior (the
+   thermodynamic models) also writes mutation_parameters (one row per
+   mutation: the true d_* deltas and, for PddG/PnnC, ddG_{structure}) and,
+   when the library has multi-mutants, pair_parameters (one row per pair:
+   the true epi_* terms); see
+   tfscreen.simulate.thermo_to_growth._mutation_truth_tables. PddG/PnnC
+   also write ddG_sigma (one row per structure: the true SD of ΔΔG about
+   the structural prior mean, set by the config's ddG_truth_sd, 1 kT by
+   default; see _ddG_sigma_truth_table). If the config
+   contains a 'binding_data' block, also writes a
    simulated binding curve CSV (see
    tfscreen.simulate.binding_data.generate_binding_df). If it contains a
    'base_growth_data' block, also writes a simulated direct growth-rate
@@ -1644,6 +1697,13 @@ tfs-simulate
    simulates od600.num_od_only_replicates extra replicates that get OD600
    but no reads. With shared_transformation, every replicate (OD-only ones
    included) draws its cells from one library assembly and transformation.
+
+   With library_genotypes and/or library_subsample the library is
+   restricted to a subset of the described genotypes before anything is
+   simulated ({out_prefix}_library.csv lists the kept ones); with the
+   default library_subsample_depth: full_library each kept sequence
+   keeps the pool share, transformants, reads and PCR templates it has in
+   the full library. See tfscreen.genetics.library_subsample.
 
    positional arguments:
      config_file           Path to the YAML run configuration file.
@@ -1670,7 +1730,10 @@ tfs-simulate
                            the growth table built directly from the simulated counts
                            (with each row's true values). tfs-process-counts builds the
                            same table from the raw files, so a full-size simulation can
-                           skip it: on a real library's size it is several GB.
+                           skip it: on a real library's size it is several GB. With an
+                           od600 block, tubes read below the calibration's detection
+                           threshold are left out of it, as they are out of the raw tube
+                           table (tfs-process-counts refuses them).
 
 tfs-build-empirical
 -------------------
