@@ -98,6 +98,12 @@ is the monoculture), so the real kanR curves are likely compressed too.
    doubles' pull (deep coverage 0.82 / 0.42 against the pins' 0.90 /
    0.65). Real: kanR m -0.0133, pheS m 0.0064, half the monoculture's.
    Round 5 repeats both arms with `linear`'s new per-condition pins.
+   Round 5 result (2026-10-11): the pins hold exactly and pheS's free m is
+   right, but pheS's free k reopens the k/dk_geno slide: deep X shifts up
+   by 0.04-0.09, coverage 0.67 / 0.20. Pinning every condition at the
+   no-doubles fit (round 3) closes it, and the real pheS no-doubles m is
+   what the data give with X set by kanR, so the real fit should pin all
+   four conditions.
 2. [ ] **Carry k and m's error into X.** The held fit (step 1b, round 3)
    gives X intervals conditional on k and m. Take k and m's uncertainty
    from the no-doubles fit (its Laplace), refit the full library held at a

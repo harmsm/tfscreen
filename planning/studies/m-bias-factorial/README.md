@@ -534,3 +534,40 @@ lines read `pins: none`.
 
 So round 5 pins kanR per condition instead.
 
+### Round 5 result (2026-10-11)
+
+Both arms converged at every stage (about 3.5 and 7 hours). The pins held
+exactly: kanR's k and m equal the no-doubles values in both arms.
+
+| sim, doubles above 1e4 reads | all pinned (round 3) | kanR prior (round 4) | kanR pinned (round 5) |
+|---|---|---|---|
+| 1e4-1e5: slope / RMSE / 95% coverage | 0.95 / 0.07 / 0.90 | 1.00 / 0.08 / 0.82 | 0.99 / 0.10 / 0.67 |
+| > 1e5: slope / RMSE / 95% coverage | 0.96 / 0.05 / 0.65 | 1.01 / 0.07 / 0.42 | 0.99 / 0.09 / 0.20 |
+| mean X error at 0 / 1 mM IPTG | +0.02 / -0.05 | +0.06 / 0.00 | +0.09 / +0.04 |
+| pheS+4CP k (truth 0.0033) | 0.0057 (held) | 0.0005 | -0.0009 |
+| pheS+4CP m (truth 0.0141) | 0.0126 (held) | 0.0147 | 0.0140 |
+
+**Freeing pheS's k reopens the k/dk_geno slide.** The free pheS m is
+right (1.00 of the truth), and X's scale is right (slope 0.99), but every
+deep double's X shifts up by a near-constant amount. A uniform shift in X
+is compensated by dk_geno and pheS's k together. kanR's pinned k no longer
+closes the slide on its own, because dk_geno is shared and pheS's k can
+absorb the difference. Only wt's gauge resists, weakly. The Laplace
+holds that direction (pheS+4CP k, eigenvalue -1.4e10) at zero width, so
+the intervals do not widen to cover the shift. Round 4 left pheS's k
+free too; its MAP stopped at a smaller shift. Round 3, with every
+condition pinned, has no slide.
+
+**Real arm:** kanR k 0.0160, m -0.0141 (pinned); pheS+4CP k 0.0093, m
+0.0068, against its own no-doubles fit's 0.0117 and 0.0061. pheS's k slid
+the same way, and its held direction is again pheS+4CP k (eigenvalue
+-4.7e9).
+
+**What the data support for pheS.** In the real data, pheS's m with X
+set by kanR (0.0064 in round 4, 0.0068 here) matches pheS's own
+no-doubles fit (0.0061). So the half-strength pheS selection is the pool's
+property, the same with or without the doubles, not an artifact of the
+no-doubles fit. Pinning pheS at its no-doubles values (round 3's setup) is
+what the data support, and it is the setup that closes the slide on the
+simulation.
+
