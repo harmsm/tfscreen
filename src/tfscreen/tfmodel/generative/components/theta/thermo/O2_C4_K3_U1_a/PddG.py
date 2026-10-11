@@ -26,6 +26,14 @@ and K_E unchanged and raises K_U by ΔΔG: a pure stability effect.  The
 per-mutation shift is exposed as ``d_ln_K_U`` (and ``epi_ln_K_U`` per pair),
 the same name the PK model uses for its free per-mutation unfolding shift.
 
+The structural prior sits on the constants (thermo/prior.py): σ_s ~
+LogNormal(theta_ddG_sigma_loc, theta_ddG_sigma_scale) per structure and Δln
+K[m] ~ MVN(P · μ[m], P · diag(σ_s²) · Pᵀ), μ the ΔΔG table, P =
+``DLNK_PROJ`` (the folded rows plus the unfolding row; site ``theta_dlnK``,
+M × 4).  P is square and invertible, so this is exactly the per-structure
+model ΔΔG[m, s] ~ Normal(μ[m, s], σ_s) written in the constants, and the
+per-structure ΔΔG is the deterministic site ``theta_ddG`` = P⁻¹ · Δln K.
+
 Input CSV format (passed via ``thermo_data``)
 ------------------------------------------------------
 A CSV with a mutation column (``mut``, ``Mutation`` or ``mutation``) and one
@@ -58,9 +66,10 @@ from tfscreen.tfmodel.generative.components.theta.thermo.prior import (
     DEFAULT_DDG_SIGMA_LOC,
     DEFAULT_DDG_SIGMA_SCALE,
     ddG_extract_specs,
-    ddG_guesses,
-    guide_ddG,
-    sample_ddG,
+    dlnK_guesses,
+    guide_dlnK,
+    projection,
+    sample_dlnK,
 )
 from tfscreen.tfmodel.generative.components.theta.thermo.horseshoe import (
     sample_pair_ddG,
@@ -89,6 +98,10 @@ _PROJ = jnp.asarray(mwc.PROJ_C4)
 
 # Unfolding row. K_U = [U]/[H] and ΔΔG_U = 0, so Δln K_U = ΔΔG_H.
 _PROJ_U = jnp.asarray(mwc.PROJ_U_C4)
+
+# Δln K (sampled, M × 4) = ΔΔG @ DLNK_PROJ.T: the folded rows, then the
+# unfolding row; square and invertible (thermo/prior.py).
+DLNK_PROJ = projection(mwc.PROJ_C4, mwc.PROJ_U_C4)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -217,15 +230,18 @@ def define_model(name: str,
             f"{name}_ln_K_E_wt",
             dist.Normal(priors.theta_ln_K_E_wt_loc, priors.theta_ln_K_E_wt_scale))
 
-    ddG = sample_ddG(name, list(STRUCTURE_NAMES), num_mut, ddG_prior_means,
-                     sigma_loc=priors.theta_ddG_sigma_loc,
-                     sigma_scale=priors.theta_ddG_sigma_scale)
-    delta_lnK = _project_ddG(ddG)
+    # ── Per-mutation Δln K under the structural prior ─────────────────────────
+    # Δln K[m] ~ MVN(P · prior_mean[m], P · diag(σ_s²) · Pᵀ), σ_s per state
+    # (thermo/prior.py); the post-hoc per-state ΔΔG is the site {name}_ddG.
+    dlnK = sample_dlnK(name, list(STRUCTURE_NAMES), num_mut, ddG_prior_means, DLNK_PROJ,
+                       sigma_loc=priors.theta_ddG_sigma_loc,
+                       sigma_scale=priors.theta_ddG_sigma_scale)  # (M, C)
+    delta_lnK = dlnK[:, :3]
 
     pyro.deterministic(f"{name}_d_ln_K_op", delta_lnK[:, 0])
     pyro.deterministic(f"{name}_d_ln_K_HL", delta_lnK[:, 1])
     pyro.deterministic(f"{name}_d_ln_K_E",  delta_lnK[:, 2])
-    d_ln_K_U = _project_unfolding(ddG)
+    d_ln_K_U = dlnK[:, 3]
     pyro.deterministic(f"{name}_d_ln_K_U",  d_ln_K_U)
 
     # ── Optional pairwise epistasis ───────────────────────────────────────────
@@ -327,8 +343,8 @@ def guide(name: str,
     with pyro.plate(f"{name}_wt_plate", T, dim=-1):
         ln_K_E_wt = pyro.sample(f"{name}_ln_K_E_wt", dist.Normal(ln_K_E_wt_locs, ln_K_E_wt_scales))
 
-    # ── Sample σ_s and ΔΔG (matches prior.sample_ddG) ───────────────────────
-    ddG = guide_ddG(name, num_mut, S, ddG_prior_means)   # (M, S)
+    # ── Sample σ_s and Δln K (matches prior.sample_dlnK) ────────────────────
+    dlnK = guide_dlnK(name, num_mut, S, DLNK_PROJ, ddG_prior_means)   # (M, C)
 
     # ── Sample epistasis ──────────────────────────────────────────────────────
     epi_delta_lnK = None
@@ -371,12 +387,12 @@ def guide(name: str,
                                pair_nnz_geno_idx=jnp.array(data.pair_nnz_geno_idx),
                                num_genotype=data.num_genotype)
 
-    delta_lnK = _project_ddG(ddG)
+    delta_lnK = dlnK[:, :3]
     ln_K_op, ln_K_HL, ln_K_E = _assemble_K(
         ln_K_op_wt, ln_K_HL_wt, ln_K_E_wt, delta_lnK, mut_scatter,
         epi_delta_lnK=epi_delta_lnK, pair_scatter=pair_scatter,
     )
-    ln_K_U = _assemble_K_U(ln_K_U_wt, _project_unfolding(ddG), mut_scatter,
+    ln_K_U = _assemble_K_U(ln_K_U_wt, dlnK[:, 3], mut_scatter,
                            epi_ln_K_U=epi_ln_K_U, pair_scatter=pair_scatter)
 
     theta_vals = _compute_theta(ln_K_op, ln_K_HL, ln_K_E, ln_K_U,
@@ -425,8 +441,8 @@ def get_guesses(name: str, data: Union[GrowthData, BindingData]) -> Dict[str, An
     g[f"{name}_ln_K_HL_wt"]  = jnp.array(DEFAULT_LN_K_HL_WT_LOC)
     g[f"{name}_ln_K_E_wt"]   = jnp.full(T, DEFAULT_LN_K_E_WT_LOC)
     g[f"{name}_ln_K_U_wt"]   = jnp.array(-12.0)
-    # ΔΔG starts at its prior means, σ_s at 1 kT.
-    g.update(ddG_guesses(name, jnp.asarray(data.struct_features)[:, jnp.array(_get_struct_perm(data))]))
+    # Δln K starts at P · (ΔΔG prior means), σ_s at 1 kT.
+    g.update(dlnK_guesses(name, jnp.asarray(data.struct_features)[:, jnp.array(_get_struct_perm(data))], DLNK_PROJ))
     if data.num_pair > 0:
         P = data.num_pair
         g[f"{name}_epi_tau"]    = jnp.array(0.05)

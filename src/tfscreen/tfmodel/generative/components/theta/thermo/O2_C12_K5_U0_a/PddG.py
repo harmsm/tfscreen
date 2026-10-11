@@ -16,9 +16,17 @@ equilibrium constants, using six structural states as the free-energy basis:
 
     Structures: H, HO, L, LO, HE2, LE2
 
-    ΔΔG[m, s]  ~ Normal( ddG_prior[m, s],  σ_s )
     σ_s        ~ LogNormal(theta_ddG_sigma_loc, theta_ddG_sigma_scale), one per
-                 structure (SD of ΔΔG about its prior mean; thermo/prior.py)
+                 structure (SD of the true ΔΔG about its prior mean)
+    Δln K[m]   ~ MVN( P · ddG_prior[m],  P · diag(σ_s²) · Pᵀ )      (site theta_dlnK)
+
+with P = ``DLNK_PROJ``, the projection below. This is the distribution the
+per-structure model ΔΔG[m, s] ~ Normal(ddG_prior[m, s], σ_s) induces on the
+constants, which are all the data see (thermo/prior.py). The per-structure
+ΔΔG is the deterministic site ``theta_ddG``: the conditional mean under that
+per-structure prior, whose common shift across structures comes from the
+prior means, not the data (no unfolded state anchors it; score per-structure
+ΔΔG only for U1 models).
 
 where ``ddG_prior`` is a (M, S) float32 array loaded from a CSV spreadsheet
 (columns: ``mut``, ``H``, ``HO``, ``L``, ``LO``, ``HE2``, ``LE2``).
@@ -73,9 +81,10 @@ from tfscreen.tfmodel.generative.components.theta.thermo.prior import (
     DEFAULT_DDG_SIGMA_LOC,
     DEFAULT_DDG_SIGMA_SCALE,
     ddG_extract_specs,
-    ddG_guesses,
-    guide_ddG,
-    sample_ddG,
+    dlnK_guesses,
+    guide_dlnK,
+    projection,
+    sample_dlnK,
 )
 from tfscreen.tfmodel.generative.components.theta.thermo.horseshoe import (
     sample_pair_ddG,
@@ -103,6 +112,9 @@ STRUCTURE_NAMES = mwc.STRUCTURE_NAMES_C12
 
 # Δln_K = ddG @ _PROJ.T; rows = constants, cols = STRUCTURE_NAMES.
 _PROJ = jnp.asarray(mwc.PROJ_C12)
+
+# Δln K (sampled, M × 5) = ΔΔG @ DLNK_PROJ.T (thermo/prior.py).
+DLNK_PROJ = projection(mwc.PROJ_C12)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -276,14 +288,13 @@ def define_model(name: str,
             f"{name}_ln_K_l_e_wt",
             dist.Normal(priors.theta_ln_K_l_e_wt_loc, priors.theta_ln_K_l_e_wt_scale))
 
-    # ── Per-mutation per-structure ΔΔG latent variables ──────────────────────
-    # ddG_prior_means (M, S) are the Normal prior means; σ_s is sampled.
-    ddG = sample_ddG(name, list(STRUCTURE_NAMES), num_mut, ddG_prior_means,
-                     sigma_loc=priors.theta_ddG_sigma_loc,
-                     sigma_scale=priors.theta_ddG_sigma_scale)  # (M, S)
-
-    # Project (M, 6) → (M, 5) Δln_K
-    delta_lnK  = _project_ddG(ddG)
+    # ── Per-mutation Δln K under the structural prior ─────────────────────────
+    # Δln K[m] ~ MVN(P · prior_mean[m], P · diag(σ_s²) · Pᵀ), σ_s per state
+    # (thermo/prior.py); the post-hoc per-state ΔΔG is the site {name}_ddG.
+    dlnK = sample_dlnK(name, list(STRUCTURE_NAMES), num_mut, ddG_prior_means, DLNK_PROJ,
+                       sigma_loc=priors.theta_ddG_sigma_loc,
+                       sigma_scale=priors.theta_ddG_sigma_scale)  # (M, C)
+    delta_lnK  = dlnK[:, :5]
 
     pyro.deterministic(f"{name}_d_ln_K_h_l", delta_lnK[:, 0])
     pyro.deterministic(f"{name}_d_ln_K_h_o", delta_lnK[:, 1])
@@ -400,8 +411,8 @@ def guide(name: str,
         ln_K_h_e_wt = pyro.sample(f"{name}_ln_K_h_e_wt", dist.Normal(ln_K_h_e_wt_locs, ln_K_h_e_wt_scales))
         ln_K_l_e_wt = pyro.sample(f"{name}_ln_K_l_e_wt", dist.Normal(ln_K_l_e_wt_locs, ln_K_l_e_wt_scales))
 
-    # ── Sample σ_s and ΔΔG (matches prior.sample_ddG) ───────────────────────
-    ddG = guide_ddG(name, num_mut, S, ddG_prior_means)   # (M, S)
+    # ── Sample σ_s and Δln K (matches prior.sample_dlnK) ────────────────────
+    dlnK = guide_dlnK(name, num_mut, S, DLNK_PROJ, ddG_prior_means)   # (M, C)
 
     # ── Sample epistasis ──────────────────────────────────────────────────────
     epi_delta_lnK = None
@@ -443,7 +454,7 @@ def guide(name: str,
                                num_genotype=data.num_genotype)
 
     # ── Assemble per-genotype K values ────────────────────────────────────────
-    delta_lnK = _project_ddG(ddG)
+    delta_lnK = dlnK[:, :5]
     ln_K_h_l, ln_K_h_o, ln_K_h_e, ln_K_l_o, ln_K_l_e = _assemble_K(
         ln_K_h_l_wt, ln_K_h_o_wt, ln_K_h_e_wt,
         ln_K_l_o_wt, ln_K_l_e_wt,
@@ -502,8 +513,8 @@ def get_guesses(name: str, data: Union[GrowthData, BindingData]) -> Dict[str, An
     g[f"{name}_ln_K_h_e_wt"]  = jnp.full(T, DEFAULT_LN_K_H_E)
     g[f"{name}_ln_K_l_o_wt"]  = jnp.array(DEFAULT_LN_K_L_O)
     g[f"{name}_ln_K_l_e_wt"]  = jnp.full(T, DEFAULT_LN_K_L_E)
-    # ΔΔG starts at its prior means, σ_s at 1 kT.
-    g.update(ddG_guesses(name, jnp.asarray(data.struct_features)[:, jnp.array(_get_struct_perm(data))]))
+    # Δln K starts at P · (ΔΔG prior means), σ_s at 1 kT.
+    g.update(dlnK_guesses(name, jnp.asarray(data.struct_features)[:, jnp.array(_get_struct_perm(data))], DLNK_PROJ))
     if data.num_pair > 0:
         P = data.num_pair
         g[f"{name}_epi_tau"]    = jnp.array(0.05)

@@ -265,7 +265,7 @@ class TestConfig:
         for k in ("theta_ln_K_h_l_wt", "theta_ln_K_h_o_wt", "theta_ln_K_l_o_wt",
                   "theta_ln_K_h_e_wt", "theta_ln_K_l_e_wt",
                   "theta_ln_K_u_wt",   # new in mwc_dimer_unfolded
-                  "theta_ddG"):
+                  "theta_dlnK"):
             assert k in g, f"Missing guess key: {k}"
 
     def test_get_guesses_ln_K_u_wt_value(self):
@@ -279,7 +279,7 @@ class TestConfig:
         assert "theta_epi_offset" not in g
 
     def test_get_guesses_ddG_shape(self):
-        assert get_guesses("theta", _make_mock())["theta_ddG"].shape == (_M, _S)
+        assert get_guesses("theta", _make_mock())["theta_dlnK"].shape == (_M, 6)
 
     def test_get_guesses_wt_K_shapes(self):
         T = 2
@@ -364,7 +364,7 @@ class TestDefineModel:
         for site in ("theta_ln_K_h_l_wt", "theta_ln_K_h_o_wt", "theta_ln_K_l_o_wt",
                      "theta_ln_K_h_e_wt", "theta_ln_K_l_e_wt",
                      "theta_ln_K_u_wt",   # new in mwc_dimer_unfolded
-                     "theta_ddG"):
+                     "theta_dlnK"):
             assert site in tr, f"Missing sample site: {site}"
 
     def test_deterministic_sites_present(self):
@@ -500,7 +500,7 @@ class TestGuide:
         param_names = {k for k, v in tr.items() if v["type"] == "param"}
         for p in ("theta_ln_K_h_l_wt_loc", "theta_ln_K_h_l_wt_scale",
                   "theta_ln_K_h_o_wt_loc", "theta_ln_K_l_o_wt_loc",
-                  "theta_ddG_locs", "theta_ddG_scales",
+                  "theta_dlnK_locs", "theta_dlnK_scales",
                   "theta_ddG_sigma_locs", "theta_ddG_sigma_scales",
                   # unfolding constant variational params — new in mwc_dimer_unfolded
                   "theta_ln_K_u_wt_loc",  "theta_ln_K_u_wt_scale"):
@@ -524,10 +524,10 @@ class TestGuide:
         sigma_val = tr["theta_ddG_sigma"]["value"]
         assert sigma_val.shape == (_S,)
 
-    def test_ddG_locs_shape(self):
+    def test_dlnK_locs_shape(self):
         _, tr = _run_guide(_make_mock())
-        locs_val = tr["theta_ddG_locs"]["value"]
-        assert locs_val.shape == (_M, _S)
+        locs_val = tr["theta_dlnK_locs"]["value"]
+        assert locs_val.shape == (_M, 6)
 
     def test_tf_total_preserved(self):
         out, _ = _run_guide(_make_mock())

@@ -373,19 +373,30 @@ The five ``--thermo_*`` flags are stored in the configuration as
 before: kT, file numbering, model column names.
 
 A fit uses the CSV values as the prior means of each mutation's ΔΔG and
-estimates one SD σ_s per structure for how far the ΔΔG stray from them:
-ΔΔG ~ Normal(CSV value, σ_s), with σ_s under a LogNormal prior whose median
-is 1 kT and whose 95% range is about 0.1 to 10 kT (``theta_ddG_sigma_loc``
-= 0 and ``theta_ddG_sigma_scale`` = 1.2 in the priors file, in log kT). The
-fit starts at ΔΔG = CSV values and σ_s = 1 kT. Under MAP, σ_s settles near
-the scatter of the fitted ΔΔG about the CSV. A σ_s that runs toward 0 means
-the data cannot resolve ΔΔG more finely than the CSV gives it, not that the
-CSV is exact. This happens when the data are weak and, in the models
-without an unfolded state, for one structure, since a uniform shift of all
-structures changes no constant there. SVI is less prone to it. To test
-whether the structural prior helps, simulate with the simulate-config key
-``ddG_truth_sd`` (see :doc:`simulation`), which sets how far the simulated
-truth sits from the same CSV, and fit with the unchanged CSV.
+estimates one SD σ_s per structure for how far the true ΔΔG stray from
+them, ΔΔG ~ Normal(CSV value, σ_s). The data see only the constants, so the
+fit puts this prior on the constant shifts it implies: each mutation's
+Δln K is multivariate normal around the projected CSV values, with the
+covariance that per-structure scatter produces. σ_s has a LogNormal prior
+whose median is 1 kT and whose 95% range is about 0.1 to 10 kT
+(``theta_ddG_sigma_loc`` = 0 and ``theta_ddG_sigma_scale`` = 1.2 in the
+priors file, in log kT). Every σ_s is identified by how the constants vary
+together, in every model. The fit starts at the projected CSV values and
+σ_s = 1 kT. Under MAP, σ_s settles near the scatter of the fitted constants
+about the CSV. A σ_s that runs toward 0 means the data cannot resolve the
+constants more finely than the CSV gives them, not that the CSV is exact.
+This can happen when the data are weak.
+
+The fit reports a per-structure ΔΔG for each mutation. In the models with
+an unfolded state (``U1``) it follows from the constants exactly. In the
+models without one (``U0``) every constant is a difference of structures, so
+a shift shared by all structures changes nothing the data see. There the
+reported ΔΔG is the most probable per-structure ΔΔG given the constants and
+the prior, and its shared shift comes from the CSV, not from the data.
+Compare U0 fits on their constants. To test whether the structural prior
+helps, simulate with the simulate-config key ``ddG_truth_sd`` (see
+:doc:`simulation`), which sets how far the simulated truth sits from the
+same CSV, and fit with the unchanged CSV.
 
 Prior inputs
 ------------

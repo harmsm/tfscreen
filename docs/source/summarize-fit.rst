@@ -436,7 +436,13 @@ checked for calibration.
   ``pearson_r`` in ``tfs-summarize-calibration``. A fit without ΔΔG, such as
   PK on a PddG simulation, writes no ddG tables. Then one note is printed in
   place of a warning per structure, and its ``d_`` tables are scored against
-  the same truth.
+  the same truth. In a model without an unfolded state (``U0``) the
+  per-structure ΔΔG shares one shift across structures that the data do not
+  determine; the fit takes it from the prior. For those fits the
+  ``ddG_{structure}`` summary is still written, but with the truth in a
+  ``ref_unidentified`` column and ``per_state_identified`` set to False, and
+  it gets no plot or calibration. A note says so. Score U0 fits on their
+  ``d_`` tables.
 * ``params_ddG_sigma``, the per-structure SD of the PddG and PnnC ΔΔG about
   their prior means, is joined to ``*_sim_ddG_sigma.csv`` on ``structure``.
   It gets a CSV and a calibration check but no plot.

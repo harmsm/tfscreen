@@ -258,12 +258,12 @@ class TestConfig:
     def test_get_guesses_required_keys(self):
         g = get_guesses("theta", _make_mock())
         for k in ("theta_ln_K_op_wt", "theta_ln_K_HL_wt",
-                  "theta_ln_K_E_wt", "theta_ddG"):
+                  "theta_ln_K_E_wt", "theta_dlnK"):
             assert k in g, f"Missing guess key: {k}"
 
     def test_get_guesses_ddG_shape(self):
         g = get_guesses("theta", _make_mock())
-        assert g["theta_ddG"].shape == (_M, _S)
+        assert g["theta_dlnK"].shape == (_M, 3)
 
     def test_get_guesses_no_epi_keys(self):
         g = get_guesses("theta", _make_mock())
@@ -299,7 +299,7 @@ class TestDefineModel:
     def test_sample_sites_present(self):
         _, tr = _run_model(_make_mock())
         for site in ("theta_ln_K_op_wt", "theta_ln_K_HL_wt",
-                     "theta_ln_K_E_wt",  "theta_ddG"):
+                     "theta_ln_K_E_wt",  "theta_dlnK"):
             assert site in tr, f"Missing sample site: {site}"
 
     def test_deterministic_sites_present(self):
@@ -399,7 +399,7 @@ class TestGuide:
         param_names = {k for k, v in tr.items() if v["type"] == "param"}
         for p in ("theta_ln_K_op_wt_loc", "theta_ln_K_op_wt_scale",
                   "theta_ln_K_HL_wt_loc", "theta_ln_K_HL_wt_scale",
-                  "theta_ddG_locs", "theta_ddG_scales",
+                  "theta_dlnK_locs", "theta_dlnK_scales",
                   "theta_ddG_sigma_locs", "theta_ddG_sigma_scales"):
             assert p in param_names, f"Missing variational param: {p}"
 
@@ -420,10 +420,10 @@ class TestGuide:
         sigma_val = tr["theta_ddG_sigma"]["value"]
         assert sigma_val.shape == (_S,)
 
-    def test_ddG_locs_shape(self):
+    def test_dlnK_locs_shape(self):
         _, tr = _run_guide(_make_mock())
-        locs_val = tr["theta_ddG_locs"]["value"]
-        assert locs_val.shape == (_M, _S)
+        locs_val = tr["theta_dlnK_locs"]["value"]
+        assert locs_val.shape == (_M, 3)
 
     def test_tf_total_preserved(self):
         out, _ = _run_guide(_make_mock())

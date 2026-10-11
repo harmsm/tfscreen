@@ -1,11 +1,13 @@
 """
 The ``ddG_truth_sd`` simulate setting: SD of the simulated per-structure ΔΔG.
 
-PddG/PnnC sample ``theta_ddG_sigma`` (sigma_s, one per structure) and
-``theta_ddG ~ Normal(prior_mean, sigma_s)``; in the simulator's draw that
-ΔΔG is the ground truth.  The simulator conditions sigma_s on
-``ddG_truth_sd`` (default 1 kT), in the unit of
-``thermo_options['ddG_units']``, and writes it as the ``ddG_sigma`` truth.
+PddG/PnnC sample ``theta_ddG_sigma`` (sigma_s, one per structure) and put
+their prior on the constants, ``theta_dlnK ~ MVN(P · prior_mean, P ·
+diag(sigma_s²) · Pᵀ)``.  The simulator draws the per-structure truth ΔΔG =
+prior_mean + sigma_s · z and conditions ``theta_dlnK`` on P · ΔΔG, which has
+the model's distribution.  It conditions sigma_s on ``ddG_truth_sd``
+(default 1 kT), in the unit of ``thermo_options['ddG_units']``, and writes
+it as the ``ddG_sigma`` truth.
 """
 import os
 import warnings
@@ -150,6 +152,95 @@ def test_prior_mean_stays_the_table(tmp_path):
     np.testing.assert_allclose(det["theta_ddG_prior_mean"],
                                table.loc[muts, C12_STRUCTS].to_numpy() / RT,
                                rtol=1e-6)
+
+
+# ── the per-structure draw and the model's distribution on Δln K ───────────
+
+_C4_D = ["d_ln_K_op", "d_ln_K_HL", "d_ln_K_E"]
+_C12_D = ["d_ln_K_h_l", "d_ln_K_h_o", "d_ln_K_h_e", "d_ln_K_l_o", "d_ln_K_l_e"]
+
+
+@pytest.mark.parametrize("component, structs, d_cols", [
+    (C4, C4_STRUCTS, _C4_D),
+    (C12, C12_STRUCTS, _C12_D),
+    ("thermo.O2_C4_K3_U1_a.PddG", C4_STRUCTS, _C4_D + ["d_ln_K_U"]),
+])
+def test_truth_schema_and_exact_projection(component, structs, d_cols,
+                                           tmp_path):
+    """The truth keeps ddG_{structure} and d_ln_K_* columns, and the
+    constants are the projection of the per-structure truth (in U0 too,
+    where the fit's post-hoc ΔΔG could not recover it)."""
+    genotypes, muts = _library(3)
+    path, _ = _table(tmp_path / "ddG.csv", muts, structs)
+    mut = _draw(component, genotypes, path, ddG_truth_sd=0.7)[3]["mutation"]
+    assert list(mut.columns) == (["mutation"] + [f"ddG_{s}" for s in structs]
+                                 + d_cols)
+    proj = model_registry["theta"][component].DLNK_PROJ
+    ddG = mut[[f"ddG_{s}" for s in structs]].to_numpy()
+    np.testing.assert_allclose(mut[d_cols].to_numpy(), ddG @ proj.T,
+                               atol=1e-5)
+
+
+def test_constant_covariance_matches_the_model(tmp_path):
+    """The simulated Δln K has the model's induced covariance P diag(σ²) Pᵀ,
+    as does a draw from the model's own MultivariateNormal."""
+    genotypes, muts = _library(60)                  # 1140 mutations
+    path, table = _table(tmp_path / "ddG.csv", muts, C4_STRUCTS)
+    sds = {"H": 0.3, "HD": 1.0, "L": 0.6, "LE2": 1.5}
+    sigma = np.array([sds[s] for s in C4_STRUCTS])
+    proj = model_registry["theta"][C4].DLNK_PROJ
+    expect = proj @ np.diag(sigma ** 2) @ proj.T
+
+    mut = _draw(C4, genotypes, path, ddG_truth_sd=sds)[3]["mutation"]
+    mut = mut.set_index("mutation")
+    resid = (mut[_C4_D].to_numpy()
+             - table.loc[mut.index, C4_STRUCTS].to_numpy() @ proj.T)
+    np.testing.assert_allclose(np.cov(resid.T), expect, atol=0.15)
+
+    # The model's own draw of theta_dlnK (no per-structure redraw).
+    module = model_registry["theta"][C4]
+    sim_data = build_sim_data(pd.DataFrame({"genotype": genotypes}),
+                              SAMPLE_DF, thermo_data=path,
+                              theta_component=C4)
+    priors = module.ModelPriors(**module.get_hyperparameters())
+    with handlers.trace() as tr, handlers.seed(rng_seed=3), \
+            handlers.condition(data={"theta_ddG_sigma": sigma}):
+        module.define_model("theta", sim_data, priors)
+    loc = np.asarray(tr["theta_ddG_prior_mean"]["value"]) @ proj.T
+    model_resid = np.asarray(tr["theta_dlnK"]["value"]) - loc
+    np.testing.assert_allclose(np.cov(model_resid.T), expect, atol=0.15)
+
+
+def test_draw_conditions_dlnK_on_the_per_structure_truth(tmp_path):
+    """sample_theta_prior returns the per-structure draw as theta_ddG, and
+    the model's Δln K is its projection."""
+    genotypes, muts = _library(2)
+    path, _ = _table(tmp_path / "ddG.csv", muts, C4_STRUCTS)
+    sim_data = build_sim_data(pd.DataFrame({"genotype": genotypes}), SAMPLE_DF,
+                              thermo_data=path, theta_component=C4)
+    _, _, det = sample_theta_prior(
+        C4, sim_data, jax.random.PRNGKey(0), return_deterministic=True,
+        conditions=ddG_truth_conditions(0.8, C4))
+    proj = model_registry["theta"][C4].DLNK_PROJ
+    d = np.column_stack([det[f"theta_{c}"] for c in _C4_D])
+    np.testing.assert_allclose(d, det["theta_ddG"] @ proj.T, atol=1e-5)
+    assert "theta_dlnK" not in det
+    np.testing.assert_allclose(det["theta_ddG_sigma"], 0.8)
+
+
+def test_unconditioned_draw_keeps_one_sigma(tmp_path):
+    """Without conditions σ_s is drawn once from its prior and the
+    per-structure truth uses that draw."""
+    genotypes, muts = _library(1)
+    path, table = _table(tmp_path / "ddG.csv", muts, C4_STRUCTS)
+    sim_data = build_sim_data(pd.DataFrame({"genotype": genotypes}), SAMPLE_DF,
+                              thermo_data=path, theta_component=C4)
+    _, _, det = sample_theta_prior(C4, sim_data, jax.random.PRNGKey(4),
+                                   return_deterministic=True)
+    sigma = det["theta_ddG_sigma"]
+    assert (sigma > 0).all()
+    z = (det["theta_ddG"] - table.loc[muts, C4_STRUCTS].to_numpy()) / sigma
+    assert np.isfinite(z).all() and np.abs(z).max() < 6
 
 
 # ── default, the σ_s truth table, and the fit side ─────────────────────────

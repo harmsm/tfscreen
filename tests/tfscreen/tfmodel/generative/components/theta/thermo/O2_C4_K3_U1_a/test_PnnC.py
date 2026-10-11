@@ -234,7 +234,7 @@ class TestConfig:
         assert "theta_ln_K_HL_wt"  in g
         assert "theta_ln_K_E_wt"   in g
         assert "theta_ln_K_U_wt"   in g
-        assert "theta_ddG"  in g
+        assert "theta_dlnK"  in g
         assert "theta_epi_tau" not in g
 
     def test_get_guesses_ln_K_U_wt_value(self):
@@ -253,7 +253,7 @@ class TestConfig:
     def test_get_guesses_ddG_shape(self):
         data = _make_mock()
         g = get_guesses("theta", data)
-        assert g["theta_ddG"].shape == (_M, _S)
+        assert g["theta_dlnK"].shape == (_M, 4)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -460,8 +460,8 @@ class TestGuide:
         assert "theta_ln_K_op_wt_scale"  in param_names
         assert "theta_ln_K_HL_wt_loc"    in param_names
         assert "theta_ln_K_HL_wt_scale"  in param_names
-        assert "theta_ddG_locs"   in param_names
-        assert "theta_ddG_scales" in param_names
+        assert "theta_dlnK_locs"   in param_names
+        assert "theta_dlnK_scales" in param_names
 
     def test_ln_K_U_wt_variational_params_registered(self):
         """Guide must register variational parameters for ln_K_U_wt."""

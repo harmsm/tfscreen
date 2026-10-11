@@ -1,13 +1,16 @@
 """
 Per-structure ΔΔG extraction for the structure-based thermodynamic models.
 
-PddG and PnnC sample a per-mutation, per-structure ΔΔG (``theta_ddG``, M × S,
-in the model's ``STRUCTURE_NAMES`` order) with a structural prior mean
-(``theta_ddG_prior_mean``: the CSV values or the MLP output).  The simulator
-writes the truth as ``ddG_{structure}`` columns of
+PddG and PnnC sample the per-mutation constants (``theta_dlnK``) under a
+structural prior and record a post-hoc per-structure ΔΔG (``theta_ddG``,
+M × S, in the model's ``STRUCTURE_NAMES`` order; exact in U1, the
+conditional mean under the per-state prior in U0) and its structural prior
+mean (``theta_ddG_prior_mean``: the CSV values or the MLP output).  The
+simulator writes the truth as ``ddG_{structure}`` columns of
 ``*_sim_mutation_parameters.csv``.  ``tfs-extract-params`` must write one
 table per structure under those names and ``tfs-summarize-fit`` must score
-them, with the structure labels right whatever order the input file uses.
+them (U1) or flag them (U0), with the structure labels right whatever order
+the input file uses.
 """
 import glob
 import os
@@ -132,7 +135,7 @@ def _q_table(values, spread):
     return df
 
 
-def _summarize_run(tmp_path, with_ddG):
+def _summarize_run(tmp_path, with_ddG, config_yaml=None):
     from tfscreen.tfmodel.scripts.summarize_fit_cli import _summarize_params
     run = tmp_path / "run"
     run.mkdir()
@@ -153,7 +156,7 @@ def _summarize_run(tmp_path, with_ddG):
     out.mkdir()
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        _summarize_params(str(run), str(out / "tfs_summarize"))
+        _summarize_params(str(run), str(out / "tfs_summarize"), config_yaml)
     return truth, out, [str(w.message) for w in caught]
 
 
@@ -168,6 +171,55 @@ def test_summarize_scores_ddG_tables_against_truth(tmp_path):
         # Posterior tables get a calibration; the prior mean (a point) not.
         assert (out / f"tfs_summarize_params_ddG_{s}_pit.csv").exists()
         assert not glob.glob(str(out / f"*ddG_prior_mean_{s}_*"))
+
+
+def test_summarize_scores_ddG_tables_for_a_u1_fit(tmp_path):
+    cfg = {"components": {"theta": "thermo.O2_C4_K3_U1_a.PddG"}}
+    truth, out, _ = _summarize_run(tmp_path, with_ddG=True, config_yaml=cfg)
+    got = pd.read_csv(out / "tfs_summarize_params_ddG_H.csv")
+    np.testing.assert_allclose(got["ref"], truth["ddG_H"])
+    assert (out / "tfs_summarize_params_ddG_H_pit.csv").exists()
+
+
+@pytest.mark.parametrize("theta", ["thermo.O2_C4_K3_U0_a.PddG",
+                                   "thermo.O2_C12_K5_U0_a.PnnC"])
+def test_summarize_flags_u0_per_state_ddG(tmp_path, capsys, theta):
+    """U0: per-state ΔΔG's common mode comes from the prior, so the table is
+    written with the truth as ref_unidentified and is not scored; the
+    prior-mean tables and d_ln_K are scored as usual."""
+    cfg = {"components": {"theta": theta}}
+    truth, out, msgs = _summarize_run(tmp_path, with_ddG=True, config_yaml=cfg)
+    assert "no unfolded state (U0)" in capsys.readouterr().out
+    for s in ("H", "HD"):
+        got = pd.read_csv(out / f"tfs_summarize_params_ddG_{s}.csv")
+        assert "ref" not in got.columns
+        np.testing.assert_allclose(got["ref_unidentified"], truth[f"ddG_{s}"])
+        assert not got["per_state_identified"].any()
+        assert not glob.glob(str(out / f"tfs_summarize_params_ddG_{s}_*"))
+        assert not (out / f"tfs_summarize_params_ddG_{s}.pdf").exists()
+        prior = pd.read_csv(out / f"tfs_summarize_params_ddG_prior_mean_{s}.csv")
+        np.testing.assert_allclose(prior["ref"], truth[f"ddG_{s}"])
+    got = pd.read_csv(out / "tfs_summarize_params_d_ln_K_op.csv")
+    np.testing.assert_allclose(got["ref"], truth["d_ln_K_op"])
+
+    # tfs-summarize-calibration reads only tables with a ref column.
+    from tfscreen.analysis.calibration_grid import read_quantities
+    names = [q for q, _ in read_quantities(str(out))]
+    assert "ddG_H" not in names and "d_ln_K_op" in names
+
+
+def test_ddG_per_state_identified_by_family():
+    from tfscreen.tfmodel.scripts.summarize_fit_cli import (
+        _ddG_per_state_identified,
+    )
+    for fam, expected in (("O2_C4_K3_U0_a", False), ("O2_C4_K3_U1_a", True),
+                          ("O2_C12_K5_U0_a", False), ("O2_C12_K5_U1_a", True)):
+        for kind in ("PddG", "PnnC"):
+            cfg = {"components": {"theta": f"thermo.{fam}.{kind}"}}
+            assert _ddG_per_state_identified(cfg) is expected
+    assert _ddG_per_state_identified(None) is True
+    assert _ddG_per_state_identified(
+        {"components": {"theta": "thermo.O2_C4_K3_U0_a.PK"}}) is True
 
 
 def test_summarize_scores_ddG_sigma_against_truth(tmp_path):
@@ -342,7 +394,8 @@ def test_ddG_tables_end_to_end(tmp_path, component):
         prior = np.median(hf["theta_ddG_prior_mean"][:], axis=0)
 
     # The truth's projection to Δln K holds in the model's order, so its ddG
-    # columns are labeled in STRUCTURE_NAMES order.
+    # columns are labeled in STRUCTURE_NAMES order.  (The post-hoc U0 ΔΔG
+    # reproduces the fitted constants exactly too.)
     proj = np.asarray(module._PROJ)
     truth_d = truth[[f"ddG_{s}" for s in structs]].values @ proj.T
     for k, col in enumerate(_d_ln_K_order(module)[:proj.shape[0]]):
@@ -375,8 +428,10 @@ def test_ddG_tables_end_to_end(tmp_path, component):
                 prior_table["q0.5"],
                 csv.loc[prior_table["mutation"], struct].values, atol=1e-5)
 
+        # Both end-to-end models are U0: the per-state table is flagged,
+        # with the truth as ref_unidentified.
         scored = pd.read_csv(run / "summary" / f"tfs_summarize_params_ddG_{struct}.csv")
-        np.testing.assert_allclose(scored["ref"],
+        np.testing.assert_allclose(scored["ref_unidentified"],
                                    truth.loc[scored["mutation"], f"ddG_{struct}"])
         assert (run / "summary" / f"tfs_summarize_params_ddG_prior_mean_{struct}.csv").exists()
 
