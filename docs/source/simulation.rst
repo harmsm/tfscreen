@@ -109,11 +109,13 @@ same meaning as the ``--thermo_*`` flags of ``tfs-configure-model`` (see
 :doc:`model-inputs`). Without it the CSV is read as kT, so the simulated
 truth is unchanged.
 
-The ``PddG`` and ``PnnC`` models draw each mutation's ΔΔG in each structure
-from a Normal centered on the structural value with SD σ_s, one σ_s per
-structure, and in a simulation that draw is the ground truth. The simulator
-fixes σ_s at ``ddG_truth_sd`` instead of drawing it from its prior, so the
-key is the dial for how far the truth sits from the structural prior. It is in the
+In a ``PddG`` or ``PnnC`` simulation the truth is drawn per structure: each
+mutation's ΔΔG in each structure is the structural value plus Normal noise
+with SD σ_s, one σ_s per structure, and the true constants are its
+projection. That is exactly the distribution the models' prior on the
+constants assumes. The simulator fixes σ_s at ``ddG_truth_sd`` instead of
+drawing it from its prior, so the key is the dial for how far the truth
+sits from the structural prior. It is in the
 unit of ``thermo_options`` ``ddG_units`` and converted once at load, like
 the CSV: with ``ddG_units: kcal/mol``, ``ddG_truth_sd: 0.5`` means
 0.5 kcal/mol. Give one number for every structure or a mapping that names

@@ -620,7 +620,30 @@ _DDG_TRUTH = re.compile(r"ddG_(?!prior_mean_)(.+)")
 _DDG_PRIOR_MEAN = re.compile(r"ddG_prior_mean_(.+)")
 
 
-def _summarize_params(run_dir, out_prefix):
+def _ddG_per_state_identified(config_yaml):
+    """
+    Whether the fit's per-state ΔΔG tables are identified by the data.
+
+    The PddG/PnnC models put their prior on Δln K (``thermo/prior.py``).
+    In the U1 models the projection ``DLNK_PROJ`` is square and the
+    per-state ΔΔG is Δln K mapped back exactly; in the U0 models it is the
+    conditional mean under the per-state prior, whose common-mode component
+    (an equal shift of every state) comes from the prior means, not the
+    data.  Returns True when the config is missing or the theta component
+    has no ``DLNK_PROJ``.
+    """
+    from tfscreen.tfmodel.generative.registry import model_registry
+    from tfscreen.tfmodel.generative.components.theta.thermo.prior import (
+        ddG_per_state_identified,
+    )
+
+    components = (config_yaml or {}).get("components", {}) or {}
+    module = model_registry["theta"].get(components.get("theta"))
+    proj = getattr(module, "DLNK_PROJ", None)
+    return True if proj is None else ddG_per_state_identified(proj)
+
+
+def _summarize_params(run_dir, out_prefix, config_yaml=None):
     """Annotate *_params_*.csv files with ground-truth ref from tfs_sim_parameters.csv.
 
     Scans run_dir for a ``*_sim_parameters.csv`` file.  If absent the function
@@ -640,7 +663,12 @@ def _summarize_params(run_dir, out_prefix):
     ``ddG_H`` tables).  A prior-mean table ``ddG_prior_mean_H`` is joined to
     the ``ddG_H`` truth and gets no calibration (it is a point).  When the
     truth has ``ddG_*`` columns but the fit wrote no ddG tables (a PK fit),
-    a note replaces the per-structure warnings.  Otherwise the
+    a note replaces the per-structure warnings.  For a U0 PddG/PnnC fit
+    (``config_yaml``'s theta component; see :func:`_ddG_per_state_identified`)
+    the per-state ``ddG_H`` tables are still written, with the truth in
+    ``ref_unidentified`` instead of ``ref`` and ``per_state_identified`` =
+    False, and get no plot or calibration: their common mode comes from the
+    prior.  Score those fits on ``d_ln_K_*``.  Otherwise the
     parameter name resolves via the transform registry: direct files by
     genotype, diff files as sim[mutation] − sim[wt], epi files as the
     additive epistasis of the per-genotype truth.  A ``ref`` column is
@@ -691,6 +719,14 @@ def _summarize_params(run_dir, out_prefix):
     for col in sim_cols + keyed_cols:
         if not glob.glob(os.path.join(run_dir, f"*_params_{col}.csv")):
             warnings.warn(f"Expected *_params_{col}.csv in {run_dir} but none found")
+
+    # U0 structural fits: per-state ΔΔG is not identified by the data.
+    ddG_identified = _ddG_per_state_identified(config_yaml)
+    if ddG_cols and not ddG_identified:
+        print("The fit's theta component has no unfolded state (U0), so its "
+              "per-state ddG common mode comes from the prior means. The "
+              "ddG_* tables are written with the truth as ref_unidentified "
+              "and are not scored; score d_ln_K_* instead.")
 
     transform_registry = _build_transform_registry(sim_df)
 
@@ -754,7 +790,14 @@ def _summarize_params(run_dir, out_prefix):
             continue
 
         out_df = params_df.copy()
-        out_df["ref"] = ref
+        unidentified = (kind == "direct" and use_keyed and not is_prior_mean
+                        and not ddG_identified
+                        and _DDG_TRUTH.fullmatch(full_name) is not None)
+        if unidentified:
+            out_df["ref_unidentified"] = ref
+            out_df["per_state_identified"] = False
+        else:
+            out_df["ref"] = ref
 
         if kind == "epi":
             out_name = f"{out_prefix}_params_epi_{param_name}.csv"
@@ -773,6 +816,8 @@ def _summarize_params(run_dir, out_prefix):
             warnings.warn(f"Could not write {out_name}: {exc}")
             continue
 
+        if unidentified:
+            continue
         pdf_name = out_name.replace(".csv", ".pdf")
         _try_plot_params_corr(out_df, plot_label, pdf_name)
         # A prior mean is a point (its quantiles coincide), so it has no
@@ -1554,7 +1599,7 @@ def summarize_fit(run_dir,
         warnings.warn(f"Could not generate loss curve plot: {exc}")
 
     # --- Sim-parameter correlation CSVs ---
-    _summarize_params(run_dir, out_prefix)
+    _summarize_params(run_dir, out_prefix, config_yaml)
     _summarize_ddG_sigma(run_dir, out_prefix)
     _summarize_growth_params(run_dir, out_prefix, x_gauge)
     _summarize_transformation_lam(run_dir, out_prefix)

@@ -215,7 +215,7 @@ class TestConfig:
         assert "theta_ln_K_op_wt"  in g
         assert "theta_ln_K_HL_wt"  in g
         assert "theta_ln_K_E_wt"   in g
-        assert "theta_ddG"  in g
+        assert "theta_dlnK"  in g
         assert "theta_epi_tau" not in g
 
     def test_get_guesses_keys_with_epi(self):
@@ -229,7 +229,7 @@ class TestConfig:
     def test_get_guesses_ddG_shape(self):
         data = _make_mock()
         g = get_guesses("theta", data)
-        assert g["theta_ddG"].shape == (_M, _S)
+        assert g["theta_dlnK"].shape == (_M, 3)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -384,8 +384,8 @@ class TestGuide:
         param_names = {k for k, v in tr.items() if v["type"] == "param"}
         assert "theta_ln_K_op_wt_loc"   in param_names
         assert "theta_ln_K_op_wt_scale" in param_names
-        assert "theta_ddG_locs"   in param_names
-        assert "theta_ddG_scales" in param_names
+        assert "theta_dlnK_locs"   in param_names
+        assert "theta_dlnK_scales" in param_names
 
     def test_sigma_guide_params_registered(self):
         data = _make_mock()

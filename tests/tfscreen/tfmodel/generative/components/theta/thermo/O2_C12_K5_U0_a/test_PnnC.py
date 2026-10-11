@@ -300,7 +300,7 @@ class TestConfig:
         assert "theta_ln_K_l_o_wt" in g
         assert "theta_ln_K_h_e_wt" in g
         assert "theta_ln_K_l_e_wt" in g
-        assert "theta_ddG"  in g
+        assert "theta_dlnK"  in g
         assert "theta_epi_tau" not in g
 
     def test_get_guesses_with_epi_keys(self):
@@ -314,7 +314,7 @@ class TestConfig:
     def test_get_guesses_ddG_shape(self):
         data = _make_mock()
         g = get_guesses("theta", data)
-        assert g["theta_ddG"].shape == (_M, _S)
+        assert g["theta_dlnK"].shape == (_M, 5)
 
     def test_get_guesses_epi_shapes_with_epi(self):
         data = _make_mock(num_pair=1)
@@ -387,7 +387,7 @@ class TestDefineModel:
     def test_sample_sites_present(self):
         _, tr = _run_model(_make_mock())
         for site in ("theta_ln_K_h_l_wt", "theta_ln_K_h_o_wt", "theta_ln_K_l_o_wt",
-                     "theta_ln_K_h_e_wt", "theta_ln_K_l_e_wt", "theta_ddG"):
+                     "theta_ln_K_h_e_wt", "theta_ln_K_l_e_wt", "theta_dlnK"):
             assert site in tr, f"Missing sample site: {site}"
 
     def test_deterministic_sites_present(self):
@@ -513,7 +513,7 @@ class TestGuide:
         param_names = {k for k, v in tr.items() if v["type"] == "param"}
         for p in ("theta_ln_K_h_l_wt_loc", "theta_ln_K_h_l_wt_scale",
                   "theta_ln_K_h_o_wt_loc", "theta_ln_K_l_o_wt_loc",
-                  "theta_ddG_locs", "theta_ddG_scales",
+                  "theta_dlnK_locs", "theta_dlnK_scales",
                   "theta_ddG_sigma_locs", "theta_ddG_sigma_scales"):
             assert p in param_names, f"Missing variational param: {p}"
 

@@ -20,6 +20,7 @@ from numpyro.handlers import seed, substitute, trace
 
 from tfscreen.genetics.build_mut_geno_matrix import build_mut_sparse_indices
 from tfscreen.tfmodel.generative.components.theta.thermo import mwc
+from tfscreen.tfmodel.generative.components.theta.thermo.prior import projection
 
 _PKG = "tfscreen.tfmodel.generative.components.theta.thermo"
 
@@ -37,6 +38,7 @@ _C4 = dict(
     structs=("H", "HD", "L", "LE2"),
     folded=("ln_K_op", "ln_K_HL", "ln_K_E"),
     unfold="ln_K_U",
+    proj=projection(mwc.PROJ_C4, mwc.PROJ_U_C4),
     wt={"ln_K_op_wt": mwc.DEFAULT_LN_K_H_O, "ln_K_HL_wt": mwc.DEFAULT_LN_K_H_L,
         "ln_K_U_wt": 0.0, "ln_K_E_wt": np.full(_T, mwc.DEFAULT_LN_K_E_C4)},
     conc=np.array([0.0, 0.1, 1.0]),
@@ -47,6 +49,7 @@ _C12 = dict(
     structs=("H", "HO", "L", "LO", "HE2", "LE2"),
     folded=("ln_K_h_l", "ln_K_h_o", "ln_K_h_e", "ln_K_l_o", "ln_K_l_e"),
     unfold="ln_K_u",
+    proj=projection(mwc.PROJ_C12, mwc.PROJ_U_C12),
     wt={"ln_K_h_l_wt": mwc.DEFAULT_LN_K_H_L, "ln_K_h_o_wt": mwc.DEFAULT_LN_K_H_O,
         "ln_K_l_o_wt": mwc.DEFAULT_LN_K_L_O, "ln_K_u_wt": 0.0,
         "ln_K_h_e_wt": np.full(_T, mwc.DEFAULT_LN_K_H_E),
@@ -98,7 +101,9 @@ def _fixed_sites(fam, ddG_means, num_pair=0, epi_H=0.0):
     """Values for every sample site so model and guide see the same draw."""
     S = len(fam["structs"])
     sites = {f"theta_{k}": jnp.asarray(v) for k, v in fam["wt"].items()}
-    sites["theta_ddG"] = jnp.asarray(ddG_means)      # ddG = prior means
+    # Δln K = P · ΔΔG with ΔΔG at the prior means.
+    sites["theta_dlnK"] = jnp.asarray(np.asarray(ddG_means) @ fam["proj"].T,
+                                      dtype=jnp.float32)
     sites["theta_ddG_sigma"] = jnp.ones(S)
     if num_pair:
         offset = np.full((S, num_pair), 0.3)

@@ -312,9 +312,11 @@ def _mutation_truth_tables(deterministic, genotypes, sim_data, name="theta",
     Mutation-decomposed components record their per-mutation deltas
     (``{name}_d_*``), pairwise epistasis (``{name}_epi_*``) and, for the
     structure-based thermodynamic models, per-structure ΔΔG
-    (``{name}_ddG``, shape M × S) as deterministic sites.  ``ThetaParam``
-    only carries the assembled per-genotype values, so this reads them from
-    the trace returned by ``sample_theta_prior(..., return_deterministic=True)``.
+    (``{name}_ddG``, shape M × S; ``sample_theta_prior`` replaces the
+    model's post-hoc ΔΔG with the per-state truth draw) as deterministic
+    sites.  ``ThetaParam`` only carries the assembled per-genotype values,
+    so this reads them from the trace returned by
+    ``sample_theta_prior(..., return_deterministic=True)``.
 
     Column names drop the ``{name}_`` prefix, so they equal the names
     ``tfs-extract-params`` gives the fitted values (``d_ln_K_op`` →

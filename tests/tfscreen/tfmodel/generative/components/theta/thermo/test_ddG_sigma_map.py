@@ -1,17 +1,20 @@
 """
-MAP regression test for the per-structure ΔΔG scale σ_s (thermo/prior.py).
+MAP regression test for the structural prior's σ_s (thermo/prior.py).
 
-Until 2026-10-11 σ_s was a ``pyro.param`` and ΔΔG was written
-``prior_mean + σ_s · offset``.  Under MAP that is degenerate: raising σ_s
-while shrinking the offsets costs the likelihood nothing, so σ_s ran to
-several kT whatever the truth and the structural prior went flat.  On this
-problem the old form fit σ_s ≈ 2-6 kT for a true σ_s of 0.3 or 1 kT.
+History.  Until 2026-10-11 σ_s was a ``pyro.param`` and ΔΔG was written
+``prior_mean + σ_s · offset``; MAP ran σ_s to several kT whatever the truth.
+Commit c4f03d42 made σ_s a sample site and sampled per-state ΔΔG centered on
+the prior means.  That fixed the U1 models, but in the U0 models (no
+unfolded state) a shift equal across all states changes no constant, and
+joint MAP used it to collapse one state's σ_s: on C4_U0 with true σ_s = 0.3
+kT, σ_LE2 went to 0.001.
 
-Here σ_s is a sample site and ΔΔG is centered on the prior means.  We
-simulate ΔΔG = table + Normal(0, σ) for a few hundred mutations, observe
-the model's projections (Δln K, and Δln K_U for a U1 model) with small
-noise, fit by MAP with AutoDelta, and check that σ_s comes back near the
-truth and that the fitted ΔΔG beat a flat-prior (PK-like) fit.
+Now the prior sits on the constants, Δln K ~ MVN(P · table, P · diag(σ²) ·
+Pᵀ).  We simulate per-state ΔΔG = table + Normal(0, σ) for a few hundred
+mutations, observe the model's constants Δln K = P · ΔΔG with small noise,
+fit by MAP with AutoDelta, and check that every σ_s comes back near the
+truth (no collapse, U0 included) and that the fitted Δln K beat both a
+flat-prior (PK-like) fit and the table alone.
 """
 
 import importlib
@@ -27,8 +30,8 @@ from numpyro.infer.autoguide import AutoDelta
 from numpyro.infer.initialization import init_to_value
 
 from tfscreen.tfmodel.generative.components.theta.thermo.prior import (
-    ddG_guesses,
-    sample_ddG,
+    dlnK_guesses,
+    sample_dlnK,
 )
 
 _PKG = "tfscreen.tfmodel.generative.components.theta.thermo"
@@ -38,24 +41,21 @@ _STEPS = 3000
 
 
 def _projection(family):
-    """(S, K) matrix from ΔΔG to every constant the model's data see."""
+    """(C, S) projection the PddG model samples Δln K through."""
     module = importlib.import_module(f"{_PKG}.{family}.PddG")
-    rows = [np.asarray(module._PROJ)]
-    if hasattr(module, "_PROJ_U"):
-        rows.append(np.asarray(module._PROJ_U).reshape(1, -1))
-    return jnp.asarray(np.vstack(rows).T), list(module.STRUCTURE_NAMES)
+    return np.asarray(module.DLNK_PROJ), list(module.STRUCTURE_NAMES)
 
 
 def _simulate(family, sigma_true, seed=0):
     proj, structs = _projection(family)
     S = len(structs)
     rng = np.random.default_rng(seed)
-    table = jnp.asarray(rng.normal(0, 2, (_M, S)), dtype=jnp.float32)
-    truth = table + sigma_true * jnp.asarray(rng.normal(0, 1, (_M, S)),
-                                             dtype=jnp.float32)
-    obs = truth @ proj + _OBS_SD * jnp.asarray(
-        rng.normal(0, 1, (_M, proj.shape[1])), dtype=jnp.float32)
-    return proj, structs, table, truth, obs
+    table = rng.normal(0, 2, (_M, S)).astype(np.float32)
+    truth = table + sigma_true * rng.normal(0, 1, (_M, S)).astype(np.float32)
+    true_dlnK = truth @ proj.T
+    obs = true_dlnK + _OBS_SD * rng.normal(0, 1, true_dlnK.shape)
+    return (proj, structs, jnp.asarray(table), true_dlnK,
+            jnp.asarray(obs, dtype=jnp.float32))
 
 
 def _map(model, init):
@@ -64,33 +64,31 @@ def _map(model, init):
     return svi.run(jax.random.PRNGKey(0), _STEPS, progress_bar=False).params
 
 
-def _observe(ddG, proj, obs):
+def _observe(dlnK, obs):
     with numpyro.plate("mut", _M, dim=-2), \
-         numpyro.plate("constant", proj.shape[1], dim=-1):
-        numpyro.sample("obs", dist.Normal(ddG @ proj, _OBS_SD), obs=obs)
+         numpyro.plate("constant", obs.shape[1], dim=-1):
+        numpyro.sample("obs", dist.Normal(dlnK, _OBS_SD), obs=obs)
 
 
 def _fit_structural(proj, structs, table, obs):
     def model():
-        _observe(sample_ddG("theta", structs, _M, table), proj, obs)
+        _observe(sample_dlnK("theta", structs, _M, table, proj), obs)
 
-    p = _map(model, ddG_guesses("theta", table))
-    return (np.asarray(p["theta_ddG_auto_loc"]),
+    p = _map(model, dlnK_guesses("theta", table, proj))
+    return (np.asarray(p["theta_dlnK_auto_loc"]),
             np.asarray(p["theta_ddG_sigma_auto_loc"]))
 
 
-def _fit_flat(proj, structs, obs):
-    """A PK-like fit: ΔΔG under a wide prior, no structural means."""
-    S = len(structs)
-
+def _fit_flat(obs):
+    """A PK-like fit: Δln K under a wide prior, no structural means."""
     def model():
-        with numpyro.plate("struct", S, dim=-1), \
-             numpyro.plate("mut_ddG", _M, dim=-2):
-            ddG = numpyro.sample("theta_ddG", dist.Normal(0.0, 10.0))
-        _observe(ddG, proj, obs)
+        with numpyro.plate("constant", obs.shape[1], dim=-1), \
+             numpyro.plate("mut_dlnK", _M, dim=-2):
+            dlnK = numpyro.sample("theta_dlnK", dist.Normal(0.0, 10.0))
+        _observe(dlnK, obs)
 
-    p = _map(model, {"theta_ddG": jnp.zeros((_M, S))})
-    return np.asarray(p["theta_ddG_auto_loc"])
+    p = _map(model, {"theta_dlnK": jnp.zeros(obs.shape)})
+    return np.asarray(p["theta_dlnK_auto_loc"])
 
 
 def _rmse(a, b):
@@ -101,21 +99,28 @@ def _rmse(a, b):
     ("O2_C4_K3_U1_a", 1.0),
     ("O2_C4_K3_U1_a", 0.3),
     ("O2_C4_K3_U0_a", 1.0),
+    ("O2_C4_K3_U0_a", 0.3),     # collapsed σ_LE2 to 0.001 in the per-state form
+    ("O2_C12_K5_U0_a", 1.0),
+    ("O2_C12_K5_U0_a", 0.3),
 ])
-def test_map_recovers_sigma_and_shrinks_ddG(family, sigma_true):
-    proj, structs, table, truth, obs = _simulate(family, sigma_true)
-    ddG, sigma = _fit_structural(proj, structs, table, obs)
-    flat = _fit_flat(proj, structs, obs)
+def test_map_recovers_sigma_and_shrinks_dlnK(family, sigma_true):
+    proj, structs, table, true_dlnK, obs = _simulate(family, sigma_true)
+    dlnK, sigma = _fit_structural(proj, structs, table, obs)
+    flat = _fit_flat(obs)
 
-    # σ_s per structure lands near the truth (the old pyro.param form gave
-    # 2-6 kT here for either truth).
+    # Every σ_s lands near the truth: no state collapses.
     assert sigma.shape == (len(structs),)
     np.testing.assert_array_less(sigma, 1.6 * sigma_true)
     np.testing.assert_array_less(sigma_true / 1.6, sigma)
 
-    # The fitted ΔΔG are shrunk toward the table: closer to it than the
-    # flat fit, and closer to the truth than either the flat fit or the
-    # table alone.
-    assert _rmse(ddG, table) < _rmse(flat, table)
-    assert _rmse(ddG, truth) < _rmse(flat, truth)
-    assert _rmse(ddG, truth) < _rmse(table, truth)
+    # The fitted Δln K beat the table alone and are no worse than the flat
+    # fit.  At σ = 1 kT the constants' prior SD dwarfs the 0.05 data noise,
+    # so shrinkage is ~1e-4 of the error and the two fits tie; at 0.3 kT
+    # the shrinkage is a real (if small) gain.
+    table_dlnK = np.asarray(table) @ proj.T
+    err, flat_err = _rmse(dlnK, true_dlnK), _rmse(flat, true_dlnK)
+    assert err < _rmse(table_dlnK, true_dlnK)
+    if sigma_true < 0.5:
+        assert err < flat_err
+    else:
+        assert err < 1.002 * flat_err

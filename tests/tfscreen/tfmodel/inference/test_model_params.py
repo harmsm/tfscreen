@@ -7,7 +7,8 @@ passes ran the model with every model-side param at its init value (NN = 0).
 A ``--laplace point`` posterior's theta then differed from the MAP's own
 theta.  The PddG/PnnC ΔΔG scale σ_s was a model-side param too until
 2026-10-11; it is now the sample site ``theta_ddG_sigma``, so it is part of
-the MAP sites and the Laplace (checked here as well).
+the MAP sites and the Laplace, with the per-mutation constants
+``theta_dlnK`` (checked here as well).
 """
 
 import h5py
@@ -257,11 +258,18 @@ def test_laplace_holds_model_params(fit):
                               num_posterior_samples=8, sampling_batch_size=4)
     with h5py.File(f"{prefix}_posterior.h5", "r") as hf:
         sigma = np.asarray(hf[SIGMA])                    # (n, S)
+        dlnK = np.asarray(hf["theta_dlnK"])               # (n, M, 3)
+        ddG = np.asarray(hf["theta_ddG"])                 # post-hoc (n, M, S)
         prior_mean = np.asarray(hf["theta_ddG_prior_mean"])
         assert set(read_model_params(hf)) == set(fit["model_side"])
     assert sigma.shape == (8, len(STRUCTS))
     assert (sigma > 0).all()
     assert np.ptp(sigma, axis=0).min() > 0               # sampled, not held
+    # Δln K is in the Hessian too, and the post-hoc ΔΔG follows each draw.
+    assert dlnK.shape == (8, 2, 3)
+    assert np.ptp(dlnK, axis=0).min() > 0
+    assert ddG.shape == (8, 2, len(STRUCTS))
+    assert np.isfinite(ddG).all()
     # around the MAP's σ_s (a Laplace in log σ_s; with two mutations its
     # SD is near the prior's 1.2, so 8 draws pin the mean only loosely)
     log_err = np.log(sigma).mean(axis=0) - np.log(fit["sites"][SIGMA])

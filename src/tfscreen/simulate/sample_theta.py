@@ -29,9 +29,13 @@ from tfscreen.simulate.sim_data_class import build_sim_data
 _EXCLUDED = frozenset({"_simple"})
 
 # Sample sites returned with the deterministic sites (return_deterministic):
-# the PddG/PnnC per-structure ΔΔG and its SD sigma_s, which are latent
-# sample sites (thermo/prior.py) but part of the simulation's truth.
-_TRUTH_SAMPLE_SITES = frozenset({"theta_ddG", "theta_ddG_sigma"})
+# the PddG/PnnC per-state ΔΔG SD sigma_s, a latent sample site
+# (thermo/prior.py) but part of the simulation's truth.  The per-state ΔΔG
+# truth itself (theta_ddG) is the per-state draw of _per_state_truth_conditions.
+_TRUTH_SAMPLE_SITES = frozenset({"theta_ddG_sigma"})
+
+# fold_in tag for the key of the per-state ΔΔG truth draw.
+_PER_STATE_TRUTH_FOLD = 7919
 
 # SD (kT) of the simulated ΔΔG about the table when ddG_truth_sd is absent.
 DEFAULT_DDG_TRUTH_SD = 1.0
@@ -56,6 +60,10 @@ def sample_theta_prior(component_name,
 
     Otherwise the prior-predictive path is used: ``define_model`` is called
     inside a seeded NumPyro trace, and ``run_model`` produces ``theta_gc``.
+    For the structural models (PddG/PnnC, which put their prior on Δln K)
+    the per-state ΔΔG truth is drawn per state and Δln K is conditioned on
+    its projection, which takes a second traced draw with the same key
+    (``_per_state_truth_conditions``).
     Set ``force_prior_predictive=True`` to always use this path — this is
     required for mutation-decomposed components (e.g. ``hill_mut``) when the
     pool library has only the wt genotype and M=0 mutations, because the
@@ -83,11 +91,12 @@ def sample_theta_prior(component_name,
     return_deterministic : bool, default False
         When True, also return the values of every ``pyro.deterministic``
         site recorded while drawing the sample (prior-predictive path), plus
-        the structural models' latent ΔΔG sample sites (``theta_ddG``,
-        ``theta_ddG_sigma``; see ``_TRUTH_SAMPLE_SITES``), so callers can
-        write the per-mutation (``theta_d_*``), per-pair (``theta_epi_*``)
-        and per-structure (``theta_ddG``, ``theta_ddG_sigma``) truth that
-        ``ThetaParam`` does not carry.  Tracing does not change the draw.
+        the structural models' σ_s sample site (``theta_ddG_sigma``; see
+        ``_TRUTH_SAMPLE_SITES``), so callers can write the per-mutation
+        (``theta_d_*``), per-pair (``theta_epi_*``) and per-state
+        (``theta_ddG``, ``theta_ddG_sigma``) truth that ``ThetaParam`` does
+        not carry.  ``theta_ddG`` is the per-state truth draw, not the
+        model's post-hoc ΔΔG site.  Tracing does not change the draw.
     conditions : dict or None
         ``{sample_site: value}`` fixing sample sites of the draw
         (prior-predictive path only; ``numpyro.handlers.condition``), e.g.
@@ -155,10 +164,22 @@ def sample_theta_prior(component_name,
     conditions = dict(conditions or {})
 
     # handlers.trace only records the sites; the seeded draw is unchanged.
-    with handlers.trace() as trace:
-        with handlers.seed(rng_seed=rng_key):
-            with handlers.condition(data=conditions):
-                theta_param = module.define_model("theta", sim_data, priors)
+    def _draw(conds):
+        with handlers.trace() as tr:
+            with handlers.seed(rng_seed=rng_key):
+                with handlers.condition(data=conds):
+                    param = module.define_model("theta", sim_data, priors)
+        return tr, param
+
+    trace, theta_param = _draw(conditions)
+
+    # Structural models (PddG/PnnC) put their prior on Δln K; the truth is
+    # drawn per state instead, so the per-state ΔΔG truth exists.
+    per_state_ddG = None
+    redraw = _per_state_truth_conditions(module, trace, conditions, rng_key)
+    if redraw is not None:
+        per_state_ddG, redraw_conditions = redraw
+        trace, theta_param = _draw(redraw_conditions)
 
     if conditions:
         samples_seen = {n for n, site in trace.items()
@@ -179,8 +200,63 @@ def sample_theta_prior(component_name,
                          if site["type"] == "deterministic"
                          or (site["type"] == "sample"
                              and name in _TRUTH_SAMPLE_SITES)}
+        if per_state_ddG is not None:
+            deterministic["theta_ddG"] = per_state_ddG
         return theta_gc, theta_param, deterministic
     return theta_gc, theta_param
+
+
+def _per_state_truth_conditions(module, trace, conditions, rng_key,
+                                name="theta"):
+    """
+    Conditions that make a structural model's Δln K a per-state draw.
+
+    The PddG/PnnC models sample Δln K ~ MVN(P · μ, P · diag(σ²) · Pᵀ)
+    (``thermo/prior.py``).  A simulation needs the per-state ΔΔG truth too,
+    which in the U0 models Δln K does not determine.  So the truth is drawn
+    as the per-state model states it, ΔΔG = μ + σ_s · z (``prior.
+    per_state_truth``), and Δln K is conditioned on P · ΔΔG, which has
+    exactly the model's distribution.  σ_s is the first draw's value (the
+    conditioned ``ddG_truth_sd``, or a draw from its prior); μ is the
+    model's ``theta_ddG_prior_mean`` (the table, or the untrained MLP's 0).
+
+    Parameters
+    ----------
+    module : module
+        The theta component; it has ``DLNK_PROJ`` when it is structural.
+    trace : dict
+        Trace of the first draw.
+    conditions : dict
+        The caller's conditions.
+    rng_key : jax.random.PRNGKey
+        The draw's key; the truth uses ``fold_in(rng_key, 7919)``.
+
+    Returns
+    -------
+    None, or (ddG, conditions)
+        None when the model has no Δln K site to redraw (not structural, no
+        mutations, or Δln K already conditioned).  Otherwise the per-state
+        ΔΔG truth (M, S) and the conditions for the second draw.
+    """
+    from tfscreen.tfmodel.generative.components.theta.thermo.prior import (
+        ddG_sigma_site,
+        dlnK_site,
+        per_state_truth,
+    )
+
+    proj = getattr(module, "DLNK_PROJ", None)
+    site = dlnK_site(name)
+    if (proj is None or site not in trace or site in conditions
+            or trace[site]["type"] != "sample"):
+        return None
+    if isinstance(rng_key, (int, np.integer)):
+        rng_key = jax.random.PRNGKey(int(rng_key))
+    sigma = np.asarray(trace[ddG_sigma_site(name)]["value"])
+    prior_means = np.asarray(trace[f"{name}_ddG_prior_mean"]["value"])
+    ddG, dlnK = per_state_truth(
+        prior_means, sigma, proj,
+        jax.random.fold_in(rng_key, _PER_STATE_TRUTH_FOLD))
+    return ddG, {**conditions, ddG_sigma_site(name): sigma, site: dlnK}
 
 
 def ddG_truth_conditions(ddG_truth_sd, theta_component, thermo_options=None):
@@ -188,11 +264,12 @@ def ddG_truth_conditions(ddG_truth_sd, theta_component, thermo_options=None):
     Site conditions that set the SD of the simulated per-structure ΔΔG.
 
     The PddG/PnnC models sample ``theta_ddG_sigma`` (σ_s, one per
-    structure) and then ``theta_ddG ~ Normal(prior_mean, σ_s)``
-    (``thermo/prior.py``).  In the simulator's prior-predictive draw that
-    ΔΔG is the ground truth, so σ_s is the SD of truth minus the structural
-    prior mean.  The simulation conditions σ_s rather than drawing it from
-    its LogNormal prior, so the truth noise is a known dial.
+    state) and put the prior on Δln K (``thermo/prior.py``).  The
+    simulator draws the per-state truth ΔΔG = prior_mean + σ_s · z and
+    conditions Δln K on its projection (``sample_theta_prior``), so σ_s is
+    the SD of truth minus the structural prior mean.  The simulation
+    conditions σ_s rather than drawing it from its LogNormal prior, so the
+    truth noise is a known dial.
 
     Parameters
     ----------
