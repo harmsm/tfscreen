@@ -13,6 +13,9 @@ the same data; what changes is which genotypes inform k and m.
     no_doubles       wt, spikes and singles
     spikes           wt and the spiked genotypes only (the library config's
                      spiked_seqs): the clones least affected by congression
+    spikes_deep      spikes plus the --n_deep_singles deepest singles: enough
+                     genotypes to pin X's scale, less congression than every
+                     single
     deep_doubles     no_doubles plus every double with >= DEEP total reads
     shallow_doubles  no_doubles plus as many doubles below DEEP, at random
 
@@ -56,7 +59,8 @@ def main():
     ap.add_argument("--arms", nargs="+",
                     default=["no_doubles", "deep_doubles", "shallow_doubles"],
                     choices=["no_doubles", "deep_doubles", "shallow_doubles",
-                             "spikes"])
+                             "spikes", "spikes_deep"])
+    ap.add_argument("--n_deep_singles", type=int, default=300)
     ap.add_argument("--library_config", default=None,
                     help="library config (default: sim_dir's)")
     args = ap.parse_args()
@@ -78,13 +82,18 @@ def main():
     arms = {"no_doubles": set(core),
             "deep_doubles": set(core) | set(deep),
             "shallow_doubles": set(core) | set(shallow)}
-    if "spikes" in args.arms:
+    if "spikes" in args.arms or "spikes_deep" in args.arms:
         lib_path = (args.library_config
                     or os.path.join(args.sim_dir, "library_config.yaml"))
         with open(lib_path) as fh:
             comp = library_composition_table(yaml.safe_load(fh))
         spiked = set(comp.loc[comp["in_spiked_origin"].astype(bool), "genotype"])
         arms["spikes"] = (spiked | {"wt"}) & set(tot.index)
+        singles = tot[(cls == "single") & ~tot.index.isin(arms["spikes"])]
+        deepest = singles.sort_values(ascending=False).index[:args.n_deep_singles]
+        arms["spikes_deep"] = arms["spikes"] | set(deepest)
+        print(f"spikes_deep: the {len(deepest)} deepest singles have "
+              f">= {int(singles.loc[deepest].min())} reads")
     arms = {a: arms[a] for a in args.arms}
     print(f"{len(core)} wt/spike/single genotypes, {len(deep)} doubles >= "
           f"{DEEP} reads, {len(shallow)} of {len(shallow_all)} below")

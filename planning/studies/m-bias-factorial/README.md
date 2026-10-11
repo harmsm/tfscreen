@@ -926,3 +926,65 @@ Check that the two control rows (`-kan`, `-4CP`) have m_scale 0.001.
 sbatch ../run_arm.srun
 ```
 
+### Real spikes-only with tight controls, and wt's own trajectories (2026-10-11)
+
+`m_subsets_real/spikes_tightctl` (control m SD 0.001): the same solution
+as before (kanR+kan m -0.0042, kanR-kan m -0.0093, nine prior SDs from 0,
+pheS+4CP m about -0.001; kanR-kan tube offsets SD 0.54). With nine
+genotypes there is no population of X values to pin X's scale, so the fit
+slides along the m·X ridge to a small m. The spikes-only stage 1 is
+dropped for the real data.
+
+Reading wt's growth straight off the growth tables (slope of ln_cfu over
+time per condition and IPTG level) is too noisy to use: each replicate
+has 2-3 sequenced tubes over about 40 minutes per level, and tube-level
+noise of about 0.3 ln units gives a slope error near 0.008 per minute, the
+size of m. On the simulation it gives kanR m of +0.039 and -0.026 in the
+two replicates against a truth of -0.014, and pooling replicates
+confounds their starting levels with time. The real pool's wt happened
+to come out near the monoculture (kanR m -0.016, pheS +0.013, pooled over
+replicates), but that is not evidence. The real pheS gap stays open.
+
+Options for congression in stage 1: correct the all-singles stage 1's
+pheS m by the simulation's factor (about 1.15; assumes the simulation's
+lambda and homodimer rule); a middle-sized stage 1 (the spikes plus a few
+hundred of the deepest singles); or fit congression (`mixture`, which
+needs the partners and the `max` rule).
+
+### Option 2 and a test of whether congression is the doubles' pull
+
+Option 2: `make_subsets.py --arms spikes_deep` keeps wt, the spikes and
+the 300 deepest singles (`--n_deep_singles`), on both simulation seeds.
+
+Option 3 is feasible: the relative fit configures and runs with
+`--transformation_model mixture --congression_theta_rule max` (40 steps
+on a round 1 table, about 1.8 s per step on a laptop). The lab's estimate
+of lambda is 0.357 with a likelihood-ratio 95% interval of 0.156-0.674
+(log-SD about 0.37; as the (mean, std) that `--transformation_lambda`
+takes, about 0.38 0.15). The simulation's 0.357 sits mid-interval, but the
+real lambda could be nearly twice that, and congression's pheS bias grows
+with lambda.
+
+Before building option 3 into stage 1: round 1's reduced library hinted
+that congression also drives the doubles' pull (no_cong m 0.96-0.99
+against base 1.03-1.14). If it does, one full-library fit with `mixture`
+could fix both and the two stages would not be needed. The test is the
+one-stage full-library fit on `sim_realistic_nocong`: m near 1.0 means
+the pull is congression; m near 1.45 means it is separate.
+
+```bash
+cd /gpfs/projects/harmslab/harms/studies/full-sized-sims-3/sim_realistic_nocong && sbatch --export=ALL,SEED=1 ../run_full_size.srun
+```
+
+```bash
+cd /gpfs/projects/harmslab/harms/studies/full-sized-sims-3
+```
+
+```bash
+python /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/make_subsets.py sim_realistic_s2 --arms spikes_deep --out_dir m_subsets && (cd m_subsets/spikes_deep && sbatch ../run_arm.srun)
+```
+
+```bash
+python /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/make_subsets.py sim_realistic_seed2 --arms spikes_deep --out_dir sim_realistic_seed2/stage1 && (cd sim_realistic_seed2/stage1/spikes_deep && sbatch ../run_arm.srun)
+```
+
