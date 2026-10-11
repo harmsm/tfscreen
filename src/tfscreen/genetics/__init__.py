@@ -41,3 +41,9 @@ from .library_design import (  # noqa: F401
     scale_library_design,
     write_library_composition,
 )
+
+from .library_subsample import (  # noqa: F401
+    build_library,
+    subsample_design,
+    subsample_library_df,
+)

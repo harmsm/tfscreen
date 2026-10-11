@@ -196,6 +196,12 @@ spike that really dropped out.
 recorded as given in the configuration's ``library`` block, and that record
 is its only defense. Give the best estimate of what went into the pool.
 
+A simulation's library YAML can restrict the library to a subsample
+(``library_genotypes``, ``library_subsample``; see :doc:`simulation`). Given
+that same YAML, ``tfs-configure-model`` builds the snapshot from the same
+subset, with the composition the simulation used, and records the
+subsample keys under ``library.subsample``.
+
 Presplit data
 -------------
 

@@ -12,6 +12,12 @@ from tfscreen.simulate.base_growth_data import generate_base_growth_df, generate
 from tfscreen.simulate.growth_parameters_output import generate_growth_parameters_df
 from tfscreen.simulate.transformation_lam_output import generate_transformation_lam_df
 from tfscreen.process_raw import counts_to_lncfu
+from tfscreen.genetics.library_subsample import (
+    build_library,
+    format_subsample_summary,
+    has_subsample,
+    subsample_design,
+)
 from tfscreen.simulate.raw_output import write_raw_experiment
 from tfscreen.simulate.build_sample_dataframes import (
     CONDITION_COLUMNS,
@@ -86,6 +92,13 @@ def run_simulation_from_config(
     but no reads. With shared_transformation, every replicate (OD-only ones
     included) draws its cells from one library assembly and transformation.
 
+    With ``library_genotypes`` and/or ``library_subsample`` the library is
+    restricted to a subset of the described genotypes before anything is
+    simulated (``{out_prefix}_library.csv`` lists the kept ones); with the
+    default ``library_subsample_depth: full_library`` each kept sequence
+    keeps the pool share, transformants, reads and PCR templates it has in
+    the full library. See ``tfscreen.genetics.library_subsample``.
+
     Parameters
     ----------
     config_file : str
@@ -158,12 +171,29 @@ def run_simulation_from_config(
     rng = np.random.default_rng(base_seed)
 
     # -------------------------------------------------------------------------
+    # The library, restricted to the config's subsample (library_genotypes,
+    # library_subsample; paths relative to the config file). sim_cf carries
+    # the experiment settings the subsample is simulated with.
+
+    sim_cf = dict(cf)
+    library_kwargs = {}
+    if has_subsample(cf):
+        library_df, subsample_summary = build_library(
+            cf, base_dir=os.path.dirname(os.path.abspath(config_file)))
+        design_update = subsample_design(cf, subsample_summary)
+        sim_cf.update({k: v for k, v in design_update.items()
+                       if k != "kept_pool_share"})
+        print(format_subsample_summary(cf, subsample_summary, design_update),
+              flush=True)
+        library_kwargs["library_df"] = library_df
+
+    # -------------------------------------------------------------------------
     # Ground-truth library and phenotypes (deterministic given the config)
 
     (library_df, phenotype_df, genotype_theta_df, parameters_df,
      binding_theta_df, mutation_truth, library_binding_theta_df) = \
-        library_prediction(cf, return_mutation_truth=True,
-                           return_binding_theta=True)
+        library_prediction(sim_cf, return_mutation_truth=True,
+                           return_binding_theta=True, **library_kwargs)
     growth_parameters_df = generate_growth_parameters_df(cf["growth"])
     transformation_lam_df = generate_transformation_lam_df(cf)
 
@@ -207,9 +237,9 @@ def run_simulation_from_config(
     # replicate 3; 2026-10-08).
     # (selection_experiment validates total_num_reads; none here, none split)
     rep_reads = {}
-    if cf.get("total_num_reads") is not None:
-        rep_reads = replicate_read_totals(int(cf["total_num_reads"]), rep_ids,
-                                          num_replicates, design)
+    if sim_cf.get("total_num_reads") is not None:
+        rep_reads = replicate_read_totals(int(sim_cf["total_num_reads"]),
+                                          rep_ids, num_replicates, design)
 
     for rep_num, rep in enumerate(rep_ids, start=1):
         sequenced = rep_num <= num_replicates
@@ -219,7 +249,7 @@ def run_simulation_from_config(
 
         # Give each replicate a distinct (but reproducible) random seed so
         # that replicates differ even when a base seed is set.
-        rep_cf = dict(cf)
+        rep_cf = dict(sim_cf)
         rep_cf["seed"] = (
             base_seed * num_replicates + rep_num if base_seed is not None else None
         )
@@ -366,7 +396,7 @@ def run_simulation_from_config(
         print("\nGenerating presplit data...", flush=True)
         presplit_df = generate_presplit_df(combined_sample_df,
                                            combined_counts_df,
-                                           cf, rng)
+                                           sim_cf, rng)
         presplit_df.to_csv(out_path("presplit"), index=False)
         print(f"Wrote: {out_path('presplit')}")
 

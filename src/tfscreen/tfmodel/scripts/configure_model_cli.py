@@ -23,6 +23,7 @@ from tfscreen.genetics import (
     standardize_genotypes,
     write_library_composition,
 )
+from tfscreen.genetics.library_subsample import subsample_record
 
 import numpy as np
 import pandas as pd
@@ -572,10 +573,18 @@ def configure_model(binding_df=None,
         write_library_composition(composition, library_file)
         print(f"Wrote library composition to {library_file}", flush=True)
 
+        library_yaml = read_yaml(library_config)
         library_meta = {
             "source": library_config if isinstance(library_config, str) else "<dict>",
-            "library_mixture": read_yaml(library_config)["library_mixture"],
+            "library_mixture": library_yaml["library_mixture"],
         }
+        # A subsampled library (tfs-simulate's library_genotypes /
+        # library_subsample): the snapshot holds only the kept genotypes.
+        subsample = subsample_record(library_yaml)
+        if subsample is not None:
+            library_meta["subsample"] = subsample
+            print(f"Library subsample: {len(composition)} genotypes kept "
+                  f"({subsample})", flush=True)
 
     # Structural-input loader options; None keeps the old behaviour and
     # leaves the written config's thermo_options null.

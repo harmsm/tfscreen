@@ -55,6 +55,9 @@ SIMULATE_KNOWN_KEYS = frozenset({
     # Library genetics (passed to LibraryManager)
     "reading_frame", "first_amplicon_residue", "wt_seq", "degen_sites",
     "tiles", "tile_combos", "spiked_seqs", "expected_5p", "expected_3p",
+    # Library subsample (genetics/library_subsample.py)
+    "library_genotypes", "library_subsample", "library_subsample_seed",
+    "library_subsample_depth",
     # Phenotype / theta calculation
     "theta_component", "thermo_data", "thermo_options", "ddG_truth_sd",
     "theta_priors",

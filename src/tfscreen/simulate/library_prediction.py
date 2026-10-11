@@ -28,6 +28,7 @@ from tfscreen.simulate.empirical.resample import (
 from tfscreen.simulate.empirical.population import PopulationModel
 
 from tfscreen.genetics import library_manager
+from tfscreen.genetics.library_subsample import subsample_library_df
 from tfscreen.genetics import standardize_genotypes
 
 import jax
@@ -267,7 +268,9 @@ def _spiked_stratified_binding(binding_genotypes, cf, sample_df, binding_sample_
 def library_prediction(cf: Union[Dict[str, Any], str, Path],
                        override_keys: dict=None,
                        return_mutation_truth: bool=False,
-                       return_binding_theta: bool=False):
+                       return_binding_theta: bool=False,
+                       library_df: pd.DataFrame=None,
+                       base_dir: str=None):
     """
     Predict the "ground-truth" phenotypes for a transcription factor screen
     experiment given a library, thermodynamic model, and map between that model
@@ -290,6 +293,14 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
         Also return, last, the ground-truth theta of every library genotype
         at the ``binding_data`` concentrations (None without a
         ``binding_data`` block).
+    library_df : pandas.DataFrame, optional
+        The library to simulate, as ``genetics.library_subsample.
+        build_library`` returns it. Default: built from ``cf``, with any
+        ``library_genotypes``/``library_subsample`` applied.
+    base_dir : str, optional
+        Directory a relative ``library_genotypes`` path is read against when
+        the library is built here. Default: the YAML's directory when ``cf``
+        is a path, else the working directory.
 
     Returns
     -------
@@ -328,14 +339,18 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
     # -------------------------------------------------------------------------
     # Read inputs and set up simulation
 
+    if isinstance(cf, (str, Path)) and base_dir is None:
+        base_dir = os.path.dirname(os.path.abspath(cf))
     cf = tfscreen.util.read_yaml(cf, override_keys=override_keys)
 
     # -------------------------------------------------------------------------
     # Do main calculation
 
-    # Build library_df
-    lm = library_manager.LibraryManager(cf)
-    library_df = lm.build_library_df()
+    # Build library_df (restricted to the config's subsample, if any)
+    if library_df is None:
+        lm = library_manager.LibraryManager(cf)
+        library_df, _ = subsample_library_df(lm.build_library_df(), cf,
+                                             base_dir=base_dir)
 
     # Build sample_df (holds all conditions for the experiment): from the
     # condition blocks, or from a design tube table (the union of its

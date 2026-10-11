@@ -33,6 +33,65 @@ and ``tfs-configure-model --library_config``. Each tool ignores the keys it
 does not use. Nothing checks that ``library_mixture`` is the same in all
 three places, so a single file is the only guard against drift.
 
+Subsampling the library
+^^^^^^^^^^^^^^^^^^^^^^^
+
+A real double-mutant library has hundreds of thousands of genotypes, far
+too many for some studies (a full Laplace posterior needs a dense Hessian
+over every genotype's parameters). Four optional keys restrict the described
+library to a subset. They belong with the library keys, because
+``tfs-configure-model --library_config`` reads them too and builds its
+library snapshot from the same subset. ``tfs-process-fastq`` ignores them.
+
+.. code-block:: yaml
+
+    # keep every single and 1,000 random cross-tile doubles
+    library_subsample:
+      double-1-2: 1000
+    library_subsample_seed: 20261010
+
+    # or keep exactly the genotypes listed in a file
+    library_genotypes: sampled_genotypes.txt
+
+``library_genotypes`` names a text file with one genotype per line (``#``
+comments allowed), relative to the YAML's own directory. Every genotype not
+listed is dropped from every sub-library that encodes it, so the file lists
+everything to keep, singles included. A listed genotype the library does
+not encode is an error. ``library_subsample`` keeps ``N`` genotypes of a
+sub-library, drawn at random, and leaves the sub-libraries it does not name
+whole. It needs ``library_subsample_seed``, an integer. That seed is
+separate from ``seed`` on purpose: ``tfs-configure-model`` never sees
+``tfs-simulate --seed``, and both must draw the same genotypes. Each
+sub-library draws from its own stream, and a smaller ``N`` keeps a subset
+of what a larger one keeps, so a grid over ``N`` compares nested libraries.
+Both keys can be given; the random draw is then made from the listed
+genotypes. wt and every genotype a spiked sequence encodes are always kept,
+in every sub-library that encodes them, and do not count toward ``N``. A
+``double-x-y`` sub-library also encodes singles (and wt) wherever a site's
+codon set includes the wt residue; those are drawn like any other member.
+
+``library_subsample_depth`` says what the experiment settings describe.
+With ``full_library`` (the default) ``library_mixture``, ``transform_sizes``,
+``total_num_reads`` and ``pcr_template_molecules`` describe the full
+library, and every kept sequence keeps the pool share, transformants, reads
+and PCR templates it has there: each sub-library's mixture weight and
+transformants are multiplied by its kept fraction of sequences, and the
+reads and templates by the kept share of the pool. ``cfu0`` is not changed,
+so tube totals and OD600 stay those of the full experiment and each kept
+genotype has 1 / (kept share) times the cells. A grid over ``N`` then varies
+only the number of genotypes, not the depth per genotype. With
+``as_written`` the settings apply to the subsampled library as given: the
+subsample is the library. ``tfs-simulate`` prints a table of genotypes and
+sequences kept per sub-library and the settings it used.
+
+``tfs_sim_library.csv``, the raw count files and every other output list
+only the kept genotypes. Pass the same YAML to ``tfs-configure-model
+--library_config``; its snapshot (``*_library.csv``) then holds the same
+genotypes with the composition the simulation used, and its config records
+the subsample keys under ``library.subsample``. ``tfs-setup-sim-grid``
+copies a ``library_genotypes`` file into the grid, and ``library_subsample``
+is an ordinary grid variable.
+
 Phenotypes
 ^^^^^^^^^^
 

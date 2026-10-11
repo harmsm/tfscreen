@@ -55,8 +55,8 @@ cluster, onto another partition). Every input file a run needs is copied into
 refer to it as ``../inputs/<name>``. Nothing in a run points outside the grid.
 
 - Config file paths are the keys listed in ``_SIM_PATH_KEYS``, nested ones
-  included (``thermo_data``, ``empirical.phenotype_model``,
-  ``binding_data.*.choose_by``, ...). A relative path resolves against the
+  included (``thermo_data``, ``library_genotypes``,
+  ``empirical.phenotype_model``, ``binding_data.*.choose_by``, ...). A relative path resolves against the
   base config's directory for a base-config value and against the grid YAML's
   directory for a ``simulate`` override. A ``choose_by`` keyword
   (``stratified``/``random``) is not a path and is left alone.
@@ -94,6 +94,7 @@ from tfscreen.util.grid_utils import (
 _SIM_PATH_KEYS = (
     ("thermo_data",),
     ("design",),
+    ("library_genotypes",),
     ("calibration_file",),
     ("empirical", "phenotype_model"),
     ("od600", "calibration"),
