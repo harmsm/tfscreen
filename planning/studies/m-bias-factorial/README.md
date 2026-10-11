@@ -783,3 +783,77 @@ About 85 minutes to simulate, then about 10 for stage 1. Read
 `stage1/no_doubles/tfs_params_growth_m.csv` against the truth with
 `score_arms.py`.
 
+### No-congression stage 1 (2026-10-11)
+
+`sim_realistic_nocong` (seed 1, `transformation_poisson_lambda` 0, else
+as `sim_realistic_s2`); every stage converged; no k or m direction held.
+
+| stage-1 m / truth | congression on | congression off |
+|---|---|---|
+| kanR+kan | 1.028 | 1.032 |
+| pheS+4CP | 0.895 | 1.035 |
+
+**Congression causes stage 1's pheS bias.** kanR does not move, as the
+asymmetry predicts. Both markers keep a small steep bias (about 3%)
+without congression.
+
+Fitting congression (`transformation: mixture`) does not fit the
+two-stage idea: a mixture needs each co-resident partner's θ, so the
+partners, mostly doubles, have to be in the fit, which brings back their
+pull on m; and the relative-X fit accepts only the `max` rule, not the
+simulation's `homodimer`. A stage 1 of clones with little congression
+avoids both: wt and the spikes. In the simulated pool (with the 271
+repeated wt sequences), about 17% of a bulk genotype's cells are
+congressed (`transformation_poisson_lambda` 0.357); wt is 77% spiked, so
+about 4% of its cells are congressed, single spikes about 10%, double
+spikes almost none. wt alone sets the X gauge and, through the tube
+totals, its growth difference between 0 and 1 mM is m. `make_subsets.py
+--arms spikes` keeps wt and the library config's spiked genotypes (about
+six with growth data).
+
+### How to run the spikes-only stage 1
+
+Simulation, seed 1 (congression on), in the full-size working directory:
+
+```bash
+cd /gpfs/projects/harmslab/harms/studies/full-sized-sims-3
+```
+
+```bash
+python /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/make_subsets.py sim_realistic_s2 --arms spikes --out_dir m_subsets
+```
+
+```bash
+cd m_subsets/spikes && sbatch ../run_arm.srun && cd ../..
+```
+
+Seed 2 (`run_arm.srun` and `run_arm.sh` are not in its `stage1/` yet):
+
+```bash
+python /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/make_subsets.py sim_realistic_seed2 --arms spikes --out_dir sim_realistic_seed2/stage1
+```
+
+```bash
+cp /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/{run_arm.sh,run_arm.srun} sim_realistic_seed2/stage1/ && cd sim_realistic_seed2/stage1/spikes && sbatch ../run_arm.srun
+```
+
+Real data, next to the recipe:
+
+```bash
+cd /gpfs/projects/harmslab/harms/studies/dev-data/real_fit
+```
+
+```bash
+python /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/make_subsets.py recipe --arms spikes --out_dir m_subsets_real --library_config ../processed/library_config.yaml
+```
+
+```bash
+cd m_subsets_real/spikes && sbatch ../run_arm.srun
+```
+
+Each `make_subsets.py` reads its 8 GB growth table (about 6 minutes) and
+prints `spikes: N genotypes`; each fit takes about 10 minutes. On the
+real data, whether pheS m rises toward the monoculture's 0.0144 says how
+much of the real pheS gap is congression (the simulation's congression
+alone takes about 14% off pheS m; the real gap is about 2x).
+

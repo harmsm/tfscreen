@@ -11,6 +11,8 @@ genotype's count likelihood is independent, so a subset is a valid fit of
 the same data; what changes is which genotypes inform k and m.
 
     no_doubles       wt, spikes and singles
+    spikes           wt and the spiked genotypes only (the library config's
+                     spiked_seqs): the clones least affected by congression
     deep_doubles     no_doubles plus every double with >= DEEP total reads
     shallow_doubles  no_doubles plus as many doubles below DEEP, at random
 
@@ -30,6 +32,9 @@ import shutil
 
 import numpy as np
 import pandas as pd
+import yaml
+
+from tfscreen.genetics.library_design import library_composition_table
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 LOOSE = os.path.join(HERE, "..", "full-size-sim", "growth_priors_loose.csv")
@@ -49,7 +54,9 @@ def main():
     ap.add_argument("--out_dir", default="m_subsets")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--arms", nargs="+",
-                    default=["no_doubles", "deep_doubles", "shallow_doubles"])
+                    default=["no_doubles", "deep_doubles", "shallow_doubles"],
+                    choices=["no_doubles", "deep_doubles", "shallow_doubles",
+                             "spikes"])
     ap.add_argument("--library_config", default=None,
                     help="library config (default: sim_dir's)")
     args = ap.parse_args()
@@ -71,6 +78,13 @@ def main():
     arms = {"no_doubles": set(core),
             "deep_doubles": set(core) | set(deep),
             "shallow_doubles": set(core) | set(shallow)}
+    if "spikes" in args.arms:
+        lib_path = (args.library_config
+                    or os.path.join(args.sim_dir, "library_config.yaml"))
+        with open(lib_path) as fh:
+            comp = library_composition_table(yaml.safe_load(fh))
+        spiked = set(comp.loc[comp["in_spiked_origin"].astype(bool), "genotype"])
+        arms["spikes"] = (spiked | {"wt"}) & set(tot.index)
     arms = {a: arms[a] for a in args.arms}
     print(f"{len(core)} wt/spike/single genotypes, {len(deep)} doubles >= "
           f"{DEEP} reads, {len(shallow)} of {len(shallow_all)} below")

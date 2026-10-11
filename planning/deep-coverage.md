@@ -129,8 +129,10 @@ is the monoculture), so the real kanR curves are likely compressed too.
    0.6%), and stage 1's m error is a bias that repeats across seeds
    (kanR 2% steep, pheS 10% shallow; 12% under Poisson counts), so the
    draws were cancelled. k's error is noise several times its Laplace SD.
-   Testing congression as the pheS bias's cause (a no-congression stage
-   1). Step 2 now needs (a) the stage-1 m bias fixed or corrected and (b)
+   Congression is the pheS bias's cause: without it stage 1's pheS m is
+   1.035 of the truth (0.895 with it); kanR does not move. Next: a stage
+   1 of wt and the spikes (little congression, few genotypes), on both
+   seeds and the real data. Step 2 now needs (a) the stage-1 m bias fixed or corrected and (b)
    k's uncertainty from resampling stage 1, not its Laplace.
 3. [ ] **pheS+4CP.** The real fit's pheS selection departs from the
    monoculture differently (k much higher, |m| smaller). Decide with step
