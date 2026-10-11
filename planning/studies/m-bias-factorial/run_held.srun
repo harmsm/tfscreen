@@ -23,6 +23,10 @@
 #          condition). When held_priors.py --hold pins some conditions
 #          through the table's pin columns, submit with --export=ALL,PINS=
 #          so the global pins do not override them.
+#   INIT   optional params.npz of an earlier MAP of the same model (e.g. a
+#          held fit at nearby k and m) to start the MAP from (--init_from;
+#          that also skips the staged MAP). Step 2's draws start from the
+#          round 3 MAP this way.
 
 module load cuda/12.4.1
 
@@ -43,7 +47,8 @@ tfs-configure-model \
         ${PINS}
 
 echo ">>> Fit (staged MAP) $(date)"
-tfs-fit-model tfs_configure_config.yaml --seed "${SEED}" --analysis_method map
+tfs-fit-model tfs_configure_config.yaml --seed "${SEED}" --analysis_method map \
+    ${INIT:+--init_from "${INIT}"}
 
 echo ">>> Arrowhead Laplace $(date)"
 tfs-sample-posterior tfs_configure_config.yaml tfs_fit_model_checkpoint.pkl \

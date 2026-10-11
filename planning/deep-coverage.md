@@ -110,7 +110,7 @@ is the monoculture), so the real kanR curves are likely compressed too.
    m or slide direction is held. The two-stage fit (k and m from wt,
    spikes and singles; the full library at those values) is the route.
    Still open: k/m uncertainty in X (step 2), a second simulation seed for
-   stage 1 (pheS m 0.89 of the truth on seed 2), pheS (step 3), and
+   stage 1 (pheS m 0.89 of the truth on seed 1; `sim_realistic_s2` is the second calibration, seed 1), pheS (step 3), and
    moving the two stages into the pipeline once step 2 settles how.
 2. [ ] **Carry k and m's error into X.** The held fit (step 1b, round 3)
    gives X intervals conditional on k and m. Take k and m's uncertainty
@@ -120,6 +120,11 @@ is the monoculture), so the real kanR curves are likely compressed too.
    at the no-doubles SD will not do: the doubles pulled m through a 0.002
    prior (`planning/studies/km-anchor/`). Check coverage by depth against
    round 3 (0.90 / 0.65 above 1e4 reads).
+   Set up 2026-10-11 on the seed-1 simulation (`km_draws.py`,
+   `run_km_draws.srun`, `run_pool.srun`; 10 draws), with a second
+   simulation seed run through both stages (`run_two_stage.srun`) to test
+   stage 1's own error, which a stage-1 Laplace may understate
+   (`planning/studies/m-bias-factorial/`, "Step 2", "Second seed").
 3. [ ] **pheS+4CP.** The real fit's pheS selection departs from the
    monoculture differently (k much higher, |m| smaller). Decide with step
    1's real arm whether the anchor holds there or the condition needs the

@@ -366,6 +366,89 @@ provisional until `planning/deep-coverage.md` step 3: the pool's pheS
 selection is about half the wt monoculture's, and the simulation cannot
 say whether that is biology or a misspecification it lacks.
 
+## Step 2: k and m's uncertainty in X
+
+`planning/deep-coverage.md` step 2. A held fit gives X intervals given k
+and m. To carry their uncertainty, take joint draws of every condition's k
+and m from the stage-1 fit's arrowhead Laplace, refit the full library
+pinned at each draw (round 3's setup, starting from round 3's MAP with
+`--init_from`), and pool the draws' posteriors into one equal-weight
+mixture. The pooled intervals should cover the deepest genotypes better
+than round 3 (0.65 above 1e5 reads) if stage 1's own error is what they
+miss. The Laplace's k/m spread is only as honest as stage 1: on seed 1
+its pheS m was 11% off the truth, so if the spread comes out near 1%, the
+draws cannot cover that and the second seed (below) says whether it was
+luck.
+
+`km_draws.py` stops if the stage-1 Laplace holds a k or m direction at
+zero width (it would give those draws no spread). `score_x.py` scores
+any run directory or pooled table by depth; `depth.py` makes its read
+table.
+
+### How to run step 2 (simulation, `sim_realistic_s2`)
+
+```bash
+cd /gpfs/projects/harmslab/harms/studies/full-sized-sims-3
+```
+
+```bash
+sbatch /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/run_km_draws.srun
+```
+
+`run_km_draws.out` prints each condition's k and m SD across the stage-1
+posterior and ends with `wrote 10 draws to km_draws/draw_*/`. If it stops
+on held k/m directions instead, send me the table it prints. Then submit
+the draws, each starting from round 3's MAP:
+
+```bash
+cd km_draws && for d in draw_*; do (cd $d && ln -s ../../sim_realistic_s2/tfs_growth.csv ../../sim_realistic_s2/tfs_sim_* . && cp ../../sim_realistic_s2/library_config.yaml . && sbatch --export=ALL,INIT=../../held_s2/tfs_fit_model_params.npz /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/run_held.srun); done
+```
+
+When every `draw_*/run.out` ends with `>>> Done`, pool them (in
+`km_draws/`):
+
+```bash
+sbatch /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/run_pool.srun
+```
+
+Then score `km_draws/pooled_aggregate.csv` against round 3 with
+`score_x.py` and round 3's truth table.
+
+## Second seed
+
+Stage 1's pheS m came out 11% low on the one simulation so far.
+`sim_realistic_s2` is seed 1 (the "s2" is the second calibration of the
+simulator). A fresh seed with the same calibration, run through both
+stages by `run_two_stage.srun`, says whether that was noise and whether the
+two-stage fit's X coverage holds on new data. The stage-1 Laplace is part
+of the job, so step 2 can run on it too.
+
+### How to run the second seed
+
+```bash
+cd /gpfs/projects/harmslab/harms/studies/full-sized-sims-3
+```
+
+```bash
+python /gpfs/home/harms/tfscreen/planning/studies/full-size-sim/make_sim_config.py --out_dir sim_realistic_seed2 --seed 2 --calibrate_from pilot_s1
+```
+
+Check that `sim_realistic_seed2/simulate_config.yaml` reads `seed: 2`.
+
+```bash
+cd sim_realistic_seed2 && sbatch --export=ALL,SEED=2 /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/run_two_stage.srun
+```
+
+The simulation alone takes about 85 minutes; the whole job ends with
+`>>> Done` in `run_two_stage.out` and `stage2/summary/`. To also get this
+seed's unheld full-library fit (the bias at 1.45 should reproduce), submit
+`run_full_size.srun` in the same directory after it (it reuses
+`tfs_growth.csv`):
+
+```bash
+sbatch --export=ALL,SEED=2 --dependency=afterok:<the two-stage job id> ../run_full_size.srun
+```
+
 ## Commit
 
 The commit that adds this study.
