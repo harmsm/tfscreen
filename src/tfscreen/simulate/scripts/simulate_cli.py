@@ -18,7 +18,10 @@ from tfscreen.genetics.library_subsample import (
     has_subsample,
     subsample_design,
 )
-from tfscreen.simulate.raw_output import write_raw_experiment
+from tfscreen.simulate.raw_output import (
+    undetectable_tubes,
+    write_raw_experiment,
+)
 from tfscreen.simulate.build_sample_dataframes import (
     CONDITION_COLUMNS,
     read_design,
@@ -122,7 +125,9 @@ def run_simulation_from_config(
         directly from the simulated counts (with each row's true values).
         ``tfs-process-counts`` builds the same table from the raw files, so a
         full-size simulation can skip it: on a real library's size it is
-        several GB.
+        several GB. With an ``od600`` block, tubes read below the
+        calibration's detection threshold are left out of it, as they are
+        out of the raw tube table (``tfs-process-counts`` refuses them).
     """
     cf = tfscreen.util.read_yaml(config_file)
     if seed is not None:
@@ -306,6 +311,26 @@ def run_simulation_from_config(
         combined_sample_df = combined_sample_df.copy()
         combined_sample_df["design_sample"] = named["design_sample"].to_numpy()
 
+    # Tubes whose OD600 read below the detection threshold: the raw route
+    # leaves them out of the tube table (tfs-process-counts refuses such a
+    # reading, as the lab drops the tube), so the direct growth table drops
+    # them too and both routes hold the same tubes. The OD600 table above
+    # keeps every reading; presplit draws on the library, not on tubes.
+    bad = undetectable_tubes(combined_sample_df, cf.get("od600"))
+    growth_sample_df = combined_sample_df.loc[~bad]
+    growth_counts_df = combined_counts_df
+    if bad.any():
+        bad_ids = set(combined_sample_df.index[bad])
+        growth_counts_df = combined_counts_df.loc[
+            ~combined_counts_df["sample"].isin(bad_ids)]
+        cols = [c for c in ["replicate", "library", "condition_sel",
+                            "titrant_conc", "t_sel", "od600"]
+                if c in combined_sample_df.columns]
+        print(f"\nDropped {int(bad.sum())} of {len(bad)} tube(s) with OD600 "
+              f"below the detection threshold (from the growth table and the "
+              f"raw tube table, as tfs-process-counts would refuse them):\n"
+              f"{combined_sample_df.loc[bad, cols].to_string()}", flush=True)
+
     # The in-memory growth table: written unless skipped, and needed by the
     # in-library binding selection (survivors).
     need_growth = write_growth or (
@@ -314,8 +339,8 @@ def run_simulation_from_config(
     growth_df = None
     if need_growth:
         growth_df = counts_to_lncfu(
-            combined_sample_df.drop(columns="design_sample", errors="ignore"),
-            combined_counts_df)
+            growth_sample_df.drop(columns="design_sample", errors="ignore"),
+            growth_counts_df)
 
     if write_raw:
         raw = write_raw_experiment(combined_sample_df, combined_counts_df,

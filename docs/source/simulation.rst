@@ -274,6 +274,15 @@ replicates that are read but not sequenced. With
 ``sample_cfu_from_od600: true`` the growth table gets each tube's total as
 estimated from its reading, as in the lab, instead of the true total.
 
+A tube read below the detection threshold has only an upper bound on its
+total, so the lab drops it, and ``tfs-process-counts`` refuses such a
+reading rather than guess. ``tfs-simulate`` drops these tubes from every
+route the same way: from the raw tube table and count files, and from the
+direct growth table ``tfs_sim_growth.csv`` (also with ``--no_write_raw``).
+It prints the dropped tubes. ``tfs_sim_od600.csv`` still lists every
+reading with its ``od600_detectable`` flag, and the presplit table, which
+samples the library before the split, is not affected.
+
 Binding data
 ^^^^^^^^^^^^
 
@@ -405,7 +414,7 @@ through (see :doc:`process-raw`):
     With an ``od600`` block: one OD600 reading per tube and a copy of the
     calibration. A tube read below the detection threshold is left out of
     the tube table, as a lab would drop it, and the dropped tubes are
-    printed.
+    printed. ``tfs_sim_growth.csv`` leaves out the same tubes.
 
 ``tfs-simulate`` prints the ``tfs-process-counts`` command that processes
 these files. Its output matches ``tfs_sim_growth.csv`` row for row: the same
