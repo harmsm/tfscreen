@@ -387,6 +387,15 @@ about the CSV. A σ_s that runs toward 0 means the data cannot resolve the
 constants more finely than the CSV gives them, not that the CSV is exact.
 This can happen when the data are weak.
 
+To hold σ_s at a known value instead of estimating it, set
+``theta_ddG_sigma_fixed`` to that value in kT, for example
+``--set_priors theta_ddG_sigma_fixed=1.69``. The value is in kT whatever
+``--thermo_ddG_units`` says. Every structure gets the same value; there is
+no per-structure hold. The fit then has no σ_s parameters, the LogNormal
+prior is unused, and the extracted ``ddG_sigma`` table reports the held
+value. The default 0 estimates σ_s. A held σ_s suits a simulation study
+that compares a fit told the true noise with one that estimates it.
+
 The fit reports a per-structure ΔΔG for each mutation. In the models with
 an unfolded state (``U1``) it follows from the constants exactly. In the
 models without one (``U0``) every constant is a difference of structures, so
@@ -416,7 +425,9 @@ Common uses: ``sigma_fixed=0.17`` holds the SD of the level tube offsets;
 ``log(hill_n)``; for ``hill_relative``, ``theta_X_low_hyper_scale_fixed``,
 ``theta_X_delta_hyper_scale_fixed`` and
 ``theta_log_hill_K_hyper_scale_fixed`` hold the population SDs of its other
-parameters. A value of 0 leaves the SD learned.
+parameters; for the ``PddG`` and ``PnnC`` models,
+``theta_ddG_sigma_fixed`` holds the per-structure ΔΔG scale σ_s (full name
+``theta.theta_ddG_sigma_fixed``). A value of 0 leaves the SD learned.
 
 **--growth_priors table.csv** sets per-condition priors for ``linear``
 condition growth. The table has a ``condition_rep`` column, the condition
