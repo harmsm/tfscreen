@@ -39,9 +39,83 @@ def _unwrap(fn):
     return fn
 
 
-def trace_model_sites(model, priors, data, substitutions=None, seed=0):
+def structure_trace(model, seed=0, substitutions=None, substitute_fn=None,
+                    **model_kwargs):
+    """
+    Trace ``model`` once to read its structure: site shapes, supports and
+    distributions.
+
+    Unsubstituted latent sites are drawn from the prior, and with a wide
+    prior (the thermo ``PddG`` ddG prior with a large learned ``sigma_s``
+    gives ln K draws of +/-60) the draw can predict a non-finite ``ln_cfu``.
+    numpyro then refuses to construct the observation distribution
+    (``CountNegativeBinomial ... invalid log_mu``), although nothing that
+    reads a structure trace evaluates the observation. Distribution argument
+    validation is therefore switched off for the trace, so a structure
+    lookup never depends on the observation model accepting a prior draw.
+    Under ``jit`` the checks never run anyway (the values are tracers).
+
+    Parameters
+    ----------
+    model : callable
+        Numpyro model.
+    seed : int, optional
+        PRNG seed for the trace.
+    substitutions : dict or None, optional
+        Constrained site values to substitute.
+    substitute_fn : callable or None, optional
+        ``numpyro.handlers.substitute`` ``substitute_fn`` (site -> value or
+        None), applied after ``substitutions``.
+    **model_kwargs
+        Passed to the model.
+
+    Returns
+    -------
+    collections.OrderedDict
+        The numpyro trace.
+    """
+
+    from numpyro import validation_enabled
+
+    fn = handlers.seed(model, seed)
+    if substitutions:
+        fn = handlers.substitute(fn, data=substitutions)
+    if substitute_fn is not None:
+        fn = handlers.substitute(fn, substitute_fn=substitute_fn)
+    with validation_enabled(False):
+        return handlers.trace(fn).get_trace(**model_kwargs)
+
+
+def unconstrained_substitute_fn(unconstrained):
+    """
+    ``substitute_fn`` that sets each named latent site from its unconstrained
+    value, mapped through ``biject_to`` of the site's own support.
+
+    Every listed site takes its value without a prior draw, and a
+    hierarchical site's support is that of its distribution given the
+    substituted parents (what ``numpyro.infer.util.constrain_fn`` does).
+    """
+
+    from numpyro.distributions.transforms import biject_to
+
+    def fn(site):
+        name = site["name"]
+        if (site["type"] != "sample" or site.get("is_observed", False)
+                or name not in unconstrained):
+            return None
+        return biject_to(site["fn"].support)(unconstrained[name])
+
+    return fn
+
+
+def trace_model_sites(model, priors, data, substitutions=None, seed=0,
+                      unconstrained=None):
     """
     Trace ``model`` once and return its latent sample sites.
+
+    The trace is a ``structure_trace``: argument validation is off, so a
+    prior draw that makes the observation model's parameters non-finite does
+    not fail it.
 
     Parameters
     ----------
@@ -51,9 +125,12 @@ def trace_model_sites(model, priors, data, substitutions=None, seed=0):
         Passed to the model.  ``data`` should be a full (library-ordered)
         batch so per-genotype sites have library shape.
     substitutions : dict or None, optional
-        Site values to substitute while tracing.
+        Constrained site values to substitute while tracing.
     seed : int, optional
         PRNG seed for the trace.
+    unconstrained : dict or None, optional
+        Unconstrained site values (a MAP point) to substitute, each mapped
+        through its own site's support (``unconstrained_substitute_fn``).
 
     Returns
     -------
@@ -61,10 +138,10 @@ def trace_model_sites(model, priors, data, substitutions=None, seed=0):
         ``{site name: numpyro trace site}`` for unobserved sample sites.
     """
 
-    fn = handlers.seed(model, seed)
-    if substitutions:
-        fn = handlers.substitute(fn, data=substitutions)
-    tr = handlers.trace(fn).get_trace(priors=priors, data=data)
+    sub_fn = (None if unconstrained is None
+              else unconstrained_substitute_fn(unconstrained))
+    tr = structure_trace(model, seed=seed, substitutions=substitutions,
+                         substitute_fn=sub_fn, priors=priors, data=data)
     return {name: site for name, site in tr.items()
             if site["type"] == "sample" and not site.get("is_observed", False)}
 

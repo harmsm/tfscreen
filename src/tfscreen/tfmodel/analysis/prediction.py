@@ -9,6 +9,7 @@ from tfscreen.tfmodel.inference.model_params import (
     sample_keys,
 )
 from tfscreen.tfmodel.tensors.batch import get_batch as _get_batch
+from tfscreen.tfmodel.inference.initialization import structure_trace
 import jax
 from jax import numpy as jnp
 from numpyro.handlers import seed, substitute, trace
@@ -602,10 +603,11 @@ def predict(orchestrator,
     #
     # We use the original orchestrator because posteriors match its structure.
 
-    seeded_model = seed(orchestrator.jax_model, rng_seed=0)
-    traced_model = trace(seeded_model)
-    model_trace = traced_model.get_trace(data=orchestrator.data,
-                                         priors=orchestrator.priors)
+    # A structure trace: a prior draw that predicts a non-finite ln_cfu must
+    # not stop it at the count observation (see structure_trace).
+    model_trace = structure_trace(orchestrator.jax_model,
+                                  data=orchestrator.data,
+                                  priors=orchestrator.priors)
 
     # -------------------------------------------------------------------------
     # MAP param conversion (if needed)
@@ -788,10 +790,13 @@ def predict(orchestrator,
     # something other than a growth-tensor dimension or condition_rep) would
     # otherwise be indexed silently by the wrong entries, as the mutation and
     # pair plates were before copy_orchestrator kept the fitted labels.
-    new_trace = trace(seed(hold_model_params(new_orchestrator.jax_model,
-                                             model_params),
-                           rng_seed=0)).get_trace(data=pred_data,
-                                                  priors=orchestrator.priors)
+    # Until 2026-10-11 this trace ran with argument validation on: with the
+    # PddG fits' learned sigma_s held, the prior draw of ln K reached +/-60,
+    # ln_cfu went non-finite and the count observation refused it, which
+    # stopped tfs-summarize-fit's trajectory plots.
+    new_trace = structure_trace(hold_model_params(new_orchestrator.jax_model,
+                                                  model_params),
+                                data=pred_data, priors=orchestrator.priors)
     for site_name, val in sliced_samples.items():
         new_site = new_trace.get(site_name)
         if new_site is None:

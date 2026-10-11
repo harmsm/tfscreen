@@ -65,7 +65,8 @@ def sample_posterior(config_file,
                      laplace="auto",
                      laplace_max_params=DEFAULT_LAPLACE_MAX_PARAMS,
                      skip_growth_observations=False,
-                     genotype_chunk_size=None):
+                     genotype_chunk_size=None,
+                     allow_flat_laplace_floor=False):
     """
     Draw posterior samples from an existing MAP, SVI, or NUTS checkpoint.
 
@@ -139,6 +140,13 @@ def sample_posterior(config_file,
     genotype_chunk_size : int or None, optional
         Genotypes per Hessian-vector-product pass for the arrowhead and
         blocks Laplace (default None, all at once). Lower it on device OOM.
+    allow_flat_laplace_floor : bool, optional
+        If the prior SDs that floor the Laplace's Hessian eigenvalues cannot
+        be computed, warn and floor every eigenvalue at a flat 1e-3 instead
+        of stopping with an error (default False). The flat floor turns a
+        negative eigenvalue into a direction with SD ~30 in unconstrained
+        units, so use it only to get a posterior out of a model whose prior
+        SDs fail for a reason you understand.
     """
     if laplace not in LAPLACE_CHOICES:
         raise ValueError(f"laplace must be one of {LAPLACE_CHOICES}; got "
@@ -207,6 +215,7 @@ def sample_posterior(config_file,
                 block_genotypes=method in ("arrowhead", "blocks"),
                 genotype_chunk_size=genotype_chunk_size,
                 block_shared=method == "arrowhead",
+                allow_flat_floor=allow_flat_laplace_floor,
             )
             held = getattr(ri, "held_shared_directions", None)
             if method == "arrowhead" and held is not None:
