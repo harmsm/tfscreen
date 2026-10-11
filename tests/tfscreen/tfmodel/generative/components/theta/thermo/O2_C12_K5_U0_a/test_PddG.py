@@ -11,7 +11,7 @@ import pandas as pd
 import jax.numpy as jnp
 from collections import namedtuple
 from dataclasses import dataclass
-from numpyro.handlers import trace, seed
+from numpyro.handlers import condition, trace, seed
 import unittest.mock as mock
 
 from tfscreen.genetics.build_mut_geno_matrix import build_mut_sparse_indices
@@ -36,6 +36,11 @@ from tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U0_a.thermo i
 # ---------------------------------------------------------------------------
 
 _S = 6    # number of MWC structures
+
+
+def _sigma_zero(fn):
+    """``fn`` with every structure's σ_s conditioned to 0: ΔΔG = prior means."""
+    return condition(fn, data={"theta_ddG_sigma": jnp.zeros(_S)})
 _M = 3    # mutations
 _G = 4    # genotypes: wt, M1, M2, M1+M2 (last mutation unused in matrix)
 
@@ -236,7 +241,7 @@ class TestConfig:
     def test_get_guesses_required_keys(self):
         g = get_guesses("theta", _make_mock())
         for k in ("theta_ln_K_h_l_wt", "theta_ln_K_h_o_wt", "theta_ln_K_l_o_wt",
-                  "theta_ln_K_h_e_wt", "theta_ln_K_l_e_wt", "theta_ddG_offset"):
+                  "theta_ln_K_h_e_wt", "theta_ln_K_l_e_wt", "theta_ddG"):
             assert k in g, f"Missing guess key: {k}"
 
     def test_get_guesses_no_epi_keys(self):
@@ -245,8 +250,8 @@ class TestConfig:
         assert "theta_epi_lambda" not in g
         assert "theta_epi_offset" not in g
 
-    def test_get_guesses_ddG_offset_shape(self):
-        assert get_guesses("theta", _make_mock())["theta_ddG_offset"].shape == (_S, _M)
+    def test_get_guesses_ddG_shape(self):
+        assert get_guesses("theta", _make_mock())["theta_ddG"].shape == (_M, _S)
 
     def test_get_guesses_wt_K_shapes(self):
         T = 2
@@ -310,7 +315,7 @@ class TestDefineModel:
     def test_sample_sites_present(self):
         _, tr = _run_model(_make_mock())
         for site in ("theta_ln_K_h_l_wt", "theta_ln_K_h_o_wt", "theta_ln_K_l_o_wt",
-                     "theta_ln_K_h_e_wt", "theta_ln_K_l_e_wt", "theta_ddG_offset"):
+                     "theta_ln_K_h_e_wt", "theta_ln_K_l_e_wt", "theta_ddG"):
             assert site in tr, f"Missing sample site: {site}"
 
     def test_deterministic_sites_present(self):
@@ -339,7 +344,7 @@ class TestDefineModel:
         assert isinstance(out, ThetaParam)
 
     def test_ddG_prior_means_shift_delta_lnK(self):
-        """With sigma_s=0, ddG equals the prior means exactly, so mutations with
+        """With σ_s conditioned to 0, ddG equals the prior means exactly, so mutations with
         nonzero prior produce nonzero delta_lnK in the trace."""
         # All prior means zero → all delta_lnK zero
         zero_prior = np.zeros((_M, _S), dtype=np.float32)
@@ -347,13 +352,11 @@ class TestDefineModel:
         priors = get_priors()
 
         def _zero_sigma_s_param(name, init, **kwargs):
-            if name.endswith("_ddG_sigma_s"):
-                return jnp.zeros_like(init)
             return jnp.zeros_like(init)
 
         with mock.patch("numpyro.param", side_effect=_zero_sigma_s_param):
             with seed(rng_seed=0):
-                out_zero = define_model("theta", data_zero, priors)
+                out_zero = _sigma_zero(define_model)("theta", data_zero, priors)
 
         # All mutations zero → all genotype K values identical (WT shift only)
         np.testing.assert_allclose(
@@ -369,7 +372,7 @@ class TestDefineModel:
 
         with mock.patch("numpyro.param", side_effect=_zero_sigma_s_param):
             with seed(rng_seed=0):
-                out_nonzero = define_model("theta", data_nonzero, priors)
+                out_nonzero = _sigma_zero(define_model)("theta", data_nonzero, priors)
 
         # Genotype containing mutation 0 (genotype index 1) should differ from WT
         assert not np.allclose(
@@ -434,8 +437,8 @@ class TestGuide:
         param_names = {k for k, v in tr.items() if v["type"] == "param"}
         for p in ("theta_ln_K_h_l_wt_loc", "theta_ln_K_h_l_wt_scale",
                   "theta_ln_K_h_o_wt_loc", "theta_ln_K_l_o_wt_loc",
-                  "theta_ddG_offset_locs", "theta_ddG_offset_scales",
-                  "theta_ddG_sigma_s"):
+                  "theta_ddG_locs", "theta_ddG_scales",
+                  "theta_ddG_sigma_locs", "theta_ddG_sigma_scales"):
             assert p in param_names, f"Missing variational param: {p}"
 
     def test_no_nn_params_registered(self):
@@ -451,15 +454,15 @@ class TestGuide:
         assert not any("epi_lambda" in k for k in param_names)
         assert not any("epi_offset" in k for k in param_names)
 
-    def test_ddG_sigma_s_shape(self):
+    def test_ddG_sigma_shape(self):
         _, tr = _run_guide(_make_mock())
-        sigma_val = tr["theta_ddG_sigma_s"]["value"]
+        sigma_val = tr["theta_ddG_sigma"]["value"]
         assert sigma_val.shape == (_S,)
 
-    def test_ddG_offset_locs_shape(self):
+    def test_ddG_locs_shape(self):
         _, tr = _run_guide(_make_mock())
-        locs_val = tr["theta_ddG_offset_locs"]["value"]
-        assert locs_val.shape == (_S, _M)
+        locs_val = tr["theta_ddG_locs"]["value"]
+        assert locs_val.shape == (_M, _S)
 
     def test_tf_total_preserved(self):
         out, _ = _run_guide(_make_mock())

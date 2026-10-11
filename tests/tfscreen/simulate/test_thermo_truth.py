@@ -116,6 +116,8 @@ def test_truth_covers_every_extracted_parameter(component, scalar_ks, tmp_path):
     assert set(pair_df["pair"]) == {"H29A/L62A", "H29C/L62A"}
 
     truth_names = set(params.columns) | set(mutation_df.columns) | set(pair_df.columns)
+    if truth["ddG_sigma"] is not None:      # PddG/PnnC: the σ_s truth table
+        truth_names.add("ddG_sigma")
     missing = [n for n in _extract_names(component) if n not in truth_names]
     assert missing == []
 
@@ -182,7 +184,7 @@ def test_mutation_truth_does_not_change_the_draw():
 def test_hill_components_have_no_mutation_truth():
     """Components sampled through simulate() have no trace to read."""
     _, _, params, truth = _draw("hill_geno")
-    assert truth == {"mutation": None, "pair": None}
+    assert truth == {"mutation": None, "pair": None, "ddG_sigma": None}
     assert "log_hill_K" in params.columns
 
 
@@ -268,17 +270,6 @@ def test_simulate_cli_writes_mutation_and_pair_truth(tmp_path):
 
 # ── ΔΔG units, column handling and the default being unchanged ──────────────
 
-# Truth of the seeded C4_U0 PddG draw below at commit 9f252025, before the
-# loader options existed: the default (kT, values as-is) must reproduce it.
-_C4_PDDG_TRUTH_BEFORE = pd.DataFrame({
-    "ddG_H":   [-0.261347, -0.399871, 0.819358],
-    "ddG_HD":  [-2.974988, -0.291039, 2.898206],
-    "ddG_L":   [0.500638, -1.941736, -1.234181],
-    "ddG_LE2": [-1.335636, -0.765674, -0.370668],
-    "d_ln_K_op": [2.713641, -0.108832, -2.078848],
-})
-
-
 def test_default_ddG_units_leave_the_draw_unchanged(tmp_path):
     comp = "thermo.O2_C4_K3_U0_a.PddG"
     td = _ddG_csv(tmp_path / "ddG.csv", comp)
@@ -291,10 +282,6 @@ def test_default_ddG_units_leave_the_draw_unchanged(tmp_path):
             pd.testing.assert_frame_equal(a, b)
         pd.testing.assert_frame_equal(base[3]["mutation"], other[3]["mutation"])
         pd.testing.assert_frame_equal(base[3]["pair"], other[3]["pair"])
-    mut = base[3]["mutation"]
-    for col in _C4_PDDG_TRUTH_BEFORE:
-        np.testing.assert_allclose(mut[col], _C4_PDDG_TRUTH_BEFORE[col],
-                                   atol=2e-6)
 
 
 def test_kcal_ddG_matches_kT_draw(tmp_path):

@@ -27,10 +27,9 @@ def extract_params(config_file, param_file, out_prefix="tfs_params"):
     Writes one CSV per parameter group named ``{out_prefix}_{param_name}.csv``
     (e.g. tfs_params_activity.csv, tfs_params_theta.csv; thermo PddG/PnnC
     also give one ``ddG_{structure}`` and ``ddG_prior_mean_{structure}``
-    table per structure). A model with its own
-    learned ``pyro.param`` sites (thermo PddG/PnnC: the trust scale
-    ``theta_ddG_sigma_s``, one value per structure in the component's
-    ``STRUCTURE_NAMES`` order, and the PnnC NN weights) also gets
+    table per structure, plus one ``ddG_sigma`` table of the per-structure
+    SD σ_s keyed by ``structure``). A model with its own learned
+    ``pyro.param`` sites (the thermo PnnC NN weights) also gets
     ``{out_prefix}_model_params.csv``: one row per element (``parameter``,
     ``index``, ``value``).
 

@@ -437,6 +437,9 @@ checked for calibration.
   PK on a PddG simulation, writes no ddG tables. Then one note is printed in
   place of a warning per structure, and its ``d_`` tables are scored against
   the same truth.
+* ``params_ddG_sigma``, the per-structure SD of the PddG and PnnC ΔΔG about
+  their prior means, is joined to ``*_sim_ddG_sigma.csv`` on ``structure``.
+  It gets a CSV and a calibration check but no plot.
 * ``params_growth_k``, ``params_growth_m`` and the other growth-model tables
   are joined to ``*_sim_growth_parameters.csv`` on ``condition_rep``.
 * ``params_k_ref`` and ``params_lam`` are single values compared with

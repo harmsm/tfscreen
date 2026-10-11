@@ -79,7 +79,10 @@ def run_simulation_from_config(
     mutation: the true d_* deltas and, for PddG/PnnC, ddG_{structure}) and,
     when the library has multi-mutants, pair_parameters (one row per pair:
     the true epi_* terms); see
-    tfscreen.simulate.thermo_to_growth._mutation_truth_tables. If the config
+    tfscreen.simulate.thermo_to_growth._mutation_truth_tables. PddG/PnnC
+    also write ddG_sigma (one row per structure: the true SD of ΔΔG about
+    the structural prior mean, set by the config's ddG_truth_sd, 1 kT by
+    default; see _ddG_sigma_truth_table). If the config
     contains a 'binding_data' block, also writes a
     simulated binding curve CSV (see
     tfscreen.simulate.binding_data.generate_binding_df). If it contains a
@@ -144,7 +147,7 @@ def run_simulation_from_config(
 
     output_names = ["library", "parameters", "genotype_theta",
                     "growth_parameters", "transformation_lam",
-                    "mutation_parameters", "pair_parameters"]
+                    "mutation_parameters", "pair_parameters", "ddG_sigma"]
     if write_growth:
         output_names.append("growth")
     if "binding_data" in cf:
@@ -370,7 +373,8 @@ def run_simulation_from_config(
     # Per-mutation / per-pair truth of mutation-decomposed theta models drawn
     # from their prior (the thermodynamic models); absent otherwise.
     for key, name in (("mutation", "mutation_parameters"),
-                      ("pair", "pair_parameters")):
+                      ("pair", "pair_parameters"),
+                      ("ddG_sigma", "ddG_sigma")):
         truth_df = (mutation_truth or {}).get(key)
         if truth_df is not None:
             truth_df.to_csv(out_path(name), index=False)

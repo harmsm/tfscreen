@@ -55,7 +55,11 @@ from tfscreen.tfmodel.data_class import GrowthData, BindingData
 from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix, apply_mut_matrix
 from tfscreen.tfmodel.generative.components.theta.thermo import mwc
 from tfscreen.tfmodel.generative.components.theta.thermo.prior import (
+    DEFAULT_DDG_SIGMA_LOC,
+    DEFAULT_DDG_SIGMA_SCALE,
     ddG_extract_specs,
+    ddG_guesses,
+    guide_ddG,
     sample_ddG,
 )
 from tfscreen.tfmodel.generative.components.theta.thermo.horseshoe import (
@@ -113,6 +117,11 @@ class ModelPriors:
     theta_epi_slab_scale: float
     theta_epi_slab_df:    float
     theta_epi_d0:         float
+
+    # LogNormal prior on the per-structure ΔΔG scale σ_s (log kT); see
+    # thermo/prior.py.
+    theta_ddG_sigma_loc:   float
+    theta_ddG_sigma_scale: float
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -208,7 +217,9 @@ def define_model(name: str,
             f"{name}_ln_K_E_wt",
             dist.Normal(priors.theta_ln_K_E_wt_loc, priors.theta_ln_K_E_wt_scale))
 
-    ddG = sample_ddG(name, list(STRUCTURE_NAMES), num_mut, ddG_prior_means)
+    ddG = sample_ddG(name, list(STRUCTURE_NAMES), num_mut, ddG_prior_means,
+                     sigma_loc=priors.theta_ddG_sigma_loc,
+                     sigma_scale=priors.theta_ddG_sigma_scale)
     delta_lnK = _project_ddG(ddG)
 
     pyro.deterministic(f"{name}_d_ln_K_op", delta_lnK[:, 0])
@@ -298,11 +309,6 @@ def guide(name: str,
     ln_K_E_wt_locs   = pyro.param(f"{name}_ln_K_E_wt_locs",   jnp.full(T, priors.theta_ln_K_E_wt_loc))
     ln_K_E_wt_scales = pyro.param(f"{name}_ln_K_E_wt_scales", jnp.ones(T), constraint=constraints.positive)
 
-    pyro.param(f"{name}_ddG_sigma_s", jnp.ones(S), constraint=constraints.positive)
-
-    ddG_offset_locs   = pyro.param(f"{name}_ddG_offset_locs",   jnp.zeros((S, num_mut)))
-    ddG_offset_scales = pyro.param(f"{name}_ddG_offset_scales", jnp.ones((S, num_mut)), constraint=constraints.positive)
-
     # ── Optional epistasis variational params ─────────────────────────────────
     if has_epi:
         num_pair = data.num_pair
@@ -321,21 +327,8 @@ def guide(name: str,
     with pyro.plate(f"{name}_wt_plate", T, dim=-1):
         ln_K_E_wt = pyro.sample(f"{name}_ln_K_E_wt", dist.Normal(ln_K_E_wt_locs, ln_K_E_wt_scales))
 
-    if num_mut > 0:
-        with pyro.plate(f"{name}_struct_plate", S, dim=-2):
-            with pyro.plate(f"{name}_mut_plate", num_mut, dim=-1):
-                offsets = pyro.sample(
-                    f"{name}_ddG_offset",
-                    dist.Normal(ddG_offset_locs, ddG_offset_scales),
-                )
-    else:
-        # num_mut == 0 (wt-only library): numpyro.plate needs size > 0,
-        # so skip the site (prior.sample_ddG does the same).
-        offsets = jnp.zeros((S, 0))
-
-    sigma_s = pyro.param(f"{name}_ddG_sigma_s", jnp.ones(S), constraint=constraints.positive)
-    ddG_SM  = ddG_prior_means.T + sigma_s[:, None] * offsets
-    ddG     = ddG_SM.T
+    # ── Sample σ_s and ΔΔG (matches prior.sample_ddG) ───────────────────────
+    ddG = guide_ddG(name, num_mut, S, ddG_prior_means)   # (M, S)
 
     # ── Sample epistasis ──────────────────────────────────────────────────────
     epi_delta_lnK = None
@@ -418,6 +411,8 @@ def get_hyperparameters() -> Dict[str, Any]:
     p["theta_epi_slab_scale"] = 2.0
     p["theta_epi_slab_df"]    = 4.0
     p["theta_epi_d0"]         = float(_DEFAULT_D0)
+    p["theta_ddG_sigma_loc"]   = DEFAULT_DDG_SIGMA_LOC     # median σ_s 1 kT
+    p["theta_ddG_sigma_scale"] = DEFAULT_DDG_SIGMA_SCALE   # 95%: 0.1-10 kT
     return p
 
 
@@ -430,7 +425,8 @@ def get_guesses(name: str, data: Union[GrowthData, BindingData]) -> Dict[str, An
     g[f"{name}_ln_K_HL_wt"]  = jnp.array(DEFAULT_LN_K_HL_WT_LOC)
     g[f"{name}_ln_K_E_wt"]   = jnp.full(T, DEFAULT_LN_K_E_WT_LOC)
     g[f"{name}_ln_K_U_wt"]   = jnp.array(-12.0)
-    g[f"{name}_ddG_offset"]   = jnp.zeros((S, M))
+    # ΔΔG starts at its prior means, σ_s at 1 kT.
+    g.update(ddG_guesses(name, jnp.asarray(data.struct_features)[:, jnp.array(_get_struct_perm(data))]))
     if data.num_pair > 0:
         P = data.num_pair
         g[f"{name}_epi_tau"]    = jnp.array(0.05)

@@ -1,11 +1,13 @@
 """
-The model's own learned ``pyro.param`` sites (thermo PnnC NN weights, the
-PddG/PnnC trust scale sigma_s) must reach every post-fit run of the model.
+The model's own learned ``pyro.param`` sites (thermo PnnC NN weights) must
+reach every post-fit run of the model.
 
 Regression: the posterior paths kept only sample-site values, so the forward
-passes ran the model with every model-side param at its init value (NN = 0,
-sigma_s = 1). A ``--laplace point`` posterior's theta then differed from the
-MAP's own theta.
+passes ran the model with every model-side param at its init value (NN = 0).
+A ``--laplace point`` posterior's theta then differed from the MAP's own
+theta.  The PddG/PnnC ΔΔG scale σ_s was a model-side param too until
+2026-10-11; it is now the sample site ``theta_ddG_sigma``, so it is part of
+the MAP sites and the Laplace (checked here as well).
 """
 
 import h5py
@@ -27,7 +29,8 @@ from tfscreen.tfmodel.inference.model_params import (
 
 STRUCTS = ("H", "HD", "L", "LE2")
 GENOTYPES = ["wt", "M42I", "K84L", "M42I/K84L"]
-SIGMA = "theta_ddG_sigma_s"
+SIGMA = "theta_ddG_sigma"            # σ_s, a sample site
+NN_B2 = "theta_nn_H_b2"              # a PnnC model-side param
 THETA_SITES = ("theta_ddG", "theta_ln_K_op", "theta_ln_K_HL", "theta_ln_K_E")
 
 
@@ -111,10 +114,9 @@ def _orchestrator(tmp_path, kind):
 @pytest.fixture(scope="module", params=["PnnC", "PddG"])
 def fit(request, tmp_path_factory):
     """
-    A short MAP of a small PnnC or PddG model, with the model-side params
-    then moved well away from their init (sigma_s x 2.5; for PnnC, W2 and b2
-    set to nonzero values), so a forward pass that drops them is visibly
-    wrong.
+    A short MAP of a small PnnC or PddG model, with σ_s then moved well
+    away from its fit (x 2.5) and, for PnnC, the model-side W2 and b2 set to
+    nonzero values, so a forward pass that drops either is visibly wrong.
     """
     from tfscreen.tfmodel.inference.run_inference import RunInference
 
@@ -131,7 +133,8 @@ def fit(request, tmp_path_factory):
 
     unconstrained = dict(svi.optim.get_params(state.optim_state))
     rng = np.random.default_rng(1)
-    unconstrained[SIGMA] = unconstrained[SIGMA] + np.log(2.5)
+    sigma_key = f"{SIGMA}_auto_loc"           # unconstrained: log σ_s
+    unconstrained[sigma_key] = unconstrained[sigma_key] + np.log(2.5)
     for k in list(unconstrained):
         if k.endswith("_W2") or k.endswith("_b2"):
             unconstrained[k] = jnp.asarray(
@@ -140,10 +143,9 @@ def fit(request, tmp_path_factory):
 
     # The MAP's own theta: the model run at every fitted value, sample
     # sites and model-side params alike.
-    pos = biject_to(constraints.positive)
-    model_side = {k: (pos(v) if k == SIGMA else v)
-                  for k, v in unconstrained.items()
+    model_side = {k: v for k, v in unconstrained.items()
                   if not k.endswith("_auto_loc")}
+    assert bool(model_side) == (request.param == "PnnC")
     sites = RunInference(orch, seed=0)._map_params_to_constrained(unconstrained)
     full = orch.get_batch(orch.data, jnp.arange(orch.data.num_genotype))
     tr = handlers.trace(handlers.substitute(
@@ -218,9 +220,9 @@ def test_point_posterior_matches_map_theta(fit):
             np.testing.assert_allclose(hf[site][0], want, rtol=1e-5,
                                        atol=1e-5, err_msg=site)
         stored = read_model_params(hf)
+        np.testing.assert_allclose(hf[SIGMA][0], fit["sites"][SIGMA],
+                                   rtol=1e-5)
     assert set(stored) == set(fit["model_side"])
-    np.testing.assert_allclose(stored[SIGMA], fit["model_side"][SIGMA],
-                               rtol=1e-6)
 
 
 def test_predict_from_point_posterior_matches_map(fit):
@@ -244,53 +246,57 @@ def test_predict_from_point_posterior_matches_map(fit):
 
 
 def test_laplace_holds_model_params(fit):
-    """The full Laplace: model params outside the Hessian, held at the MAP
-    in every draw's forward pass."""
+    """The full Laplace: σ_s is a site, so it is in the Hessian and varies
+    across draws; the model-side params (PnnC NN) are outside it, held at
+    the MAP, so the prior mean is the same in every draw."""
     from tfscreen.tfmodel.inference.run_inference import RunInference
 
     ri = RunInference(fit["orch"], seed=0)
     prefix = str(fit["tmp"] / "laplace")
     ri.get_laplace_posteriors(fit["unconstrained"], out_prefix=prefix,
                               num_posterior_samples=8, sampling_batch_size=4)
-    sigma = np.asarray(fit["model_side"][SIGMA])
     with h5py.File(f"{prefix}_posterior.h5", "r") as hf:
-        ddG = np.asarray(hf["theta_ddG"])              # (n, M, S)
-        offset = np.asarray(hf["theta_ddG_offset"])    # (n, S, M)
+        sigma = np.asarray(hf[SIGMA])                    # (n, S)
+        prior_mean = np.asarray(hf["theta_ddG_prior_mean"])
         assert set(read_model_params(hf)) == set(fit["model_side"])
-    # ddG = prior mean + sigma_s * offset with the fitted sigma_s and a
-    # prior mean (NN output or ddG table) that is the same in every draw
-    mean = ddG - np.swapaxes(sigma[:, None] * offset, -1, -2)
-    np.testing.assert_allclose(mean, np.broadcast_to(mean[0], mean.shape),
-                               atol=1e-4)
-    point_mean = (fit["expected"]["theta_ddG"]
-                  - (sigma[:, None] * np.asarray(fit["sites"]["theta_ddG_offset"])).T)
-    np.testing.assert_allclose(mean[0], point_mean, atol=1e-4)
+    assert sigma.shape == (8, len(STRUCTS))
+    assert (sigma > 0).all()
+    assert np.ptp(sigma, axis=0).min() > 0               # sampled, not held
+    # around the MAP's σ_s (a Laplace in log σ_s; with two mutations its
+    # SD is near the prior's 1.2, so 8 draws pin the mean only loosely)
+    log_err = np.log(sigma).mean(axis=0) - np.log(fit["sites"][SIGMA])
+    np.testing.assert_array_less(np.abs(log_err), 1.5)
+    np.testing.assert_allclose(prior_mean,
+                               np.broadcast_to(prior_mean[0], prior_mean.shape),
+                               atol=1e-5)
 
 
 def test_svi_posterior_uses_fitted_model_params(tmp_path):
-    """Guide sampling: the forward pass sees the store's sigma_s / NN."""
+    """Guide sampling: the forward pass sees the store's NN weights."""
     from tfscreen.tfmodel.inference.run_inference import RunInference
 
     orch = _orchestrator(tmp_path, "PnnC")
     ri = RunInference(orch, seed=0)
     svi = ri.setup_svi(adam_step_size=1e-6, guide_type="component")
-    S = len(STRUCTS)
-    start = {SIGMA: jnp.full(S, 2.5)}
+    start = {NN_B2: jnp.full((1,), 0.7)}
     state, params, _ = ri.run_optimization(svi, init_params=start,
                                            max_num_epochs=1,
                                            out_prefix=str(tmp_path / "svi"),
                                            checkpoint_interval=100)
-    sigma = np.asarray(svi.get_params(state)[SIGMA])
-    assert np.all(np.abs(sigma - 2.5) < 0.01)
+    b2 = np.asarray(svi.get_params(state)[NN_B2])
+    assert np.all(np.abs(b2 - 0.7) < 0.01)
     ri.get_posteriors(svi, state, out_prefix=str(tmp_path / "svi"),
                       num_posterior_samples=6, sampling_batch_size=3)
     with h5py.File(tmp_path / "svi_posterior.h5", "r") as hf:
-        ddG = np.asarray(hf["theta_ddG"])
-        offset = np.asarray(hf["theta_ddG_offset"])
-        np.testing.assert_allclose(read_model_params(hf)[SIGMA], sigma)
-    mean = ddG - np.swapaxes(sigma[:, None] * offset, -1, -2)
-    np.testing.assert_allclose(mean, np.broadcast_to(mean[0], mean.shape),
-                               atol=1e-4)
+        prior_mean = np.asarray(hf["theta_ddG_prior_mean"])   # (n, M, S)
+        np.testing.assert_allclose(read_model_params(hf)[NN_B2], b2)
+        assert hf[SIGMA].shape == (6, len(STRUCTS))
+    # The H structure's MLP output carries b2 (W2 = 0 at init), the same in
+    # every draw.
+    np.testing.assert_allclose(prior_mean,
+                               np.broadcast_to(prior_mean[0], prior_mean.shape),
+                               atol=1e-5)
+    assert np.abs(prior_mean[0][:, 0]).min() > 0.1
 
 
 def test_map_start_carries_model_params(tmp_path):
@@ -298,21 +304,30 @@ def test_map_start_carries_model_params(tmp_path):
     model-side params where the earlier fit left them."""
     from tfscreen.tfmodel.inference.run_inference import RunInference
 
-    orch = _orchestrator(tmp_path, "PddG")
+    orch = _orchestrator(tmp_path, "PnnC")
     ri = RunInference(orch, seed=0)
-    start = ri.model_params({SIGMA: np.full(len(STRUCTS), 3.0),
+    start = ri.model_params({NN_B2: np.full((1,), 3.0),
                              "not_a_param": np.ones(2)})
-    assert set(start) == {SIGMA}
+    assert set(start) == {NN_B2}
     svi = ri.setup_svi(adam_step_size=1e-6, guide_type="delta")
     state, params, _ = ri.run_optimization(svi, init_params=start,
                                            max_num_epochs=1,
                                            out_prefix=str(tmp_path / "m"),
                                            checkpoint_interval=100)
-    np.testing.assert_allclose(params[SIGMA], 3.0, rtol=1e-3)
+    np.testing.assert_allclose(params[NN_B2], 3.0, rtol=1e-3)
+
+
+def test_pddg_has_no_model_params(tmp_path):
+    """σ_s is a sample site now, so PddG registers no model-side params."""
+    from tfscreen.tfmodel.inference.run_inference import RunInference
+
+    ri = RunInference(_orchestrator(tmp_path, "PddG"), seed=0)
+    assert ri.model_params({"theta_ddG_sigma_s": np.ones(4)}) == {}
 
 
 def test_extract_params_writes_model_params(fit):
-    """tfs-extract-params shows the learned sigma_s (and NN weights)."""
+    """tfs-extract-params shows the learned NN weights (PnnC) and writes
+    σ_s as the ddG_sigma table."""
     from tfscreen.tfmodel.inference.run_inference import RunInference
     from tfscreen.tfmodel.scripts.extract_params_cli import (
         _extract_from_checkpoint,
@@ -324,8 +339,9 @@ def test_extract_params_writes_model_params(fit):
         fit["unconstrained"], out_prefix=prefix)
     _extract_from_posteriors(fit["orch"], f"{prefix}_posterior.h5",
                              f"{prefix}_tfs")
-    df = pd.read_csv(f"{prefix}_tfs_model_params.csv")
-    sig = df[df["parameter"] == SIGMA].sort_values("index")
-    np.testing.assert_allclose(sig["value"], fit["model_side"][SIGMA],
-                               rtol=1e-6)
-    assert set(df["parameter"]) == set(fit["model_side"])
+    sig = pd.read_csv(f"{prefix}_tfs_ddG_sigma.csv")
+    assert list(sig["structure"]) == list(STRUCTS)
+    np.testing.assert_allclose(sig["q0.5"], fit["sites"][SIGMA], rtol=1e-5)
+    if fit["model_side"]:
+        df = pd.read_csv(f"{prefix}_tfs_model_params.csv")
+        assert set(df["parameter"]) == set(fit["model_side"])

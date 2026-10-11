@@ -21,7 +21,7 @@ While the offsets are held, a learned offset SD (``sigma_fixed`` = 0) is
 held too, at the prior's scale: with every offset at 0 the SD's MAP is 0 and
 the density is unbounded.
 
-The model's own learned params (thermo NN weights, sigma_s; see
+The model's own learned params (the thermo PnnC NN weights; see
 ``model_params.py``) follow the sites: stage 2 holds them at stage 1's
 values, and stage 3 starts from them.
 
@@ -221,7 +221,7 @@ def run_staged_map(orchestrator, make_ri, run_map, guesses, out_prefix,
     held2 = {k: v for k, v in stage1.items() if k != offset_site}
     if sigma_hold is not None:
         held2[sigma_site] = np.asarray(sigma_hold, dtype=float)
-    # The model's own params (thermo NN, sigma_s) are held at stage 1's too.
+    # The model's own params (thermo PnnC NN) are held at stage 1's too.
     stage1_params = read_model_params(f"{out_prefix}_stage1_params.npz")
     stage2 = _stage(run_map, make_ri, orchestrator, held2,
                     {offset_site: held1[offset_site]},

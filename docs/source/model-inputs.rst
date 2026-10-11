@@ -373,11 +373,19 @@ The five ``--thermo_*`` flags are stored in the configuration as
 before: kT, file numbering, model column names.
 
 A fit uses the CSV values as the prior means of each mutation's ΔΔG and
-learns one SD per structure, starting at 1 kT, for how far the ΔΔG may
-stray from them. To test whether the structural prior helps, simulate with
-the simulate-config key ``ddG_truth_sd`` (see :doc:`simulation`), which
-sets how far the simulated truth sits from the same CSV, and fit with the
-unchanged CSV. The fit's starting SD does not depend on it.
+estimates one SD σ_s per structure for how far the ΔΔG stray from them:
+ΔΔG ~ Normal(CSV value, σ_s), with σ_s under a LogNormal prior whose median
+is 1 kT and whose 95% range is about 0.1 to 10 kT (``theta_ddG_sigma_loc``
+= 0 and ``theta_ddG_sigma_scale`` = 1.2 in the priors file, in log kT). The
+fit starts at ΔΔG = CSV values and σ_s = 1 kT. Under MAP, σ_s settles near
+the scatter of the fitted ΔΔG about the CSV. A σ_s that runs toward 0 means
+the data cannot resolve ΔΔG more finely than the CSV gives it, not that the
+CSV is exact. This happens when the data are weak and, in the models
+without an unfolded state, for one structure, since a uniform shift of all
+structures changes no constant there. SVI is less prone to it. To test
+whether the structural prior helps, simulate with the simulate-config key
+``ddG_truth_sd`` (see :doc:`simulation`), which sets how far the simulated
+truth sits from the same CSV, and fit with the unchanged CSV.
 
 Prior inputs
 ------------

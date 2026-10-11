@@ -74,8 +74,8 @@ def _run_map(ri,
         Constrained site values the MAP starts from (``ri.site_values``).
         Sites without a value start at the prior median.
     init_params : dict or None, optional
-        Starting values of the model's own ``pyro.param`` sites (thermo NN
-        weights, sigma_s; ``ri.model_params``), e.g. an earlier fit's.
+        Starting values of the model's own ``pyro.param`` sites (thermo PnnC NN
+        weights; ``ri.model_params``), e.g. an earlier fit's.
     checkpoint_file : str or None, optional
         Path to a checkpoint file to resume optimization from, or None to start fresh.
     out_prefix : str, optional
@@ -210,7 +210,7 @@ def _run_svi(ri,
 
     # init_params are substituted by parameter name, which only the component
     # guide's names can match; an autoguide starts from init_values instead,
-    # and keeps only the model's own params (thermo NN weights, sigma_s).
+    # and keeps only the model's own params (thermo PnnC NN weights).
     if resolve_guide_type(guide_type) != "component":
         init_params = ri.model_params(init_params) if init_params else None
         init_params = init_params or None
@@ -327,8 +327,8 @@ def _read_init_from(path):
         The ``{site}_auto_loc`` arrays, for ``site_values``: they take
         precedence over guesses keyed by site or by guide parameter.
     others : dict
-        Every other array: the model's own learned params (thermo NN
-        weights, sigma_s), for ``ri.model_params``.
+        Every other array: the model's own learned params (thermo PnnC NN
+        weights), for ``ri.model_params``.
     """
     with np.load(path) as z:
         values = {k: jnp.asarray(z[k]) for k in z.files if k.endswith("_auto_loc")}
@@ -593,7 +593,7 @@ def fit_model(config_file,
     # Run SVI / MAP
     ri = RunInference(orchestrator, effective_seed)
 
-    # The model's own learned params (thermo NN weights, sigma_s) start
+    # The model's own learned params (thermo PnnC NN weights) start
     # where an --init_from fit left them; sample-site values alone would
     # restart them at their init values.
     start_params = ri.model_params(init_from_params) if init_from_params else {}

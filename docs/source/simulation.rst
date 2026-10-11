@@ -110,20 +110,22 @@ same meaning as the ``--thermo_*`` flags of ``tfs-configure-model`` (see
 truth is unchanged.
 
 The ``PddG`` and ``PnnC`` models draw each mutation's ΔΔG in each structure
-as the structural value plus Normal noise, and in a simulation that draw is
-the ground truth. ``ddG_truth_sd`` sets the SD of that noise, so it is the
-dial for how far the truth sits from the structural prior. It is in the
+from a Normal centered on the structural value with SD σ_s, one σ_s per
+structure, and in a simulation that draw is the ground truth. The simulator
+fixes σ_s at ``ddG_truth_sd`` instead of drawing it from its prior, so the
+key is the dial for how far the truth sits from the structural prior. It is in the
 unit of ``thermo_options`` ``ddG_units`` and converted once at load, like
 the CSV: with ``ddG_units: kcal/mol``, ``ddG_truth_sd: 0.5`` means
 0.5 kcal/mol. Give one number for every structure or a mapping that names
 each structure of the model, such as ``{H: 0.5, HO: 0.5, L: 1.0, LO: 1.0,
 HE2: 0.5, LE2: 0.5}``. With 0 the truth is the CSV exactly. Without the key
-the SD is the model's starting value, 1 kT in every structure, as in
-earlier runs, so a seeded simulation reproduces its old output. The noise
-is independent across mutations and structures. The setting changes only
-the simulated draw. A fit of the result still centers the prior on the
-unperturbed CSV, which its ``ddG_prior_mean_{structure}`` tables report,
-and still starts its learned SD at 1 kT. For ``PnnC`` the structural value
+σ_s is 1 kT in every structure. The noise is independent across mutations
+and structures. The true σ_s goes to ``tfs_sim_ddG_sigma.csv`` (one row per
+structure, in kT), which ``tfs-summarize-fit`` compares with the fit's
+``ddG_sigma`` table. The setting changes only the simulated draw. A fit of
+the result still centers the prior on the unperturbed CSV, which its
+``ddG_prior_mean_{structure}`` tables report, and estimates σ_s under its
+own prior. For ``PnnC`` the structural value
 in a simulation is the untrained network's output, 0. Other theta
 components refuse the key, as does ``phenotype_source: empirical``. In a
 ``tfs-setup-sim-grid`` grid it is an ordinary top-level variable, and a
@@ -387,7 +389,9 @@ write ``tfs_sim_pair_parameters.csv`` as well, one row per mutation pair with
 its true ``epi_*`` terms. The column names match the tables
 ``tfs-extract-params`` writes, so ``tfs-summarize-fit`` can score them. The
 ``ddG_{structure}`` columns follow the model's structure names, whatever order
-the ΔΔG CSV or structure ensemble lists them in.
+the ΔΔG CSV or structure ensemble lists them in. PddG and PnnC also write
+``tfs_sim_ddG_sigma.csv``, the true σ_s of each structure (``structure``,
+``ddG_sigma``; see ``ddG_truth_sd`` above).
 
 The optional blocks add ``tfs_sim_binding.csv`` (and, with
 ``library_binding``, ``tfs_sim_library_binding.csv`` listing the in-library

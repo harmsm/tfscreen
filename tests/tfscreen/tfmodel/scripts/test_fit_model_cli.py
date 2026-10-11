@@ -450,9 +450,9 @@ class TestGuideSelection:
             fit_model(config_file="dummy.yaml", analysis_method="map",
                       checkpoint_file=str(ckpt), init_from="x.npz")
 
-    # The model's own learned params (thermo NN weights, sigma_s) are not
+    # The model's own learned params (thermo PnnC NN weights) are not
     # sample sites; the hand-offs must carry them too.
-    SIG = "theta_ddG_sigma_s"
+    SIG = "theta_nn_H_b2"
 
     def _patch_ri_params(self, mocker, guesses=None):
         ri = self._patch_ri(mocker, guesses=guesses)
@@ -463,7 +463,7 @@ class TestGuideSelection:
     def test_init_from_carries_model_params(self, tmp_path, mocker):
         npz = tmp_path / "prev_params.npz"
         np.savez(npz, mu_auto_loc=np.array([2.0]),
-                 theta_ddG_sigma_s=np.array([0.3, 2.0]))
+                 theta_nn_H_b2=np.array([0.3, 2.0]))
         _patch_common(mocker)
         self._patch_ri_params(mocker, guesses={"mu": 1.0})
         run_map_mock = mocker.patch(f"{_CLI}._run_map",

@@ -44,8 +44,17 @@ def _ctx(pair_labels=()):
 
 
 def _ddG_specs(component):
+    """The per-mutation ΔΔG specs (``ddG_*``, ``ddG_prior_mean_*``)."""
     specs = model_registry["theta"][component].get_extract_specs(_ctx())
-    return [s for s in specs if "out_names" in s]
+    return [s for s in specs
+            if "out_names" in s and s["get_columns"] == ["mutation"]]
+
+
+def _sigma_spec(component):
+    specs = model_registry["theta"][component].get_extract_specs(_ctx())
+    found = [s for s in specs if s.get("out_names") == ["ddG_sigma"]]
+    assert len(found) == 1
+    return found[0]
 
 
 # ── extract specs ────────────────────────────────────────────────────────────
@@ -84,6 +93,25 @@ def test_specs_read_each_structure_column(component):
         np.testing.assert_allclose(df["q1"], 100 + 10 * np.arange(M) + s)
         np.testing.assert_allclose(tables[f"ddG_prior_mean_{struct}"]["q1"],
                                    -(10 * np.arange(M) + s))
+
+
+@pytest.mark.parametrize("component", _MODELS)
+def test_sigma_spec_gives_one_row_per_structure(component):
+    """σ_s (theta_ddG_sigma, shape S) becomes one ddG_sigma table keyed by
+    structure, in STRUCTURE_NAMES order."""
+    structs = model_registry["theta"][component].STRUCTURE_NAMES
+    spec = _sigma_spec(component)
+    assert spec["params_to_get"] == ["ddG_sigma"]
+    assert spec["in_run_prefix"] == "theta_"
+    assert spec["get_columns"] == ["structure"]
+    post = {"theta_ddG_sigma": np.array([np.arange(len(structs)) + 1.0,
+                                         np.arange(len(structs)) + 3.0])}
+    df = _extract_param_est(param_posteriors=post,
+                            q_to_get={"q0": 0.0, "q1": 1.0},
+                            **spec)["ddG_sigma"]
+    assert list(df["structure"]) == list(structs)
+    np.testing.assert_allclose(df["q0"], np.arange(len(structs)) + 1.0)
+    np.testing.assert_allclose(df["q1"], np.arange(len(structs)) + 3.0)
 
 
 def test_out_names_must_match_params():
@@ -140,6 +168,37 @@ def test_summarize_scores_ddG_tables_against_truth(tmp_path):
         # Posterior tables get a calibration; the prior mean (a point) not.
         assert (out / f"tfs_summarize_params_ddG_{s}_pit.csv").exists()
         assert not glob.glob(str(out / f"*ddG_prior_mean_{s}_*"))
+
+
+def test_summarize_scores_ddG_sigma_against_truth(tmp_path):
+    from tfscreen.tfmodel.scripts.summarize_fit_cli import _summarize_ddG_sigma
+    run = tmp_path / "run"
+    run.mkdir()
+    pd.DataFrame({"structure": ["H", "HD"], "ddG_sigma": [0.5, 1.5]}).to_csv(
+        run / "tfs_sim_ddG_sigma.csv", index=False)
+    pd.DataFrame({"structure": ["HD", "H"], "q0.025": [1.0, 0.3],
+                  "q0.5": [1.4, 0.6], "q0.975": [1.9, 0.9]}).to_csv(
+        run / "tfs_params_ddG_sigma.csv", index=False)
+    out = tmp_path / "summary"
+    out.mkdir()
+    _summarize_ddG_sigma(str(run), str(out / "tfs_summarize"))
+    got = pd.read_csv(out / "tfs_summarize_params_ddG_sigma.csv")
+    np.testing.assert_allclose(got["ref"], [1.5, 0.5])
+
+
+def test_summarize_ddG_sigma_silent_for_a_PK_fit(tmp_path):
+    from tfscreen.tfmodel.scripts.summarize_fit_cli import _summarize_ddG_sigma
+    run = tmp_path / "run"
+    run.mkdir()
+    pd.DataFrame({"structure": ["H"], "ddG_sigma": [1.0]}).to_csv(
+        run / "tfs_sim_ddG_sigma.csv", index=False)
+    out = tmp_path / "summary"
+    out.mkdir()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        _summarize_ddG_sigma(str(run), str(out / "tfs_summarize"))
+    assert not [w for w in caught if "ddG_sigma" in str(w.message)]
+    assert not list(out.iterdir())
 
 
 def test_summarize_notes_missing_ddG_for_a_PK_fit(tmp_path, capsys):
@@ -320,6 +379,17 @@ def test_ddG_tables_end_to_end(tmp_path, component):
         np.testing.assert_allclose(scored["ref"],
                                    truth.loc[scored["mutation"], f"ddG_{struct}"])
         assert (run / "summary" / f"tfs_summarize_params_ddG_prior_mean_{struct}.csv").exists()
+
+    # σ_s: the simulator's truth (1 kT, the default) per structure, the
+    # fit's extracted table, and the summary joining them on structure.
+    sim_sigma = pd.read_csv(run / "tfs_sim_ddG_sigma.csv")
+    assert list(sim_sigma["structure"]) == list(structs)
+    np.testing.assert_allclose(sim_sigma["ddG_sigma"], 1.0)
+    fit_sigma = pd.read_csv(run / "tfs_params_ddG_sigma.csv")
+    assert list(fit_sigma["structure"]) == list(structs)
+    assert (fit_sigma["q0.5"] > 0).all()
+    scored = pd.read_csv(run / "summary" / "tfs_summarize_params_ddG_sigma.csv")
+    np.testing.assert_allclose(scored["ref"], 1.0)
 
 
 def _d_ln_K_order(module):

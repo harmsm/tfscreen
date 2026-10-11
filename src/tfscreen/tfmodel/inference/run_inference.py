@@ -275,8 +275,8 @@ class RunInference:
         self._guide_type = None
         self._guide_kwargs = {}
 
-        # Learned values of the model's own pyro.param sites (thermo NN
-        # weights, sigma_s; see inference/model_params.py), held fixed
+        # Learned values of the model's own pyro.param sites (thermo PnnC
+        # NN weights; see inference/model_params.py), held fixed
         # whenever the model runs after a fit. Set by the posterior and
         # Hessian entry points from the params they are given; empty for a
         # model without such params, which then runs unchanged.
@@ -2759,8 +2759,8 @@ class RunInference:
 
         Notes
         -----
-        The model's own learned ``pyro.param`` sites (thermo NN weights,
-        sigma_s; see ``inference/model_params.py``) are empirical-Bayes point
+        The model's own learned ``pyro.param`` sites (thermo PnnC NN
+        weights; see ``inference/model_params.py``) are empirical-Bayes point
         estimates: they are held at the MAP and are not part of the Hessian.
 
         Hessian inversion is O(D²) in memory and O(D³) in compute, where D is
@@ -2793,7 +2793,7 @@ class RunInference:
         self._check_library_sized_latents(unconstrained, dim_map,
                                           total_num_genotypes)
 
-        # The model's own learned params (thermo NN weights, sigma_s) are
+        # The model's own learned params (thermo PnnC NN weights) are
         # empirical-Bayes point estimates: held at the MAP, outside the
         # Hessian, in every model evaluation below.
         self.fixed_model_params = self.model_params(map_params,

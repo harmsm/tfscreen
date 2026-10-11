@@ -19,7 +19,7 @@ import pandas as pd
 import jax.numpy as jnp
 from dataclasses import dataclass
 from collections import namedtuple
-from numpyro.handlers import trace, seed
+from numpyro.handlers import condition, trace, seed
 
 from tfscreen.genetics.build_mut_geno_matrix import build_mut_sparse_indices
 from tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U1_a.PnnC import (
@@ -43,6 +43,11 @@ from tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U1_a.thermo i
 # ---------------------------------------------------------------------------
 
 _S = 6    # number of MWC structures (H, HO, L, LO, HE2, LE2)
+
+
+def _sigma_zero(fn):
+    """``fn`` with every structure's σ_s conditioned to 0: ΔΔG = prior means."""
+    return condition(fn, data={"theta_ddG_sigma": jnp.zeros(_S)})
 _M = 3    # mutations
 _G = 4    # genotypes: wt, M1, M2, M1+M2
 
@@ -285,7 +290,7 @@ class TestConfig:
         assert "theta_ln_K_h_e_wt" in g
         assert "theta_ln_K_l_e_wt" in g
         assert "theta_ln_K_u_wt"   in g
-        assert "theta_ddG_offset"   in g
+        assert "theta_ddG"   in g
         assert "theta_epi_tau" not in g
 
     def test_get_guesses_ln_K_u_wt_value(self):
@@ -300,8 +305,8 @@ class TestConfig:
         assert "theta_epi_lambda" in g
         assert "theta_epi_offset" in g
 
-    def test_get_guesses_ddG_offset_shape(self):
-        assert get_guesses("theta", _make_mock())["theta_ddG_offset"].shape == (_S, _M)
+    def test_get_guesses_ddG_shape(self):
+        assert get_guesses("theta", _make_mock())["theta_ddG"].shape == (_M, _S)
 
     def test_get_guesses_epi_shapes_with_epi(self):
         data = _make_mock(num_pair=1)
@@ -394,7 +399,7 @@ class TestDefineModel:
         for site in ("theta_ln_K_h_l_wt", "theta_ln_K_h_o_wt", "theta_ln_K_l_o_wt",
                      "theta_ln_K_h_e_wt", "theta_ln_K_l_e_wt",
                      "theta_ln_K_u_wt",   # new in mwc_dimer_unfolded
-                     "theta_ddG_offset"):
+                     "theta_ddG"):
             assert site in tr, f"Missing sample site: {site}"
 
     def test_deterministic_sites_present(self):
@@ -515,8 +520,8 @@ class TestGuide:
         param_names = {k for k, v in tr.items() if v["type"] == "param"}
         for p in ("theta_ln_K_h_l_wt_loc", "theta_ln_K_h_l_wt_scale",
                   "theta_ln_K_h_o_wt_loc", "theta_ln_K_l_o_wt_loc",
-                  "theta_ddG_offset_locs",  "theta_ddG_offset_scales",
-                  "theta_ddG_sigma_s",
+                  "theta_ddG_locs", "theta_ddG_scales",
+                  "theta_ddG_sigma_locs", "theta_ddG_sigma_scales",
                   # unfolding constant variational params — new in mwc_dimer_unfolded
                   "theta_ln_K_u_wt_loc",   "theta_ln_K_u_wt_scale"):
             assert p in param_names, f"Missing variational param: {p}"

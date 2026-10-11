@@ -3,16 +3,16 @@ Learned parameters that the model itself registers with ``pyro.param``.
 
 A few components register point-estimated parameters inside the *model*, not
 only in a guide: the thermodynamic PnnC structure MLP weights
-(``theta/thermo/nn.py``) and the per-structure ddG trust scale sigma_s of
-PddG and PnnC (``theta/thermo/prior.py``). They are empirical-Bayes
-estimates: the optimizer fits them alongside the guide, and they live in the
+(``theta/thermo/nn.py``).  (The PddG/PnnC per-structure ΔΔG scale σ_s was
+one until 2026-10-11; it is now the sample site ``theta_ddG_sigma``.)  They
+are empirical-Bayes estimates: the optimizer fits them alongside the guide, and they live in the
 same param store (``svi.get_params`` constrained, the optimizer state
 unconstrained), keyed by their bare names.
 
 Any code that runs the model after the fit (posterior forward passes, the
 Laplace Hessian, predictions, init hand-offs) must give the model these
 learned values. Without them every ``pyro.param`` falls back to its init
-value (NN = 0, sigma_s = 1), and the output no longer matches the fit.
+value (NN = 0), and the output no longer matches the fit.
 
 ``model_param_constraints`` finds the model's param sites by tracing the
 model; ``model_params`` picks their values out of any param dict;
