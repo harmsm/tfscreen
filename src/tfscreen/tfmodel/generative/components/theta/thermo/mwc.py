@@ -76,8 +76,24 @@ after multiplying through by F(e),
     B2·e³ + (B1 + B2·(2r − e_total))·e² + (B0 + B1·(r − e_total))·e
           − B0·e_total = 0
 
-The cubic is negative at e = 0 and positive at e = e_total. Newton steps
-start at e_total and the result is clipped to [0, e_total].
+The cubic is negative at e = 0 and positive at e = e_total.
+
+Log space
+---------
+Every quantity is computed from the log constants (``theta_c4``,
+``theta_c12``, ``log_W``): partition-function sums are log-sum-exps,
+log P = 2·softplus(ln K + log e), and θ = sigmoid(log W). No constant is
+exponentiated, so any finite ln K gives a finite θ in [0, 1] with the right
+limits, in float32. Before 2026-10-11 θ was computed from exp(ln K): Laplace
+draws of the PddG pilot fits with ln K beyond ~44 overflowed K² in float32
+and wrote NaN θ for whole genotypes. The free effector is solved for
+x = log e by safeguarded Newton (``_solve_log_free_effector``) on the mass
+balance written so that it stays well conditioned on both sides of the
+equivalence point e_total = 2r (``_mass_balance``). Its derivatives come
+from the implicit function theorem (a custom JVP), not from the iterations,
+so gradients and Hessians are exact and finite. ``mwc_theta`` and
+``free_effector`` keep their linear-constant signatures and log their
+inputs.
 
 Projection of structural ΔΔG
 -----------------------------
@@ -135,10 +151,15 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-# Newton iterations for the free-effector cubic. From e_total, 8 steps left
-# relative errors up to 4e-3 in free effector over broad random constants,
-# TF and effector concentrations; 16 steps reach float64 precision against a
-# bracketing root finder (test_mwc.py).
+# Iterations of the safeguarded Newton solve for log free effector
+# (_solve_log_free_effector). Over 20,000 draws each of broad constants
+# (ln K SD 2 about the defaults), wide ones (SD 15) and extreme ones (every
+# ln K uniform on [-150, 150]), with total effector 1e-12 to 1 M (30% of them
+# within 0.1% of the equivalence point 2r) and TF 1e-12 to 1e-3 M, 12
+# iterations matched a 400-iteration solve exactly in float64, and float32
+# matched it to 7e-5 in log e. 16 leaves a margin. The old linear-space
+# Newton solve also took 16 steps, but overflowed in float32 and needed more
+# than 30 at large K_E.
 NEWTON_ITERATIONS = 16
 
 # Data concentrations are mM; this converts them to M.
@@ -212,6 +233,24 @@ PROJ_C12 = np.array([
 PROJ_U_C12 = np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0])   # Δln K_u = ΔΔG_H
 
 
+_LOG2 = math.log(2.0)
+_LOG4 = math.log(4.0)
+_LOG8 = math.log(8.0)
+
+
+def _lae3(a, b, c, xp):
+    """log(exp(a) + exp(b) + exp(c))."""
+    return xp.logaddexp(xp.logaddexp(a, b), c)
+
+
+def _log(x, xp):
+    """log, with log(0) = -inf and no numpy warning."""
+    if xp is np:
+        with np.errstate(divide="ignore"):
+            return np.log(x)
+    return xp.log(x)
+
+
 def _poly_coeffs(K_h_l, K_h_e, K_l_e, K_u):
     """F(e) = B0 + B1·e + B2·e² over the states not bound to operator."""
     B0 = 1.0 + K_h_l + K_u
@@ -220,9 +259,210 @@ def _poly_coeffs(K_h_l, K_h_e, K_l_e, K_u):
     return B0, B1, B2
 
 
+def _log_poly_coeffs(ln_K_h_l, ln_K_h_e, ln_K_l_e, ln_K_u, xp=jnp):
+    """log B0, log B1, log B2 of F(e) from log constants (-inf for a 0)."""
+    lB0 = _lae3(0.0, ln_K_h_l, ln_K_u, xp)
+    lB1 = _LOG2 + xp.logaddexp(ln_K_h_e, ln_K_h_l + ln_K_l_e)
+    lB2 = xp.logaddexp(2.0 * ln_K_h_e, ln_K_h_l + 2.0 * ln_K_l_e)
+    return lB0, lB1, lB2
+
+
+def _effector_moments(lB0, lB1, lB2, x, xp):
+    """
+    Moments of n ∈ {0, 1, 2}, the number of effector sites filled on a dimer
+    not bound to operator, at x = log e. The weights are B0, B1·e and B2·e²
+    (n̄ = e·F'/F, and d n̄/d log e = Var(n)).
+
+    Returns log F(e), log n̄, log Var(n) and log m with m = 2 − n̄ (the empty
+    sites per dimer), each from log weights only.
+    """
+    t1 = lB1 + x
+    t2 = lB2 + 2.0 * x
+    lF = _lae3(lB0, t1, t2, xp)
+    lw0, lw1, lw2 = lB0 - lF, t1 - lF, t2 - lF
+    log_nbar = xp.logaddexp(lw1, _LOG2 + lw2)
+    log_m = xp.logaddexp(_LOG2 + lw0, lw1)
+    # Var(n) = Σ_{i<j} w_i w_j (i − j)², a sum of positive terms
+    log_var = _lae3(lw0 + lw1, _LOG4 + lw0 + lw2, lw1 + lw2, xp)
+    return lF, log_nbar, log_var, log_m
+
+
+def _log_excess(e_total, r, xp):
+    """
+    The pieces of the mass balance that depend only on the totals.
+
+    Returns log(max(c, 0)), log(max(−c, 0)) with c = e_total − 2r (the
+    effector left over once every TF site is filled; ``-inf`` for a zero),
+    and ``free_form``, 1.0 where e_total ≤ r and 0.0 elsewhere (which
+    residual :func:`_mass_balance` uses). c comes from the linear inputs, so
+    e_total at the equivalence point 2r gives exactly 0.
+    """
+    c = e_total - 2.0 * r
+
+    def log_pos(v):
+        ok = v > 0
+        return xp.where(ok, _log(xp.where(ok, v, 1.0), xp), -np.inf)
+
+    free_form = xp.where(e_total <= r, 1.0, 0.0)
+    return log_pos(c), log_pos(-c), free_form
+
+
+def _mass_balance(x, lB0, lB1, lB2, lt, lr, lc_pos, lc_neg, free_form, xp):
+    """
+    The effector mass balance e_total = e + r·n̄(e) as a residual φ(x) at
+    x = log e, and dφ/dx. Both forms rise monotonically through the same
+    root, the free effector.
+
+    - e_total ≤ r (TF sites well in excess, so n̄ ≤ 1 at the root):
+      φ = log(e + r·n̄) − log e_total, slope (e + r·Var)/(e + r·n̄).
+    - e_total > r: φ = log(e + c⁻) − log(c⁺ + r·m), m = 2 − n̄ the empty
+      sites per dimer, c = e_total − 2r, c⁺ = max(c, 0), c⁻ = max(−c, 0).
+      This is e = e_total − r·n̄ with e_total − r·n̄ = c + r·m written
+      without a difference of large terms. Slope
+      e/(e + c⁻) + r·Var/(c⁺ + r·m). The first form fails here: near
+      saturation e is a vanishing part of e + r·n̄, so φ is flat in x to
+      float precision and the root is lost (float32 put it 0.05-50 in
+      log e off at e_total ≈ 2r).
+    """
+    _, log_nbar, log_var, log_m = _effector_moments(lB0, lB1, lB2, x, xp)
+
+    log_bal = xp.logaddexp(x, lr + log_nbar)
+    phi_a = log_bal - lt
+    dphi_a = xp.exp(xp.logaddexp(x, lr + log_var) - log_bal)
+
+    log_left = xp.logaddexp(x, lc_neg)               # log(e + c⁻)
+    log_right = xp.logaddexp(lc_pos, lr + log_m)     # log(c⁺ + r·m)
+    phi_b = log_left - log_right
+    dphi_b = (xp.exp(x - log_left)
+              + xp.exp(lr + log_var - log_right))
+
+    use_a = free_form > 0
+    return (xp.where(use_a, phi_a, phi_b),
+            xp.where(use_a, dphi_a, dphi_b))
+
+
+def _solve_log_free_effector(lB0, lB1, lB2, lt, lr, lc_pos, lc_neg, free_form,
+                             xp):
+    """
+    Safeguarded Newton solve of φ(x) = 0 (see :func:`_mass_balance`).
+
+    The root is bracketed by [x_lo, log e_total]: φ(log e_total) ≥ 0, and
+    at e_lo = min(e_t/2, e_t·B0/(8r·B1), sqrt(e_t·B0/(8r·B2))) the bound
+    n̄ ≤ 2·(B1·e + B2·e²)/B0 gives e + r·n̄ ≤ e_total. Newton steps start at
+    log e_total (as the old linear solve did). A step that leaves the
+    current bracket, or does not at least halve the previous step, is
+    replaced by bisection (Numerical Recipes' rtsafe), so the bracket
+    shrinks at least as fast as bisection.
+    """
+    L = lt - _LOG8 - lr + lB0
+    x_lo = xp.minimum(xp.minimum(lt - _LOG2, L - lB1), 0.5 * (L - lB2))
+    lo = x_lo
+    hi = lt
+    x = hi
+    dx_old = 2.0 * (hi - lo)
+
+    def step(_, carry):
+        x, lo, hi, dx_old = carry
+        phi, dphi = _mass_balance(x, lB0, lB1, lB2, lt, lr, lc_pos, lc_neg,
+                                  free_form, xp)
+        lo = xp.where(phi < 0, x, lo)
+        hi = xp.where(phi > 0, x, hi)
+        dx = phi / dphi
+        x_newton = x - dx
+        ok = ((x_newton >= lo) & (x_newton <= hi)
+              & (xp.abs(dx) <= 0.5 * xp.abs(dx_old)))
+        x_bisect = 0.5 * (lo + hi)
+        x_next = xp.where(ok, x_newton, x_bisect)
+        dx_next = xp.where(ok, dx, x - x_bisect)
+        # Converged to float precision: stay. A Newton step there is
+        # rounding noise and need not halve, and bisecting would leave the
+        # root. φ is a difference of logs of size about |log e_total|.
+        done = ((xp.abs(phi) <= 4.0 * tol * xp.maximum(1.0, xp.abs(lt)))
+                | (xp.abs(dx) <= tol * xp.maximum(1.0, xp.abs(x))))
+        return (xp.where(done, x, x_next), lo, hi,
+                xp.where(done, 0.0, dx_next))
+
+    tol = 4.0 * float(xp.finfo(xp.result_type(x)).eps)
+    carry = (x, lo, hi, dx_old)
+    if xp is jnp:
+        carry = jax.lax.fori_loop(0, NEWTON_ITERATIONS, step, carry)
+    else:
+        with np.errstate(invalid="ignore", over="ignore", divide="ignore"):
+            for i in range(NEWTON_ITERATIONS):
+                carry = step(i, carry)
+    return carry[0]
+
+
+@jax.custom_jvp
+def _log_free_effector_jax(lB0, lB1, lB2, lt, lr, lc_pos, lc_neg, free_form):
+    return _solve_log_free_effector(lB0, lB1, lB2, lt, lr, lc_pos, lc_neg,
+                                    free_form, jnp)
+
+
+@_log_free_effector_jax.defjvp
+def _log_free_effector_jvp(primals, tangents):
+    """
+    Implicit derivative of the root, dx = −(∂φ/∂p·dp)/(∂φ/∂x), in place of
+    differentiating through the Newton iterations. It is written in JAX ops,
+    so it differentiates again (the Laplace Hessian).
+    """
+    x = _log_free_effector_jax(*primals)
+
+    def phi(x_, *p):
+        return _mass_balance(x_, *p, jnp)[0]
+
+    _, dphi_p = jax.jvp(lambda *p: phi(x, *p), primals, tangents)
+    _, dphi_dx = jax.jvp(lambda x_: phi(x_, *primals), (x,),
+                         (jnp.ones_like(x),))
+    return x, -dphi_p / dphi_dx
+
+
+def log_free_effector(lB0, lB1, lB2, e_total, r, xp=jnp):
+    """
+    log of the free effector from the mass balance, in log space.
+
+    Parameters
+    ----------
+    lB0, lB1, lB2 : array-like
+        log of the coefficients of F(e) (``_log_poly_coeffs``).
+    e_total : array-like
+        Total effector (M), ≥ 0.
+    r : float or array-like
+        Total TF dimer (M), tf_total/2.
+    xp : module
+        ``jax.numpy`` (default) or ``numpy``.
+
+    Returns
+    -------
+    x : array
+        log free effector in the broadcast shape; ``-inf`` where
+        ``e_total`` is 0.
+    pos : array of bool
+        ``e_total > 0``.
+    """
+    e_total = xp.asarray(e_total)
+    r = xp.asarray(r)
+    pos = e_total > 0
+    lt = _log(xp.where(pos, e_total, 1.0), xp)
+    lr = _log(r, xp)
+    lc_pos, lc_neg, free_form = _log_excess(xp.where(pos, e_total, 1.0), r,
+                                            xp)
+    args = xp.broadcast_arrays(*[xp.asarray(v, dtype=float) for v in
+                                 (lB0, lB1, lB2, lt, lr, lc_pos, lc_neg,
+                                  free_form)])
+    if xp is jnp:
+        x = _log_free_effector_jax(*args)
+    else:
+        x = _solve_log_free_effector(*args, np)
+    return xp.where(pos, x, -np.inf), pos
+
+
 def free_effector(B0, B1, B2, e_total, r, xp=jnp):
     """
     Free effector from the cubic mass balance (see module docstring).
+
+    Solved in log space by :func:`log_free_effector`, so the coefficients
+    can span any range.
 
     Parameters
     ----------
@@ -233,31 +473,56 @@ def free_effector(B0, B1, B2, e_total, r, xp=jnp):
     r : float
         Total TF dimer (M), tf_total/2.
     xp : module
-        ``jax.numpy`` (default, Newton steps in a ``fori_loop``) or ``numpy``.
+        ``jax.numpy`` (default) or ``numpy``.
 
     Returns
     -------
     array
-        Free effector, clipped to [0, e_total], in the broadcast shape.
+        Free effector, in [0, e_total], in the broadcast shape.
     """
-    c3 = B2
-    c2 = B1 + B2 * (2.0 * r - e_total)
-    c1 = B0 + B1 * (r - e_total)
-    c0 = -B0 * e_total
+    x, pos = log_free_effector(_log(B0, xp), _log(B1, xp), _log(B2, xp),
+                               e_total, r, xp=xp)
+    return xp.where(pos, xp.exp(xp.where(pos, x, 0.0)), 0.0)
 
-    def step(_, x):
-        f = ((c3 * x + c2) * x + c1) * x + c0
-        df = (3.0 * c3 * x + 2.0 * c2) * x + c1
-        return x - f / xp.where(xp.abs(df) < 1e-30, 1e-30, df)
 
-    shape = xp.broadcast_shapes(xp.shape(c0), xp.shape(c2), xp.shape(c3))
-    x = xp.broadcast_to(e_total, shape) * xp.ones(shape)
-    if xp is jnp:
-        x = jax.lax.fori_loop(0, NEWTON_ITERATIONS, step, x)
-    else:
-        for i in range(NEWTON_ITERATIONS):
-            x = step(i, x)
-    return xp.clip(x, 0.0, e_total)
+def log_W(ln_K_h_l, ln_K_h_o, ln_K_h_e, ln_K_l_o, ln_K_l_e, ln_K_u, e_total,
+          tf_total, xp=jnp):
+    """
+    log W, the operator's log odds of being bound (θ = sigmoid(log W)),
+    computed in log space from log constants.
+
+    ``-inf`` stands for a constant the model does not have (K_h_e and K_l_o
+    in O2_C4, K_u in U0 models). Every sum of partition-function terms is a
+    log-sum-exp, so no constant is ever exponentiated and any finite log
+    constant gives a finite log W.
+    """
+    lr = _log(tf_total / 2.0, xp)
+    lB0, lB1, lB2 = _log_poly_coeffs(ln_K_h_l, ln_K_h_e, ln_K_l_e, ln_K_u,
+                                     xp=xp)
+    x, pos = log_free_effector(lB0, lB1, lB2, e_total, tf_total / 2.0, xp=xp)
+    x = xp.where(pos, x, 0.0)
+
+    # e > 0: W = r·(K_h_o·P_H + K_h_l·K_l_o·P_L)/F, log P = 2·softplus(ln K + x)
+    lP_H = 2.0 * xp.logaddexp(0.0, ln_K_h_e + x)
+    lP_L = 2.0 * xp.logaddexp(0.0, ln_K_l_e + x)
+    lF = _lae3(lB0, lB1 + x, lB2 + 2.0 * x, xp)
+    lW_e = lr + xp.logaddexp(ln_K_h_o + lP_H, ln_K_h_l + ln_K_l_o + lP_L) - lF
+
+    # e = 0: P_H = P_L = 1, F = B0
+    lW_0 = lr + xp.logaddexp(ln_K_h_o, ln_K_h_l + ln_K_l_o) - lB0
+    return xp.where(pos, lW_e, lW_0)
+
+
+def _sigmoid(z, xp):
+    """1/(1 + e^-z) without overflow; exactly 0 or 1 only past float range."""
+    return xp.exp(-xp.logaddexp(0.0, -z))
+
+
+def mwc_theta_log(ln_K_h_l, ln_K_h_o, ln_K_h_e, ln_K_l_o, ln_K_l_e, ln_K_u,
+                  e_total, tf_total, xp=jnp):
+    """θ = sigmoid(log W) from log constants (see :func:`log_W`)."""
+    return _sigmoid(log_W(ln_K_h_l, ln_K_h_o, ln_K_h_e, ln_K_l_o, ln_K_l_e,
+                          ln_K_u, e_total, tf_total, xp=xp), xp)
 
 
 def mwc_theta(K_h_l, K_h_o, K_h_e, K_l_o, K_l_e, K_u, e_total, tf_total,
@@ -266,7 +531,8 @@ def mwc_theta(K_h_l, K_h_o, K_h_e, K_l_o, K_l_e, K_u, e_total, tf_total,
     Operator occupancy of the standard MWC dimer (see module docstring).
 
     Every argument broadcasts against the others. Pass 0 for a constant the
-    model does not have (K_h_e and K_l_o in O2_C4, K_u in U0 models).
+    model does not have (K_h_e and K_l_o in O2_C4, K_u in U0 models). The
+    constants are logged and θ computed by :func:`mwc_theta_log`.
 
     Parameters
     ----------
@@ -284,16 +550,9 @@ def mwc_theta(K_h_l, K_h_o, K_h_e, K_l_o, K_l_e, K_u, e_total, tf_total,
     array
         θ in the broadcast shape.
     """
-    r = tf_total / 2.0
-    B0, B1, B2 = _poly_coeffs(K_h_l, K_h_e, K_l_e, K_u)
-    e = free_effector(B0, B1, B2, e_total, r, xp=xp)
-
-    P_H = (1.0 + K_h_e * e) ** 2
-    P_L = (1.0 + K_l_e * e) ** 2
-    F = B0 + B1 * e + B2 * e ** 2
-    h = r / xp.where(F < 1e-30, 1e-30, F)
-    W = h * (K_h_o * P_H + K_h_l * K_l_o * P_L)
-    return W / (1.0 + W)
+    ln = [_log(xp.asarray(k, dtype=float), xp)
+          for k in (K_h_l, K_h_o, K_h_e, K_l_o, K_l_e, K_u)]
+    return mwc_theta_log(*ln, e_total, tf_total, xp=xp)
 
 
 def theta_saturated(K_h_l, K_h_o, K_h_e, K_l_o, K_l_e, K_u, tf_total,
@@ -303,21 +562,22 @@ def theta_saturated(K_h_l, K_h_o, K_h_e, K_l_o, K_l_e, K_u, tf_total,
 
     F(e), P_H and P_L are dominated by their e² terms, so
     W → r·(K_h_o·K_h_e² + K_h_l·K_l_o·K_l_e²) / (K_h_e² + K_h_l·K_l_e²).
-    It is 0 for M2 (K_h_e = K_l_o = 0).
+    It is 0 for M2 (K_h_e = K_l_o = 0). Computed from the log constants.
     """
-    r = tf_total / 2.0
-    B2 = K_h_e ** 2 + K_h_l * K_l_e ** 2
-    W = r * (K_h_o * K_h_e ** 2 + K_h_l * K_l_o * K_l_e ** 2) / B2
-    return W / (1.0 + W)
+    hl, ho, he, lo, le = [_log(xp.asarray(k, dtype=float), xp)
+                          for k in (K_h_l, K_h_o, K_h_e, K_l_o, K_l_e)]
+    num = xp.logaddexp(ho + 2.0 * he, hl + lo + 2.0 * le)
+    den = xp.logaddexp(2.0 * he, hl + 2.0 * le)
+    lW = _log(tf_total / 2.0, xp) + num - den
+    return _sigmoid(xp.where(num == -np.inf, -np.inf, lW), xp)
 
 
 def theta_c12(ln_K_h_l, ln_K_h_o, ln_K_h_e, ln_K_l_o, ln_K_l_e, ln_K_u,
               e_total, tf_total, xp=jnp):
     """M3 (O2_C12) θ from log constants; ``ln_K_u=None`` for U0."""
-    K_u = 0.0 if ln_K_u is None else xp.exp(ln_K_u)
-    return mwc_theta(xp.exp(ln_K_h_l), xp.exp(ln_K_h_o), xp.exp(ln_K_h_e),
-                     xp.exp(ln_K_l_o), xp.exp(ln_K_l_e), K_u,
-                     e_total, tf_total, xp=xp)
+    ln_K_u = -np.inf if ln_K_u is None else ln_K_u
+    return mwc_theta_log(ln_K_h_l, ln_K_h_o, ln_K_h_e, ln_K_l_o, ln_K_l_e,
+                         ln_K_u, e_total, tf_total, xp=xp)
 
 
 def theta_c4(ln_K_op, ln_K_HL, ln_K_E, ln_K_U, e_total, tf_total, xp=jnp):
@@ -325,8 +585,8 @@ def theta_c4(ln_K_op, ln_K_HL, ln_K_E, ln_K_U, e_total, tf_total, xp=jnp):
     M2 (O2_C4) θ from log constants; ``ln_K_U=None`` for U0.
 
     M3 with K_h_o = K_op, K_h_l = K_HL, K_l_e = K_E (per site, M⁻¹) and
-    K_h_e = K_l_o = 0.
+    K_h_e = K_l_o = 0 (log constants -inf).
     """
-    K_U = 0.0 if ln_K_U is None else xp.exp(ln_K_U)
-    return mwc_theta(xp.exp(ln_K_HL), xp.exp(ln_K_op), 0.0, 0.0,
-                     xp.exp(ln_K_E), K_U, e_total, tf_total, xp=xp)
+    ln_K_U = -np.inf if ln_K_U is None else ln_K_U
+    return mwc_theta_log(ln_K_HL, ln_K_op, -np.inf, -np.inf, ln_K_E, ln_K_U,
+                         e_total, tf_total, xp=xp)

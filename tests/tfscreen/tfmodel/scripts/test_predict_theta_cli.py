@@ -485,3 +485,30 @@ def test_relative_output_is_labelled_X(mock_extract, mock_orchestrator,
         assert "theta_scale" not in df.columns
     else:
         assert (df["theta_scale"] == label).all()
+
+
+# ---------------------------------------------------------------------------
+# Non-finite theta is reported, not written silently
+# ---------------------------------------------------------------------------
+
+def test_nan_theta_is_reported(mock_extract, tmp_path):
+    out = str(tmp_path / "out")
+    df = pd.DataFrame({"genotype": ["wt", "wt", "A1B", "A1B"],
+                       "titrant_name": ["IPTG"] * 4,
+                       "titrant_conc": [0.0, 1.0, 0.0, 1.0],
+                       "q0.5": [0.9, 0.1, np.nan, np.nan]})
+    with patch("tfscreen.tfmodel.scripts.predict_theta_cli.extract_theta_curves",
+               return_value=df):
+        with pytest.warns(RuntimeWarning, match=r"2 of 4 .*1 genotype.*A1B"):
+            predict_theta("cfg.yaml", "post.h5", out_prefix=out)
+    assert pd.read_csv(f"{out}.csv")["q0.5"].isna().sum() == 2
+
+
+def test_finite_theta_is_not_reported(mock_extract, tmp_path):
+    import warnings
+    df = pd.DataFrame({"genotype": ["wt"], "titrant_name": ["IPTG"],
+                       "titrant_conc": [0.0], "q0.5": [1.0]})
+    with patch("tfscreen.tfmodel.scripts.predict_theta_cli.extract_theta_curves",
+               return_value=df), warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        predict_theta("cfg.yaml", "post.h5", out_prefix=str(tmp_path / "o"))

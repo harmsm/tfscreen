@@ -11,6 +11,7 @@ flat 1e-3 without saying why it mattered: 16-38 negative eigenvalues became
 directions with SD ~30. The same refusal stopped tfs-summarize-fit's
 trajectory plots.
 """
+import dataclasses
 import os
 import warnings
 
@@ -18,6 +19,7 @@ import jax.numpy as jnp
 import numpy as np
 import numpyro
 import numpyro.distributions as dist
+import pandas as pd
 import pytest
 from flax import struct
 from numpyro import handlers
@@ -194,3 +196,95 @@ def test_elements_without_prior_sd_are_named(monkeypatch):
         prec = ri._laplace_prior_precision(
             unc, {"priors": model.priors, "data": model.data}, 5)
     assert prec[4] == LAPLACE_MIN_EIGENVALUE
+
+
+# ---------------------------------------------------------------------------
+# A count-likelihood thermodynamic model with extreme prior draws
+# ---------------------------------------------------------------------------
+
+_WT_SD = 10.0
+
+_SMOKE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                      "..", "..", "..", "smoke-tests", "test_data")
+
+
+@pytest.fixture(scope="module")
+def wide_thermo_counts(tmp_path_factory):
+    """
+    The smoke screen fit with counts and thermo.O2_C4_K3_U0_a.PddG, with the
+    wt ln K priors moved to 100 +/- 10 so that prior draws of ln K are
+    extreme (the pilot's draws, through the learned sigma_s, reached +/-60).
+    Linear-space theta overflowed there (K^2 > float32 max above ln K 44)
+    and gave NaN ln_cfu.
+    """
+    from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+
+    growth = os.path.join(_SMOKE, "growth-smoke.csv")
+    df = pd.read_csv(growth)
+    muts = sorted({m for g in df["genotype"].unique() if g != "wt"
+                   for m in g.split("/")})
+    ddG = tmp_path_factory.mktemp("ddG") / "ddG.csv"
+    pd.DataFrame({"mut": muts, "H": 0.5, "HD": -0.5, "L": 0.2,
+                  "LE2": 0.1}).to_csv(ddG, index=False)
+    o = ModelOrchestrator(growth_df=growth,
+                          binding_df=os.path.join(_SMOKE, "binding-smoke.csv"),
+                          batch_size=6, growth_likelihood="counts",
+                          sample_offset="level",
+                          theta="thermo.O2_C4_K3_U0_a.PddG",
+                          thermo_data=str(ddG))
+    theta = dataclasses.replace(o.priors.theta,
+                                theta_ln_K_op_wt_loc=100.0,
+                                theta_ln_K_op_wt_scale=_WT_SD,
+                                theta_ln_K_HL_wt_loc=100.0,
+                                theta_ln_K_HL_wt_scale=_WT_SD,
+                                theta_ln_K_E_wt_loc=100.0,
+                                theta_ln_K_E_wt_scale=_WT_SD)
+    o._priors = dataclasses.replace(o.priors, theta=theta)
+    return o
+
+
+def test_thermo_counts_prior_draw_was_extreme(wide_thermo_counts):
+    o = wide_thermo_counts
+    tr = structure_trace(o.jax_model, data=o.data, priors=o.priors)
+    for name in ("theta_ln_K_op_wt", "theta_ln_K_HL_wt", "theta_ln_K_E_wt"):
+        assert float(np.ravel(tr[name]["value"])[0]) > 60
+
+
+def test_thermo_counts_laplace_prior_precision(wide_thermo_counts):
+    o = wide_thermo_counts
+    ri = RunInference(o, seed=0)
+    svi = ri.setup_svi(guide_type="delta")
+    state = svi.init(ri.get_key(), data=o.data, priors=o.priors)
+    mp = svi.optim.get_params(state.optim_state)
+    unc = {k[:-len("_auto_loc")]: v for k, v in mp.items()
+           if k.endswith("_auto_loc")}
+    D = sum(int(np.size(v)) for v in unc.values())
+    full = ri._unscaled_batch(o.data, jnp.arange(o.data.num_genotype))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        prec = ri._laplace_prior_precision(unc, {"priors": o.priors,
+                                                 "data": full}, D)
+    assert prec.shape == (D,)
+    assert np.all(np.isfinite(prec)) and np.all(prec > 0)
+    # the moved wt priors give their sites prior precision 1/10^2
+    for name in ("theta_ln_K_op_wt", "theta_ln_K_HL_wt", "theta_ln_K_E_wt"):
+        assert name in unc
+    assert np.sum(np.isclose(prec, 1 / _WT_SD ** 2, rtol=1e-4)) >= 3
+
+
+def test_prediction_traces_survive_extreme_prior_draws(wide_thermo_counts):
+    """
+    predict() reads the model's structure from traces with prior draws
+    (tfs-summarize-fit's trajectory plots go through it); they must not need
+    the count observation to accept those draws.
+    """
+    from tfscreen.tfmodel.analysis.prediction import predict
+
+    o = wide_thermo_counts
+    ri = RunInference(o, seed=0)
+    svi = ri.setup_svi(guide_type="delta")
+    state = svi.init(ri.get_key(), data=o.data, priors=o.priors)
+    params = {k: np.asarray(v) for k, v in svi.get_params(state).items()}
+    out = predict(o, params, predict_sites=["growth_pred"], num_samples=None)
+    df = out if isinstance(out, pd.DataFrame) else next(iter(out.values()))
+    assert len(df) > 0

@@ -11,6 +11,7 @@ import itertools
 import math
 from collections import namedtuple
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pandas as pd
@@ -465,3 +466,248 @@ def test_components_use_the_shared_projection(family, proj, kind):
     if family.endswith("U1_a"):
         u = mwc.PROJ_U_C4 if "C4" in family else mwc.PROJ_U_C12
         np.testing.assert_array_equal(np.asarray(module._PROJ_U), u)
+
+
+# ---------------------------------------------------------------------------
+# Overflow safety: log-space θ at extreme constants
+#
+# The Laplace draws of the PddG pilot fits (2026-10-10) reached ln K of +/-60
+# and beyond. The linear-space θ overflowed exp(ln K) and K² in float32 and
+# wrote NaN theta for whole genotypes; the linear Newton solve also stopped
+# short at large K_E. θ is now computed from log constants throughout.
+# ---------------------------------------------------------------------------
+
+_FAMILIES = ["O2_C4_K3_U0_a", "O2_C4_K3_U1_a", "O2_C12_K5_U0_a",
+             "O2_C12_K5_U1_a"]
+_KINDS = ["PK", "PddG", "PnnC"]
+
+_E_EXTREME = [0.0, 1e-9, 1e-7, 1e-5, 8e-5, 1e-3, 0.1, 10.0]
+
+# Constants far outside the defaults but within float64 for the brute force
+# (linear K: K_h_l, K_h_o, K_h_e, K_l_o, K_l_e, K_u).
+_EXTREME_CASES = [
+    (6.3, math.exp(60), 0.0, 0.0, math.exp(40), 0.0),        # M2, huge K_E
+    (math.exp(30), 4.2e8, 0.0, 0.0, 2.5e5, 0.0),               # all L
+    (math.exp(-30), math.exp(-40), 1e3, 1e2, math.exp(60), math.exp(20)),
+    (6.3, math.exp(100), math.exp(50), math.exp(-50), math.exp(80), 0.0),
+    (math.exp(-60), math.exp(70), math.exp(-40), math.exp(30),
+     math.exp(-20), math.exp(-80)),
+]
+
+
+@pytest.mark.parametrize("ks", _EXTREME_CASES)
+def test_theta_matches_brute_force_at_extreme_constants(ks):
+    for e_total in _E_EXTREME[:-1]:
+        want, want_e = _brute_force(*ks, e_total, _TF)
+        got = float(mwc.mwc_theta(*ks, np.array(e_total), _TF, xp=np))
+        assert got == pytest.approx(want, rel=1e-9, abs=1e-300)
+        if e_total == _TF:
+            # At the equivalence point (e_total = 2r) with a huge effector
+            # constant the free effector is ~1e-20 M, set by a cancellation
+            # the brute force's linear mass balance cannot resolve (it is
+            # 0.5% off a 60-digit solve here; the log-space solve is not).
+            continue
+        B0, B1, B2 = mwc._poly_coeffs(ks[0], ks[2], ks[4], ks[5])
+        e = float(mwc.free_effector(B0, B1, B2, np.array(e_total), _TF / 2,
+                                    xp=np))
+        assert e == pytest.approx(want_e, rel=1e-9, abs=1e-300)
+
+
+def _random_logs(n, sd, rng):
+    """ln K draws about the defaults with SD ``sd`` (kT)."""
+    return (rng.normal(mwc.DEFAULT_LN_K_H_L, sd, n),
+            rng.normal(mwc.DEFAULT_LN_K_H_O, sd, n),
+            rng.normal(mwc.DEFAULT_LN_K_H_E, sd, n),
+            rng.normal(mwc.DEFAULT_LN_K_L_O, sd, n),
+            rng.normal(mwc.DEFAULT_LN_K_L_E, sd, n),
+            rng.normal(-3.0, sd, n))
+
+
+@pytest.mark.parametrize("sd", [30.0, 150.0])
+def test_theta_finite_in_unit_interval_at_extreme_draws(sd):
+    rng = np.random.default_rng(4)
+    lns = [v[:, None] for v in _random_logs(400, sd, rng)]
+    e = np.array(_E_EXTREME)[None, :]
+    want = mwc.theta_c12(*lns, e, _TF, xp=np)
+    assert np.all(np.isfinite(want))
+    assert np.all((want >= 0) & (want <= 1))
+    got = np.asarray(mwc.theta_c12(*[jnp.asarray(v) for v in lns],
+                                   jnp.asarray(e), _TF))
+    assert got.dtype == np.float32
+    assert np.all(np.isfinite(got)) and np.all((got >= 0) & (got <= 1))
+    np.testing.assert_allclose(got, want, atol=2e-5)
+    c4 = np.asarray(mwc.theta_c4(*[jnp.asarray(v) for v in
+                                   (lns[1], lns[0], lns[4], lns[5])],
+                                 jnp.asarray(e), _TF))
+    assert np.all(np.isfinite(c4)) and np.all((c4 >= 0) & (c4 <= 1))
+
+
+@pytest.mark.parametrize("xp", [np, jnp])
+def test_theta_limits_at_extreme_constants(xp):
+    """θ → 1 as K_op → ∞, θ → 0 as K_op → 0 or K_HL → ∞ (L holds no operator)."""
+    e = xp.asarray(np.array(_E_EXTREME))
+    hl, op, ke = mwc.DEFAULT_LN_K_H_L, mwc.DEFAULT_LN_K_H_O, \
+        mwc.DEFAULT_LN_K_E_C4
+    big = 500.0
+    np.testing.assert_allclose(mwc.theta_c4(big, hl, ke, None, e, _TF, xp=xp),
+                               1.0, atol=1e-6)
+    np.testing.assert_allclose(mwc.theta_c4(-big, hl, ke, None, e, _TF,
+                                            xp=xp), 0.0, atol=1e-30)
+    np.testing.assert_allclose(mwc.theta_c4(op, big, ke, None, e, _TF, xp=xp),
+                               0.0, atol=1e-30)
+    np.testing.assert_allclose(mwc.theta_c4(op, hl, ke, big, e, _TF, xp=xp),
+                               0.0, atol=1e-30)
+    # K_HL → 0: all apo H, effector-blind; θ = r·K_op/(1 + r·K_op)
+    W = _TF / 2 * math.exp(op)
+    np.testing.assert_allclose(mwc.theta_c4(op, -big, ke, None, e, _TF, xp=xp),
+                               W / (1 + W), rtol=1e-5)
+    # K_E → 0: no induction; θ(e) = θ(0)
+    t = mwc.theta_c4(op, hl, -big, None, e, _TF, xp=xp)
+    np.testing.assert_allclose(t, t[0], rtol=1e-6)
+    # Huge K_E with effector in excess of TF: fully induced
+    t = mwc.theta_c4(op, hl, big, None, xp.asarray(np.array([1e-3, 0.1])),
+                     _TF, xp=xp)
+    np.testing.assert_allclose(t, 0.0, atol=1e-30)
+
+
+def test_theta_saturated_from_logs_at_extreme_constants():
+    ks = (6.3, math.exp(200), math.exp(150), math.exp(-50), math.exp(250),
+          0.0)
+    t = float(mwc.theta_saturated(*ks, _TF, xp=np))
+    assert 0.0 <= t <= 1.0 and math.isfinite(t)
+    assert float(mwc.theta_saturated(6.3, 4.2e8, 0.0, 0.0, 2.5e5, 0.0, _TF,
+                                     xp=np)) == 0.0
+
+
+def _c4_sum(p, e):
+    return mwc.theta_c4(p[0], p[1], p[2], p[3], e, _TF).sum()
+
+
+def _c12_sum(p, e):
+    return mwc.theta_c12(p[0], p[1], p[2], p[3], p[4], p[5], e, _TF).sum()
+
+
+_GRAD_POINTS_C4 = [
+    (mwc.DEFAULT_LN_K_H_O, mwc.DEFAULT_LN_K_H_L, mwc.DEFAULT_LN_K_E_C4, -3.0),
+    (300.0, 1.8, 12.4, -3.0), (-300.0, 1.8, 12.4, -3.0),
+    (19.9, 300.0, 12.4, -3.0), (19.9, -300.0, 12.4, -3.0),
+    (19.9, 1.8, 300.0, -3.0), (19.9, 1.8, -300.0, -3.0),
+    (19.9, 1.8, 12.4, 300.0), (300.0, 300.0, 300.0, 300.0),
+    (-300.0, -300.0, -300.0, -300.0),
+]
+
+
+@pytest.mark.parametrize("p", _GRAD_POINTS_C4)
+def test_gradient_and_hessian_finite_at_extreme_values(p):
+    e = jnp.asarray(np.array(_E_EXTREME), dtype=jnp.float32)
+    p = jnp.asarray(p, dtype=jnp.float32)
+    g = jax.grad(_c4_sum)(p, e)
+    H = jax.hessian(_c4_sum)(p, e)
+    assert np.all(np.isfinite(np.asarray(g)))
+    assert np.all(np.isfinite(np.asarray(H)))
+    p12 = jnp.concatenate([p[1:2], p[0:1], p[2:3] - 4.0, p[0:1] - 20.0,
+                           p[2:3], p[3:4]])
+    assert np.all(np.isfinite(np.asarray(jax.grad(_c12_sum)(p12, e))))
+    assert np.all(np.isfinite(np.asarray(jax.hessian(_c12_sum)(p12, e))))
+
+
+def _numeric_grad(f, p, h=1e-5):
+    p = np.asarray(p, float)
+    out = np.zeros_like(p)
+    for i in range(p.size):
+        d = np.zeros_like(p)
+        d[i] = h
+        out[i] = (f(p + d) - f(p - d)) / (2 * h)
+    return out
+
+
+@pytest.mark.parametrize("p", [
+    (1.84, 19.9, 8.2, -2.3, 12.6, -3.0),
+    (0.5, 16.0, 12.0, 4.0, 10.0, 1.0),
+    (6.0, 30.0, 6.0, -5.0, 20.0, -10.0),
+])
+def test_implicit_derivatives_match_finite_differences(p):
+    """
+    The free effector's derivatives come from the implicit function theorem
+    (custom JVP), not from the Newton iterations. Check the gradient and the
+    Hessian (the Laplace uses it) against central differences in float64.
+    """
+    e_np = np.array([1e-7, 3e-6, 1e-5, 8e-5, 1e-3])
+
+    def f_np(q):
+        return float(np.sum(mwc.theta_c12(*q, e_np, _TF, xp=np)))
+
+    with jax.enable_x64(True):
+        e = jnp.asarray(e_np)
+        q = jnp.asarray(p, dtype=jnp.float64)
+        g = np.asarray(jax.grad(_c12_sum)(q, e))
+        H = np.asarray(jax.hessian(_c12_sum)(q, e))
+        assert float(_c12_sum(q, e)) == pytest.approx(f_np(p), rel=1e-12)
+
+        def g_np(qq):
+            return np.asarray(jax.grad(_c12_sum)(jnp.asarray(qq), e))
+
+        H_fd = np.stack([_numeric_grad(lambda qq: g_np(qq)[i], p)
+                         for i in range(len(p))])
+    np.testing.assert_allclose(g, _numeric_grad(f_np, p), rtol=1e-6,
+                               atol=1e-9)
+    np.testing.assert_allclose(H, H_fd, rtol=1e-5, atol=1e-8)
+
+
+def _extreme_component_inputs(family, rng, G):
+    """Per-genotype log constants with SD 60 kT about the defaults."""
+    sd = 60.0
+    if "C4" in family:
+        k = {"ln_K_op": rng.normal(mwc.DEFAULT_LN_K_H_O, sd, G),
+             "ln_K_HL": rng.normal(mwc.DEFAULT_LN_K_H_L, sd, G),
+             "ln_K_E": rng.normal(mwc.DEFAULT_LN_K_E_C4, sd, (1, G))}
+        if "U1" in family:
+            k["ln_K_U"] = rng.normal(-3.0, sd, G)
+    else:
+        k = {"ln_K_h_l": rng.normal(mwc.DEFAULT_LN_K_H_L, sd, G),
+             "ln_K_h_o": rng.normal(mwc.DEFAULT_LN_K_H_O, sd, G),
+             "ln_K_h_e": rng.normal(mwc.DEFAULT_LN_K_H_E, sd, (1, G)),
+             "ln_K_l_o": rng.normal(mwc.DEFAULT_LN_K_L_O, sd, G),
+             "ln_K_l_e": rng.normal(mwc.DEFAULT_LN_K_L_E, sd, (1, G))}
+        if "U1" in family:
+            k["ln_K_u"] = rng.normal(-3.0, sd, G)
+    return k
+
+
+@pytest.mark.parametrize("family", _FAMILIES)
+@pytest.mark.parametrize("kind", _KINDS)
+def test_every_component_theta_finite_at_extreme_constants(family, kind):
+    """run_model (JAX, float32) and compute_theta_samples (numpy) of all 12
+    thermodynamic components give finite θ in [0, 1] at extreme draws."""
+    module = _module(family, kind)
+    rng = np.random.default_rng(5)
+    G = 200
+    k = _extreme_component_inputs(family, rng, G)
+    # Not 0.01 mM: that is the equivalence point e_total = 2r, where at
+    # these constants θ jumps between 0 and 1 within the float32 rounding of
+    # e_total (an ill-posed input, not a solver error).
+    conc_mM = np.array([0.0, 1e-4, 3e-2, 0.08, 1.0, 100.0])
+
+    data = Data(titrant_conc=jnp.asarray(conc_mM), batch_idx=jnp.arange(G),
+                geno_theta_idx=jnp.arange(G), scatter_theta=0)
+    param = module.ThetaParam(**{n: jnp.asarray(v) for n, v in k.items()},
+                              mu=jnp.zeros((1, conc_mM.size, 1)),
+                              sigma=jnp.ones((1, conc_mM.size, 1)),
+                              tf_total=_TF, conc_unit_scale=1e-3)
+    t_jax = np.asarray(module.run_model(param, data))
+    assert t_jax.shape == (1, conc_mM.size, G)
+    assert np.all(np.isfinite(t_jax))
+    assert np.all((t_jax >= 0) & (t_jax <= 1))
+
+    calc_df = pd.DataFrame({"titrant_conc": np.tile(conc_mM, G),
+                            "genotype_idx": np.repeat(np.arange(G),
+                                                      conc_mM.size),
+                            "titrant_name_idx": 0})
+    post = {f"theta_{n}": np.asarray(v)[None] for n, v in k.items()}
+    t_np = module.compute_theta_samples(calc_df, post, tf_total=_TF,
+                                        conc_unit_scale=1e-3)
+    assert np.all(np.isfinite(t_np))
+    assert np.all((t_np >= 0) & (t_np <= 1))
+    np.testing.assert_allclose(
+        t_np[0].reshape(G, conc_mM.size)[:, 1:],
+        t_jax[0].T[:, 1:], atol=2e-5)
