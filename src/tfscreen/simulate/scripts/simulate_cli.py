@@ -12,7 +12,16 @@ from tfscreen.simulate.base_growth_data import generate_base_growth_df, generate
 from tfscreen.simulate.growth_parameters_output import generate_growth_parameters_df
 from tfscreen.simulate.transformation_lam_output import generate_transformation_lam_df
 from tfscreen.process_raw import counts_to_lncfu
-from tfscreen.simulate.raw_output import write_raw_experiment
+from tfscreen.genetics.library_subsample import (
+    build_library,
+    format_subsample_summary,
+    has_subsample,
+    subsample_design,
+)
+from tfscreen.simulate.raw_output import (
+    undetectable_tubes,
+    write_raw_experiment,
+)
 from tfscreen.simulate.build_sample_dataframes import (
     CONDITION_COLUMNS,
     read_design,
@@ -86,6 +95,13 @@ def run_simulation_from_config(
     but no reads. With shared_transformation, every replicate (OD-only ones
     included) draws its cells from one library assembly and transformation.
 
+    With ``library_genotypes`` and/or ``library_subsample`` the library is
+    restricted to a subset of the described genotypes before anything is
+    simulated (``{out_prefix}_library.csv`` lists the kept ones); with the
+    default ``library_subsample_depth: full_library`` each kept sequence
+    keeps the pool share, transformants, reads and PCR templates it has in
+    the full library. See ``tfscreen.genetics.library_subsample``.
+
     Parameters
     ----------
     config_file : str
@@ -109,7 +125,9 @@ def run_simulation_from_config(
         directly from the simulated counts (with each row's true values).
         ``tfs-process-counts`` builds the same table from the raw files, so a
         full-size simulation can skip it: on a real library's size it is
-        several GB.
+        several GB. With an ``od600`` block, tubes read below the
+        calibration's detection threshold are left out of it, as they are
+        out of the raw tube table (``tfs-process-counts`` refuses them).
     """
     cf = tfscreen.util.read_yaml(config_file)
     if seed is not None:
@@ -158,12 +176,29 @@ def run_simulation_from_config(
     rng = np.random.default_rng(base_seed)
 
     # -------------------------------------------------------------------------
+    # The library, restricted to the config's subsample (library_genotypes,
+    # library_subsample; paths relative to the config file). sim_cf carries
+    # the experiment settings the subsample is simulated with.
+
+    sim_cf = dict(cf)
+    library_kwargs = {}
+    if has_subsample(cf):
+        library_df, subsample_summary = build_library(
+            cf, base_dir=os.path.dirname(os.path.abspath(config_file)))
+        design_update = subsample_design(cf, subsample_summary)
+        sim_cf.update({k: v for k, v in design_update.items()
+                       if k != "kept_pool_share"})
+        print(format_subsample_summary(cf, subsample_summary, design_update),
+              flush=True)
+        library_kwargs["library_df"] = library_df
+
+    # -------------------------------------------------------------------------
     # Ground-truth library and phenotypes (deterministic given the config)
 
     (library_df, phenotype_df, genotype_theta_df, parameters_df,
      binding_theta_df, mutation_truth, library_binding_theta_df) = \
-        library_prediction(cf, return_mutation_truth=True,
-                           return_binding_theta=True)
+        library_prediction(sim_cf, return_mutation_truth=True,
+                           return_binding_theta=True, **library_kwargs)
     growth_parameters_df = generate_growth_parameters_df(cf["growth"])
     transformation_lam_df = generate_transformation_lam_df(cf)
 
@@ -207,9 +242,9 @@ def run_simulation_from_config(
     # replicate 3; 2026-10-08).
     # (selection_experiment validates total_num_reads; none here, none split)
     rep_reads = {}
-    if cf.get("total_num_reads") is not None:
-        rep_reads = replicate_read_totals(int(cf["total_num_reads"]), rep_ids,
-                                          num_replicates, design)
+    if sim_cf.get("total_num_reads") is not None:
+        rep_reads = replicate_read_totals(int(sim_cf["total_num_reads"]),
+                                          rep_ids, num_replicates, design)
 
     for rep_num, rep in enumerate(rep_ids, start=1):
         sequenced = rep_num <= num_replicates
@@ -219,7 +254,7 @@ def run_simulation_from_config(
 
         # Give each replicate a distinct (but reproducible) random seed so
         # that replicates differ even when a base seed is set.
-        rep_cf = dict(cf)
+        rep_cf = dict(sim_cf)
         rep_cf["seed"] = (
             base_seed * num_replicates + rep_num if base_seed is not None else None
         )
@@ -276,6 +311,26 @@ def run_simulation_from_config(
         combined_sample_df = combined_sample_df.copy()
         combined_sample_df["design_sample"] = named["design_sample"].to_numpy()
 
+    # Tubes whose OD600 read below the detection threshold: the raw route
+    # leaves them out of the tube table (tfs-process-counts refuses such a
+    # reading, as the lab drops the tube), so the direct growth table drops
+    # them too and both routes hold the same tubes. The OD600 table above
+    # keeps every reading; presplit draws on the library, not on tubes.
+    bad = undetectable_tubes(combined_sample_df, cf.get("od600"))
+    growth_sample_df = combined_sample_df.loc[~bad]
+    growth_counts_df = combined_counts_df
+    if bad.any():
+        bad_ids = set(combined_sample_df.index[bad])
+        growth_counts_df = combined_counts_df.loc[
+            ~combined_counts_df["sample"].isin(bad_ids)]
+        cols = [c for c in ["replicate", "library", "condition_sel",
+                            "titrant_conc", "t_sel", "od600"]
+                if c in combined_sample_df.columns]
+        print(f"\nDropped {int(bad.sum())} of {len(bad)} tube(s) with OD600 "
+              f"below the detection threshold (from the growth table and the "
+              f"raw tube table, as tfs-process-counts would refuse them):\n"
+              f"{combined_sample_df.loc[bad, cols].to_string()}", flush=True)
+
     # The in-memory growth table: written unless skipped, and needed by the
     # in-library binding selection (survivors).
     need_growth = write_growth or (
@@ -284,8 +339,8 @@ def run_simulation_from_config(
     growth_df = None
     if need_growth:
         growth_df = counts_to_lncfu(
-            combined_sample_df.drop(columns="design_sample", errors="ignore"),
-            combined_counts_df)
+            growth_sample_df.drop(columns="design_sample", errors="ignore"),
+            growth_counts_df)
 
     if write_raw:
         raw = write_raw_experiment(combined_sample_df, combined_counts_df,
@@ -366,7 +421,7 @@ def run_simulation_from_config(
         print("\nGenerating presplit data...", flush=True)
         presplit_df = generate_presplit_df(combined_sample_df,
                                            combined_counts_df,
-                                           cf, rng)
+                                           sim_cf, rng)
         presplit_df.to_csv(out_path("presplit"), index=False)
         print(f"Wrote: {out_path('presplit')}")
 

@@ -4,6 +4,11 @@ from tfscreen.simulate import (
     library_prediction,
     selection_experiment
 )
+from tfscreen.genetics.library_subsample import (
+    build_library,
+    has_subsample,
+    subsample_design,
+)
 
 from typing import Any, Dict, Union
 from pathlib import Path
@@ -75,6 +80,8 @@ def run_simulation(cf: Union[Dict[str, Any], str, Path],
     # -------------------------------------------------------------------------
     # Read inputs and set up simulation
 
+    base_dir = (os.path.dirname(os.path.abspath(cf))
+                if isinstance(cf, (str, Path)) else None)
     cf = tfscreen.util.read_yaml(cf, override_keys=override_keys)
     
     # Decide if we are going to write out files, make output directory, and make
@@ -82,10 +89,21 @@ def run_simulation(cf: Union[Dict[str, Any], str, Path],
     file_dict = _setup_file_output(output_dir,output_prefix)
     
     # Build library and predict its phenotypes
-    library_df, phenotype_df, genotype_theta_df, parameters_df, _ = library_prediction(cf)
+    # (a subsampled library is simulated with the settings subsample_design
+    # gives it; see genetics/library_subsample.py)
+    sim_cf = cf
+    library_kwargs = {}
+    if has_subsample(cf):
+        library_df, summary = build_library(cf, base_dir=base_dir)
+        sim_cf = dict(cf)
+        sim_cf.update({k: v for k, v in subsample_design(cf, summary).items()
+                       if k != "kept_pool_share"})
+        library_kwargs["library_df"] = library_df
+    library_df, phenotype_df, genotype_theta_df, parameters_df, _ = \
+        library_prediction(sim_cf, **library_kwargs)
 
     # Perform selection experiment
-    sample_df, counts_df = selection_experiment(cf,library_df,phenotype_df)
+    sample_df, counts_df = selection_experiment(sim_cf,library_df,phenotype_df)
 
     # Prepare outputs
     out_dict = {"library":library_df,

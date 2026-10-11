@@ -545,3 +545,41 @@ def test_phenotype_model_file_resolves_like_the_simulator(tmp_path):
     assert _phenotype_model_file(prefix) == prefix + "_phenotype_model.json"
     (tmp_path / "emp.json").write_text("{}")
     assert _phenotype_model_file(prefix) == prefix + ".json"
+
+
+def test_setup_sim_grid_stages_library_genotypes(tmp_path):
+    """library_genotypes (base config or a grid variable) is copied into
+    inputs/; library_subsample is an ordinary grid variable."""
+    study = tmp_path / "study"
+    study.mkdir()
+    (study / "keep.txt").write_text("A1V\n")
+    (study / "keep2.txt").write_text("A1C\n")
+    base = {"seed": 1, "library_genotypes": "keep.txt"}
+    grid_path = _write_study(tmp_path, base, """\
+simulate:
+  - name: subsample
+    variants:
+      - library_subsample: {double-1-2: 100}
+        library_subsample_seed: 3
+      - library_subsample: {double-1-2: 200}
+        library_subsample_seed: 3
+        library_genotypes: keep2.txt
+""")
+    out = str(tmp_path / "grid_out")
+    runs = setup_sim_grid(grid_path, out_dir=out)
+    assert sorted(os.listdir(os.path.join(out, "inputs"))) == ["keep.txt",
+                                                              "keep2.txt"]
+    cfgs = [_read_run_config(out, r) for r in runs]
+    assert cfgs[0]["library_genotypes"] == os.path.join("..", "inputs",
+                                                        "keep.txt")
+    assert cfgs[1]["library_genotypes"] == os.path.join("..", "inputs",
+                                                        "keep2.txt")
+    assert [c["library_subsample"] for c in cfgs] == [{"double-1-2": 100},
+                                                      {"double-1-2": 200}]
+
+
+def test_setup_sim_grid_missing_library_genotypes_raises(tmp_path):
+    grid_path = _write_study(tmp_path, {"library_genotypes": "nope.txt"},
+                             _SEED_BLOCK)
+    with pytest.raises(FileNotFoundError, match="library_genotypes"):
+        setup_sim_grid(grid_path, out_dir=str(tmp_path / "out"))

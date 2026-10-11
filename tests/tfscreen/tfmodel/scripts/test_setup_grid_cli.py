@@ -412,3 +412,21 @@ def test_unstageable_written_config_removes_run_dir(project, monkeypatch):
         setup_grid(_write_grid(project, _default_cm_blocks()), out_dir=str(out))
     run_dirs = [p for p in os.listdir(out) if p != INPUTS_DIRNAME]
     assert run_dirs == []
+
+
+def test_grid_with_subsampled_library_config(project):
+    """A library YAML with a library_genotypes list (relative to the YAML)
+    configures from the original at setup; the snapshot holds only the kept
+    genotypes, and the written config records the subsample but no path
+    outside the grid."""
+    lib = dict(_LIBRARY, library_genotypes="keep.txt")
+    (project / "data" / "library.yaml").write_text(yaml.dump(lib))
+    (project / "data" / "keep.txt").write_text("A2C\nE5A\nA2C/E5D\n")
+    grid_yaml = _write_grid(project, _default_cm_blocks())
+    out = project / "grid_out"
+    runs = setup_grid(grid_yaml, out_dir=str(out))
+    run_dir = out / runs[0]["run"]
+    snap = pd.read_csv(run_dir / "tfs_configure_library.csv")
+    assert set(snap["genotype"]) == {"wt", "A2L", "A2C", "E5A", "A2C/E5D"}
+    cfg = yaml.safe_load((run_dir / "tfs_configure_config.yaml").read_text())
+    assert cfg["library"]["subsample"]["library_genotypes"] == "keep.txt"
