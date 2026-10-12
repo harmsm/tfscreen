@@ -1156,3 +1156,61 @@ On both seeds the mixture stage 1 raises the deepest genotypes' coverage
 about 5%, pheS 2-4%) is now the main error in X's scale, plus a constant
 offset near 0.03.
 
+### Stage 2 with the mixture, at the MAP point (2026-10-12)
+
+`run_point.srun` on both mixture stage 2 fits. Seed 1 finished; seed 2
+ran out of GPU memory at a 4.1 GB allocation even for the one-draw
+posterior (seed 1's identical job succeeded, probably on a larger card).
+Seed 1, X of the doubles:
+
+| doubles, seed 1 | `single` stage 2 | mixture stage 2 (MAP point) |
+|---|---|---|
+| 1e4-1e5: slope / RMSE / error at 0, 1 mM | 1.02 / 0.067 / +0.005, -0.020 | 1.02 / 0.070 / -0.002, -0.010 |
+| > 1e5: slope / RMSE / error at 0, 1 mM | 1.03 / 0.050 / +0.013, -0.025 | 1.03 / 0.044 / +0.006, -0.013 |
+| 1e2-1e3: r / RMSE | 0.65 / 0.51 | 0.50 / 0.86 |
+
+For the deep genotypes the mixture stage 2 trims the offsets by about
+0.01 and leaves slope and RMSE unchanged. At low depth it looks worse, but
+the `single` column is a Laplace median and the mixture's a bare MAP
+point, which scatters more there. Not worth a coupled Laplace.
+
+**The recipe: a mixture stage 1, then a `single` stage 2.** Stage 1 needs
+congression modeled to get pheS's m right; with k and m pinned, stage 2
+gets X right without it.
+
+## The real data: mixture stage 1 under two assumptions about wt
+
+The mixture needs the pool's composition, and wt's purity (how much of wt
+is clean spike rather than bulk) is not known for these data. Two
+variants of the real no-doubles stage 1 with the mixture (max rule,
+lambda prior 0.38 +- 0.15, the lab's estimate 0.357 with 95% CI
+0.156-0.674 in log space):
+
+| variant | library config | wt in the fit's pool |
+|---|---|---|
+| `cfg` | the real config as written (design mixture 100 / 100 / 1000 / 1) | 1.2% of the pool, 99% bulk (about 17% of its cells congressed) |
+| `wtspiked` | the simulation's config (the realized mixture from the initial composition, plus wt repeated in the spiked origin) | 11% of the pool, 23% bulk (about 4% congressed) |
+
+`wtspiked` is the composition the simulation was built to match (the
+realized starting pool has wt at about 11%); its config has the same
+genetics keys as the real one, so it serves as the library config. Both
+stay on the cluster (lab-derived). Readout: kanR+kan m against the
+monoculture's -0.0141 (the all-singles stage 1 without the mixture sat on
+it; in the simulation the mixture moved kanR about 3% steeper), and pheS+4CP
+m against the monoculture's 0.0144. kanR may not separate the variants
+strongly, since its congression bias is small.
+
+### How to run the two real variants
+
+```bash
+cd /gpfs/projects/harmslab/harms/studies/dev-data/real_fit/m_subsets_real
+```
+
+```bash
+cp /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/run_arm.sh . && for v in cfg wtspiked; do mkdir no_doubles_mix_${v} && (cd no_doubles_mix_${v} && ln -s ../no_doubles/tfs_growth.csv . && cp ../no_doubles/growth_priors_loose.csv . && if [ $v = cfg ]; then cp ../no_doubles/library_config.yaml .; else cp /gpfs/projects/harmslab/harms/studies/full-sized-sims-3/sim_realistic_s2/simulate_config.yaml library_config.yaml; fi && echo "--transformation_model mixture --transformation_lambda 0.38 0.15 --congression_theta_rule max" > configure_extra.txt && sbatch ../run_arm.srun); done
+```
+
+Check: `grep -c "" no_doubles_mix_wtspiked/library_config.yaml` is about
+350 lines (the full simulate config) and `no_doubles_mix_cfg`'s is the
+short real config; each `configure.log` shows the mixture flags.
+

@@ -132,8 +132,20 @@ is the monoculture), so the real kanR curves are likely compressed too.
    Congression is the pheS bias's cause: without it stage 1's pheS m is
    1.035 of the truth (0.895 with it); kanR does not move. Next: a stage
    1 of wt and the spikes (little congression, few genotypes), on both
-   seeds and the real data. Step 2 now needs (a) the stage-1 m bias fixed or corrected and (b)
-   k's uncertainty from resampling stage 1, not its Laplace.
+   seeds and the real data. Step 2 now needs (a) the stage-1 m bias
+   fixed or corrected and (b) k's uncertainty from resampling stage 1,
+   not its Laplace.
+   (a) done 2026-10-12 in the simulation. Spikes alone worked on the
+   simulation but not the real data (nine genotypes cannot pin X's
+   scale), and adding the 300 deepest singles brought the pheS bias back.
+   Congression is not the doubles' pull, which persists without it. A
+   stage 1 with the congression mixture (max rule, lambda prior 0.357 +-
+   0.15) removes the pheS bias (pheS m 1.02-1.04 of the truth). The recipe
+   is a mixture stage 1 and a `single` stage 2: deepest-genotype coverage
+   0.76 / 0.67 on seeds 1 / 2 (0.65 / 0.51 before); a mixture stage 2
+   adds nothing for the deep genotypes. Left: a small steep m bias
+   (2-6%), k's uncertainty (b), and, for the real data, wt's purity (the
+   X gauge), which the mixture needs.
 3. [ ] **pheS+4CP.** The real fit's pheS selection departs from the
    monoculture differently (k much higher, |m| smaller). Decide with step
    1's real arm whether the anchor holds there or the condition needs the
