@@ -1214,3 +1214,41 @@ Check: `grep -c "" no_doubles_mix_wtspiked/library_config.yaml` is about
 350 lines (the full simulate config) and `no_doubles_mix_cfg`'s is the
 short real config; each `configure.log` shows the mixture flags.
 
+### The two real variants (2026-10-12)
+
+Both joint stages ended at the epoch cap creeping about 1 nat per window
+(nuisance parameters moving, not k or m).
+
+| real stage 1 | no mixture | mixture, `cfg` | mixture, `wtspiked` | wt monoculture |
+|---|---|---|---|---|
+| kanR+kan k / m | 0.0160 / -0.0141 | 0.0167 / -0.0147 | 0.0160 / -0.0139 | 0.0150 / -0.0141 |
+| pheS+4CP k / m | 0.0117 / 0.0061 | 0.0120 / 0.0068 | 0.0122 / 0.0062 | 0.0031 / 0.0144 |
+| fitted lambda | | 0.365 | 0.174 | measured 0.357 (0.16-0.67) |
+| final exact loss | | 856,117 | 856,142 | |
+
+- **Congression barely moves the real pheS m** (0.0061 to 0.0068 or
+  0.0062; it moved the simulation's about 15%). The real pheS gap with the
+  monoculture (about 2x) is mostly something else: step 3, and the pheS
+  curves stay provisional.
+- **The data lean toward wt mostly bulk (`cfg`):** about 25 nats better
+  on the same data (about 2 of them the lambda prior), and its fitted
+  lambda lands on the measurement while `wtspiked` drives it to the low
+  end of the interval. Neither is decisive (the `max` rule fit lambda
+  about 25% low in the simulation), but both point the same way.
+- **kanR stays within about 4% of the monoculture** either way (the
+  variants differ by about 6%).
+
+Next: the real stage 2 (`single`, every condition pinned at the `cfg`
+mixture stage 1), `held_mix_real`, to compare with round 6
+(`held_all_real`):
+
+```bash
+cd /gpfs/projects/harmslab/harms/studies/dev-data/real_fit
+```
+
+```bash
+mkdir held_mix_real && cd held_mix_real && python /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/held_priors.py ../m_subsets_real/no_doubles_mix_cfg --out growth_priors_held.csv && ln -s ../recipe/tfs_growth.csv . && cp ../../processed/library_config.yaml . && sbatch /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/run_held.srun
+```
+
+Check: kanR+kan k 0.016722, m -0.014744 in the printed table.
+

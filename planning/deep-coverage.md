@@ -146,6 +146,12 @@ is the monoculture), so the real kanR curves are likely compressed too.
    adds nothing for the deep genotypes. Left: a small steep m bias
    (2-6%), k's uncertainty (b), and, for the real data, wt's purity (the
    X gauge), which the mixture needs.
+   Real mixture stage 1 (2026-10-12): congression barely moves the real
+   pheS m (0.0061 to 0.0068), so the real pheS gap (about 2x the
+   monoculture) is mostly not congression (step 3). The data lean toward
+   wt mostly bulk (the real config as written: 25 nats better, fitted
+   lambda 0.365 on the measured 0.357). kanR within 4% of the monoculture.
+   Next: the real stage 2 at that stage 1 (`held_mix_real`).
 3. [ ] **pheS+4CP.** The real fit's pheS selection departs from the
    monoculture differently (k much higher, |m| smaller). Decide with step
    1's real arm whether the anchor holds there or the condition needs the
