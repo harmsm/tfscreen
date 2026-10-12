@@ -1109,3 +1109,50 @@ Each `held_priors.py` prints the pinned table (seed 1 kanR+kan m about
 (`extra: none` for `single`). Score with `score_x.py` against
 `held_s2` (seed 1) and `sim_realistic_seed2/stage2` (seed 2).
 
+### Stage 2 after a mixture stage 1: first results (2026-10-12)
+
+`stage2_single_seed1` (k and m pinned at the mixture stage 1, stage 2
+`single`) converged; against round 3 (stage 1 without the mixture):
+
+| doubles, seed 1 | round 3 | mixture stage 1, `single` stage 2 |
+|---|---|---|
+| 1e4-1e5: slope / RMSE / 95% coverage | 0.95 / 0.07 / 0.90 | 1.02 / 0.07 / 0.90 |
+| > 1e5: slope / RMSE / 95% coverage | 0.96 / 0.05 / 0.65 | 1.03 / 0.05 / 0.76 |
+| deep X error at 0 / 1 mM | +0.02 / -0.05 | +0.005 / -0.02 |
+
+The better stage 1 roughly halves the X offset and raises the deepest
+genotypes' coverage from 0.65 to 0.76.
+
+`stage2_mix_seed1`'s MAP converged (162,000 steps, no memory trouble), but
+the arrowhead Laplace refuses it: "genotype blocks are coupled (response
+on unprobed genotypes 1.10e-02 of the probed ones)". The mixture couples
+each genotype to its co-resident partners' X, which the block Laplace
+assumes away; the coupling is about 1% of a genotype's own response. Seed
+2's mixture run's MAP converged too (102,000 steps); its Laplace ran out
+of GPU memory (a 26.6 GB allocation) before reaching the coupling check. `run_point.srun` finishes such a
+fit at the MAP point (`--laplace point`, predict, summarize), enough to
+compare X points with `single`. If the mixture stage 2 is worth keeping,
+its intervals need a Laplace that tolerates (or drops) couplings this small.
+
+```bash
+cd /gpfs/projects/harmslab/harms/studies/full-sized-sims-3/stage2_mix_seed1 && sbatch /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/run_point.srun
+```
+
+Once `stage2_mix_seed2/run.err` shows the same error, the same in
+`stage2_mix_seed2`.
+
+`stage2_single_seed2` converged; against seed 2's first two-stage fit
+(stage 1 without the mixture):
+
+| doubles, seed 2 | stage 1 without mixture | mixture stage 1, `single` stage 2 |
+|---|---|---|
+| 1e4-1e5: slope / RMSE / 95% coverage | 0.97 / 0.07 / 0.87 | 1.04 / 0.07 / 0.88 |
+| > 1e5: slope / RMSE / 95% coverage | 0.98 / 0.06 / 0.51 | 1.05 / 0.06 / 0.67 |
+| deep X error at 0 / 1 mM | +0.05 / +0.01 | +0.03 / +0.03 |
+
+On both seeds the mixture stage 1 raises the deepest genotypes' coverage
+(0.65 to 0.76, 0.51 to 0.67). The slope now overshoots slightly
+(1.03-1.05): the small steep bias the mixture stage 1 keeps in m (kanR
+about 5%, pheS 2-4%) is now the main error in X's scale, plus a constant
+offset near 0.03.
+
