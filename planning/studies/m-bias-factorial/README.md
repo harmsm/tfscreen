@@ -988,3 +988,19 @@ python /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/make_subsets.
 python /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/make_subsets.py sim_realistic_seed2 --arms spikes_deep --out_dir sim_realistic_seed2/stage1 && (cd sim_realistic_seed2/stage1/spikes_deep && sbatch ../run_arm.srun)
 ```
 
+### Option 2 result (2026-10-11)
+
+| stage-1 m / truth | all singles | spikes only | spikes + 300 deepest singles |
+|---|---|---|---|
+| seed 1, kanR+kan | 1.028 | 1.040 | 1.014 |
+| seed 1, pheS+4CP | 0.895 | 1.037 | 0.889 |
+| seed 2, kanR+kan | 1.017 | 0.969 | 1.024 |
+| seed 2, pheS+4CP | 0.897 | 0.988 | 0.908 |
+
+The deepest singles are as congressed as the rest; once they are in, the
+pheS bias is back at the all-singles level (seed 1's joint stage at the
+epoch cap, seed 2 converged). A stage 1 large enough to pin X's scale
+carries congression, so congression has to be modeled (option 3). The
+one-stage no-congression fit decides whether that goes into one full
+fit or into stage 1.
+
