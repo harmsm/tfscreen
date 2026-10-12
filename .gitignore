@@ -229,6 +229,7 @@ planning/studies/m-bias-factorial/held_all_*/
 planning/studies/m-bias-factorial/km_draws/
 planning/studies/m-bias-factorial/sim_realistic_seed2/
 planning/studies/m-bias-factorial/sim_realistic_nocong/
+planning/studies/m-bias-factorial/stage2_*/
 
 .DS_Store 
 

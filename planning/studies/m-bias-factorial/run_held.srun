@@ -27,15 +27,19 @@
 #          held fit at nearby k and m) to start the MAP from (--init_from;
 #          that also skips the staged MAP). Step 2's draws start from the
 #          round 3 MAP this way.
+#   configure_extra.txt (optional file, one line): extra tfs-configure-model
+#          flags, e.g. the congression mixture.
 
 module load cuda/12.4.1
 
 set -e
 SEED="${SEED:-1}"
 PINS="${PINS-m_pinned=1 k_pinned=1}"
+EXTRA=""
+[[ -f configure_extra.txt ]] && EXTRA="$(cat configure_extra.txt)"
 
-echo ">>> Configure (k, m held; pins: ${PINS:-none}) $(date)"
-tfs-configure-model \
+echo ">>> Configure (k, m held; pins: ${PINS:-none}; extra: ${EXTRA:-none}) $(date)"
+tfs-configure-model ${EXTRA} \
     --allow_missing_spikes \
     --growth_df tfs_growth.csv \
     --library_config library_config.yaml \

@@ -1058,3 +1058,54 @@ The `cp run_arm.sh` replaces the copy already in each folder with the one
 that reads `configure_extra.txt`. In each arm's `configure.log` the
 command line shows the mixture flags.
 
+### Option 3 result: stage 1 (2026-10-11)
+
+| stage-1 m / truth | seed 1 | seed 2 |
+|---|---|---|
+| without mixture, kanR+kan | 1.028 | 1.017 |
+| without mixture, pheS+4CP | 0.895 | 0.897 |
+| with mixture, kanR+kan | 1.056 | 1.047 |
+| with mixture, pheS+4CP | 1.037 | 1.023 |
+
+**Modeling congression removes stage 1's pheS bias** on both seeds. Both
+markers keep a small steep bias (2-6%). Seed 2 converged at every stage;
+seed 1's first stage reached its cap, the later ones converged. The
+fitted lambda is 0.27 and 0.25 against the simulation's 0.357, inside the
+prior: the `max` rule lets the higher-θ plasmid set a shared cell's θ
+completely, where `homodimer` only leans toward it, so fewer congressed
+cells reproduce the same effect. On real data the fitted lambda is a
+model parameter, not the measured one; keep it fitted, with the
+measurement as its prior.
+
+## Stage 2 after a mixture stage 1
+
+k and m pinned at the mixture stage 1, on both seeds, with stage 2 fitted
+without the mixture (`single`, as rounds 3 and 6) and with it (every
+genotype's partners are in the full library; a few cell classes per
+genotype, so heavier). `run_held.srun` reads `configure_extra.txt` like
+`run_arm.sh`. All four use the simulation's composition as the library
+config, as the stage 1 did.
+
+### How to run
+
+```bash
+cd /gpfs/projects/harmslab/harms/studies/full-sized-sims-3
+```
+
+Seed 1 (`sim_realistic_s2`), stage 2 without and with the mixture:
+
+```bash
+for v in single mix; do mkdir stage2_${v}_seed1 && (cd stage2_${v}_seed1 && python /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/held_priors.py ../m_subsets/no_doubles_mix --out growth_priors_held.csv && ln -s ../sim_realistic_s2/tfs_growth.csv ../sim_realistic_s2/tfs_sim_* . && cp ../sim_realistic_s2/simulate_config.yaml library_config.yaml && if [ $v = mix ]; then echo "--transformation_model mixture --transformation_lambda 0.357 0.15 --congression_theta_rule max" > configure_extra.txt; fi && sbatch /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/run_held.srun); done
+```
+
+Seed 2:
+
+```bash
+for v in single mix; do mkdir stage2_${v}_seed2 && (cd stage2_${v}_seed2 && python /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/held_priors.py ../sim_realistic_seed2/stage1/no_doubles_mix --out growth_priors_held.csv && ln -s ../sim_realistic_seed2/tfs_growth.csv ../sim_realistic_seed2/tfs_sim_* . && cp ../sim_realistic_seed2/simulate_config.yaml library_config.yaml && if [ $v = mix ]; then echo "--transformation_model mixture --transformation_lambda 0.357 0.15 --congression_theta_rule max" > configure_extra.txt; fi && sbatch /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/run_held.srun); done
+```
+
+Each `held_priors.py` prints the pinned table (seed 1 kanR+kan m about
+-0.0146). Each `run.out` names the extra flags on its configure line
+(`extra: none` for `single`). Score with `score_x.py` against
+`held_s2` (seed 1) and `sim_realistic_seed2/stage2` (seed 2).
+
