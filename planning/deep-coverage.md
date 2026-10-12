@@ -151,7 +151,9 @@ is the monoculture), so the real kanR curves are likely compressed too.
    monoculture) is mostly not congression (step 3). The data lean toward
    wt mostly bulk (the real config as written: 25 nats better, fitted
    lambda 0.365 on the measured 0.357). kanR within 4% of the monoculture.
-   Next: the real stage 2 at that stage 1 (`held_mix_real`).
+   The real stage 2 at that stage 1 (`held_mix_real`, 2026-10-12)
+   converged with no k, m or slide direction held; its X is round 6's
+   compressed about 6% (r >= 0.998), 1.39 times the original recipe's.
 3. [ ] **pheS+4CP.** The real fit's pheS selection departs from the
    monoculture differently (k much higher, |m| smaller). Decide with step
    1's real arm whether the anchor holds there or the condition needs the

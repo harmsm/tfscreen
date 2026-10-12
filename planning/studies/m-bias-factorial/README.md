@@ -1252,3 +1252,23 @@ mkdir held_mix_real && cd held_mix_real && python /gpfs/home/harms/tfscreen/plan
 
 Check: kanR+kan k 0.016722, m -0.014744 in the printed table.
 
+### The real stage 2 under the full recipe (2026-10-12)
+
+`held_mix_real`: every condition pinned at the real mixture stage 1 (wt
+mostly bulk), stage 2 `single`. Every stage converged; one small held
+direction (dk_geno's population mean, eigenvalue -6.8e3), none on k, m or
+the slide; tube offsets SD 0.20.
+
+| real X, full recipe against | round 6 | the original recipe (one stage) |
+|---|---|---|
+| r, doubles above 100 reads | 0.999-1.000 | 0.991-0.999 |
+| slope | 0.94 | 1.39 |
+| deep doubles' median X, 0 to 1 mM | 0.53 to 0.13, now 0.53 to 0.15 | 0.42 to 0.14, now 0.53 to 0.15 |
+
+Against round 6 the real X compresses about 6%, as the mixture stage 1's
+slightly steeper m predicts (kanR -0.0147 against -0.0141, pheS 0.0068
+against 0.0061); ranking and shapes are unchanged and the widths shrink
+with X. Against the original recipe the real X stretches about 1.39 (1.47
+in round 6). The kanR part of the scale sits within 4% of the monoculture;
+the pheS part waits on step 3.
+
