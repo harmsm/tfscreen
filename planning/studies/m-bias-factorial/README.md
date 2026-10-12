@@ -1004,3 +1004,57 @@ carries congression, so congression has to be modeled (option 3). The
 one-stage no-congression fit decides whether that goes into one full
 fit or into stage 1.
 
+### One-stage fit without congression (2026-10-11)
+
+`sim_realistic_nocong`, the full library through `run_full_size.srun`;
+every stage converged.
+
+| full-library m / truth | congression on | congression off |
+|---|---|---|
+| kanR+kan | 1.47 | 1.37 |
+| pheS+4CP | 1.43 | 1.51 |
+
+**The doubles' pull is not congression.** Two separate problems: the
+doubles steepen m about 1.45-fold (fixed by the two stages), and
+congression flattens pheS's m about 0.9-fold in any stage 1 large enough to
+pin X's scale. So congression is modeled inside the two-stage fit, in
+stage 1.
+
+## Option 3: stage 1 with the congression mixture
+
+Stage 1 without doubles, with `--transformation_model mixture
+--transformation_lambda 0.357 0.15 --congression_theta_rule max`
+(`run_arm.sh` reads extra configure flags from the arm's
+`configure_extra.txt`). Two approximations: the fit draws each genotype's
+co-resident partners from the genotypes with growth data, so in stage 1
+from wt, the spikes and the singles, while the real partners are mostly
+doubles (in the simulation singles and doubles draw their phenotypes from
+the same distribution); and the fit's `max` rule stands in for the
+simulation's `homodimer`. The arm is configured with the simulation's own
+composition (`simulate_config.yaml` as the library config: wt's 271
+spiked copies, so wt is mostly clean, as in the simulated pool), so the test
+is of modeling congression, not of knowing wt's purity. On real data, wt's
+purity is unknown (the excess wt is being worked out at the bench).
+
+### How to run option 3 (both seeds, reusing the no-doubles tables)
+
+```bash
+cd /gpfs/projects/harmslab/harms/studies/full-sized-sims-3/m_subsets
+```
+
+```bash
+cp /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/run_arm.sh . && mkdir no_doubles_mix && cd no_doubles_mix && ln -s ../no_doubles/tfs_growth.csv ../no_doubles/tfs_sim_* . && cp ../no_doubles/{simulate_config.yaml,growth_priors_loose.csv} . && cp simulate_config.yaml library_config.yaml && echo "--transformation_model mixture --transformation_lambda 0.357 0.15 --congression_theta_rule max" > configure_extra.txt && sbatch ../run_arm.srun
+```
+
+```bash
+cd /gpfs/projects/harmslab/harms/studies/full-sized-sims-3/sim_realistic_seed2/stage1
+```
+
+```bash
+cp /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/run_arm.sh . && mkdir no_doubles_mix && cd no_doubles_mix && ln -s ../no_doubles/tfs_growth.csv ../no_doubles/tfs_sim_* . && cp ../no_doubles/{simulate_config.yaml,growth_priors_loose.csv} . && cp simulate_config.yaml library_config.yaml && echo "--transformation_model mixture --transformation_lambda 0.357 0.15 --congression_theta_rule max" > configure_extra.txt && sbatch ../run_arm.srun
+```
+
+The `cp run_arm.sh` replaces the copy already in each folder with the one
+that reads `configure_extra.txt`. In each arm's `configure.log` the
+command line shows the mixture flags.
+

@@ -18,7 +18,12 @@ SEED="${SEED:-1}"
     --od600_calibration_file tfs_sim_od600_calibration.yaml \
     --tube_volume_mL 5 --out_prefix tfs_growth --no_verbose > process.log 2>&1
 
-[[ -f tfs_configure_config.yaml ]] || tfs-configure-model \
+# configure_extra.txt (optional, one line): extra tfs-configure-model flags
+# for this arm, e.g. the congression mixture.
+EXTRA=""
+[[ -f configure_extra.txt ]] && EXTRA="$(cat configure_extra.txt)"
+
+[[ -f tfs_configure_config.yaml ]] || tfs-configure-model ${EXTRA} \
     --allow_missing_spikes \
     --growth_df tfs_growth.csv \
     --library_config library_config.yaml \
