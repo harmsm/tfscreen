@@ -12,6 +12,7 @@ related:
   - planning/experiment-pipeline.md
   - planning/design-noise-sweep.md
   - planning/studies/m-bias-factorial/README.md
+  - planning/studies/two-stage-validation/README.md
   - planning/studies/full-size-sim/make_sim_config.py
   - src/tfscreen/tfmodel/scripts/configure_model_cli.py
   - src/tfscreen/tfmodel/scripts/fit_model_cli.py
@@ -155,7 +156,10 @@ simulation. Intervals matter for the final analysis.
 4. [ ] **Validate by reproduction.** Rerun the seed-1 and seed-2
    simulations through the command and match the study's numbers
    (stage 1 m ratios; coverage 0.94 / 0.91 on seed 1); rerun the real
-   data and match `held_mix_real`.
+   data and match `held_mix_real`. Set up 2026-10-13 as
+   `planning/studies/two-stage-validation/` (three chained SLURM runs via
+   `submit.sh`; `validate.py` compares each with the study's outputs and
+   gives the consistency flag's no-signal rate on the simulations).
 5. [ ] **Scoring for simulations.** X against the truth by read depth
    (`score_x.py`) as a `tfs-summarize-fit` option or its own CLI, so the
    students score design sweeps without study scripts.
