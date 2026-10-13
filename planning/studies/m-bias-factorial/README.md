@@ -1461,3 +1461,55 @@ python /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/control_dk_ch
 Each reads its 8 GB growth table twice (about 10 minutes) and prints the
 two libraries' dk agreement and the offset-delta_dk correlations.
 
+#### Result (2026-10-12)
+
+| | seed 1 (shared dk) | real |
+|---|---|---|
+| deep doubles with both controls | 16,509 | 16,982 |
+| r(offset, delta_dk), all / worst 8% | 0.40 / 0.65 | 0.40 / 0.52 |
+| slope, all / worst 8% (about 34 expected for a real dk effect) | 5.9 / 15.7 | 6.7 / 14.1 |
+| delta_dk SD across genotypes / median SE | 0.0086 / 0.0026 | 0.0118 / 0.0041 |
+| r(dk_kanR, dk_pheS) | 0.26 | 0.04 |
+
+**No evidence for a library-specific dk_geno.** The offset-delta_dk
+correlation is as strong on the simulation, where none exists: the
+kanR-only fit takes its dk from the same kanR control tubes `dk_kanR` is
+estimated from, so their noise is shared. The real data do not exceed
+that benchmark, and the slopes are far below what a real dk difference
+would give. delta_dk's spread is about three times its Poisson SE in
+both (tube-level noise the counting SE does not see). The real controls
+agree less on each genotype's dk (r 0.04 against 0.26), with larger
+SEs; that fits a smaller real dk spread relative to the noise and does
+not single out a library effect. A marker-specific dk_geno is not
+supported and would be poorly constrained. The tail stays unexplained;
+the per-genotype marker-consistency flag is the handling.
+
+### k's uncertainty in X (seed 1, 2026-10-13)
+
+Both k-band refits (k at plus and minus one jackknife SD along the main
+direction, from `stage2_single_seed1`'s MAP) converged. `k_band.py` adds
+X's k-driven SD in quadrature to the stage 2 Laplace SD:
+
+| seed-1 doubles | stage 2 Laplace only | with k's uncertainty |
+|---|---|---|
+| 1e3-1e4: 95% coverage / width | 0.883 / 0.48 | 0.897 / 0.50 |
+| 1e4-1e5: 95% coverage / width | 0.896 / 0.20 | 0.939 / 0.24 |
+| > 1e5: 95% coverage / width | 0.761 / 0.07 | 0.905 / 0.15 |
+
+**The deep genotypes' intervals come close to nominal.** Points, slope
+and RMSE are unchanged; only the widths grow, and only where k matters.
+What is left above 1e5 reads (0.905) is the accepted steep m bias (slope
+1.03).
+
+**k's uncertainty is a shift shared by every genotype.** One SD moves
+every non-wt genotype's X by -0.032 (low IPTG) to -0.038 (1 mM), with a
+genotype-to-genotype SD of about 0.005 and no dependence on the genotype's
+own X; wt is fixed by the gauge. In quadrature it is about 0.034 for
+every genotype, against a Laplace SD of 1.37 at <= 100 reads and 0.018
+above 1e5. Because it is shared, it should not widen comparisons between
+genotypes; epistasis on X (X_ab - X_a - X_b + X_wt) keeps one copy of it,
+since wt does not shift. The pipeline should therefore carry it as one
+shared random offset per posterior draw (per IPTG level) added to every
+non-wt genotype, not as independent width, so that downstream draws
+(`tfs-predict-epistasis`, rankings) get the correlation right.
+

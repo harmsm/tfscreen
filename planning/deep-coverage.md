@@ -169,7 +169,12 @@ is the monoculture), so the real kanR curves are likely compressed too.
    with its Laplace and its error (6-9 SE) is the accepted bias. 94% of
    k's variance is one direction, so two stage 2 refits along it (plus
    and minus one SD) measure X's k sensitivity; `k_band.py` widens X's
-   intervals with it. Next: score that on seed 1.
+   intervals with it. Scored on seed 1 (2026-10-13): 95% coverage 0.94 at
+   1e4-1e5 reads and 0.91 above 1e5 (0.90 and 0.76 without), the rest
+   being the accepted m bias. k's uncertainty is a shift shared by every
+   non-wt genotype (one SD moves X by -0.032 to -0.038, genotype-to-
+   genotype SD 0.005), so the pipeline should add it as one shared
+   offset per posterior draw, not as independent width.
    Accepted as a limitation (user, 2026-10-12): stage 1's small steep m
    bias (2-6% in the simulation, an X slope of 1.03-1.05). Resampling
    does not cover a bias; quantify it from the simulation for the paper,
@@ -191,7 +196,12 @@ is the monoculture), so the real kanR curves are likely compressed too.
    genotypes (marker-consistency z between the kanR-only and both-marker
    fits). Candidate cause: dk_geno shared across markers while real
    fitness effects may differ in kan and 4CP; a marker-specific dk_geno
-   would test it.
+   would test it. Tested 2026-10-12 without a refit (`control_dk_check.py`):
+   the tail's X offsets track the difference in control-condition growth
+   between libraries no more than on the simulation, where dk is shared
+   (r 0.40 in both; slopes about 6, against about 34 for a real effect),
+   and the real controls barely agree on any genotype's dk (r 0.04). Not
+   supported; the tail stays unexplained and flagged.
 4. [ ] **Then the shallow genotypes' points.** Hold the X population SDs
    (`theta_{X_low,X_delta,log_hill_K}_hyper_scale_fixed`) so genotypes
    below 1e3 reads shrink toward the population instead of scattering;
@@ -201,7 +211,14 @@ is the monoculture), so the real kanR curves are likely compressed too.
    congression mixture, stage 2 on the full library with every
    condition's k and m pinned at it, and the resampled intervals of step
    2. The students' design simulations and the NSF preliminary data use
-   it. Design it once step 2's resampling is settled.
+   it. Step 2's method is settled (2026-10-13): a delete-d jackknife of
+   stage 1 (20% of tubes, about 30 refits of about 950 genotypes), two
+   stage 2 refits at plus and minus one SD along k's main direction
+   (started from the stage 2 MAP), and the X shift between them added to
+   the posterior draws as one shared offset per draw. Pieces to build:
+   the stage-1 subset and its mixture fit, the jackknife, the two
+   refits, and the shared-offset draws in `tfs-sample-posterior` or a
+   post-processing step; plus the marker-consistency flag (step 3).
 
 ## Out of scope
 
