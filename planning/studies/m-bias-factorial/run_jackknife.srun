@@ -1,0 +1,52 @@
+#!/bin/bash -l
+#SBATCH --account=harmslab
+#SBATCH --job-name=tfs_jk
+#SBATCH --output=jk_%a.out
+#SBATCH --error=jk_%a.err
+#SBATCH --partition=gpulong
+#SBATCH --time=00-08:00:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --gpus=1
+#SBATCH --mem=0
+#SBATCH --ntasks-per-node=1
+#SBATCH --array=1-30%10
+
+
+# Delete-d jackknife of a stage-1 fit (planning/deep-coverage.md, k/m
+# uncertainty): array task i drops a random DROP_FRAC of the tubes
+# (stratified by condition and IPTG; resample_growth.py, seed i) from the
+# stage-1 growth table and refits stage 1 with the same model, in jk_NN/.
+# Submit from the directory that should hold jk_*/; boot_summary.py then
+# turns the fits into k and m standard errors.
+#
+#   SRC       the stage-1 growth table (absolute path)
+#   CONF      the stage-1 fit's directory: its library_config.yaml,
+#             growth_priors_loose.csv and configure_extra.txt (if any) are
+#             copied, so every subsample fits the same model
+#   DROP_FRAC share of tubes dropped (default 0.2)
+#   TFS       the tfscreen checkout (default /gpfs/home/harms/tfscreen)
+#
+# The fit seed is 1 for every task, so the spread is the data's.
+
+module load cuda/12.4.1
+
+set -e
+SRC="${SRC:?set SRC}"
+CONF="${CONF:?set CONF}"
+DROP_FRAC="${DROP_FRAC:-0.2}"
+TFS="${TFS:-/gpfs/home/harms/tfscreen}"
+STUDY="${TFS}/planning/studies/m-bias-factorial"
+i="${SLURM_ARRAY_TASK_ID:?run as an array job}"
+d="$(printf 'jk_%02d' "${i}")"
+
+mkdir -p "${d}" && cd "${d}"
+if [[ ! -f tfs_growth.csv ]]; then
+    python "${STUDY}/resample_growth.py" "${SRC}" --drop_frac "${DROP_FRAC}" \
+        --seed "${i}" --out tfs_growth.csv > resample.log
+fi
+cp "${CONF}/library_config.yaml" "${CONF}/growth_priors_loose.csv" .
+[[ -f "${CONF}/configure_extra.txt" ]] && cp "${CONF}/configure_extra.txt" .
+echo ">>> Stage 1 fit ${d} $(date)"
+SEED=1 bash "${STUDY}/run_arm.sh"
+echo ">>> Done ${d} $(date)"

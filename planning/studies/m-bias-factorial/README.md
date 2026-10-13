@@ -1272,3 +1272,64 @@ with X. Against the original recipe the real X stretches about 1.39 (1.47
 in round 6). The kanR part of the scale sits within 4% of the monoculture;
 the pheS part waits on step 3.
 
+## The kanR-only check
+
+Stage 2 on the kanR tubes alone, with kanR's k and m pinned at the same
+mixture stage 1, against the both-marker fit. If the pheS gap's cause
+depends on genotype, the pheS data bend the X curves and the two
+disagree. The seed-1 simulation shows what agreement looks like when
+pheS is fine. `resample_growth.py --library kanR` keeps one library's
+tubes; `held_priors.py --only kanR` keeps kanR's pinned conditions.
+
+Real (about 6 minutes to filter the growth table, then about 5 hours):
+
+```bash
+cd /gpfs/projects/harmslab/harms/studies/dev-data/real_fit
+```
+
+```bash
+mkdir kanR_only_real && cd kanR_only_real && python /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/resample_growth.py ../recipe/tfs_growth.csv --library kanR --out tfs_growth.csv && cp ../../processed/library_config.yaml . && python /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/held_priors.py ../m_subsets_real/no_doubles_mix_cfg --only kanR --out growth_priors_held.csv && sbatch /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/run_held.srun
+```
+
+Simulation, seed 1:
+
+```bash
+cd /gpfs/projects/harmslab/harms/studies/full-sized-sims-3
+```
+
+```bash
+mkdir kanR_only_seed1 && cd kanR_only_seed1 && python /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/resample_growth.py ../sim_realistic_s2/tfs_growth.csv --library kanR --out tfs_growth.csv && ln -s ../sim_realistic_s2/tfs_sim_* . && cp ../sim_realistic_s2/simulate_config.yaml library_config.yaml && python /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/held_priors.py ../m_subsets/no_doubles_mix --only kanR --out growth_priors_held.csv && sbatch /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/run_held.srun
+```
+
+Each `resample_growth.py` prints the kanR tube count; each
+`held_priors.py` prints two rows (kanR+kan, kanR-kan). Compare with
+`held_mix_real` and `stage2_single_seed1`.
+
+## Stage 1's k and m uncertainty: delete-d jackknife
+
+`run_jackknife.srun` (an array of 30, at most 10 at once) drops a random
+20% of the tubes from the stage-1 growth table, stratified by condition and
+IPTG (`resample_growth.py --drop_frac`, seed = task number), and refits
+the mixture stage 1 in `jk_NN/` with the same model (it copies the full
+stage 1's `library_config.yaml`, `growth_priors_loose.csv` and
+`configure_extra.txt`). Tubes cannot be resampled with replacement: a
+duplicated tube lands on the original's tensor cell. `jackknife_summary.py`
+scales the subsample spread by (n - d) / d and, on the simulation,
+compares the full stage 1's error with the jackknife SE. Seed 1 first;
+seed 2 the same way for a second check of the SE against a known error.
+
+```bash
+cd /gpfs/projects/harmslab/harms/studies/full-sized-sims-3
+```
+
+```bash
+mkdir jk_seed1 && cd jk_seed1 && sbatch --export=ALL,SRC=$PWD/../m_subsets/no_doubles/tfs_growth.csv,CONF=$PWD/../m_subsets/no_doubles_mix /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/run_jackknife.srun
+```
+
+Each task writes `jk_NN.out` ending `>>> Done jk_NN` (about 20-30 minutes
+each). Then, in `jk_seed1/`:
+
+```bash
+python /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/jackknife_summary.py . --full ../m_subsets/no_doubles_mix --truth ../sim_realistic_s2
+```
+

@@ -154,14 +154,41 @@ is the monoculture), so the real kanR curves are likely compressed too.
    The real stage 2 at that stage 1 (`held_mix_real`, 2026-10-12)
    converged with no k, m or slide direction held; its X is round 6's
    compressed about 6% (r >= 0.998), 1.39 times the original recipe's.
-3. [ ] **pheS+4CP.** The real fit's pheS selection departs from the
-   monoculture differently (k much higher, |m| smaller). Decide with step
-   1's real arm whether the anchor holds there or the condition needs the
-   growth-transition work first.
+   Next (decided 2026-10-12, user): (i) k and m's uncertainty from a
+   delete-d jackknife of the mixture stage 1 (drop 20% of tubes,
+   stratified by condition and IPTG; tubes cannot be duplicated, so no
+   classic bootstrap), checked on the simulation against stage 1's known
+   errors on both seeds (`run_jackknife.srun`, `jackknife_summary.py`);
+   (ii) then carry it into X. Refitting stage 2 at every draw costs
+   2-5 GPU hours each; k and m mostly shift and stretch X, so refit
+   stage 2 at two or three draws, measure that map per genotype, and
+   apply it to all the jackknife draws. Check coverage by depth on the
+   simulation.
+   Accepted as a limitation (user, 2026-10-12): stage 1's small steep m
+   bias (2-6% in the simulation, an X slope of 1.03-1.05). Resampling
+   does not cover a bias; quantify it from the simulation for the paper,
+   and correct it from the simulation only if the methods need it.
+3. [ ] **pheS+4CP.** Accepted as a limitation for now, possibly for the
+   paper (user, 2026-10-12): the real pool's pheS selection is about half
+   the wt monoculture's (m 0.0068 against 0.0144) and congression explains
+   little of it. The two-stage fit takes pheS's m from the pool data with X
+   set through kanR, so the gap need not distort X's scale. It could
+   distort the curves' shapes if its cause depends on genotype (a
+   selection-onset transient, `planning/offset-mode-growth-transition.md`).
+   Check: stage 2 on the kanR data alone, against the both-marker fit, on
+   the real data and on the seed-1 simulation (which shows what agreement
+   looks like when pheS is fine). If they agree, the gap is an observation
+   about the pool, not a problem with the curves.
 4. [ ] **Then the shallow genotypes' points.** Hold the X population SDs
    (`theta_{X_low,X_delta,log_hill_K}_hyper_scale_fixed`) so genotypes
    below 1e3 reads shrink toward the population instead of scattering;
    their intervals already cover.
+5. [ ] **The pipeline.** Make the two-stage fit one documented recipe (or
+   one command): the stage-1 subset (wt, spikes, singles) fitted with the
+   congression mixture, stage 2 on the full library with every
+   condition's k and m pinned at it, and the resampled intervals of step
+   2. The students' design simulations and the NSF preliminary data use
+   it. Design it once step 2's resampling is settled.
 
 ## Out of scope
 
