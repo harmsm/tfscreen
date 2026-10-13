@@ -950,6 +950,7 @@ tfs-predict-theta
                             [--titrant_concs_file TITRANT_CONCS_FILE] [--only_files]
                             [--num_samples NUM_SAMPLES]
                             [--genotype_batch_size GENOTYPE_BATCH_SIZE]
+                            [--shared_shift SHARED_SHIFT] [--shift_seed SHIFT_SEED]
                             config_file param_file
 
    Predict operator occupancy (theta) from a fitted hierarchical model.
@@ -1023,6 +1024,19 @@ tfs-predict-theta
                            time to cap the memory used by the epistasis pair-indicator
                            matrix (batch_size × N_pair × 4 bytes). Smaller values reduce
                            peak memory at the cost of more iterations. Default 2000.
+     --shared_shift SHARED_SHIFT
+                           CSV of a shift shared by every non-wt genotype (columns
+                           genotype, titrant_name, titrant_conc, shift), written by the
+                           two-stage fit: the X change from one standard deviation of
+                           stage 1's k. Each posterior draw gets one standard-normal
+                           multiple of it, the same for every row, before quantiles are
+                           taken, so each genotype's interval carries k's uncertainty
+                           while differences between genotypes keep only what does not
+                           cancel. wt (fixed by the X gauge) does not move. Needs a
+                           posterior file with draws (not a MAP checkpoint) and training
+                           genotypes only. Default None.
+     --shift_seed SHIFT_SEED
+                           Seed for the shared per-draw multiples. Default 0.
 
 tfs-predict-growth
 ------------------
@@ -1129,6 +1143,7 @@ tfs-predict-epistasis
                                 [--titrant_concs_file TITRANT_CONCS_FILE] [--only_files]
                                 [--scale SCALE] [--scale_constant SCALE_CONSTANT]
                                 [--regime_eps REGIME_EPS] [--regime_ci REGIME_CI]
+                                [--shared_shift SHARED_SHIFT] [--shift_seed SHIFT_SEED]
                                 config_file param_file
 
    Predict second-order epistasis from the joint posterior of a fitted model.
@@ -1220,6 +1235,16 @@ tfs-predict-epistasis
                            Central posterior-mass fraction required inside the band for a
                            corner to count as in-regime. Default 0.95 (checks the theta
                            2.5-97.5% interval). Must be in (0, 1).
+     --shared_shift SHARED_SHIFT
+                           CSV of a shift shared by every non-wt genotype (genotype,
+                           titrant_name, titrant_conc, shift), written by the two-stage
+                           fit: the X change from one standard deviation of stage 1's k.
+                           Each joint draw gets one standard-normal multiple of it before
+                           epistasis is computed. The cycle's wt corner does not move, so
+                           an epistasis on X (X_ab - X_a - X_b + X_wt) keeps one net copy
+                           of the shift. Needs a posterior file with draws. Default None.
+     --shift_seed SHIFT_SEED
+                           Seed for the shared per-draw multiples. Default 0.
 
 tfs-extract-epistasis
 ---------------------

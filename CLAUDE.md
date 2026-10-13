@@ -51,8 +51,8 @@ tfs-sample-posterior       # Draw posterior samples from fitted model (MAP: --la
 tfs-sample-prior           # Draw prior predictive samples
 tfs-extract-params         # Extract parameters from checkpoint
 tfs-predict-growth         # Predict growth from fitted model
-tfs-predict-theta          # Predict operator occupancy
-tfs-predict-epistasis      # Joint second-order epistasis from the theta posterior (per-draw ep, then quantiles; captures cross-genotype posterior covariance the marginal tfs-extract-epistasis path drops)
+tfs-predict-theta          # Predict operator occupancy (--shared_shift adds one shared per-draw X shift, the two-stage fit's k uncertainty; analysis/shared_shift.py)
+tfs-predict-epistasis      # Joint second-order epistasis from the theta posterior (per-draw ep, then quantiles; captures cross-genotype posterior covariance the marginal tfs-extract-epistasis path drops; --shared_shift as tfs-predict-theta)
 tfs-cat-response           # Fit categorical response curves
 tfs-extract-epistasis      # Calculate second-order epistasis from a long-form observable table (--scale add|mult|logit; --scale_constant rescales the transform before epistasis, e.g. -RT to put logit onto a free-energy scale)
 tfs-compare-runs           # Cross-run agreement statistics for any quantile-summarized estimate -- predicted features (theta/growth/epistasis) or fitted parameters (log_hill_K/dk_geno/growth_k/k_ref) -- across N runs (seeds / k-fold dropouts). Reports raw numbers (rms_sd, overdispersion + p/q, n_present/n_runs); no thresholds, no grades. --index_by picks the entity, --group_by breaks it out further, --match_by overrides key detection
@@ -478,7 +478,14 @@ dk_geno shared errors are held at the MAP by the arrowhead Laplace.
 `planning/deep-coverage.md` (active, 2026-10-09) works on that: honest
 intervals for the well-measured genotypes from this experiment's data,
 starting with k/m priors from the wt monoculture rates
-(`planning/studies/km-anchor/`). `planning/design-noise-sweep.md` (idea)
+(`planning/studies/km-anchor/`). The full-library MAP compresses X about
+1.45-fold (each double pulls m steeper); the fix is a two-stage fit
+(stage 1: wt, spikes and singles with the congression mixture, which
+congression's pheS bias needs; stage 2: the full library with every
+condition's k and m pinned there), with k's uncertainty from a stage-1
+jackknife added as one X shift shared by every genotype
+(`planning/studies/m-bias-factorial/`). `planning/two-stage-fit.md`
+(active) makes it one command; its pieces are in `tfmodel/two_stage.py`. `planning/design-noise-sweep.md` (idea)
 holds the next screen's noise-source sweep.
 
 ## YAML Standards

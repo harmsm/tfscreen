@@ -7,6 +7,8 @@ revisit_when: >-
   Active. Goal: what this experiment's data support, without new
   sequencing (user, 2026-10-09).
 related:
+  - planning/two-stage-fit.md
+  - planning/studies/m-bias-factorial/README.md
   - planning/studies/km-anchor/README.md
   - planning/studies/full-size-sim/README.md
   - planning/experiment-pipeline.md
@@ -219,6 +221,7 @@ is the monoculture), so the real kanR curves are likely compressed too.
    the stage-1 subset and its mixture fit, the jackknife, the two
    refits, and the shared-offset draws in `tfs-sample-posterior` or a
    post-processing step; plus the marker-consistency flag (step 3).
+   Planned in `planning/two-stage-fit.md` (active, 2026-10-13).
 
 ## Out of scope
 

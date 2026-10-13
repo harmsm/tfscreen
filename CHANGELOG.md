@@ -68,6 +68,22 @@ fall into two kinds:
 
 ### Added
 
+- **`--shared_shift` for `tfs-predict-theta` and `tfs-predict-epistasis`.**
+  A table of X shifts (`genotype`, `titrant_name`, `titrant_conc`,
+  `shift`) shared by every non-wt genotype: each posterior draw gets one
+  standard-normal multiple of it before quantiles (or epistasis) are taken
+  (`tfmodel/analysis/shared_shift.py`), so each genotype's interval carries
+  the uncertainty while differences between genotypes keep only what does
+  not cancel; wt (fixed by the X gauge) does not move. Needs a posterior
+  with draws. Written for the two-stage fit's k uncertainty, which moves
+  every genotype's X nearly alike.
+- **`tfmodel/two_stage.py`**: the two-stage fit's pieces as functions
+  (stage-1 genotypes, stratified delete-d jackknife subsamples of tubes,
+  jackknife k/m standard errors and k's main direction, pinned growth-prior
+  tables, the X shift table), ported from `planning/studies/m-bias-factorial/`
+  and checked to reproduce its numbers. `tfs-fit-two-stage` will chain them
+  (`planning/two-stage-fit.md`).
+
 - **Per-condition k/m pins in `linear` growth.** `m_pinned` and `k_pinned`
   take one flag per `condition_rep` as well as a single bool, so one
   marker's k and m can be held at an independent estimate while the

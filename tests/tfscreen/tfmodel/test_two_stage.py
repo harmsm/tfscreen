@@ -1,0 +1,153 @@
+import numpy as np
+import pandas as pd
+import pytest
+
+from tfscreen.tfmodel import two_stage as ts
+
+
+# --- stage 1 genotypes ---
+
+def test_stage1_genotypes_keeps_wt_spikes_and_singles():
+    lib = pd.DataFrame({
+        "genotype": ["wt", "A1B", "C2D", "A1B/C2D", "E3F/G4H", "H5I/J6K/L7M"],
+        "in_spiked_origin": [True, True, False, False, True, True]})
+    have = ["wt", "A1B", "C2D", "A1B/C2D", "E3F/G4H", "N8P", "__unknown__"]
+    out = ts.stage1_genotypes(lib, have)
+    # the spiked double comes along; the unspiked double, absent spikes and
+    # __unknown__ do not; a single not in the library table still counts
+    assert out == sorted(["wt", "A1B", "C2D", "E3F/G4H", "N8P"])
+
+
+def test_is_single():
+    assert ts.is_single("A1B")
+    assert not ts.is_single("wt")
+    assert not ts.is_single("A1B/C2D")
+    assert not ts.is_single("__unknown__")
+
+
+# --- jackknife subsamples ---
+
+def _growth(n_rep=3, concs=(0.0, 0.1, 1.0), conds=("kanR+kan", "pheS+4CP"),
+            times=(100, 150, 200), genotypes=("wt", "A1B")):
+    rows = []
+    for c in conds:
+        for x in concs:
+            for r in range(n_rep):
+                for t in times:
+                    sample = f"{c}-{x}-{r}-{t}"
+                    for g in genotypes:
+                        rows.append({"sample": sample, "library": c[:4],
+                                     "condition_sel": c, "titrant_conc": x,
+                                     "replicate": r, "t_sel": t,
+                                     "genotype": g, "counts": 10})
+    return pd.DataFrame(rows)
+
+
+def test_tube_drops_are_stratified_and_leave_one():
+    tubes = ts.tube_table(_growth())
+    drop = ts.choose_tube_drops(tubes, 0.2, seed=1)
+    kept = tubes[~tubes["sample"].isin(drop)]
+    per = tubes.groupby(list(ts.STRATA)).size()
+    kept_per = kept.groupby(list(ts.STRATA)).size()
+    assert (kept_per >= 1).all()
+    # 9 tubes per stratum, 20% -> 2 dropped from each
+    assert ((per - kept_per) == 2).all()
+    assert ts.choose_tube_drops(tubes, 0.2, seed=1) == drop
+    assert ts.choose_tube_drops(tubes, 0.2, seed=2) != drop
+    # a stratum of one tube is never emptied
+    one = tubes.drop_duplicates(list(ts.STRATA))
+    assert ts.choose_tube_drops(one, 0.9, seed=1) == set()
+    with pytest.raises(ValueError):
+        ts.choose_tube_drops(tubes, 1.0, seed=1)
+
+
+def test_jackknife_subsample_drops_whole_tubes():
+    g = _growth()
+    sub, n, d, dropped = ts.jackknife_subsample(g, 0.2, seed=3)
+    assert n == g["sample"].nunique()
+    assert d == len(dropped) == 12
+    assert not sub["sample"].isin(dropped).any()
+    assert len(sub) == len(g) - d * 2      # two genotypes per tube
+    with pytest.raises(ValueError, match="tube column"):
+        ts.tube_table(g.drop(columns="library"))
+
+
+# --- jackknife k and m ---
+
+def _km(k, m, conds=("a", "b", "c")):
+    return pd.DataFrame({"k": k, "m": m}, index=pd.Index(conds,
+                                                         name="condition_rep"))
+
+
+def test_km_table_from_extract_params():
+    k = pd.DataFrame({"condition_rep": ["a", "a", "b"], "q0.5": [1.0, 3.0, 5.0]})
+    m = pd.DataFrame({"condition_rep": ["a", "b"], "q0.5": [0.1, 0.2]})
+    out = ts.km_table(k, m)
+    assert out.loc["a", "k"] == 2.0 and out.loc["b", "m"] == 0.2
+    with pytest.raises(ValueError, match="different conditions"):
+        ts.km_table(k, m.iloc[:1])
+
+
+def test_jackknife_km_scales_and_finds_the_main_direction():
+    rng = np.random.default_rng(0)
+    common = rng.normal(0, 1, 200)
+    est = [_km([0.01 + 0.002 * c, 0.02 + 0.004 * c, 0.03 + 0.001 * e],
+               [-0.014, 0.0, 0.014])
+           for c, e in zip(common, rng.normal(0, 0.01, 200))]
+    out = ts.jackknife_km(est, n=100, d=20)
+    assert out["factor"] == 4.0
+    raw_sd = np.std([e.loc["a", "k"] for e in est])
+    assert out["se"].loc["a", "k_se"] == pytest.approx(2.0 * raw_sd)
+    assert out["se"].loc["a", "m_se"] == pytest.approx(0.0)
+    assert out["k_share"] > 0.99
+    step = out["k_step"]
+    # the step follows the common move (a:b = 1:2) and its largest entry is +
+    assert step["b"] == pytest.approx(2 * step["a"], rel=0.01)
+    assert step["b"] > 0
+    assert np.hypot(step["a"], step["b"]) == pytest.approx(
+        np.sqrt(out["k_cov"].loc["a", "a"] + out["k_cov"].loc["b", "b"]),
+        rel=0.02)
+
+
+def test_jackknife_km_refuses_bad_inputs():
+    a = _km([1, 2, 3], [0, 0, 0])
+    with pytest.raises(ValueError, match="two subsamples"):
+        ts.jackknife_km([a], 10, 2)
+    with pytest.raises(ValueError, match="0 < d < n"):
+        ts.jackknife_km([a, a], 10, 0)
+    with pytest.raises(ValueError, match="different conditions"):
+        ts.jackknife_km([a, _km([1, 2], [0, 0], ("a", "b"))], 10, 2)
+
+
+# --- pinned priors ---
+
+def test_pinned_growth_priors_and_shift_tables():
+    km = _km([0.015, 0.03, 0.005], [-0.014, 0.0, 0.014])
+    t = ts.pinned_growth_priors(km)
+    assert list(t.columns) == ["condition_rep", "k_loc", "k_scale", "m_loc",
+                               "m_scale", "k_pinned", "m_pinned"]
+    assert (t["k_pinned"] == 1).all() and (t["m_pinned"] == 1).all()
+    one = ts.pinned_growth_priors(km, conditions=["a"])
+    assert list(one["condition_rep"]) == ["a"]
+    step = pd.Series({"a": 0.004, "b": 0.008, "c": 0.002})
+    plus, minus = ts.k_shift_priors(km, step)
+    assert np.allclose(plus["k_loc"] - minus["k_loc"], 2 * step.to_numpy())
+    assert np.allclose(plus["m_loc"], km["m"])
+    with pytest.raises(ValueError, match="every condition"):
+        ts.k_shift_priors(km, step.drop("c"))
+
+
+# --- the shift table ---
+
+def test_shift_table_half_difference_and_wt_zero():
+    rows = pd.DataFrame({"genotype": ["wt", "wt", "a", "a"],
+                         "titrant_name": "iptg",
+                         "titrant_conc": [0.0, 1.0, 0.0, 1.0]})
+    plus = rows.assign(**{"q0.5": [1.0, 0.0, 0.50, 0.20]})
+    minus = rows.assign(**{"q0.5": [1.0, 0.0, 0.56, 0.28]})
+    out = ts.shift_table(plus, minus)
+    a = out[out["genotype"] == "a"].set_index("titrant_conc")["shift"]
+    assert a[0.0] == pytest.approx(-0.03) and a[1.0] == pytest.approx(-0.04)
+    assert (out.loc[out["genotype"] == "wt", "shift"] == 0).all()
+    with pytest.raises(ValueError, match="different rows"):
+        ts.shift_table(plus, minus.iloc[:3])
