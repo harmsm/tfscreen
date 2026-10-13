@@ -1333,3 +1333,85 @@ each). Then, in `jk_seed1/`:
 python /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/jackknife_summary.py . --full ../m_subsets/no_doubles_mix --truth ../sim_realistic_s2
 ```
 
+### The kanR-only check (2026-10-12)
+
+Both kanR-only stage 2 fits converged at every stage. On the simulation,
+where pheS is modeled correctly, dropping pheS loses much of X: at 0 IPTG
+wt barely grows in kanR+kan, so genotypes near the top of X are nearly
+static there and pheS carries most of that information. Seed 1's doubles
+above 1e5 reads: RMSE 0.15 (0.05 with both markers), 95% coverage 0.36
+(0.76), widths 2.7 times wider, X error +0.17 at 0 IPTG. So the check is
+read against the simulation's agreement, not against perfect agreement.
+
+| deep doubles (> 1e4 reads), kanR-only against both markers | seed 1 | real |
+|---|---|---|
+| r, 1e4-1e5 / > 1e5 | 0.96 / 0.99 | 0.84 / 0.94 |
+| slope, 1e4-1e5 / > 1e5 | 1.09 / 1.08 | 1.11 / 1.05 |
+| scatter after the best linear map | 0.13 | 0.21 |
+| that scatter in combined SDs (RMS) | 0.89 | 1.16 |
+| share beyond 2 combined SDs | 2.5% | 8.2% |
+| per-genotype scatter, median / 90th / 99th percentile | 0.08 / 0.21 / 0.38 | 0.11 / 0.32 / 0.68 |
+
+**The median real genotype agrees across markers about as the simulation
+does; a tail does not.** About 8% of the deep real doubles disagree
+beyond 2 SD, against 2.5% in the simulation. The check cannot say which
+marker is off. A candidate inside the model: dk_geno is shared by the
+kanR and pheS conditions, while a real mutation may slow growth
+differently in kan and in 4CP; that would bend exactly such genotypes and
+cannot show in a simulation that shares dk_geno too.
+
+For the paper: the pheS gap stays a limitation, with a per-genotype
+marker-consistency flag (the z-score between the kanR-only and both-marker
+fits) marking the genotypes whose curves rest on a cross-marker
+inconsistency. If needed later, a marker-specific dk_geno tests whether the
+tail is genotype-specific fitness.
+
+### The seed-1 jackknife (2026-10-12)
+
+30 subsamples (20 of 118 tubes dropped each, variance factor 4.90); 29
+converged, one at the epoch cap.
+
+| seed 1, mixture stage 1 | k, kanR+kan | k, pheS+4CP | m, kanR+kan | m, pheS+4CP |
+|---|---|---|---|---|
+| jackknife SE | 0.0048 | 0.0028 | 0.00009 | 0.00008 |
+| Laplace SD | 0.0008 | 0.0011 | 0.00008 | 0.00007 |
+| actual error | +0.0037 | +0.0014 | -0.0008 | +0.0005 |
+| error in jackknife SEs | 0.8 | 0.5 | 8.8 | 6.5 |
+
+**The jackknife covers k; m's error is the bias.** k's jackknife SE is
+about five times its Laplace SD and covers k's actual errors. m's agrees
+with the Laplace (about 0.6%), and its error, 6-9 SEs, is the small steep
+bias accepted as a limitation.
+
+One direction carries 94% of k's jackknife variance: all four conditions'
+k move together (one-SD step -0.0049 kanR+kan, -0.0079 kanR-kan, -0.0023
+pheS+4CP, -0.0027 pheS-4CP). A common shift of every k is absorbed by
+dk_geno and leaves X alone; only the uneven part moves X. So two stage 2
+refits measure X's sensitivity: k at plus and minus one SD along that
+direction (`jackknife_summary.py --pc1_tables`), m at the full fit,
+started from `stage2_single_seed1`'s MAP. `k_band.py` takes each
+genotype's k-driven SD as |X(plus) - X(minus)| / 2 and adds it in
+quadrature to the stage 2 Laplace SD; `score_x.py` then scores the
+widened intervals against the truth.
+
+### How to run the k-band refits (seed 1)
+
+```bash
+cd /gpfs/projects/harmslab/harms/studies/full-sized-sims-3/jk_seed1
+```
+
+```bash
+python /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/jackknife_summary.py . --full ../m_subsets/no_doubles_mix --truth ../sim_realistic_s2 --pc1_tables pc1
+```
+
+It prints `k variance on the first component: 0.941` and writes
+`pc1/plus/` and `pc1/minus/`. Then:
+
+```bash
+for v in plus minus; do (cd pc1/$v && ln -s ../../../sim_realistic_s2/tfs_growth.csv ../../../sim_realistic_s2/tfs_sim_* . && cp ../../../sim_realistic_s2/simulate_config.yaml library_config.yaml && sbatch --export=ALL,INIT=$PWD/../../../stage2_single_seed1/tfs_fit_model_params.npz /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/run_held.srun); done
+```
+
+Each `pc1/*/run.out` ends with `>>> Done` and a `summary/`. Then, locally:
+`k_band.py stage2_single_seed1 jk_seed1/pc1/plus jk_seed1/pc1/minus`, and
+`score_x.py` on its output with `stage2_single_seed1`'s truth table.
+

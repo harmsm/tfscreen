@@ -164,6 +164,12 @@ is the monoculture), so the real kanR curves are likely compressed too.
    stage 2 at two or three draws, measure that map per genotype, and
    apply it to all the jackknife draws. Check coverage by depth on the
    simulation.
+   Jackknife result (seed 1, 2026-10-12): k's jackknife SE is about five
+   times its Laplace SD and covers k's errors (0.5-0.8 SE); m's agrees
+   with its Laplace and its error (6-9 SE) is the accepted bias. 94% of
+   k's variance is one direction, so two stage 2 refits along it (plus
+   and minus one SD) measure X's k sensitivity; `k_band.py` widens X's
+   intervals with it. Next: score that on seed 1.
    Accepted as a limitation (user, 2026-10-12): stage 1's small steep m
    bias (2-6% in the simulation, an X slope of 1.03-1.05). Resampling
    does not cover a bias; quantify it from the simulation for the paper,
@@ -179,6 +185,13 @@ is the monoculture), so the real kanR curves are likely compressed too.
    the real data and on the seed-1 simulation (which shows what agreement
    looks like when pheS is fine). If they agree, the gap is an observation
    about the pool, not a problem with the curves.
+   Result (2026-10-12): the median real genotype agrees across markers as
+   in the simulation, but 8% of the deep doubles disagree beyond 2 SD
+   (2.5% in the simulation). Keep the gap as a limitation and flag those
+   genotypes (marker-consistency z between the kanR-only and both-marker
+   fits). Candidate cause: dk_geno shared across markers while real
+   fitness effects may differ in kan and 4CP; a marker-specific dk_geno
+   would test it.
 4. [ ] **Then the shallow genotypes' points.** Hold the X population SDs
    (`theta_{X_low,X_delta,log_hill_K}_hyper_scale_fixed`) so genotypes
    below 1e3 reads shrink toward the population instead of scattering;

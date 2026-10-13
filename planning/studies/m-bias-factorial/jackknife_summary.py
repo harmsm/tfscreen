@@ -11,6 +11,12 @@ subsample estimates t_i with mean t_bar, the jackknife variance is
 k and m (--full), the jackknife SE and, with --truth (a simulation
 directory holding tfs_sim_parameters.csv and tfs_sim_growth_parameters.csv),
 the truth on the X scale and the error in jackknife SEs.
+
+--pc1_tables DIR also writes DIR/plus/ and DIR/minus/growth_priors_held.csv:
+k at the full fit's value plus and minus one jackknife SD along the first
+principal component of the k covariance (m at the full fit's value), for
+two stage 2 refits that measure how X moves with k. It prints the share
+of k's variance on that component.
 """
 
 import argparse
@@ -63,6 +69,8 @@ def main():
     ap.add_argument("--full", default=None, help="the full stage-1 fit's dir")
     ap.add_argument("--truth", default=None, help="simulation dir")
     ap.add_argument("--out", default="jackknife_km.csv")
+    ap.add_argument("--pc1_tables", default=None,
+                    help="write plus/ and minus/ pinned tables here (needs --full)")
     args = ap.parse_args()
 
     dirs = sorted(d for d in glob.glob(os.path.join(args.jk_dir, "jk_*"))
@@ -97,6 +105,26 @@ def main():
                 out[f"{p}_truth"] = truth[p]
                 out[f"{p}_err_in_se"] = (out[f"{p}_full"] - out[f"{p}_truth"]) \
                     / out[f"{p}_jk_se"]
+    if args.pc1_tables:
+        if not args.full:
+            raise SystemExit("--pc1_tables needs --full")
+        k = est["k"].unstack("condition_rep")
+        dev = (k - k.mean()) * np.sqrt((n - d) / d)
+        cov = np.cov(dev.to_numpy().T)
+        w, v = np.linalg.eigh(cov)
+        top = int(np.argmax(w))
+        step = pd.Series(v[:, top] * np.sqrt(w[top]), index=k.columns)
+        full = read_km(args.full)
+        print(f"k variance on the first component: {w[top] / w.sum():.3f}; "
+              f"one-SD step {step.round(5).to_dict()}")
+        for name, sign in (("plus", 1), ("minus", -1)):
+            dd = os.path.join(args.pc1_tables, name)
+            os.makedirs(dd, exist_ok=True)
+            table = pd.DataFrame({
+                "condition_rep": full.index,
+                "k_loc": full["k"] + sign * step.reindex(full.index),
+                "k_scale": 0.002, "m_loc": full["m"], "m_scale": 0.002})
+            table.to_csv(os.path.join(dd, "growth_priors_held.csv"), index=False)
     out.to_csv(args.out)
     print(f"{len(dirs)} subsamples, n {n} tubes, d {d} dropped "
           f"(variance factor {(n - d) / d:.2f})")
