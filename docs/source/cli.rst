@@ -1909,3 +1909,61 @@ tfs-summarize-calibration
      --regime_eps REGIME_EPS
                            θ within [regime_eps, 1 - regime_eps] is resolvable (default
                            0.01).
+
+tfs-fit-two-stage
+-----------------
+
+.. code-block:: text
+
+   usage: tfs-fit-two-stage [-h] [--out_dir OUT_DIR] [--step STEP]
+                            [--jackknife_task JACKKNIFE_TASK] [--no_consistency]
+                            config_file
+
+   Fit a growth-only relative model in two stages, with X intervals that
+   carry stage 1's k uncertainty.
+
+   The full-library MAP makes the growth slope m too steep (each double
+   mutant pulls it a little and the pulls add), and congression flattens a
+   marker's m in any stage 1 large enough to pin X's scale
+   (planning/studies/m-bias-factorial/). This command runs, in out_dir:
+   stage1 (wt, spikes and singles with the congression mixture, max rule,
+   lambda fitted with two_stage.transformation_lambda as its prior: every
+   condition's k and m); jackknife (two_stage.jackknife_subsamples refits
+   of stage 1, each dropping two_stage.jackknife_drop_frac of the tubes,
+   stratified by condition and IPTG: k and m standard errors and k's main
+   direction); stage2 (the full library with every condition's k and m
+   pinned at stage 1; MAP, Laplace, X); kshift (two stage 2 refits at k
+   plus and minus one jackknife SD along its main direction, from stage
+   2's MAP: X's shift per SD, kshift/shift.csv); predict (stage 2's X, and
+   with two_stage.predict_epistasis its epistasis, with the shift added as
+   one shared multiple per posterior draw, predict/); consistency (stage 2
+   on one library's tubes alone against the full stage 2, per genotype
+   z-scores, consistency/consistency.csv). Each step skips work whose
+   outputs exist, so a run resumes and a step reruns by deleting its
+   directory.
+
+   positional arguments:
+     config_file           YAML whose top-level keys are tfs-configure-model's arguments
+                           (growth_df and library_config required; theta_model
+                           hill_relative, growth_shares_replicates true; file paths
+                           relative to the YAML), plus a two_stage block:
+                           transformation_lambda (mean, std; required), seed (1),
+                           jackknife_subsamples (30), jackknife_drop_frac (0.2),
+                           num_posterior_samples (500), consistency (true),
+                           consistency_library (default the first library
+                           alphabetically), predict_epistasis (false), fit (extra tfs-
+                           fit-model arguments) and posterior (extra tfs-sample-posterior
+                           arguments).
+
+   options:
+     -h, --help            show this help message and exit
+     --out_dir OUT_DIR     Directory for every step's outputs. Default 'two_stage'.
+     --step STEP           'all' (default) or one of stage1, jackknife, stage2, kshift,
+                           predict, consistency.
+     --jackknife_task JACKKNIFE_TASK
+                           Run only this jackknife subsample (1 to jackknife_subsamples),
+                           for a cluster array; needs stage 1 done. The kshift step
+                           collects them. (default: None)
+     --no_consistency      Turn off (on by default): Run the consistency step with 'all'
+                           (default True; --no_consistency skips it, as does consistency:
+                           false in the YAML).

@@ -293,3 +293,122 @@ def shift_table(plus_pred, minus_pred):
     df["shift"] = (df["x_plus"] - df["x_minus"]) / 2
     df.loc[df["genotype"].astype(str) == "wt", "shift"] = 0.0
     return df[PRED_KEY + ["shift"]]
+
+
+# ---------------------------------------------------------------------------
+# Growth tables too large to load (a full-size table is about 8 GB)
+# ---------------------------------------------------------------------------
+
+CHUNK = 5_000_000
+
+
+def growth_genotypes(path, chunksize=CHUNK):
+    """The genotypes in a growth table, read in chunks."""
+    seen = set()
+    for c in pd.read_csv(path, usecols=["genotype"], chunksize=chunksize):
+        seen.update(c["genotype"].astype(str).unique())
+    return seen
+
+
+def filter_growth_csv(src, dst, genotypes=None, library=None,
+                      chunksize=CHUNK):
+    """
+    Write the rows of a growth table for some genotypes or one library.
+
+    Parameters
+    ----------
+    src, dst : str
+        Input and output CSV paths.
+    genotypes : iterable of str or None
+        Keep only these genotypes.
+    library : str or None
+        Keep only this library's tubes.
+
+    Returns
+    -------
+    int
+        Rows written.
+
+    Raises
+    ------
+    ValueError
+        If nothing is kept.
+    """
+    keep_g = None if genotypes is None else {str(g) for g in genotypes}
+    n = 0
+    header = True
+    with open(dst, "w") as fh:
+        for c in pd.read_csv(src, chunksize=chunksize):
+            mask = pd.Series(True, index=c.index)
+            if keep_g is not None:
+                mask &= c["genotype"].astype(str).isin(keep_g)
+            if library is not None:
+                mask &= c["library"].astype(str) == str(library)
+            c = c[mask]
+            if len(c):
+                c.to_csv(fh, index=False, header=header)
+                header = False
+                n += len(c)
+    if n == 0:
+        raise ValueError(f"filtering {src} kept no rows "
+                         f"(library={library!r})")
+    return n
+
+
+# ---------------------------------------------------------------------------
+# Marker consistency
+# ---------------------------------------------------------------------------
+
+def marker_consistency(both_pred, one_pred, z_flag=2.0):
+    """
+    Per genotype, how far X from one library's data alone departs from X
+    from both libraries.
+
+    X from one library is less precise and somewhat shifted and stretched
+    (on the full-size simulation, dropping pheS stretched X about 1.08 and
+    shifted it about 0.13), so the two are compared after the best affine
+    map of one onto the other (weighted by the rows' combined variance,
+    non-wt rows). A genotype's level offset is its mean residual over
+    concentrations (the disagreement is 91-92% level), and its z is that
+    offset over the median of its rows' combined SD. On the simulation
+    2.5% of deep doubles' rows fell beyond 2 SD, on the real data 8.2%
+    (``planning/studies/m-bias-factorial/``).
+
+    Parameters
+    ----------
+    both_pred, one_pred : pandas.DataFrame
+        ``tfs-predict-theta`` output (``genotype``, ``titrant_name``,
+        ``titrant_conc``, ``q0.025``, ``q0.5``, ``q0.975``) from the stage 2
+        fit and from the one-library refit.
+    z_flag : float
+        |z| above which a genotype is flagged.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per genotype: ``n_rows``, ``level_offset``, ``level_sd``,
+        ``z`` and ``inconsistent``.
+    """
+    cols = PRED_KEY + ["q0.025", "q0.5", "q0.975"]
+    m = both_pred[cols].merge(one_pred[cols], on=PRED_KEY,
+                              suffixes=("_both", "_one"))
+    m = m[m["genotype"].astype(str) != "wt"]
+    sd_b = (m["q0.975_both"] - m["q0.025_both"]) / 3.92
+    sd_o = (m["q0.975_one"] - m["q0.025_one"]) / 3.92
+    m = m.assign(sd=np.sqrt(sd_b ** 2 + sd_o ** 2))
+    ok = np.isfinite(m["q0.5_both"]) & np.isfinite(m["q0.5_one"]) & (m["sd"] > 0)
+    m = m[ok]
+    if m.empty:
+        raise ValueError("no non-wt rows in common between the two fits")
+    w = 1.0 / m["sd"] ** 2
+    slope, intercept = np.polyfit(m["q0.5_both"], m["q0.5_one"], 1,
+                                  w=np.sqrt(w))
+    m = m.assign(res=m["q0.5_one"] - (intercept + slope * m["q0.5_both"]))
+    g = m.groupby("genotype")
+    out = pd.DataFrame({"n_rows": g.size(),
+                        "level_offset": g["res"].mean(),
+                        "level_sd": g["sd"].median()})
+    out["z"] = out["level_offset"] / out["level_sd"]
+    out["inconsistent"] = out["z"].abs() > z_flag
+    out.attrs["affine"] = (float(intercept), float(slope))
+    return out

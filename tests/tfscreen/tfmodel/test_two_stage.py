@@ -151,3 +151,48 @@ def test_shift_table_half_difference_and_wt_zero():
     assert (out.loc[out["genotype"] == "wt", "shift"] == 0).all()
     with pytest.raises(ValueError, match="different rows"):
         ts.shift_table(plus, minus.iloc[:3])
+
+
+# --- chunked growth tables ---
+
+def test_growth_genotypes_and_filter_growth_csv(tmp_path):
+    g = _growth()
+    src = tmp_path / "g.csv"
+    g.to_csv(src, index=False)
+    assert ts.growth_genotypes(str(src), chunksize=7) == {"wt", "A1B"}
+    dst = tmp_path / "o.csv"
+    n = ts.filter_growth_csv(str(src), str(dst), genotypes=["A1B"], chunksize=7)
+    out = pd.read_csv(dst)
+    assert n == len(out) == (g["genotype"] == "A1B").sum()
+    assert set(out["genotype"]) == {"A1B"}
+    n = ts.filter_growth_csv(str(src), str(dst), library="kanR", chunksize=7)
+    assert set(pd.read_csv(dst)["library"]) == {"kanR"}
+    with pytest.raises(ValueError, match="no rows"):
+        ts.filter_growth_csv(str(src), str(dst), library="nope")
+
+
+# --- marker consistency ---
+
+def _pred(x, sd, genotypes, concs=(0.0, 1.0)):
+    rows = [{"genotype": g, "titrant_name": "iptg", "titrant_conc": c,
+             "q0.5": x[g][i], "q0.025": x[g][i] - 1.96 * sd,
+             "q0.975": x[g][i] + 1.96 * sd}
+            for g in genotypes for i, c in enumerate(concs)]
+    return pd.DataFrame(rows)
+
+
+def test_marker_consistency_flags_a_level_offset_after_the_affine_map():
+    rng = np.random.default_rng(0)
+    genos = ["wt"] + [f"A{i}B" for i in range(200)]
+    both = {g: rng.uniform(0, 1, 2) for g in genos}
+    # one library alone: stretched and shifted, small noise, one outlier
+    one = {g: 0.1 + 1.1 * v + rng.normal(0, 0.01, 2) for g, v in both.items()}
+    one["A7B"] = one["A7B"] + 0.3
+    out = ts.marker_consistency(_pred(both, 0.05, genos), _pred(one, 0.05, genos))
+    assert "wt" not in out.index
+    intercept, slope = out.attrs["affine"]
+    assert slope == pytest.approx(1.1, abs=0.02)
+    assert out.loc["A7B", "inconsistent"]
+    assert out["inconsistent"].sum() == 1
+    assert out.loc["A7B", "z"] == pytest.approx(
+        0.3 / np.hypot(0.05, 0.05), rel=0.15)

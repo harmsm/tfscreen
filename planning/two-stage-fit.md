@@ -135,8 +135,23 @@ simulation. Intervals matter for the final analysis.
    and `extract_theta_epistasis` and both CLIs (refused for out-of-training
    genotypes and for a single MAP draw);
    `tests/tfscreen/tfmodel/analysis/test_shared_shift.py`.
-3. [ ] **`tfs-fit-two-stage`**, with step skipping, `--step` and
-   `--jackknife_task`; the YAML schema; `docs/source/cli.rst`.
+3. [x] **`tfs-fit-two-stage`**, with step skipping, `--step` and
+   `--jackknife_task`; the YAML schema; `docs/source/cli.rst`. Done
+   2026-10-13 (`tfmodel/scripts/fit_two_stage_cli.py`,
+   `examples/tfmodel/two_stage.yaml`). The YAML's top-level keys are
+   `tfs-configure-model`'s arguments (paths relative to the YAML); the
+   `two_stage` block holds transformation_lambda (required), seed,
+   jackknife_subsamples, jackknife_drop_frac, num_posterior_samples,
+   consistency, consistency_library, predict_epistasis, fit and posterior
+   (extra arguments). It refuses a non-relative or non-linear model,
+   unshared replicates, transformation keys at the top level and pins in
+   set_priors. Each step runs in its own directory with absolute input
+   paths; the stage-1 and one-library tables are written by chunked
+   filters (a full-size table is 8 GB). Tests mock the chained functions
+   (`test_fit_two_stage_cli.py`); a real end-to-end run on round 1's small
+   table (6,500 genotypes, fits cut to 40 steps) finished every step in
+   4.7 minutes, stage 2's k equal to stage 1's, wt's intervals untouched,
+   and a rerun skipped everything.
 4. [ ] **Validate by reproduction.** Rerun the seed-1 and seed-2
    simulations through the command and match the study's numbers
    (stage 1 m ratios; coverage 0.94 / 0.91 on seed 1); rerun the real
@@ -144,8 +159,11 @@ simulation. Intervals matter for the final analysis.
 5. [ ] **Scoring for simulations.** X against the truth by read depth
    (`score_x.py`) as a `tfs-summarize-fit` option or its own CLI, so the
    students score design sweeps without study scripts.
-6. [ ] **Consistency flag** step (on by default, `--no_consistency`) and
-   its output column.
+6. [x] **Consistency flag** step (on by default, `--no_consistency`) and
+   its output column. Built with step 3: `consistency/consistency.csv`
+   (per genotype: level offset after the affine map, its SD, z,
+   `inconsistent` beyond |z| 2; `two_stage.marker_consistency`). Its
+   threshold should be calibrated against the simulation in step 4.
 7. [ ] **A simulation config from a real experiment**, for the students'
    design sweeps: `tfs-build-sim-config`, the port of
    `planning/studies/full-size-sim/make_sim_config.py`. Inputs: the tube

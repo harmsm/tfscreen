@@ -77,12 +77,27 @@ fall into two kinds:
   not cancel; wt (fixed by the X gauge) does not move. Needs a posterior
   with draws. Written for the two-stage fit's k uncertainty, which moves
   every genotype's X nearly alike.
+- **`tfs-fit-two-stage`**: the two-stage fit of a growth-only relative
+  model as one command (`planning/two-stage-fit.md`). In its output
+  directory it runs stage 1 (wt, spikes and singles with the congression
+  mixture, `max` rule, lambda fitted with the measured value as its prior),
+  a delete-d jackknife of stage 1 (30 refits, 20% of tubes dropped,
+  stratified by condition and IPTG), stage 2 (the full library with every
+  condition's k and m pinned at stage 1; MAP, Laplace, X), two stage 2
+  refits at k plus and minus one jackknife SD (the X shift per SD), X (and
+  optionally epistasis) with that shift as one shared offset per draw, and
+  a marker-consistency check (stage 2 on one library alone; per-genotype
+  z-scores; on by default, `--no_consistency`). The YAML's top-level keys
+  are `tfs-configure-model`'s arguments; a `two_stage` block holds the rest
+  (`examples/tfmodel/two_stage.yaml`). Steps skip finished work, `--step`
+  runs one and `--jackknife_task i` one jackknife subsample (for a cluster
+  array).
 - **`tfmodel/two_stage.py`**: the two-stage fit's pieces as functions
   (stage-1 genotypes, stratified delete-d jackknife subsamples of tubes,
   jackknife k/m standard errors and k's main direction, pinned growth-prior
   tables, the X shift table), ported from `planning/studies/m-bias-factorial/`
-  and checked to reproduce its numbers. `tfs-fit-two-stage` will chain them
-  (`planning/two-stage-fit.md`).
+  and checked to reproduce its numbers; also chunked growth-table filters
+  and the marker-consistency statistic. `tfs-fit-two-stage` chains them.
 
 - **Per-condition k/m pins in `linear` growth.** `m_pinned` and `k_pinned`
   take one flag per `condition_rep` as well as a single bool, so one
