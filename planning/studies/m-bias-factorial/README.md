@@ -1415,3 +1415,49 @@ Each `pc1/*/run.out` ends with `>>> Done` and a `summary/`. Then, locally:
 `k_band.py stage2_single_seed1 jk_seed1/pc1/plus jk_seed1/pc1/minus`, and
 `score_x.py` on its output with `stage2_single_seed1`'s truth table.
 
+### Is the marker disagreement a library-specific dk_geno?
+
+Split into a per-genotype level and a shape part, the kanR-only against
+both-marker disagreement of the deep doubles is 92% level on seed 1 and
+91% on the real data: without pheS, a genotype's X level is weakly
+pinned, so dropping a marker produces level-shaped noise even in the
+simulation, which shares dk_geno across libraries. The real tail is
+larger (median level offset of the worst 8% 0.45 against 0.28).
+
+A dk_geno that differs between the kanR and pheS libraries (backbone or
+marker-cassette effects, GxE visible in the library's own control) is
+identifiable: each library's control condition (m near 0) measures its
+own dk directly, the two-stage fit closes both libraries' k/dk slides,
+and a bivariate prior with a learned correlation pools shallow genotypes.
+A dk that differs only under the stressor (kan or 4CP present) is not:
+inside a selection condition it trades with the level of the genotype's
+X curve.
+
+`control_dk_check.py` tests the first: per deep double, the slope over
+time of ln(counts relative to wt) in each library's control condition
+estimates its dk there (weighted least squares per series, combined by
+inverse variance), and delta_dk = dk_kanR - dk_pheS. If the tail's X
+offsets come from a library-specific dk, they track delta_dk with a
+slope near 1 / (2 |m_kanR|) (about 34). The simulation, with a shared
+dk, is the no-signal benchmark; it also shows how well the two controls
+recover the same dk at this depth.
+
+```bash
+cd /gpfs/projects/harmslab/harms/studies/dev-data/real_fit
+```
+
+```bash
+python /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/control_dk_check.py recipe/tfs_growth.csv held_mix_real/tfs_pred_theta.csv kanR_only_real/tfs_pred_theta.csv --out control_dk_real.csv
+```
+
+```bash
+cd /gpfs/projects/harmslab/harms/studies/full-sized-sims-3
+```
+
+```bash
+python /gpfs/home/harms/tfscreen/planning/studies/m-bias-factorial/control_dk_check.py sim_realistic_s2/tfs_growth.csv stage2_single_seed1/tfs_pred_theta.csv kanR_only_seed1/tfs_pred_theta.csv --m_kan -0.0146 --out control_dk_seed1.csv
+```
+
+Each reads its 8 GB growth table twice (about 10 minutes) and prints the
+two libraries' dk agreement and the offset-delta_dk correlations.
+
