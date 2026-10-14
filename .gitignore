@@ -231,6 +231,8 @@ planning/studies/m-bias-factorial/kanR_only_*/
 planning/studies/m-bias-factorial/jk_seed*/
 planning/studies/m-bias-factorial/km_draws/
 planning/studies/m-bias-factorial/sim_realistic_seed2/
+planning/studies/m-bias-factorial/sim_realistic_s2/
+planning/studies/m-bias-factorial/real_depth/
 planning/studies/m-bias-factorial/sim_realistic_nocong/
 planning/studies/two-stage-validation/run_*/
 planning/studies/m-bias-factorial/stage2_*/
