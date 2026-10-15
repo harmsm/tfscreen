@@ -121,3 +121,38 @@ Compare each `ktitrant_*/stage1/km.csv` with `run_*/stage1/km.csv`
 pheS+4CP about +0.018); the shift itself is
 `condition_growth_k_titrant[_slope]_auto_loc` in the stage's
 `tfs_fit_model_params.npz`.
+
+### Run 2 results (2026-10-15)
+
+The four runs failed first (the shift used numpy on the traced
+titrant_conc; fixed) and then ran, about 30 minutes each.
+
+**The free form is not identified.** On seed 1, which has no such term,
+it put the shift at -0.021 (kanR+kan) and +0.023 (pheS+4CP) per minute at
+1 mM and made both m's 2.5x too steep (-0.0365, +0.0369 against
+-0.0146, +0.0146 without it). Its shift took wt's own IPTG curve: a k
+free at every concentration can stand in for m X_wt(c), so k(c) trades
+with m along the gauge. On the real data its numbers mean nothing.
+
+**The log-linear form passes the null and moves kanR, not pheS.**
+
+| | seed 1 m, none -> log-linear | seed 1 shift at 1 mM | real m, none -> log-linear | real shift at 1 mM | real within-tube m |
+|---|---|---|---|---|---|
+| kanR+kan | -0.0146 -> -0.0146 | +0.0002 | -0.0148 -> -0.0089 | +0.0030 | -0.0049 |
+| pheS+4CP | +0.0146 -> +0.0146 | +0.0013 | +0.0070 -> +0.0041 | +0.0021 | +0.0178 |
+
+On the real data it finds a small shift of the expected sign, about a
+quarter of the 0.01 the flat spikes' absolute growth suggested, and it
+moves kanR's m most of the way to the within-tube value. pheS's m moves
+away from it.
+
+**Reading.** A shared IPTG shift is probably real but small and accounts
+for part of the kanR discrepancy. It does not account for pheS: within
+tube, wt against the flat spikes swings like the monoculture (0.015-0.018
+per minute); every fit puts pheS's m at 0.004-0.011.
+
+**Next.** A posterior-predictive check of the within-tube statistic:
+stage 1's predicted ln_cfu for wt and the two flat spikes in pheS+4CP,
+the same ratio slopes, against the observed. Whether the fit reproduces
+the 0.018 swing says whether something in its likelihood outweighs it or
+wt's X in stage 1 does not span 1 to 0 as assumed.
