@@ -12,6 +12,7 @@
 # Stage 2 on one library alone (one_library.py). Run from the validation
 # directory:
 #   sbatch --export=ALL,RUN=real,LIB=pheS .../one_library.srun
+#   sbatch --export=ALL,RUN=real,LIB=pheS,EXTRA="--wt_hill 0.0238 0.753" .../one_library.srun
 
 module load cuda/12.4.1
 set -e
@@ -19,5 +20,5 @@ RUN="${RUN:?set RUN (seed1, seed2 or real)}"
 LIB="${LIB:?set LIB (kanR or pheS)}"
 HERE=/gpfs/home/harms/tfscreen/planning/studies/two-stage-validation
 echo ">>> one library ${RUN} ${LIB} $(date)"
-python "${HERE}/one_library.py" "${HERE}/two_stage_${RUN}.yaml" "run_${RUN}" "${LIB}"
+python "${HERE}/one_library.py" "${HERE}/two_stage_${RUN}.yaml" "run_${RUN}" "${LIB}" ${EXTRA:-}
 echo ">>> Done one library ${RUN} ${LIB} $(date)"

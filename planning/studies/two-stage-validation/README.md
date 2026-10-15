@@ -170,7 +170,8 @@ tubes (+0.4 to +0.5, both IPTG). The tube-offset mode of
 `planning/offset-mode-growth-transition.md` may be the same direction seen
 in a fit with k free.
 
-**pheS alone compresses X.** Deep genotypes, X from one library's tubes
+**pheS alone compresses X** (but see the correction below). Deep
+genotypes, X from one library's tubes
 against the both-library stage 2:
 
 | | r | slope | intercept | rms |
@@ -193,6 +194,14 @@ The deep genotypes flagged by the two one-library checks barely overlap:
 10.6% (kanR alone), 8.7% (pheS alone), 1.8% both, and their level
 offsets do not correlate (r -0.14).
 
+**Correction (2026-10-15, `planning/studies/x-vs-binding/`).** The
+pheS-only fit is degenerate at wt: its wt X falls from 1 to 0 between 0
+and 1 uM IPTG, where wt's own library trajectories fall between 10 and
+30 uM. The compression above may come from that fit, not from pheS, so
+it stands only once a pheS-only fit keeps wt's curve. Binding theta at
+2 uM protein supports stage 2's X level (kanR alone within -0.03 on
+average) and not the refits' (about +0.3 above it).
+
 **Proposed next steps** (not yet decided).
 
 - Drop the k-shift refits and take k's (and m's) uncertainty from the
@@ -203,6 +212,5 @@ offsets do not correlate (r -0.14).
 - That needs a real optimum. Candidate: hold the dk_geno population
   location at stage 1's estimate, as the k and m pins do. Its scale
   probably cannot be held: stage 1 (singles) gave 0.53, stage 2 1.53.
-- Whether wt or the library is the odd one in pheS is a physics question.
-  Next: X against the newest binding theta, per library, with spikes and
-  bulk-only binding genotypes apart (pending the binding data).
+- The pheS question needs a pheS-only fit that keeps wt's curve first
+  (`planning/studies/x-vs-binding/`).

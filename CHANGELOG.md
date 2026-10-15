@@ -68,6 +68,11 @@ fall into two kinds:
 
 ### Added
 
+- **Hold wt's curve in `hill_relative`.** Priors `theta_wt_hill_K_fixed`
+  (a titrant concentration) and `theta_wt_hill_n_fixed`, set with
+  `tfs-configure-model --set_priors`, hold wt's Hill K and n when > 0
+  (default 0, free). wt's curve sets the X gauge, and a one-library fit
+  of the dev data collapsed it below 1 uM IPTG.
 - **`--shared_shift` for `tfs-predict-theta` and `tfs-predict-epistasis`.**
   A table of X shifts (`genotype`, `titrant_name`, `titrant_conc`,
   `shift`) shared by every non-wt genotype: each posterior draw gets one

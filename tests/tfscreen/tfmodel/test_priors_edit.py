@@ -163,6 +163,18 @@ def test_configure_set_priors(tmp_path):
     assert float(o.priors.theta.theta_log_hill_n_hyper_scale_fixed) == 0.5
 
 
+def test_configure_holds_wt_hill_curve(tmp_path):
+    prefix = _configure(tmp_path, set_priors=[
+        "theta_wt_hill_K_fixed=0.0238", "theta_wt_hill_n_fixed=0.753"])
+    o, _ = read_configuration(f"{prefix}_config.yaml")
+    assert float(o.priors.theta.theta_wt_hill_K_fixed) == pytest.approx(0.0238)
+    assert float(o.priors.theta.theta_wt_hill_n_fixed) == pytest.approx(0.753)
+    # free by default
+    (tmp_path / "b").mkdir()
+    o, _ = read_configuration(f"{_configure(tmp_path / 'b')}_config.yaml")
+    assert float(o.priors.theta.theta_wt_hill_K_fixed) == 0.0
+
+
 def test_configure_set_priors_unknown_name(tmp_path):
     with pytest.raises(ValueError, match="No prior named"):
         _configure(tmp_path, set_priors=["not_a_prior=1"])
