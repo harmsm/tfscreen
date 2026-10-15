@@ -244,3 +244,19 @@ def test_one_step_and_one_jackknife_task(tmp_path, rec):
         cli.fit_two_stage(y, out_dir=str(out), jackknife_task=4)
     with pytest.raises(ValueError, match="step must be"):
         cli.fit_two_stage(y, out_dir=str(out), step="bogus")
+
+
+def test_consistency_with_another_library_and_name(tmp_path, rec):
+    out = tmp_path / "run"
+    y = _write_yaml(tmp_path)
+    cli.fit_two_stage(y, out_dir=str(out))
+    cfg, settings = cli.read_two_stage_config(y)
+    settings["consistency_library"] = "pheS"
+    cli.run_consistency(str(out), cfg, settings, name="consistency_pheS")
+    d = out / "consistency_pheS"
+    assert (d / "consistency.csv").exists()
+    assert set(pd.read_csv(d / "tfs_growth.csv")["library"]) == {"pheS"}
+    cons = pd.read_csv(d / "growth_priors_pinned.csv")
+    assert set(cons["condition_rep"]) == {"pheS+4CP", "pheS-4CP"}
+    # the default run's kanR check is untouched
+    assert set(pd.read_csv(out / "consistency" / "tfs_growth.csv")["library"]) == {"kanR"}

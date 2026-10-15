@@ -396,11 +396,14 @@ def _library_conditions(table, library):
                   | set(rows["condition_sel"].astype(str)))
 
 
-def run_consistency(out_dir, cfg, settings):
-    """Stage 2 on one library's tubes alone, against the full stage 2."""
-    d = os.path.join(out_dir, "consistency")
+def run_consistency(out_dir, cfg, settings, name="consistency"):
+    """Stage 2 on one library's tubes alone, against the full stage 2.
+
+    Writes out_dir/name/ (another name keeps a second library's run apart).
+    """
+    d = os.path.join(out_dir, name)
     if os.path.exists(os.path.join(d, "consistency.csv")):
-        _say("consistency: done, skipped")
+        _say(f"{name}: done, skipped")
         return
     both = os.path.join(out_dir, "stage2", PRED)
     if not os.path.exists(both):
