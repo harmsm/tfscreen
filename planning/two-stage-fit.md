@@ -160,6 +160,17 @@ simulation. Intervals matter for the final analysis.
    `planning/studies/two-stage-validation/` (three chained SLURM runs via
    `submit.sh`; `validate.py` compares each with the study's outputs and
    gives the consistency flag's no-signal rate on the simulations).
+   Run 1 (2026-10-15, README "Results"): stage 1, the jackknife, stage 2
+   and the consistency flag reproduce the study (flag 1.9% of deep
+   genotypes on both simulations, 10.6% real). The k shift does not:
+   its refits restart at step size 1e-3, leave stage 2's MAP and
+   re-descend along the dk_geno population against wt (every genotype's
+   dk_geno +0.006 to +0.012, X +0.25 to +0.32 on the real data, the
+   same with k unchanged), so the shift measures where the optimizer
+   stopped. Proposed replacement: k and m free in stage 2 under the
+   jackknife covariance as a prior, uncertainty from the Laplace, with
+   the dk_geno population location held at stage 1. Open until that is
+   built and validated.
 5. [ ] **Scoring for simulations.** X against the truth by read depth
    (`score_x.py`) as a `tfs-summarize-fit` option or its own CLI, so the
    students score design sweeps without study scripts.
