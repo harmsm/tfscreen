@@ -205,8 +205,14 @@ def _fit(settings, init_from=None):
 def _km(path="km.csv"):
     if not os.path.exists(path):
         extract_params(CONFIG, CHECKPOINT, out_prefix="tfs_params")
-        km = ts.km_table(pd.read_csv("tfs_params_growth_k.csv"),
-                         pd.read_csv("tfs_params_growth_m.csv"))
+        if (os.path.exists("tfs_params_growth_k.csv")
+                and os.path.exists("tfs_params_growth_m.csv")):
+            km = ts.km_table(pd.read_csv("tfs_params_growth_k.csv"),
+                             pd.read_csv("tfs_params_growth_m.csv"))
+        else:
+            # a pinned k or m is a deterministic site, which a MAP
+            # checkpoint does not hold, so extraction skips both
+            km = ts.km_from_map(PARAMS, "tfs_configure_priors.csv")
         km.to_csv(path)
     return pd.read_csv(path, index_col="condition_rep")
 

@@ -31,6 +31,12 @@ fall into two kinds:
 
 ### Fixed
 
+- **`tfs-fit-two-stage` with a pinned k or m in stage 1.** A pinned k or
+  m is a deterministic site, which a MAP checkpoint does not hold, so
+  `tfs-extract-params` skipped both and stage 1 failed writing `km.csv`.
+  It now falls back to `two_stage.km_from_map`, which reads the MAP's
+  parameters and takes a pinned condition's prior location.
+
 - **`total_num_reads` is the total over all replicates.** `tfs-simulate`
   passed every replicate the full total and each split it over its own
   tubes, so a simulation had N times the configured reads, and with a

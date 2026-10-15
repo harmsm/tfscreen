@@ -1,0 +1,25 @@
+#!/bin/bash -l
+#SBATCH --account=harmslab
+#SBATCH --partition=gpulong
+#SBATCH --time=1-00:00:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --gpus=1
+#SBATCH --mem=0
+#SBATCH --ntasks-per-node=1
+#SBATCH --job-name=ts_relative
+
+# Relative stage 1 (stage1_relative.py). Run from the two-stage validation
+# directory on the cluster, after its run_${RUN}/stage1 exists:
+#   sbatch --export=ALL,RUN=real .../stage1_relative.srun
+# writes rel_${RUN}/stage1/.
+
+module load cuda/12.4.1
+set -e
+RUN="${RUN:?set RUN (seed1, seed2 or real)}"
+HERE=/gpfs/home/harms/tfscreen/planning/studies
+echo ">>> relative stage 1 ${RUN} $(date)"
+python "${HERE}/relative-m/stage1_relative.py" \
+    "${HERE}/two-stage-validation/two_stage_${RUN}.yaml" \
+    "run_${RUN}/stage1/km.csv" "rel_${RUN}"
+echo ">>> Done relative stage 1 ${RUN} $(date)"

@@ -196,3 +196,38 @@ def test_marker_consistency_flags_a_level_offset_after_the_affine_map():
     assert out["inconsistent"].sum() == 1
     assert out.loc["A7B", "z"] == pytest.approx(
         0.3 / np.hypot(0.05, 0.05), rel=0.15)
+
+
+# --- k and m from a MAP when extraction cannot give them ---
+
+def _priors_csv(path, k_pinned, m_pinned):
+    conds = ["a", "b", "c"]
+    rows = [("growth.condition_growth.m_scale", 0.01, None, None)]
+    for i, c in enumerate(conds):
+        rows += [("growth.condition_growth.k_loc", 0.01 * (i + 1), i, c),
+                 ("growth.condition_growth.m_loc", -0.001 * (i + 1), i, c),
+                 ("growth.condition_growth.k_pinned", float(k_pinned[i]), i, c),
+                 ("growth.condition_growth.m_pinned", float(m_pinned[i]), i, c)]
+    pd.DataFrame(rows, columns=["parameter", "value", "flat_index",
+                                "condition_rep"]).to_csv(path, index=False)
+
+
+def test_km_from_map_pinned_free_and_partial(tmp_path):
+    pri, npz = tmp_path / "p.csv", tmp_path / "m.npz"
+    # k pinned everywhere, m free everywhere
+    _priors_csv(pri, [1, 1, 1], [0, 0, 0])
+    np.savez(npz, condition_growth_m_auto_loc=np.array([-0.5, 0.0, 0.5]))
+    out = ts.km_from_map(str(npz), str(pri))
+    assert list(out.index) == ["a", "b", "c"]
+    assert np.allclose(out["k"], [0.01, 0.02, 0.03])
+    assert np.allclose(out["m"], [-0.5, 0.0, 0.5])
+    # m pinned in b only: the free entries come from {site}_free
+    _priors_csv(pri, [1, 1, 1], [0, 1, 0])
+    np.savez(npz, condition_growth_m_free_auto_loc=np.array([7.0, 9.0]))
+    out = ts.km_from_map(str(npz), str(pri))
+    assert np.allclose(out["m"], [7.0, -0.002, 9.0])
+    # a free parameter missing from the MAP is an error
+    _priors_csv(pri, [0, 1, 1], [1, 1, 1])
+    np.savez(npz, other=np.zeros(1))
+    with pytest.raises(ValueError, match="no k"):
+        ts.km_from_map(str(npz), str(pri))

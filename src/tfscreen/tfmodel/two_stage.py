@@ -157,6 +157,75 @@ def km_table(k_df, m_df):
     return out
 
 
+def _flag(v):
+    """A 0/1 pin flag as written in a priors CSV (0.0, 1, True, ...)."""
+    if isinstance(v, str):
+        return v.strip().lower() in ("1", "1.0", "true")
+    return bool(float(v))
+
+
+def km_from_map(params_npz, priors_csv, name="condition_growth"):
+    """
+    Per-condition k and m from a MAP's parameters and its priors CSV, for
+    when ``tfs-extract-params`` cannot give them: a MAP checkpoint holds no
+    deterministic sites, and a pinned k or m (all conditions, or some) is
+    one. A pinned condition takes its prior location.
+
+    Parameters
+    ----------
+    params_npz : str
+        ``tfs-fit-model``'s ``_params.npz`` (constrained ``{site}_auto_loc``).
+    priors_csv : str
+        The configuration's priors CSV, with per-condition (indexed) growth
+        rows naming ``condition_rep``.
+    name : str
+        The growth component's site prefix.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Index ``condition_rep``, columns ``k`` and ``m``.
+    """
+    z = np.load(params_npz)
+    p = pd.read_csv(priors_csv)
+    prefix = f"growth.{name}."
+    labels = None
+    for field in ("k_loc", "m_loc", "k_pinned", "m_pinned", "k_scale"):
+        r = p[(p["parameter"] == prefix + field) & p["flat_index"].notna()]
+        if len(r):
+            labels = r.sort_values("flat_index")["condition_rep"].astype(str).tolist()
+            break
+    if labels is None:
+        raise ValueError(f"{priors_csv} has no per-condition growth rows to "
+                         "name the conditions")
+    n = len(labels)
+
+    def per_condition(field, default):
+        r = p[p["parameter"] == prefix + field]
+        if r.empty:
+            return np.full(n, default, dtype=object)
+        if r["flat_index"].notna().any():
+            r = r.sort_values("flat_index")
+            return r["value"].to_numpy(dtype=object)
+        return np.full(n, r["value"].iloc[0], dtype=object)
+
+    out = {}
+    for param in ("k", "m"):
+        loc = per_condition(f"{param}_loc", 0.0).astype(float)
+        pinned = np.array([_flag(v) for v in per_condition(f"{param}_pinned", 0)])
+        full, free = f"{name}_{param}_auto_loc", f"{name}_{param}_free_auto_loc"
+        value = loc.copy()
+        if full in z.files:
+            value = np.asarray(z[full], dtype=float).reshape(n)
+        elif free in z.files:
+            value[~pinned] = np.asarray(z[free], dtype=float).ravel()
+        elif not pinned.all():
+            raise ValueError(f"{params_npz} has no {param} for the free "
+                             "conditions")
+        out[param] = value
+    return pd.DataFrame(out, index=pd.Index(labels, name="condition_rep"))
+
+
 def jackknife_km(estimates, n, d):
     """
     Jackknife standard errors of k and m, and k's main direction.
