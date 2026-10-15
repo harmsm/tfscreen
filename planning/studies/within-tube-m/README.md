@@ -124,6 +124,8 @@ pheS+4CP about +0.018); the shift itself is
 
 ### Run 2 results (2026-10-15)
 
+The free form was removed from the code after this run.
+
 The four runs failed first (the shift used numpy on the traced
 titrant_conc; fixed) and then ran, about 30 minutes each.
 
@@ -156,3 +158,52 @@ stage 1's predicted ln_cfu for wt and the two flat spikes in pheS+4CP,
 the same ratio slopes, against the observed. Whether the fit reproduces
 the 0.018 swing says whether something in its likelihood outweighs it or
 wt's X in stage 1 does not span 1 to 0 as assumed.
+
+### Run 3: posterior-predictive check and the marker ratio (2026-10-15)
+
+`ppc_within_tube.py` (stage 1 folders downloaded to `runs/ppc/`, gitignored;
+`tfs-predict-growth` at the MAP, locally) computes the within-tube swing
+from the fit's predicted ln_cfu on the same tubes. `marker_ratio.py`
+computes each deep genotype's swing in each marker against
+M42I/H74A/K84L, model-free.
+
+**Stage 1 does not reproduce the within-tube contrast.** pheS+4CP:
+predicted 0.004, observed 0.018 (0.018-0.03 at low IPTG, 3-4 SE).
+kanR+kan: predicted -0.009, observed -0.005 (1-2 SE). The log-linear
+titrant k changes neither. On seed 1 the fit reproduces the statistic
+(both near 0, since the simulation's spikes are not flat), so the check
+works. The real fits' count overdispersion floor (inv_r 0.0065, about 8%
+per tube at high counts) is 6x the simulation's.
+
+**The pheS-only fit's curves follow from the pinned m.** Read with
+m = 0.018, H74A/K84L sits near X 0.4 at both IPTG ends, as its binding and
+kanR X say.
+
+**The singles' marker ratio matches wt, not stage 1.** With one X shared
+by both markers, each genotype's pheS swing over its kanR swing is
+m_pheS / m_kanR:
+
+| | pheS / kanR |
+|---|---|
+| 903 singles with >= 1e5 reads, weighted line through 0 | -2.2 |
+| median over the 372 with a kanR swing > 2 SE | -2.5 |
+| M42I/H74A | -2.4 |
+| wt | -3.9 (0.018 +- 0.004 over -0.005 +- 0.002) |
+| stage 1's pinned m | -0.47 |
+| wt monoculture | -1.03 |
+
+wt sits with the library. Every within-tube measure agrees, and stage 1's
+m's are about 5x off in ratio: kanR's m about 3x too steep, pheS's about
+2x too shallow.
+
+**Reading.** The within-tube ratio is the information free of tube totals.
+The fit's absolute scale comes from the OD600-derived totals, which tie
+each condition's k and m to the population's growth; the per-tube level
+offsets cannot absorb a rate difference across IPTG, so m does. The
+monoculture is OD-based too. An OD-to-CFU conversion that drifts with
+IPTG or cell state under selection (filamentation under kanamycin, say)
+would do this, as the staged-MAP study already listed. Under the wt gauge,
+m is identified by wt's contrast with the library without the totals, so
+a fit that takes m from relative information alone is possible in
+principle; the IPTG-structured offset mode is a warning that freeing the
+totals has not gone cleanly before.

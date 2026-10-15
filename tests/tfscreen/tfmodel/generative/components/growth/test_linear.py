@@ -883,24 +883,6 @@ def _titrant_priors(**kw):
     return get_priors(is_selection=[False, True, False, True]).replace(**kw)
 
 
-@pytest.mark.parametrize("fn", [define_model, guide])
-def test_k_titrant_free_shifts_selection_only(fn):
-    data = _titrant_data()
-    priors = _titrant_priors(k_titrant_free_scale=0.02)
-    tr = trace(seed(fn, 1)).get_trace("g", data, priors)
-    assert tr["g_k_titrant"]["value"].shape == (2, 3)   # 2 selection conds x 3 concs
-    params = seed(fn, 1)("g", data, priors)
-    base = seed(fn, 1)("g", data, priors.replace(k_titrant_free_scale=0.0))
-    shift = np.asarray(params.k_sel) - np.asarray(base.k_sel)
-    # no titrant: no shift; control condition (row with map value 2): no shift
-    assert np.allclose(shift[:, 0, :], 0.0)
-    assert np.allclose(shift[1], 0.0)
-    v = np.asarray(tr["g_k_titrant"]["value"])
-    assert np.allclose(shift[0, 1:, 0], v[0, 1:])      # condition 1 (first selection)
-    assert np.allclose(shift[2, 1:, 0], v[1, 1:])      # condition 3 (second selection)
-    assert np.allclose(np.asarray(params.k_pre), np.asarray(base.k_pre))
-
-
 def test_k_titrant_loglinear_is_a_line_in_log_conc():
     data = _titrant_data()
     priors = _titrant_priors(k_titrant_loglinear_scale=0.005)
@@ -918,20 +900,32 @@ def test_k_titrant_loglinear_is_a_line_in_log_conc():
 
 def test_k_titrant_refusals():
     data = _titrant_data()
-    with pytest.raises(ValueError, match="not both"):
-        seed(define_model, 0)("g", data, _titrant_priors(k_titrant_free_scale=0.01,
-                                                         k_titrant_loglinear_scale=0.01))
+    with pytest.raises(ValueError, match=">= 0"):
+        seed(define_model, 0)("g", data, _titrant_priors(k_titrant_loglinear_scale=-0.01))
     with pytest.raises(ValueError, match="selection flags"):
-        seed(define_model, 0)("g", data, get_priors().replace(k_titrant_free_scale=0.01))
+        seed(define_model, 0)("g", data, get_priors().replace(k_titrant_loglinear_scale=0.01))
     flat = SimpleNamespace(**{**vars(data), "map_condition_sel": jnp.array([1, 2, 3, 3])})
     with pytest.raises(ValueError, match="second-to-last"):
-        seed(define_model, 0)("g", flat, _titrant_priors(k_titrant_free_scale=0.01))
-    # off by default: no new sites
+        seed(define_model, 0)("g", flat, _titrant_priors(k_titrant_loglinear_scale=0.01))
+    # off by default: no new site
     tr = trace(seed(define_model, 0)).get_trace("g", data, _titrant_priors())
-    assert "g_k_titrant" not in tr and "g_k_titrant_slope" not in tr
+    assert "g_k_titrant_slope" not in tr
+    assert not hasattr(_titrant_priors(), "k_titrant_free_scale")
 
 
-@pytest.mark.parametrize("field", ["k_titrant_free_scale", "k_titrant_loglinear_scale"])
+@pytest.mark.parametrize("fn", [define_model, guide])
+def test_k_titrant_shifts_selection_only(fn):
+    data = _titrant_data()
+    priors = _titrant_priors(k_titrant_loglinear_scale=0.005)
+    params = seed(fn, 1)("g", data, priors)
+    base = seed(fn, 1)("g", data, priors.replace(k_titrant_loglinear_scale=0.0))
+    shift = np.asarray(params.k_sel) - np.asarray(base.k_sel)
+    assert np.allclose(shift[:, 0, :], 0.0)       # no titrant
+    assert np.allclose(shift[1], 0.0)             # control condition
+    assert np.allclose(np.asarray(params.k_pre), np.asarray(base.k_pre))
+
+
+@pytest.mark.parametrize("field", ["k_titrant_loglinear_scale"])
 def test_k_titrant_traces_under_jit(field):
     # titrant_conc is a traced argument inside the jitted fit
     import jax

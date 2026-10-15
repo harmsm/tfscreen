@@ -383,8 +383,7 @@ def test_configure_wt_rates_alone(tmp_path):
     assert k["pheS+4CP"] != pytest.approx(0.012)
 
 
-@pytest.mark.parametrize("field,site", [("k_titrant_free_scale", "condition_growth_k_titrant"),
-                                        ("k_titrant_loglinear_scale",
+@pytest.mark.parametrize("field,site", [("k_titrant_loglinear_scale",
                                          "condition_growth_k_titrant_slope")])
 def test_configure_titrant_k_traces_on_real_tensors(tmp_path, field, site):
     import jax
