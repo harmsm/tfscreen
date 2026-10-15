@@ -170,7 +170,7 @@ tubes (+0.4 to +0.5, both IPTG). The tube-offset mode of
 `planning/offset-mode-growth-transition.md` may be the same direction seen
 in a fit with k free.
 
-**pheS alone compresses X** (but see the correction below). Deep
+**pheS alone compresses X** (confirmed with wt's curve held, below). Deep
 genotypes, X from one library's tubes
 against the both-library stage 2:
 
@@ -194,13 +194,15 @@ The deep genotypes flagged by the two one-library checks barely overlap:
 10.6% (kanR alone), 8.7% (pheS alone), 1.8% both, and their level
 offsets do not correlate (r -0.14).
 
-**Correction (2026-10-15, `planning/studies/x-vs-binding/`).** The
-pheS-only fit is degenerate at wt: its wt X falls from 1 to 0 between 0
-and 1 uM IPTG, where wt's own library trajectories fall between 10 and
-30 uM. The compression above may come from that fit, not from pheS, so
-it stands only once a pheS-only fit keeps wt's curve. Binding theta at
-2 uM protein supports stage 2's X level (kanR alone within -0.03 on
-average) and not the refits' (about +0.3 above it).
+**The compression is real (2026-10-15, `planning/studies/x-vs-binding/`).**
+The pheS-only fit is degenerate at wt (its wt X falls from 1 to 0 below
+1 uM IPTG, where wt's library trajectories fall at 10-30 uM), but
+refitting with wt's curve held at stage 2's (`consistency_pheS_wtheld/`)
+changed no mutant (r 0.996 with the first pheS fit) and kept the
+compression (slope 0.52, intercept +0.24 against kanR). Binding theta at
+2 uM agrees with kanR's X (mean -0.03) and not pheS's: pheS puts the
+weak binders 0.25-0.5 below their theta and below X = 0. Binding also
+supports stage 2's X level over the refits' (+0.3).
 
 **Proposed next steps** (not yet decided).
 
@@ -212,5 +214,5 @@ average) and not the refits' (about +0.3 above it).
 - That needs a real optimum. Candidate: hold the dk_geno population
   location at stage 1's estimate, as the k and m pins do. Its scale
   probably cannot be held: stage 1 (singles) gave 0.53, stage 2 1.53.
-- The pheS question needs a pheS-only fit that keeps wt's curve first
-  (`planning/studies/x-vs-binding/`).
+- Find why wt does better in 4CP, derepressed, than mutants at the same
+  or lower occupancy (`planning/studies/x-vs-binding/`).

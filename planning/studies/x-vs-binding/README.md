@@ -80,12 +80,34 @@ control moved every mutant's X by about +0.32 over stage 2, which would
 take the 2 uM mean difference from -0.10 to about +0.2, against kanR
 alone's -0.03.
 
-**The pheS-only fit is degenerate at wt.** Its wt X falls from 1 to 0
-between 0 and 1 uM IPTG. wt's own library trajectories put the drop
-between 10 and 30 uM, as in the monoculture. So the pheS-only X is not a
-usable reading of the pheS response, and the compression reported in
-the validation README needs a healthy pheS-only fit before it means
-anything.
+**The pheS-only fit is degenerate at wt, but that is not why pheS
+disagrees.** Its wt X falls from 1 to 0 between 0 and 1 uM IPTG, where
+wt's own library trajectories fall between 10 and 30 uM. Refitting pheS
+alone with wt's curve held at stage 2's (K 0.0238 mM, n 0.753;
+`theta_wt_hill_K_fixed`/`_n_fixed`, `consistency_pheS_wtheld/`) fixed
+wt's curve and changed nothing else: mutants' X against the first pheS
+fit r 0.996, slope 0.99. Against kanR alone, deep genotypes, the held
+fit gives slope 0.52, intercept +0.24 (X 0.17 lower at 0 IPTG, 0.17
+higher at 1 mM; 18% of rows beyond 2 SD, median z -0.04). The pheS
+compression is real.
+
+**Binding sides with kanR.** At 2 uM, X minus gauged theta:
+
+| | kanR | pheS (wt held) |
+|---|---|---|
+| H74A | +0.07 | -0.33 |
+| H74A/K84L | -0.01 | -0.50 |
+| K84L | -0.03 | -0.25 |
+| M42I/H74A | 0.00 | -0.27 |
+| G65H | -0.06 | +0.10 |
+| M42I | -0.14 | -0.11 |
+
+pheS puts the weak binders below X = 0: they grow worse in 4CP than wt
+does at 1 mM IPTG, though their in vitro occupancy (and their kanR X)
+stays above wt's there. Relative to every mutant, wt does better in 4CP
+when derepressed than its occupancy says. Since X is gauged on wt, the
+pheS anomaly is wt's, or a pheS response that is not one function of
+occupancy for wt and the mutants alike.
 
 **wt's library rates are too noisy to settle the pheS question.** The
 slope of wt's ln_cfu over the selection, per replicate, scatters by
@@ -94,6 +116,6 @@ pheS+4CP wt's library rate averages 0.024 at 0-3 uM IPTG and 0.015 at
 30 uM-1 mM, against the monoculture's 0.016 and 0.004: a smaller drop in
 the library, but at about one SE per IPTG level.
 
-**Next.** A pheS-only fit that does not collapse wt's curve (hold wt's
-log K or n near kanR's, or the log(n) population SD), then the marker
-comparison again. Repeat with the replicated binding data.
+**Next.** Find why wt does better in 4CP than the mutants at the same or
+lower occupancy (see the two-stage validation README). Repeat with the
+replicated binding data.

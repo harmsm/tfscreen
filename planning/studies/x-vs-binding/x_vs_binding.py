@@ -7,7 +7,8 @@ Growth X against in vitro binding theta for the binding genotypes
 BINDING_CSV   wells: genotype, biorep, date, protein_dimer_conc_molar,
               iptg_conc_molar, theta (dev-data/binding/2026-10-15_binding.csv)
 RUN_DIR       a tfs-fit-two-stage run with stage2/, consistency/ (kanR
-              alone) and consistency_pheS/ (pheS alone)
+              alone), consistency_pheS/ (pheS alone) and, when present,
+              consistency_pheS_wtheld/ (pheS alone, wt's curve held)
 PROCESSED_DIR growth_{kanR,pheS}.csv.gz and wt_control_rate_summary.csv
 
 Binding theta goes onto the X gauge through wt at the same protein
@@ -34,8 +35,10 @@ plt.rc("font", size=14)
 plt.rc("axes", titlesize=14, labelsize=16)
 plt.rc("legend", fontsize=12)
 
-FITS = {"both": "stage2", "kanR": "consistency", "pheS": "consistency_pheS"}
-FIT_COLOR = {"both": "#000000", "kanR": "#0072B2", "pheS": "#D55E00"}
+FITS = {"both": "stage2", "kanR": "consistency", "pheS": "consistency_pheS",
+        "pheS_wtheld": "consistency_pheS_wtheld"}
+FIT_COLOR = {"both": "#000000", "kanR": "#0072B2", "pheS": "#D55E00",
+             "pheS_wtheld": "#E69F00"}
 PROTEIN_MARK = {2.0: ("o", "#009E73"), 20.0: ("s", "#CC79A7")}
 SCREEN_IPTG = [0.0, 1e-4, 1e-3, 3e-3, 0.01, 0.03, 0.1, 1.0]   # mM
 ZERO_X = 3e-5   # where 0 IPTG is drawn on the log axis (mM)
