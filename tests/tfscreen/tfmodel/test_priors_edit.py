@@ -381,3 +381,19 @@ def test_configure_wt_rates_alone(tmp_path):
     assert m["kanR+kan"] == pytest.approx(0.008)
     # conditions without wt rates keep the default
     assert k["pheS+4CP"] != pytest.approx(0.012)
+
+
+@pytest.mark.parametrize("field,site", [("k_titrant_free_scale", "condition_growth_k_titrant"),
+                                        ("k_titrant_loglinear_scale",
+                                         "condition_growth_k_titrant_slope")])
+def test_configure_titrant_k_traces_on_real_tensors(tmp_path, field, site):
+    import jax
+    from numpyro import handlers
+    prefix = _configure(tmp_path, set_priors=[f"{field}=0.01"])
+    o, _ = read_configuration(f"{prefix}_config.yaml")
+    assert float(getattr(o.priors.growth.condition_growth, field)) == 0.01
+    tr = handlers.trace(handlers.seed(o.jax_model, jax.random.PRNGKey(0))).get_trace(
+        data=o.data, priors=o.priors)
+    assert site in tr
+    n_sel = sum(o.priors.growth.condition_growth.m_is_selection)
+    assert tr[site]["value"].shape[0] == n_sel

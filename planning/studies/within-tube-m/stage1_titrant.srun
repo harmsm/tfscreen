@@ -1,0 +1,25 @@
+#!/bin/bash -l
+#SBATCH --account=harmslab
+#SBATCH --partition=gpulong
+#SBATCH --time=1-00:00:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --gpus=1
+#SBATCH --mem=0
+#SBATCH --ntasks-per-node=1
+#SBATCH --job-name=ts_ktitrant
+
+# Stage 1 with a titrant-dependent k (stage1_titrant.py). Run from the
+# two-stage validation directory on the cluster:
+#   sbatch --export=ALL,RUN=real,MODE=free .../stage1_titrant.srun
+# writes ktitrant_${RUN}_${MODE}/stage1/.
+
+module load cuda/12.4.1
+set -e
+RUN="${RUN:?set RUN (seed1, seed2 or real)}"
+MODE="${MODE:?set MODE (free or loglinear)}"
+HERE=/gpfs/home/harms/tfscreen/planning/studies
+echo ">>> stage 1 k_titrant ${RUN} ${MODE} $(date)"
+python "${HERE}/within-tube-m/stage1_titrant.py" \
+    "${HERE}/two-stage-validation/two_stage_${RUN}.yaml" "ktitrant_${RUN}_${MODE}" "${MODE}"
+echo ">>> Done stage 1 k_titrant ${RUN} ${MODE} $(date)"

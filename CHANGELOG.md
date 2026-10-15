@@ -68,6 +68,15 @@ fall into two kinds:
 
 ### Added
 
+- **A titrant-dependent k in `linear` growth.** Priors
+  `k_titrant_free_scale` (one k shift per selection condition and nonzero
+  titrant concentration) or `k_titrant_loglinear_scale` (one slope in log
+  concentration per selection condition), set with `tfs-configure-model
+  --set_priors`, add a growth shift shared by every genotype to the
+  selection phase of selection conditions; 0 at no titrant, 0 (off) by
+  default. The dev data's flat genotypes grow about 0.01 per minute
+  faster at 1 mM IPTG than at none under both selections
+  (`planning/studies/within-tube-m/`).
 - **Hold wt's curve in `hill_relative`.** Priors `theta_wt_hill_K_fixed`
   (a titrant concentration) and `theta_wt_hill_n_fixed`, set with
   `tfs-configure-model --set_priors`, hold wt's Hill K and n when > 0

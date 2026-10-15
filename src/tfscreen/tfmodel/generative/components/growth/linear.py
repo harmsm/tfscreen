@@ -83,6 +83,21 @@ class ModelPriors:
         as the two-stage fit of ``planning/studies/svi-overconfidence/`` or a
         fit holding one marker's k and m at an independent estimate
         (``planning/studies/m-bias-factorial/``).  Default ``False``.
+    k_titrant_free_scale : float
+        > 0: in every selection condition (``m_is_selection``), the selection
+        phase's k gets a shift at each titrant concentration, shared by every
+        genotype and 0 at no titrant: ``{name}_k_titrant``, one Normal(0,
+        scale) per selection condition and nonzero concentration.  0 (the
+        default) is off.  The within-tube study
+        (``planning/studies/within-tube-m/``) found flat genotypes growing
+        about 0.01 per minute faster at 1 mM IPTG than at none, in both
+        selection conditions and not in the controls.
+    k_titrant_loglinear_scale : float
+        > 0: the same shift as a line in log concentration,
+        ``s * log(max(c, c_floor) / c_floor)`` with ``c_floor`` a tenth of
+        the lowest nonzero concentration (so 0 at no titrant), one slope
+        ``{name}_k_titrant_slope`` ~ Normal(0, scale) per selection
+        condition.  Exclusive with ``k_titrant_free_scale``.
     """
     k_loc: float
     k_scale: float
@@ -93,6 +108,8 @@ class ModelPriors:
     m_is_selection: tuple = field(pytree_node=False, default=None)
     m_pinned: bool | tuple = field(pytree_node=False, default=False)
     k_pinned: bool | tuple = field(pytree_node=False, default=False)
+    k_titrant_free_scale: float = field(pytree_node=False, default=0.0)
+    k_titrant_loglinear_scale: float = field(pytree_node=False, default=0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -214,6 +231,95 @@ def _guide_condition_param(name, param, loc_arr, scale_arr, mask, num_cr):
     return _with_free(loc_arr, free, values, num_cr)
 
 
+
+def _titrant_mode(priors):
+    """None, ("free", scale) or ("loglinear", scale)."""
+    free = float(getattr(priors, "k_titrant_free_scale", 0.0))
+    loglin = float(getattr(priors, "k_titrant_loglinear_scale", 0.0))
+    if free < 0 or loglin < 0:
+        raise ValueError("k_titrant_free_scale and k_titrant_loglinear_scale "
+                         "must be >= 0")
+    if free > 0 and loglin > 0:
+        raise ValueError("set k_titrant_free_scale or k_titrant_loglinear_scale, "
+                         "not both")
+    if free == 0 and loglin == 0:
+        return None
+    if priors.m_is_selection is None:
+        raise ValueError("a titrant-dependent k needs the selection flags "
+                         "(m_is_selection) to know which conditions get it")
+    return ("free", free) if free > 0 else ("loglinear", loglin)
+
+
+def _log_titrant_offsets(titrant_conc):
+    """log(max(c, c_floor) / c_floor), c_floor a tenth of the lowest nonzero
+    concentration, so 0 at no titrant."""
+    conc = np.asarray(titrant_conc, dtype=float)
+    positive = conc[conc > 0]
+    if positive.size == 0:
+        raise ValueError("a log-linear titrant k needs a nonzero titrant "
+                         "concentration")
+    floor = positive.min() / 10.0
+    return np.log(np.maximum(conc, floor) / floor)
+
+
+def _titrant_table(name, data, priors, guide=False):
+    """
+    The selection-phase k shift per (condition_rep, titrant_conc), or None.
+    Rows of control conditions and the no-titrant column are 0.
+    """
+    mode = _titrant_mode(priors)
+    if mode is None:
+        return None
+    kind, scale = mode
+    num_cr, C = data.num_condition_rep, data.num_titrant_conc
+    sel = np.flatnonzero(np.asarray(priors.m_is_selection, dtype=bool))
+    conc = np.asarray(data.titrant_conc, dtype=float)
+    if kind == "free":
+        zero = int(np.argmin(conc))
+        cols = np.array([i for i in range(C) if i != zero])
+        site = f"{name}_k_titrant"
+        shape = (sel.size, cols.size)
+        if guide:
+            locs = pyro.param(f"{site}_locs", jnp.zeros(shape))
+            scales = pyro.param(f"{site}_scales", jnp.full(shape, 1e-3),
+                                constraint=dist.constraints.positive)
+        else:
+            locs, scales = jnp.zeros(shape), jnp.full(shape, scale)
+        with pyro.plate(f"{name}_k_titrant_conditions", sel.size, dim=-2):
+            with pyro.plate(f"{name}_k_titrant_concs", cols.size, dim=-1):
+                values = pyro.sample(site, dist.Normal(locs, scales))
+        table = jnp.zeros(values.shape[:-2] + (num_cr, C))
+        return table.at[..., sel[:, None], cols[None, :]].set(values)
+    site = f"{name}_k_titrant_slope"
+    if guide:
+        locs = pyro.param(f"{site}_locs", jnp.zeros(sel.size))
+        scales = pyro.param(f"{site}_scales", jnp.full(sel.size, 1e-4),
+                            constraint=dist.constraints.positive)
+    else:
+        locs, scales = jnp.zeros(sel.size), jnp.full(sel.size, scale)
+    with pyro.plate(f"{name}_k_titrant_conditions", sel.size):
+        slope = pyro.sample(site, dist.Normal(locs, scales))
+    L = jnp.asarray(_log_titrant_offsets(conc))
+    table = jnp.zeros(slope.shape[:-1] + (num_cr, C))
+    return table.at[..., sel, :].set(slope[..., :, None] * L)
+
+
+def _add_titrant_shift(k_sel, table, data):
+    """k_sel plus the shift for each element's condition and titrant
+    concentration (the growth tensor's second-to-last axis)."""
+    if table is None:
+        return k_sel
+    num_titrant_conc = data.num_titrant_conc
+    m = jnp.asarray(data.map_condition_sel)
+    if m.ndim < 2 or m.shape[-2] not in (num_titrant_conc,):
+        raise ValueError("a titrant-dependent k needs the full growth-tensor "
+                         "condition map (titrant_conc on its second-to-last "
+                         f"axis); got shape {tuple(m.shape)}")
+    ci = jnp.arange(num_titrant_conc).reshape((1,) * (m.ndim - 2)
+                                              + (num_titrant_conc, 1))
+    return k_sel + table[..., m, ci]
+
+
 def define_model(name: str,
                  data: GrowthData,
                  priors: ModelPriors) -> LinearParams:
@@ -267,6 +373,7 @@ def define_model(name: str,
     m_pre = growth_m[data.map_condition_pre]
     k_sel = growth_k[data.map_condition_sel]
     m_sel = growth_m[data.map_condition_sel]
+    k_sel = _add_titrant_shift(k_sel, _titrant_table(name, data, priors), data)
 
     return LinearParams(k_pre=k_pre, m_pre=m_pre, k_sel=k_sel, m_sel=m_sel)
 
@@ -295,6 +402,7 @@ def guide(name: str,
     m_pre = growth_m[data.map_condition_pre]
     k_sel = growth_k[data.map_condition_sel]
     m_sel = growth_m[data.map_condition_sel]
+    k_sel = _add_titrant_shift(k_sel, _titrant_table(name, data, priors, guide=True), data)
 
     return LinearParams(k_pre=k_pre, m_pre=m_pre, k_sel=k_sel, m_sel=m_sel)
 
@@ -343,6 +451,8 @@ def get_hyperparameters():
     parameters["m_scale_plus"] = 0.01   # normal prior for '+' selection conditions
     parameters["m_pinned"] = False      # hard-clamp m to m_loc (bool or per-condition tuple)
     parameters["k_pinned"] = False      # hard-clamp k to k_loc (bool or per-condition tuple)
+    parameters["k_titrant_free_scale"] = 0.0       # > 0: k shift per titrant conc (selection)
+    parameters["k_titrant_loglinear_scale"] = 0.0  # > 0: k shift linear in log conc (selection)
 
     return parameters
 
