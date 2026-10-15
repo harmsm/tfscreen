@@ -888,7 +888,7 @@ def test_k_titrant_free_shifts_selection_only(fn):
     data = _titrant_data()
     priors = _titrant_priors(k_titrant_free_scale=0.02)
     tr = trace(seed(fn, 1)).get_trace("g", data, priors)
-    assert tr["g_k_titrant"]["value"].shape == (2, 2)   # 2 selection conds x 2 nonzero concs
+    assert tr["g_k_titrant"]["value"].shape == (2, 3)   # 2 selection conds x 3 concs
     params = seed(fn, 1)("g", data, priors)
     base = seed(fn, 1)("g", data, priors.replace(k_titrant_free_scale=0.0))
     shift = np.asarray(params.k_sel) - np.asarray(base.k_sel)
@@ -896,8 +896,8 @@ def test_k_titrant_free_shifts_selection_only(fn):
     assert np.allclose(shift[:, 0, :], 0.0)
     assert np.allclose(shift[1], 0.0)
     v = np.asarray(tr["g_k_titrant"]["value"])
-    assert np.allclose(shift[0, 1:, 0], v[0])          # condition 1 (first selection)
-    assert np.allclose(shift[2, 1:, 0], v[1])          # condition 3 (second selection)
+    assert np.allclose(shift[0, 1:, 0], v[0, 1:])      # condition 1 (first selection)
+    assert np.allclose(shift[2, 1:, 0], v[1, 1:])      # condition 3 (second selection)
     assert np.allclose(np.asarray(params.k_pre), np.asarray(base.k_pre))
 
 
@@ -929,3 +929,18 @@ def test_k_titrant_refusals():
     # off by default: no new sites
     tr = trace(seed(define_model, 0)).get_trace("g", data, _titrant_priors())
     assert "g_k_titrant" not in tr and "g_k_titrant_slope" not in tr
+
+
+@pytest.mark.parametrize("field", ["k_titrant_free_scale", "k_titrant_loglinear_scale"])
+def test_k_titrant_traces_under_jit(field):
+    # titrant_conc is a traced argument inside the jitted fit
+    import jax
+    data = _titrant_data()
+    priors = _titrant_priors(**{field: 0.01})
+
+    def run(conc):
+        d = SimpleNamespace(**{**vars(data), "titrant_conc": conc})
+        return seed(define_model, 0)("g", d, priors).k_sel
+
+    out = jax.jit(run)(jnp.asarray(_CONC))
+    assert np.allclose(np.asarray(out), np.asarray(run(jnp.asarray(_CONC))))

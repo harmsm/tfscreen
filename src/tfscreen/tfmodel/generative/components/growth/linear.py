@@ -87,8 +87,8 @@ class ModelPriors:
         > 0: in every selection condition (``m_is_selection``), the selection
         phase's k gets a shift at each titrant concentration, shared by every
         genotype and 0 at no titrant: ``{name}_k_titrant``, one Normal(0,
-        scale) per selection condition and nonzero concentration.  0 (the
-        default) is off.  The within-tube study
+        scale) per selection condition and concentration, the no-titrant one
+        zeroed.  0 (the default) is off.  The within-tube study
         (``planning/studies/within-tube-m/``) found flat genotypes growing
         about 0.01 per minute faster at 1 mM IPTG than at none, in both
         selection conditions and not in the controls.
@@ -252,20 +252,22 @@ def _titrant_mode(priors):
 
 def _log_titrant_offsets(titrant_conc):
     """log(max(c, c_floor) / c_floor), c_floor a tenth of the lowest nonzero
-    concentration, so 0 at no titrant."""
-    conc = np.asarray(titrant_conc, dtype=float)
-    positive = conc[conc > 0]
-    if positive.size == 0:
-        raise ValueError("a log-linear titrant k needs a nonzero titrant "
-                         "concentration")
-    floor = positive.min() / 10.0
-    return np.log(np.maximum(conc, floor) / floor)
+    concentration, so 0 at no titrant. jax only: titrant_conc is traced
+    inside the jitted fit."""
+    conc = jnp.asarray(titrant_conc, dtype=float)
+    floor = jnp.min(jnp.where(conc > 0, conc, jnp.inf)) / 10.0
+    return jnp.log(jnp.maximum(conc, floor) / floor)
 
 
 def _titrant_table(name, data, priors, guide=False):
     """
     The selection-phase k shift per (condition_rep, titrant_conc), or None.
     Rows of control conditions and the no-titrant column are 0.
+
+    The free form samples a value for every concentration and zeroes the
+    no-titrant one, whose value then only meets its prior: which column is
+    0 is not known while tracing (titrant_conc is traced inside the jitted
+    fit).
     """
     mode = _titrant_mode(priors)
     if mode is None:
@@ -273,12 +275,10 @@ def _titrant_table(name, data, priors, guide=False):
     kind, scale = mode
     num_cr, C = data.num_condition_rep, data.num_titrant_conc
     sel = np.flatnonzero(np.asarray(priors.m_is_selection, dtype=bool))
-    conc = np.asarray(data.titrant_conc, dtype=float)
+    conc = jnp.asarray(data.titrant_conc, dtype=float)
     if kind == "free":
-        zero = int(np.argmin(conc))
-        cols = np.array([i for i in range(C) if i != zero])
         site = f"{name}_k_titrant"
-        shape = (sel.size, cols.size)
+        shape = (sel.size, C)
         if guide:
             locs = pyro.param(f"{site}_locs", jnp.zeros(shape))
             scales = pyro.param(f"{site}_scales", jnp.full(shape, 1e-3),
@@ -286,10 +286,11 @@ def _titrant_table(name, data, priors, guide=False):
         else:
             locs, scales = jnp.zeros(shape), jnp.full(shape, scale)
         with pyro.plate(f"{name}_k_titrant_conditions", sel.size, dim=-2):
-            with pyro.plate(f"{name}_k_titrant_concs", cols.size, dim=-1):
+            with pyro.plate(f"{name}_k_titrant_concs", C, dim=-1):
                 values = pyro.sample(site, dist.Normal(locs, scales))
+        values = values * (conc > 0)
         table = jnp.zeros(values.shape[:-2] + (num_cr, C))
-        return table.at[..., sel[:, None], cols[None, :]].set(values)
+        return table.at[..., sel, :].set(values)
     site = f"{name}_k_titrant_slope"
     if guide:
         locs = pyro.param(f"{site}_locs", jnp.zeros(sel.size))
@@ -299,7 +300,7 @@ def _titrant_table(name, data, priors, guide=False):
         locs, scales = jnp.zeros(sel.size), jnp.full(sel.size, scale)
     with pyro.plate(f"{name}_k_titrant_conditions", sel.size):
         slope = pyro.sample(site, dist.Normal(locs, scales))
-    L = jnp.asarray(_log_titrant_offsets(conc))
+    L = _log_titrant_offsets(conc)
     table = jnp.zeros(slope.shape[:-1] + (num_cr, C))
     return table.at[..., sel, :].set(slope[..., :, None] * L)
 
