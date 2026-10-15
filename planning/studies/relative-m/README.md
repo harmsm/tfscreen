@@ -50,4 +50,43 @@ The commit that adds this study.
 
 ## Results
 
-Pending.
+### Run 1 (2026-10-15)
+
+`analyze.py` and `swing_ppc.py` (the fit's per-genotype within-tube swings
+against the observed, after `tfs-predict-growth` at the MAP, locally).
+
+**The seeds pass; the real data do not move.**
+
+| | relative m | absolute m | within tube | pheS/kanR (relative, absolute) |
+|---|---|---|---|---|
+| real kanR+kan | -0.0177 | -0.0148 | -0.0049 | |
+| real pheS+4CP | +0.0086 | +0.0070 | +0.0178 | -0.49, -0.47 |
+| seed 1, m / truth | 1.06, 1.05 | 1.06, 1.04 | | -1.00, -1.00 |
+| seed 2, m / truth | 1.05, 1.03 | 1.05, 1.02 | | -0.99, -0.99 |
+
+On the simulations the relative fit recovers the truth as well as the
+absolute one. On the real data freeing the offsets left the ratio at
+-0.49, so the tube totals are not what sets the fit's m, and the OD600
+explanation of `planning/studies/within-tube-m/` does not hold. The real
+run had not converged at its 100,000-step cap (still descending, not by
+enough to close a 5x gap); the seeds converged.
+
+**The fit discards pheS's IPTG response.** Across 903 deep singles, the
+fit's predicted swing against the observed: kanR+kan slope 0.63 (r 0.64,
+median 0.0037 predicted, 0.0045 observed); pheS+4CP slope 0.29 (r 0.59,
+median 0.0020 predicted, 0.0165 observed). The data's pheS/kanR ratio is
+-2.2, the fit's -0.42; wt 0.004 predicted against 0.018 observed.
+
+**Reading.** The constraint is the X shared by both markers: one Hill
+curve per genotype. In the library, wt's within-tube pheS response starts
+at about 0.1-1 uM IPTG and kanR's at 10-100 uM
+(`../within-tube-m/`, run 1), so one curve cannot fit both; the fit
+follows kanR and shrinks pheS's m. That would make pheS growth a strongly
+nonlinear function of occupancy (a little derepression is already toxic
+in 4CP). wt's monoculture pheS curve does not drop early, so if it holds
+it is specific to the library.
+
+**Next.** Model-free: an IPTG midpoint for each deep single's within-tube
+curve in each marker. pheS midpoints systematically below kanR's would
+mean the markers read occupancy differently (a per-marker map from X to
+growth). Steps 2-6 of `planning/relative-m.md` wait on it.

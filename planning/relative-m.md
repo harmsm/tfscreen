@@ -95,7 +95,12 @@ free.
 
 ## Steps
 
-1. [ ] **Relative stage 1** (no code). The two-stage fit's stage 1 with
+1. [x] **Relative stage 1** (no code). Run 1 (2026-10-15,
+   `planning/studies/relative-m/`): the seeds pass, but on the real data
+   m does not move (pheS/kanR -0.49 against -0.47 absolute and -2.2
+   within tube); the fit discards pheS's IPTG response because the X
+   shared by both markers cannot follow their different IPTG curves.
+   Steps 2-6 wait on a per-marker midpoint test. Setup as planned: The two-stage fit's stage 1 with
    `sigma_fixed=10` and k pinned at the current stage 1's values, m free,
    on the real data, seed 1 and seed 2 (3 runs of about 30 minutes).
    Pass:
