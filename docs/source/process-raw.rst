@@ -16,7 +16,9 @@ The raw-data half of the pipeline has four steps:
    done once per reader, plate type, volume and strain, not once per
    experiment.
 3. You write a tube table that names every sequenced tube and gives its
-   design: library, replicate, conditions, titrant and times.
+   design: library, replicate, conditions, titrant and times. When the
+   data show that a tube's label is wrong, ``tfs-correct-tubes`` applies a
+   documented correction and writes a corrected copy.
 4. ``tfs-process-counts`` combines the count files, the tube table and each
    tube's OD600 into the growth table that ``tfs-configure-model`` reads.
    With ``--presplit`` it writes the presplit table instead.
@@ -223,9 +225,85 @@ design columns above. A selection condition is one that never appears as a
 pre-selection condition as its ``condition_sel``.
 
 Lab-specific cleanup belongs in the lab's own script, before the tube table
-is written: samples swapped at the bench, tubes resequenced and pooled,
-failed or empty tubes. tfscreen takes the tube table as the record of what
-each tube is and does not try to repair it.
+is written: tubes resequenced and pooled, sample sheets merged. tfscreen
+takes the tube table as the record of what each tube is. When the data
+later show that a record is wrong, correct it with ``tfs-correct-tubes``
+(below) rather than editing the table by hand.
+
+Correcting the tube table: tfs-correct-tubes
+--------------------------------------------
+
+Sometimes a tube's contents disagree with its label. In one screen the
+genotype composition of the tube labeled 0.1 uM IPTG looked like a 1 mM
+tube, and the tube labeled 1 mM looked like a low-IPTG tube. A correction
+like that is data: it should say which tubes, what changes, why, who
+decided and when, and it should be applied by a tool so the original
+table stays as it was. ``tfs-correct-tubes`` does that:
+
+.. code-block:: bash
+
+    tfs-correct-tubes tube_table.csv corrections.yaml \
+        --out_prefix tube_table_corrected
+
+The corrections file is YAML and lives with the experiment's data, under
+version control, next to the tube table it corrects:
+
+.. code-block:: yaml
+
+    description: Corrections to the screen's tube table.
+    corrections:
+      - id: pheS-rep2-t82-swap
+        action: swap
+        tubes: [tube_a, tube_b]
+        reason: >
+          Composition QC: the tube labeled 0.1 uM looks like a 1 mM tube
+          and the one labeled 1 mM like a low-IPTG tube.
+        by: A. Researcher
+        date: 2026-10-15
+        evidence: qc/apparent_iptg.csv
+
+``id``, ``action``, ``tubes`` (the tube table's ``sample`` names),
+``reason``, ``by`` and ``date`` are required. ``evidence`` is optional, a
+string or a list; one that names a file, relative to the corrections file,
+is hashed into the provenance. The table ``tfs-check-tubes`` writes, which
+flags tubes whose composition disagrees with their titrant label, is the
+usual evidence for a swap. There are three actions:
+
+- ``swap``: two tubes of one library exchange their design columns.
+- ``relabel``: one tube takes the design values given in ``set``, for
+  example ``set: {t_sel: 125}``. Three relabels express a rotation of three
+  tubes.
+- ``exclude``: one or more tubes are left out.
+
+**What a correction moves.** Only the design columns: ``replicate``,
+``condition_pre``, ``t_pre``, ``condition_sel``, ``t_sel``,
+``titrant_name`` and ``titrant_conc``. Every other column stays with the
+physical sample: its ``sample`` name and so its count file, its OD600 and
+tube totals, its barcodes and sequencing run. That is right however the
+swap happened. If the tubes were swapped at the bench, the reads and the
+OD600 were measured on the culture now known to have the other design. If
+the sample sheet mapped files to the wrong tubes, the count file came from
+the culture whose design is the other label, and that culture's OD600 was
+read when it was pulled. Either way a sample's measurements stay together
+and only its label changes. ``library`` never changes: libraries are
+transformed and grown separately, so a swap between them is refused.
+
+No tube may appear in two corrections, so every correction applies to the
+original table and their order does not matter. The command also refuses
+an unknown tube, a swap that changes nothing, a relabel of a column that
+is not a design column, a result in which two tubes share a library and
+design, an empty ``reason``, ``by`` or ``date``, a table that was already
+corrected, and an output that would overwrite an input.
+
+**Output.** ``{out_prefix}.csv`` is the corrected tube table, in the
+original row order without excluded tubes, plus a ``correction_id`` column
+(empty for tubes no correction touched). Pass it to
+``tfs-process-counts`` in place of the original; ``correction_id`` is
+carried into the growth table. ``{out_prefix}_changes.csv`` has one row per
+changed value or excluded tube, with its original and corrected value.
+``{out_prefix}_provenance.json`` records the run, the SHA-256 of the tube
+table, the corrections file, every evidence file and the corrected table,
+and the corrections themselves.
 
 OD600 calibration
 -----------------

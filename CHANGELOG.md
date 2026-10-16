@@ -74,17 +74,6 @@ fall into two kinds:
 
 ### Added
 
-<<<<<<< HEAD
-- **A per-condition warp of theta in `linear` growth.** `m_warp` (bool, or
-  per condition through a 0/1 `--growth_priors` column) makes a
-  condition's growth follow f(theta) = (s(theta) - s(0)) / (s(1) - s(0)),
-  s a logistic with steepness a and threshold x0 sampled per warped
-  condition (priors `warp_log_a_*`, `warp_x0_*`); f(0) = 0 and f(1) = 1,
-  so wt's gauge and m keep their meaning, and f is linear as a -> 0. For
-  selection markers that read occupancy through differently shaped maps
-  (dev data: kanR switch-like, pheS graded;
-  `planning/studies/relative-m/`).
-=======
 - **`tfs-check-tubes`: flag tubes whose composition disagrees with their
   titrant label.** A routine QC of the growth table from
   `tfs-process-counts`, for any titrant. Within each library x condition
@@ -99,7 +88,34 @@ fall into two kinds:
   row per tube with `score`, `expected`, `order_z`, `deviation_z` and
   `flagged` (`process_raw/tube_qc.py::score_tubes`). On the dev data it
   flags four tubes of pheS+4CP replicate 2, t_sel 82, and nothing else.
->>>>>>> claude/amazing-mcnulty-a57ada
+
+- **`tfs-correct-tubes`: documented corrections to a tube table.** A YAML
+  corrections file kept with the experiment's data names each correction
+  (`id`, `action` swap/relabel/exclude, `tubes`, `reason`, `by`, `date`,
+  optional `evidence`), and the command writes a new tube table for
+  `tfs-process-counts` with a `correction_id` column, a long-form
+  `{out_prefix}_changes.csv`, and a provenance file holding the
+  corrections and the SHA-256 of the inputs, evidence files and output.
+  A correction moves only the design columns
+  (`tube_corrections.DESIGN_COLUMNS`); the sample name, its count file,
+  OD600 and totals stay with the physical sample, which is right for a
+  bench swap and a sample-sheet swap alike. It refuses unknown tubes, a
+  tube in two corrections, a swap across libraries or one that changes
+  nothing, a relabel of a non-design column, a result where two tubes
+  share a library and design, an empty reason, by or date, and an output
+  that would overwrite an input. Prompted by the pheS+4CP replicate 2,
+  t_sel 82 row of the dev data (`planning/studies/relative-m/`, run 3).
+  Example: `examples/process_raw/corrections.yaml`.
+
+- **A per-condition warp of theta in `linear` growth.** `m_warp` (bool, or
+  per condition through a 0/1 `--growth_priors` column) makes a
+  condition's growth follow f(theta) = (s(theta) - s(0)) / (s(1) - s(0)),
+  s a logistic with steepness a and threshold x0 sampled per warped
+  condition (priors `warp_log_a_*`, `warp_x0_*`); f(0) = 0 and f(1) = 1,
+  so wt's gauge and m keep their meaning, and f is linear as a -> 0. For
+  selection markers that read occupancy through differently shaped maps
+  (dev data: kanR switch-like, pheS graded;
+  `planning/studies/relative-m/`).
 - **A titrant-dependent k in `linear` growth.** The prior
   `k_titrant_loglinear_scale`, set with `tfs-configure-model
   --set_priors`, adds a growth shift shared by every genotype to the

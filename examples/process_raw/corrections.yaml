@@ -1,0 +1,34 @@
+# Corrections to tube_table.csv, applied by tfs-correct-tubes.
+#
+# The tubes and reasons are made up: they show the format. A real
+# corrections file lives with the experiment's data, under version control,
+# next to the tube table it corrects.
+
+description: Example corrections to the synthetic tube table.
+
+corrections:
+  - id: pheS-t60-iptg-swap
+    action: swap
+    tubes: [pheS_pheSp4CP_0mM_t60, pheS_pheSp4CP_1mM_t60]
+    reason: >
+      Composition QC: the tube labeled 0 mM IPTG looks like a 1 mM tube and
+      the one labeled 1 mM like a 0 mM tube. The person who ran the screen
+      says a swap is probable.
+    by: A. Researcher
+    date: 2026-10-15
+    evidence: Apparent-IPTG score from a composition QC table.
+
+  - id: kanR-t120-time
+    action: relabel
+    tubes: [kanR_kanRpkan_0mM_t120]
+    set: {t_sel: 125}
+    reason: The bench log says this tube was pulled at 125 minutes.
+    by: A. Researcher
+    date: 2026-10-15
+
+  - id: kanR-control-t0-failed
+    action: exclude
+    tubes: [kanR_kanRmkan_1mM_t0]
+    reason: Library prep failed; the tube has almost no reads.
+    by: A. Researcher
+    date: 2026-10-15
