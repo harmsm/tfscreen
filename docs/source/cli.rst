@@ -1910,6 +1910,53 @@ tfs-summarize-calibration
                            θ within [regime_eps, 1 - regime_eps] is resolvable (default
                            0.01).
 
+tfs-check-tubes
+---------------
+
+.. code-block:: text
+
+   usage: tfs-check-tubes [-h] [--out_prefix OUT_PREFIX] [--min_counts MIN_COUNTS]
+                          [--min_genotypes MIN_GENOTYPES] [--flag_z FLAG_Z]
+                          growth_df
+
+   Score every tube's apparent titrant from its genotype composition and
+   flag tubes that are out of order within their row.
+
+   Within each library x condition_pre x condition_sel x titrant_name
+   panel, each tube's log-ratio composition has its row (replicate x t_pre
+   x t_sel) effect removed by a robust fit (medians, with a per-row scale
+   since the titrant's effect grows with time) and is projected on the
+   axis from the lowest concentration's composition (score 0) to the
+   highest's (score 1). Tube totals and read depth cancel, so OD600 and depth errors
+   do not enter. A tube is flagged when its score is out of order with the
+   rest of its row (leave-one-out isotonic fit) or far from its label's
+   expected score, by more than flag_z noise SDs; rows of fewer than
+   three tubes are not flagged. Rows missing some concentrations are
+   handled without the shift of centering a row on itself.
+
+   Writes {out_prefix}.csv, one row per tube (score, expected,
+   order_z, deviation_z, flagged and more), and prints each
+   panel's scores by row and concentration and every tube of the rows
+   with a flagged tube. Once a row is down to two unflagged tubes neither
+   is flagged, so read the whole row: a large order_z left there is
+   also suspect.
+
+   positional arguments:
+     growth_df             Growth table from tfs-process-counts (any long-form table with
+                           genotype, counts, replicate and titrant_conc).
+
+   options:
+     -h, --help            show this help message and exit
+     --out_prefix OUT_PREFIX
+                           Output prefix. (default: 'tfs_tube_qc')
+     --min_counts MIN_COUNTS
+                           Use a genotype only if it has at least this many reads in
+                           every tube of its panel. (default: 1)
+     --min_genotypes MIN_GENOTYPES
+                           Fewest usable genotypes a panel may have. (default: 10)
+     --flag_z FLAG_Z       Flag a tube whose order violation or deviation from its
+                           expected score exceeds this many noise SDs. (default: 4.0)
+
 tfs-fit-two-stage
 -----------------
 
