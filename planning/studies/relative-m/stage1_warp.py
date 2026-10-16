@@ -11,7 +11,8 @@ optionally without some tubes.
 condition_sel:replicate:t_sel triples (repeatable; ":" because sbatch
 --export splits on commas): every IPTG of that
 row is left out (the pheS+4CP replicate 2, t_sel 82 row whose contents
-disagree with its labels, run 3).
+disagree with its labels, run 3). --pin_m condition_rep:value pins that
+condition's m (repeatable; run 5); --max_num_epochs raises the step cap.
 """
 
 import argparse
@@ -34,6 +35,9 @@ def main():
     ap.add_argument("out_dir")
     ap.add_argument("--warp", default="none")
     ap.add_argument("--drop_tubes", action="append", default=[])
+    ap.add_argument("--pin_m", action="append", default=[],
+                    help="condition_rep:value; pin that condition's m there")
+    ap.add_argument("--max_num_epochs", type=int, default=None)
     args = ap.parse_args()
     cfg, settings = cli.read_two_stage_config(args.config_file)
     out = os.path.abspath(args.out_dir)
@@ -46,6 +50,11 @@ def main():
             if args.warp not in set(t["condition_rep"]):
                 raise ValueError(f"--warp {args.warp} is not a condition_rep")
         t["m_warp"] = (t["condition_rep"] == args.warp).astype(int)
+        for spec in args.pin_m:
+            cond, value = spec.rsplit(":", 1)
+            if cond not in set(t["condition_rep"]):
+                raise ValueError(f"--pin_m {spec}: {cond} is not a condition_rep")
+            t.loc[t["condition_rep"] == cond, ["m_loc", "m_pinned"]] = [float(value), 1]
         t.to_csv(pri, index=False)
     cfg["growth_priors"] = pri
     cfg["set_priors"] = [p for p in (cfg.get("set_priors") or [])
@@ -75,6 +84,9 @@ def main():
             g[~drop].to_csv(tmp, index=False)
         # in place only when complete: run_stage1 reuses an existing table
         os.replace(tmp, growth)
+    if args.max_num_epochs is not None:
+        settings["fit"] = dict(settings.get("fit") or {},
+                               max_num_epochs=args.max_num_epochs)
     cli.run_stage1(out, cfg, settings)
     cli._say("done")
 

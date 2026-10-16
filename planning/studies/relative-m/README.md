@@ -228,3 +228,25 @@ pinned at the within-tube values (kanR -0.0046, pheS +0.0125), both runs
 to convergence, and compare the per-observation log likelihood with the
 free fit by marker, genotype class and tube.
 
+### Run 5 setup: likelihood attribution (2026-10-16)
+
+`attribute.py` traces a stage 1 at its MAP and keeps the count log
+likelihood of every growth observation (the `growth_obs` site, mapped back
+to its row through the growth table's index columns) and the log prior of
+every latent site, then sums the difference between two fits by marker,
+genotype class, IPTG and tube. Checked on run 4 (kanR warp against no
+warp): the warp's 8,100 nats come from the pheS+4CP singles (+9,700), with
+the kanR conditions losing about 1,900; wt's 40 pheS+4CP rows move by 15
+nats, so the gauge genotype carries almost no weight in the likelihood.
+
+Two runs, both with the kanR warp, without the replicate 2, t_sel 82 row
+and with the step cap raised to 500,000:
+
+| run | m |
+|---|---|
+| warp_real_attrfree | free |
+| warp_real_attrpinned | pinned at the within-tube values: kanR+kan -0.0046, pheS+4CP +0.0125 |
+
+`attribute.py` on the pair says what loses likelihood when the selection
+markers' m equal wt's own within-tube swings.
+
