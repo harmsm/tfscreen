@@ -194,3 +194,37 @@ both markers (`swing_ppc.py`), and m's pheS/kanR ratio comes near the
 within-tube one; on seed 1 the warp stays close to linear (small a or x0
 near the middle) and m stays on the truth.
 
+### Run 4 results (2026-10-16)
+
+The three real runs first failed (sbatch `--export` split the
+`--drop_tubes` triple on its commas; now `:`-separated, and the stage 1
+table is moved into place only when complete). `compare_warp.py`:
+
+| real (rep 2, t 82 left out) | kanR warped | pheS warped | no warp |
+|---|---|---|---|
+| final exact loss | 806,900 | 816,700 | 814,900 |
+| m kanR+kan / pheS+4CP | -0.0120 / +0.0088 | -0.0102 / +0.0041 | -0.0174 / +0.0095 |
+| pheS/kanR (within tube -2.7) | -0.74 | -0.41 | -0.55 |
+| wt's pheS swing predicted (observed 0.0125) | 0.0060 | 0.0031 | 0.0047 |
+| singles' pheS swing, predicted / observed (median) | 0.36 | 0.28 | 0.22 |
+| warp a, x0 | 2.96, 1.35 | 3264, 0.39 | |
+
+The kanR warp lowers the loss by about 8,000 nats for two parameters; the
+pheS warp collapsed to a step at X = 0.39 and fits worse than none. The
+fitted kanR map, f(0.2, 0.4, 0.6, 0.8) = 0.06, 0.16, 0.33, 0.60, holds
+kanamycin growth down only near full repression: a little derepression
+already gives much of the resistance. On seed 1 the warp is nearly linear
+(a 0.84, x0 1.07; f(0.2..0.8) = 0.18, 0.38, 0.58, 0.79) and m stays near the
+truth (1.07-1.09 of it, against 1.05-1.06 without), so the null passes.
+None of the real runs converged by the 100,000-step cap.
+
+**Reading.** The kanR warp is real and worth keeping, but it closes little
+of the pheS gap: pheS's swings are still predicted about 3x too small and
+the ratio reaches -0.74. Something else in the likelihood holds pheS's m
+down.
+
+**Next.** Likelihood attribution: refit stage 1 with the kanR warp and m
+pinned at the within-tube values (kanR -0.0046, pheS +0.0125), both runs
+to convergence, and compare the per-observation log likelihood with the
+free fit by marker, genotype class and tube.
+
