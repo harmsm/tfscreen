@@ -11,7 +11,7 @@
 
 # Relative stage 1 with a warped marker (stage1_warp.py). Run from the
 # two-stage validation directory on the cluster:
-#   sbatch --export=ALL,RUN=real,WARP=kanR+kan,TAG=kanR,EXTRA="--drop_tubes pheS+4CP,2,82" .../stage1_warp.srun
+#   sbatch --export=ALL,RUN=real,WARP=kanR+kan,TAG=kanR,EXTRA="--drop_tubes pheS+4CP:2:82" .../stage1_warp.srun
 # writes warp_${RUN}_${TAG}/stage1/.
 
 module load cuda/12.4.1

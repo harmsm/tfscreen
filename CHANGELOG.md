@@ -74,6 +74,7 @@ fall into two kinds:
 
 ### Added
 
+<<<<<<< HEAD
 - **A per-condition warp of theta in `linear` growth.** `m_warp` (bool, or
   per condition through a 0/1 `--growth_priors` column) makes a
   condition's growth follow f(theta) = (s(theta) - s(0)) / (s(1) - s(0)),
@@ -83,6 +84,22 @@ fall into two kinds:
   selection markers that read occupancy through differently shaped maps
   (dev data: kanR switch-like, pheS graded;
   `planning/studies/relative-m/`).
+=======
+- **`tfs-check-tubes`: flag tubes whose composition disagrees with their
+  titrant label.** A routine QC of the growth table from
+  `tfs-process-counts`, for any titrant. Within each library x condition
+  panel, every tube's centered log-ratio composition is fit robustly as a
+  row (replicate x time) effect plus a per-row-scaled concentration profile,
+  scored on the axis from the lowest concentration's profile (0) to the
+  highest's (1), and tested within its row by a leave-one-out isotonic
+  order test and a level test against its label's expected score. Tube
+  totals and read depth cancel, and rows missing concentrations are not
+  shifted, unlike the row centering of the study script
+  (`planning/studies/relative-m/tube_qc.py`). Writes `{out_prefix}.csv`, one
+  row per tube with `score`, `expected`, `order_z`, `deviation_z` and
+  `flagged` (`process_raw/tube_qc.py::score_tubes`). On the dev data it
+  flags four tubes of pheS+4CP replicate 2, t_sel 82, and nothing else.
+>>>>>>> claude/amazing-mcnulty-a57ada
 - **A titrant-dependent k in `linear` growth.** The prior
   `k_titrant_loglinear_scale`, set with `tfs-configure-model
   --set_priors`, adds a growth shift shared by every genotype to the

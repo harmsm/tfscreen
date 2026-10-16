@@ -5,16 +5,18 @@ optionally without some tubes.
 
     python stage1_warp.py ../two-stage-validation/two_stage_real.yaml \
         ../two-stage-validation/run_real/stage1/km.csv warp_real_kanR \
-        --warp kanR+kan --drop_tubes "pheS+4CP,2,82"
+        --warp kanR+kan --drop_tubes "pheS+4CP:2:82"
 
 --warp names the warped condition_rep (none: no warp). --drop_tubes takes
-condition_sel,replicate,t_sel triples (repeatable): every IPTG of that
+condition_sel:replicate:t_sel triples (repeatable; ":" because sbatch
+--export splits on commas): every IPTG of that
 row is left out (the pheS+4CP replicate 2, t_sel 82 row whose contents
 disagree with its labels, run 3).
 """
 
 import argparse
 import os
+import re
 
 import pandas as pd
 
@@ -54,18 +56,25 @@ def main():
     if not os.path.exists(growth):
         lib = library_composition_table(cfg["library_config"])
         keep = ts.stage1_genotypes(lib, ts.growth_genotypes(cfg["growth_df"]))
-        ts.filter_growth_csv(cfg["growth_df"], growth, genotypes=keep)
+        tmp = growth + ".partial"
+        ts.filter_growth_csv(cfg["growth_df"], tmp, genotypes=keep)
         if args.drop_tubes:
-            g = pd.read_csv(growth)
+            g = pd.read_csv(tmp)
             drop = pd.Series(False, index=g.index)
             for spec in args.drop_tubes:
-                cond, rep, t_sel = spec.split(",")
+                parts = re.split(r"[,:]", spec)
+                if len(parts) != 3:
+                    raise ValueError(f"--drop_tubes {spec!r}: expected "
+                                     "condition_sel:replicate:t_sel")
+                cond, rep, t_sel = parts
                 drop |= ((g["condition_sel"].astype(str) == cond)
                          & (pd.to_numeric(g["replicate"]) == float(rep))
                          & (g["t_sel"].astype(float) == float(t_sel)))
             print(f"dropping {int(drop.sum())} rows ({', '.join(args.drop_tubes)})",
                   flush=True)
-            g[~drop].to_csv(growth, index=False)
+            g[~drop].to_csv(tmp, index=False)
+        # in place only when complete: run_stage1 reuses an existing table
+        os.replace(tmp, growth)
     cli.run_stage1(out, cfg, settings)
     cli._say("done")
 
