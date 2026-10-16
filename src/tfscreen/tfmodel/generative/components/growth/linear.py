@@ -1,4 +1,5 @@
 import numpy as np
+import jax
 import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
@@ -24,6 +25,12 @@ class LinearParams:
     m_pre: jnp.ndarray
     k_sel: jnp.ndarray
     m_sel: jnp.ndarray
+    # Per-element warp of theta (see ModelPriors.m_warp); a = 0 is no warp.
+    # None when no condition is warped.
+    warp_a_pre: jnp.ndarray = None
+    warp_x0_pre: jnp.ndarray = None
+    warp_a_sel: jnp.ndarray = None
+    warp_x0_sel: jnp.ndarray = None
 
 @dataclass(frozen=True)
 class ModelPriors:
@@ -83,6 +90,19 @@ class ModelPriors:
         as the two-stage fit of ``planning/studies/svi-overconfidence/`` or a
         fit holding one marker's k and m at an independent estimate
         (``planning/studies/m-bias-factorial/``).  Default ``False``.
+    m_warp : bool or tuple of bool
+        True for a condition (a tuple: per condition) makes its growth
+        follow a monotone warp of theta instead of theta itself,
+        ``f(x) = (s(x) - s(0)) / (s(1) - s(0))``, ``s(x) = sigmoid(a (x -
+        x0))``, so f(0) = 0 and f(1) = 1 (wt's gauge and m keep their
+        meaning) and f is linear as a -> 0. Per warped condition
+        ``{name}_warp_log_a`` ~ Normal(warp_log_a_loc, warp_log_a_scale) and
+        ``{name}_warp_x0`` ~ Normal(warp_x0_loc, warp_x0_scale). For markers
+        that read occupancy through differently shaped maps
+        (``planning/studies/relative-m/``: kanR switch-like, pheS graded).
+        Default False. ``--growth_priors`` takes a 0/1 ``m_warp`` column.
+    warp_log_a_loc, warp_log_a_scale, warp_x0_loc, warp_x0_scale : float
+        Priors of the warp's log steepness and threshold.
     k_titrant_loglinear_scale : float
         > 0: in every selection condition (``m_is_selection``), the selection
         phase's k gets a shift shared by every genotype that is linear in
@@ -107,6 +127,11 @@ class ModelPriors:
     m_pinned: bool | tuple = field(pytree_node=False, default=False)
     k_pinned: bool | tuple = field(pytree_node=False, default=False)
     k_titrant_loglinear_scale: float = field(pytree_node=False, default=0.0)
+    m_warp: bool | tuple = field(pytree_node=False, default=False)
+    warp_log_a_loc: float = field(pytree_node=False, default=1.0)
+    warp_log_a_scale: float = field(pytree_node=False, default=1.5)
+    warp_x0_loc: float = field(pytree_node=False, default=0.5)
+    warp_x0_scale: float = field(pytree_node=False, default=0.5)
 
 
 # ---------------------------------------------------------------------------
@@ -273,6 +298,52 @@ def _titrant_table(name, data, priors, guide=False):
     return table.at[..., sel, :].set(slope[..., :, None] * L)
 
 
+
+def _warp_tables(name, data, priors, guide=False):
+    """
+    Per-condition warp steepness a (0 = no warp) and threshold x0, or
+    (None, None) when no condition is warped.
+    """
+    num_cr = data.num_condition_rep
+    mask = _pin_mask(getattr(priors, "m_warp", False), num_cr)
+    if not mask.any():
+        return None, None
+    idx = np.flatnonzero(mask)
+    la_loc = jnp.full(idx.size, float(priors.warp_log_a_loc))
+    x0_loc = jnp.full(idx.size, float(priors.warp_x0_loc))
+    if guide:
+        la_l = pyro.param(f"{name}_warp_log_a_locs", la_loc)
+        la_s = pyro.param(f"{name}_warp_log_a_scales", jnp.full(idx.size, 0.1),
+                          constraint=dist.constraints.positive)
+        x0_l = pyro.param(f"{name}_warp_x0_locs", x0_loc)
+        x0_s = pyro.param(f"{name}_warp_x0_scales", jnp.full(idx.size, 0.1),
+                          constraint=dist.constraints.positive)
+    else:
+        la_l, la_s = la_loc, jnp.full(idx.size, float(priors.warp_log_a_scale))
+        x0_l, x0_s = x0_loc, jnp.full(idx.size, float(priors.warp_x0_scale))
+    with pyro.plate(f"{name}_warp_conditions", idx.size):
+        log_a = pyro.sample(f"{name}_warp_log_a", dist.Normal(la_l, la_s))
+        x0 = pyro.sample(f"{name}_warp_x0", dist.Normal(x0_l, x0_s))
+    a = jnp.zeros(log_a.shape[:-1] + (num_cr,)).at[..., idx].set(jnp.exp(log_a))
+    x0_full = jnp.full(x0.shape[:-1] + (num_cr,), 0.5).at[..., idx].set(x0)
+    return a, x0_full
+
+
+def warp_theta(theta, a, x0):
+    """
+    The monotone warp f(theta) of ModelPriors.m_warp; theta itself where
+    a == 0 (computed with a safe a so the unused branch cannot give NaN).
+    """
+    if a is None:
+        return theta
+    warped = a > 0
+    a_safe = jnp.where(warped, a, 1.0)
+    s0 = jax.nn.sigmoid(-a_safe * x0)
+    s1 = jax.nn.sigmoid(a_safe * (1.0 - x0))
+    f = (jax.nn.sigmoid(a_safe * (theta - x0)) - s0) / (s1 - s0)
+    return jnp.where(warped, f, theta)
+
+
 def _add_titrant_shift(k_sel, table, data):
     """k_sel plus the shift for each element's condition and titrant
     concentration (the growth tensor's second-to-last axis)."""
@@ -344,7 +415,14 @@ def define_model(name: str,
     m_sel = growth_m[data.map_condition_sel]
     k_sel = _add_titrant_shift(k_sel, _titrant_table(name, data, priors), data)
 
-    return LinearParams(k_pre=k_pre, m_pre=m_pre, k_sel=k_sel, m_sel=m_sel)
+    a, x0 = _warp_tables(name, data, priors)
+    if a is None:
+        return LinearParams(k_pre=k_pre, m_pre=m_pre, k_sel=k_sel, m_sel=m_sel)
+    return LinearParams(k_pre=k_pre, m_pre=m_pre, k_sel=k_sel, m_sel=m_sel,
+                        warp_a_pre=a[..., data.map_condition_pre],
+                        warp_x0_pre=x0[..., data.map_condition_pre],
+                        warp_a_sel=a[..., data.map_condition_sel],
+                        warp_x0_sel=x0[..., data.map_condition_sel])
 
 
 def guide(name: str,
@@ -373,7 +451,14 @@ def guide(name: str,
     m_sel = growth_m[data.map_condition_sel]
     k_sel = _add_titrant_shift(k_sel, _titrant_table(name, data, priors, guide=True), data)
 
-    return LinearParams(k_pre=k_pre, m_pre=m_pre, k_sel=k_sel, m_sel=m_sel)
+    a, x0 = _warp_tables(name, data, priors, guide=True)
+    if a is None:
+        return LinearParams(k_pre=k_pre, m_pre=m_pre, k_sel=k_sel, m_sel=m_sel)
+    return LinearParams(k_pre=k_pre, m_pre=m_pre, k_sel=k_sel, m_sel=m_sel,
+                        warp_a_pre=a[..., data.map_condition_pre],
+                        warp_x0_pre=x0[..., data.map_condition_pre],
+                        warp_a_sel=a[..., data.map_condition_sel],
+                        warp_x0_sel=x0[..., data.map_condition_sel])
 
 
 def calculate_growth(params: LinearParams,
@@ -401,8 +486,10 @@ def calculate_growth(params: LinearParams,
     g_sel : jnp.ndarray
         Selection growth rate tensor.
     """
-    g_pre = params.k_pre + dk_geno + activity * params.m_pre * theta
-    g_sel = params.k_sel + dk_geno + activity * params.m_sel * theta
+    theta_pre = warp_theta(theta, params.warp_a_pre, params.warp_x0_pre)
+    theta_sel = warp_theta(theta, params.warp_a_sel, params.warp_x0_sel)
+    g_pre = params.k_pre + dk_geno + activity * params.m_pre * theta_pre
+    g_sel = params.k_sel + dk_geno + activity * params.m_sel * theta_sel
 
     return g_pre, g_sel
 
@@ -421,6 +508,11 @@ def get_hyperparameters():
     parameters["m_pinned"] = False      # hard-clamp m to m_loc (bool or per-condition tuple)
     parameters["k_pinned"] = False      # hard-clamp k to k_loc (bool or per-condition tuple)
     parameters["k_titrant_loglinear_scale"] = 0.0  # > 0: k shift linear in log conc (selection)
+    parameters["m_warp"] = False        # monotone warp of theta (bool or per-condition tuple)
+    parameters["warp_log_a_loc"] = 1.0
+    parameters["warp_log_a_scale"] = 1.5
+    parameters["warp_x0_loc"] = 0.5
+    parameters["warp_x0_scale"] = 0.5
 
     return parameters
 

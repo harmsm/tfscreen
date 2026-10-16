@@ -74,6 +74,15 @@ fall into two kinds:
 
 ### Added
 
+- **A per-condition warp of theta in `linear` growth.** `m_warp` (bool, or
+  per condition through a 0/1 `--growth_priors` column) makes a
+  condition's growth follow f(theta) = (s(theta) - s(0)) / (s(1) - s(0)),
+  s a logistic with steepness a and threshold x0 sampled per warped
+  condition (priors `warp_log_a_*`, `warp_x0_*`); f(0) = 0 and f(1) = 1,
+  so wt's gauge and m keep their meaning, and f is linear as a -> 0. For
+  selection markers that read occupancy through differently shaped maps
+  (dev data: kanR switch-like, pheS graded;
+  `planning/studies/relative-m/`).
 - **A titrant-dependent k in `linear` growth.** The prior
   `k_titrant_loglinear_scale`, set with `tfs-configure-model
   --set_priors`, adds a growth shift shared by every genotype to the

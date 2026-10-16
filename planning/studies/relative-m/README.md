@@ -163,3 +163,34 @@ both; wt's within-tube swing 0.0125 in pheS (near the monoculture's
 (0.1 uM, 1 uM, 1 mM) and exclude or relabel those tubes. Then a
 per-marker monotone map from X to growth (`planning/relative-m.md`).
 
+### Run 4 setup: a warp for one marker (2026-10-15)
+
+`linear` growth now takes `m_warp` per condition: that condition's growth
+follows f(X) = (s(X) - s(0)) / (s(1) - s(0)), s = sigmoid(a (X - x0)),
+with log a ~ Normal(1, 1.5) and x0 ~ Normal(0.5, 0.5) per warped
+condition; f(0) = 0 and f(1) = 1 keep the wt gauge, and f is linear as
+a -> 0.
+
+Which marker to warp: a monotone map of X changes values, not where in
+IPTG they change, so the broad marker (pheS) must carry X itself and the
+switch-like one (kanR) a steep map of it. A threshold x0 below 1 also
+predicts kanR responding at higher IPTG than pheS, as measured (35 against
+19 uM). The reverse is run as a check, and seed 1 (linear maps) as a null.
+
+`stage1_warp.py` is the relative stage 1 (offsets free, k pinned, m free)
+with the warp, leaving out the pheS+4CP replicate 2, t_sel 82 row on the
+real data until the lab's records settle it (run 3). Runs:
+
+| run | warped | tubes left out |
+|---|---|---|
+| warp_real_kanR | kanR+kan | pheS+4CP rep 2, t_sel 82 |
+| warp_real_pheS | pheS+4CP | the same |
+| warp_real_none | none | the same (the reference without a warp) |
+| warp_seed1_kanR | kanR+kan | none |
+
+Pass: on the real data, the kanR warp lowers the loss against both the
+no-warp and the pheS-warp runs, its fit follows the within-tube swings in
+both markers (`swing_ppc.py`), and m's pheS/kanR ratio comes near the
+within-tube one; on seed 1 the warp stays close to linear (small a or x0
+near the middle) and m stays on the truth.
+

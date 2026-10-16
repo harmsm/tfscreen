@@ -938,3 +938,50 @@ def test_k_titrant_traces_under_jit(field):
 
     out = jax.jit(run)(jnp.asarray(_CONC))
     assert np.allclose(np.asarray(out), np.asarray(run(jnp.asarray(_CONC))))
+
+
+# --- per-condition warp of theta ---
+
+def test_warp_theta_fixes_ends_and_is_monotone():
+    x = jnp.linspace(-0.5, 1.5, 41)
+    for a, x0 in [(0.5, 0.5), (8.0, 0.3), (20.0, 0.8)]:
+        f = np.asarray(_lin_warp(x, jnp.full_like(x, a), jnp.full_like(x, x0)))
+        assert np.all(np.diff(f) > 0)
+        f01 = np.asarray(_lin_warp(jnp.array([0.0, 1.0]), jnp.full(2, a), jnp.full(2, x0)))
+        assert np.allclose(f01, [0.0, 1.0], atol=1e-6)
+    # a -> 0 is (nearly) linear; a == 0 is exactly theta
+    f = np.asarray(_lin_warp(x, jnp.full_like(x, 1e-3), jnp.full_like(x, 0.4)))
+    assert np.allclose(f, np.asarray(x), atol=1e-3)
+    assert np.allclose(np.asarray(_lin_warp(x, jnp.zeros_like(x), jnp.full_like(x, 0.4))),
+                       np.asarray(x))
+    assert _lin_warp(x, None, None) is x
+
+
+def _lin_warp(theta, a, x0):
+    from tfscreen.tfmodel.generative.components.growth.linear import warp_theta
+    return warp_theta(theta, a, x0)
+
+
+@pytest.mark.parametrize("fn", [define_model, guide])
+def test_m_warp_only_warped_conditions(fn):
+    from tfscreen.tfmodel.generative.components.growth.linear import calculate_growth
+    data = _titrant_data()
+    priors = _titrant_priors(m_warp=(False, True, False, False))
+    tr = trace(seed(fn, 3)).get_trace("g", data, priors)
+    assert tr["g_warp_log_a"]["value"].shape == (1,)
+    assert tr["g_warp_x0"]["value"].shape == (1,)
+    params = seed(fn, 3)("g", data, priors)
+    a = np.asarray(params.warp_a_sel)
+    # map_condition_sel rows: [1, 2, 3, 3]; only condition 1 is warped
+    assert (a[0] > 0).all() and (a[1:] == 0).all()
+    theta = jnp.full(np.asarray(data.map_condition_sel).shape, 0.3)
+    g_pre, g_sel = calculate_growth(params, jnp.zeros_like(theta), 1.0, theta)
+    base = params.replace(warp_a_pre=None, warp_x0_pre=None, warp_a_sel=None,
+                          warp_x0_sel=None)
+    _, g_lin = calculate_growth(base, jnp.zeros_like(theta), 1.0, theta)
+    diff = np.asarray(g_sel) - np.asarray(g_lin)
+    assert not np.allclose(diff[0], 0.0) and np.allclose(diff[1:], 0.0)
+    # off by default
+    tr = trace(seed(fn, 3)).get_trace("g", data, _titrant_priors())
+    assert "g_warp_log_a" not in tr
+    assert seed(fn, 3)("g", data, _titrant_priors()).warp_a_sel is None

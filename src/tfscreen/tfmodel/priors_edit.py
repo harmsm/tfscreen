@@ -33,10 +33,11 @@ GROWTH_PRIOR_FIELDS = {
     "m_scale": ("m_scale_plus", "m_scale_minus"),
     "k_pinned": ("k_pinned",),
     "m_pinned": ("m_pinned",),
+    "m_warp": ("m_warp",),
 }
 
 # Growth-priors columns that are 0/1 flags (linear's per-condition clamps).
-GROWTH_PIN_FIELDS = ("k_pinned", "m_pinned")
+GROWTH_PIN_FIELDS = ("k_pinned", "m_pinned", "m_warp")
 
 GROWTH_PRIOR_PREFIX = "growth.condition_growth."
 

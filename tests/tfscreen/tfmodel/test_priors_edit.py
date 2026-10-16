@@ -396,3 +396,24 @@ def test_configure_titrant_k_traces_on_real_tensors(tmp_path, field, site):
     assert site in tr
     n_sel = sum(o.priors.growth.condition_growth.m_is_selection)
     assert tr[site]["value"].shape[0] == n_sel
+
+
+def test_configure_m_warp_column_traces(tmp_path):
+    import jax
+    import pandas as pd
+    from numpyro import handlers
+    gp = tmp_path / "gp.csv"
+    pd.DataFrame({"condition_rep": ["kanR+kan", "kanR-kan", "pheS+4CP", "pheS-4CP"],
+                  "m_warp": [1, 0, 0, 0]}).to_csv(gp, index=False)
+    prefix = _configure(tmp_path, growth_priors=str(gp))
+    o, _ = read_configuration(f"{prefix}_config.yaml")
+    flags = o.priors.growth.condition_growth.m_warp
+    assert isinstance(flags, tuple) and sum(flags) == 1
+    tr = handlers.trace(handlers.seed(o.jax_model, jax.random.PRNGKey(0))).get_trace(
+        data=o.data, priors=o.priors)
+    assert tr["condition_growth_warp_log_a"]["value"].shape == (1,)
+    bad = tmp_path / "bad.csv"
+    pd.DataFrame({"condition_rep": ["kanR+kan"], "m_warp": [0.5]}).to_csv(bad, index=False)
+    (tmp_path / "x").mkdir()
+    with pytest.raises(ValueError, match="0 or 1"):
+        _configure(tmp_path / "x", growth_priors=str(bad))
