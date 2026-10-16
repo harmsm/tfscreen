@@ -90,3 +90,41 @@ it is specific to the library.
 curve in each marker. pheS midpoints systematically below kanR's would
 mean the markers read occupancy differently (a per-marker map from X to
 growth). Steps 2-6 of `planning/relative-m.md` wait on it.
+
+### Run 2: per-marker midpoints (2026-10-15)
+
+`midpoints.py` fits each deep genotype's within-tube curve (against
+M42I/H74A/K84L) in each marker with y = A (1 - s(c)), s a Hill in IPTG
+(n bounded to 0.3-4), and compares the 136 singles whose swing is beyond
+3 SE in both (`out/midpoints.pdf`).
+
+**Midpoints differ modestly.** pheS's K is a median 1.5x lower than
+kanR's (ln K difference -0.42, IQR -0.66 to +0.34, 71% below 0; median K
+18 uM against 29 uM).
+
+**Steepness differs a lot.** kanR's curves are switch-like (median n at
+the bound of 4; the drop between about 30 and 100 uM). pheS's are broad
+(median n 0.93; a gradual decline over about three decades). wt: kanR K
+44 uM, n 4; pheS K 18 uM, n 0.90.
+
+**Reading.** One Hill curve per genotype cannot be steep in one marker
+and broad in the other, so the shared-X fit follows kanR and flattens
+pheS (run 1's 8x shortfall in pheS swings). The markers seem to turn
+occupancy into growth through differently shaped maps: kanR like a
+threshold in expression, 4CP toxicity graded. The model assumes both are
+linear in X.
+
+**An anomaly at 0 IPTG in pheS.** For the singles and for wt the pheS
+curve at 0 IPTG is well below its value at 0.1 uM (median single: the
+0.1 uM value is about 1.5x the 0 IPTG value). Binding does not change
+between 0 and 0.1 uM, so the 0-IPTG pheS+4CP tubes may be off
+systematically. They are the gauge point, so this needs settling before
+modeling pheS.
+
+**Next.** (1) The 0-IPTG pheS tubes: their t_sel, totals and reads
+against the 0.1 uM tubes, and whether the anomaly holds against other
+flat references. (2) If it is a tube problem, a per-marker monotone map
+from X to growth (for example a Hill or logistic warp per selection
+condition, gauged on wt) in the relative fit, tested on the simulations
+(which need a nonlinear marker map added) and against binding.
+
