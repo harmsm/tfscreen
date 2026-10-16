@@ -250,3 +250,43 @@ and with the step cap raised to 500,000:
 `attribute.py` on the pair says what loses likelihood when the selection
 markers' m equal wt's own within-tube swings.
 
+### Run 5 results (2026-10-16)
+
+Both runs converged: free at 50,000 steps (loss 806,876; m kanR+kan
+-0.0119, pheS+4CP +0.0088, as run 4), pinned at 204,000 (810,725).
+
+Pinning m at the within-tube values costs 3,689 nats of count log
+likelihood and 155 of log prior (mostly the log K population SD and
+offsets), so the data, not the priors, prefer the free m. By group
+(pinned minus free):
+
+| | kanR+kan | kanR-kan | pheS+4CP | pheS-4CP |
+|---|---|---|---|---|
+| wt | -833 | -180 | -610 | -105 |
+| singles >= 1e6 reads | -678 | -8 | -1,297 | -235 |
+| singles 1e5-1e6 | -18 | -11 | +254 | -137 |
+| spikes | +42 | +7 | +23 | +7 |
+| total | -1,459 | -180 | -1,593 | -457 |
+
+wt alone loses 1,729 nats over its rows, in every condition including
+both no-selection controls, and in most series the loss grows with time
+(pheS+4CP replicate 1: -99, -120, -175 over t_sel 94, 111, 125). The
+pinned fit's kanR warp went step-like (a 11, x0 -0.05) and its X
+population locations moved (X_low 0.87 -> 0.53).
+
+Against the geometric mean of all deep singles instead of the flat spikes,
+the arithmetic is consistent (wt - spike = (wt - library) - (spike -
+library)), so the spikes are not the odd ones; the library on average
+swings about 0.83 of wt in kanR and 0.55 in pheS, which one shared X
+cannot do.
+
+**Reading.** The model can match wt's swing against the flat spikes or
+wt's levels against the rest of the library, not both. A wt whose growth
+relative to the library is not constant over the selection (a lag, a
+transient, a dk that changes with time) would do this; wt losing
+likelihood in the no-selection tubes, where m hardly matters, points the
+same way.
+
+**Next.** wt's observed and predicted ln(wt / library) against t_sel per
+condition and IPTG under both fits: a time trend or a level.
+

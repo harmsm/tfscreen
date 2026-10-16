@@ -108,7 +108,8 @@ def main():
     for by in (["condition_sel"], ["condition_sel", "class"],
                ["condition_sel", "titrant_conc"],
                ["condition_sel", "replicate", "t_sel"]):
-        t = m.groupby(by)["d"].agg(["sum", "size"]).round(1)
+        t = m.groupby(by, observed=True)["d"].agg(["sum", "size"]).round(1)
+        t = t[t["size"] > 0]
         print(f"\n== second - first, by {', '.join(by)}")
         print(t.to_string())
     g = m.groupby("genotype")["d"].sum().sort_values()
