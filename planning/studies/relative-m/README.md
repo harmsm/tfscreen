@@ -290,3 +290,46 @@ same way.
 **Next.** wt's observed and predicted ln(wt / library) against t_sel per
 condition and IPTG under both fits: a time trend or a level.
 
+### Run 6: wt against the library over time (2026-10-16)
+
+`wt_trajectory.py` plots ln(wt / library) per tube (the library: the
+geometric mean of the 881 deep singles in every tube) against t_sel for
+each condition and IPTG, observed and predicted by run 5's free and
+pinned fits (`out/*_wt-trajectory.pdf`, `out/wt_trajectory_residuals.csv`).
+
+**Not a wt transient.** The free fit follows wt against the library in
+every condition: mean residuals within +-0.06, trends within +-0.0025 per
+minute. The pinned fit misses by 0.3-0.8 in level and about -0.01 per
+minute in trend everywhere, the no-selection controls included: pinning m
+at the spike-based values makes the fit move the whole library's growth
+against wt, which the controls reject.
+
+**Not bulk origin.** wt's within-tube swing against weak binders that are
+pure spikes and against ones that come 69% from the bulk is the same
+(kanR+kan: -0.0051, -0.0046 pure; -0.0052 K84L; pheS+4CP +0.0093, +0.0125
+pure; +0.0087 K84L, +0.0074 H74A), so congression is not the difference.
+
+**The scale of X.** A within-tube swing is m (wt's X range - the
+reference's X range); turning it into m needs a reference whose X does not
+change. Each m so far rests on a different anchor:
+
+| anchor | kanR+kan | pheS+4CP |
+|---|---|---|
+| tube totals (absolute stage 1) | -0.0148 | +0.0070 |
+| priors and Hill shape (relative fit, kanR warp) | -0.0119 | +0.0088 |
+| weak binders flat (binding and expression) | -0.0046 to -0.0052 | +0.0087 to +0.0125 |
+
+pheS roughly agrees once the swapped row is out; kanR differs about 2.5x.
+The free fit reconciles kanR by giving the weak binders a partial kanR
+response (X range about 0.4-0.6 of wt's), against their flat binding. But
+kanR-alone X at the absolute m matched binding theta at 2 uM with no
+correction (`planning/studies/x-vs-binding/`), which a 2.5x smaller m
+would undo. So binding supports the larger kanR m and the weak binders'
+flatness the smaller one.
+
+**Decision needed** (user): which external fact anchors kanR's scale:
+binding (calibrate X to the spikes' 2 uM curves), flat weak binders (hold
+the pure weak-binder spikes' X constant), or neither for now (report
+kanR's scale as uncertain over that range). Knowing whether weak binders'
+kanR growth can respond to IPTG at flat occupancy would settle it.
+
