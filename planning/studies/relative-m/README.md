@@ -128,3 +128,38 @@ from X to growth (for example a Hill or logistic warp per selection
 condition, gauged on wt) in the relative fit, tested on the simulations
 (which need a nonlinear marker map added) and against binding.
 
+### Run 3: the 0-IPTG pheS anomaly is one row of tubes (2026-10-15)
+
+Tube totals cancel in a within-tube ratio, so the anomaly had to be a
+difference in relative growth. Against both flat pure spikes the 421
+singles with >= 1e6 reads grew 0.010 per minute faster at 0.1 uM than at 0
+in pheS+4CP (the two spikes agreed with each other; against wt the singles
+moved -0.002), and not in kanR+kan. Per replicate, one row drove it:
+pheS+4CP replicate 2, t_sel 82.
+
+`tube_qc.py` scores every tube's apparent IPTG from its genotype
+composition (0 like the 0-IPTG tubes, 1 like the 1 mM tubes). Every
+replicate x time row rises smoothly from about 0 to 1.1-1.3 in both
+markers except that one:
+
+| pheS+4CP rep 2, t_sel 82 | 0 | 0.1 uM | 1 uM | 10 uM | 30 uM | 1 mM |
+|---|---|---|---|---|---|---|
+| apparent IPTG | 0.01 | 0.91 | 0.48 | 0.19 | 0.22 | 0.06 |
+
+The tube labeled 0.1 uM looks like a 1 mM tube and the one labeled 1 mM
+like a low-IPTG tube; 1 uM is also off. The rows with missing
+concentrations (replicate 1 t 200, replicate 2 t 185 and 199,
+replicate 3) are shifted by the centering, not swapped. A physical swap
+or a sample-sheet label swap would both do this; the lab's records can
+say which (the user: tube mixups were cross-checked and unlikely).
+
+Without that row the 0 vs 0.1 uM difference is +0.0010 (was +0.0097).
+The rest stands: kanR switch-like (median n at the bound of 4, K 35 uM)
+and pheS broad (median n 1.08, K 19 uM) over 69 singles responsive in
+both; wt's within-tube swing 0.0125 in pheS (near the monoculture's
+0.0145, was 0.018) and -0.0046 in kanR.
+
+**Next.** Check the records for pheS+4CP replicate 2, t_sel 82
+(0.1 uM, 1 uM, 1 mM) and exclude or relabel those tubes. Then a
+per-marker monotone map from X to growth (`planning/relative-m.md`).
+
