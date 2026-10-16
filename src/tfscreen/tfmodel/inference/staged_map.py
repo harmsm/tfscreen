@@ -21,6 +21,10 @@ While the offsets are held, a learned offset SD (``sigma_fixed`` = 0) is
 held too, at the prior's scale: with every offset at 0 the SD's MAP is 0 and
 the density is unbounded.
 
+The model's own learned params (the thermo PnnC NN weights; see
+``model_params.py``) follow the sites: stage 2 holds them at stage 1's
+values, and stage 3 starts from them.
+
 Each stage is an ordinary MAP on a model conditioned on its held values
 (``HeldModel``), so it writes its own checkpoint, convergence record and
 ``_params.npz`` under ``{out_prefix}_stage1`` and ``{out_prefix}_stage2``;
@@ -34,6 +38,8 @@ import os
 import jax.numpy as jnp
 import numpy as np
 from numpyro import handlers
+
+from tfscreen.tfmodel.inference.model_params import hold_model_params
 
 STAGE_CHOICES = ("auto", "on", "off")
 
@@ -61,14 +67,17 @@ class HeldModel:
     held : dict
         Site name to constrained value. Per-genotype values must be
         library-sized, as a MAP's ``_params.npz`` stores them.
+    params : dict or None, optional
+        The model's own ``pyro.param`` values to hold fixed (constrained).
     """
 
-    def __init__(self, model, held):
+    def __init__(self, model, held, params=None):
         self._model = model
         # jax arrays: the model indexes per-genotype values with traced
         # batch indices, which a numpy array cannot take
         self._held = {k: jnp.asarray(v) for k, v in held.items()}
-        self._jax_model = handlers.condition(model.jax_model, data=self._held)
+        self._jax_model = hold_model_params(
+            handlers.condition(model.jax_model, data=self._held), params)
 
     @property
     def held(self):
@@ -132,7 +141,18 @@ def read_params(path):
                 for k in z.files if k.endswith("_auto_loc")}
 
 
-def _stage(run_map, make_ri, model, held, init_values, prefix, label, **kwargs):
+def read_model_params(path):
+    """
+    The model's own learned params in a MAP ``_params.npz``: every array but
+    the AutoDelta ``{site}_auto_loc`` ones (constrained).
+    """
+    with np.load(path) as z:
+        return {k: np.asarray(z[k]) for k in z.files
+                if not k.endswith("_auto_loc")}
+
+
+def _stage(run_map, make_ri, model, held, init_values, prefix, label,
+           params=None, **kwargs):
     """Run one stage, or reuse it if its params file is already there."""
     params_file = f"{prefix}_params.npz"
     if os.path.exists(params_file):
@@ -142,7 +162,7 @@ def _stage(run_map, make_ri, model, held, init_values, prefix, label, **kwargs):
     resume = checkpoint if os.path.exists(checkpoint) else None
     print(f"{label}: {'resuming ' + checkpoint if resume else 'starting'} "
           f"({len(held)} site(s) held)", flush=True)
-    ri = make_ri(HeldModel(model, held))
+    ri = make_ri(HeldModel(model, held, params=params))
     run_map(ri,
             init_values=None if resume else ri.site_values(init_values),
             checkpoint_file=resume,
@@ -201,10 +221,12 @@ def run_staged_map(orchestrator, make_ri, run_map, guesses, out_prefix,
     held2 = {k: v for k, v in stage1.items() if k != offset_site}
     if sigma_hold is not None:
         held2[sigma_site] = np.asarray(sigma_hold, dtype=float)
+    # The model's own params (thermo PnnC NN) are held at stage 1's too.
+    stage1_params = read_model_params(f"{out_prefix}_stage1_params.npz")
     stage2 = _stage(run_map, make_ri, orchestrator, held2,
                     {offset_site: held1[offset_site]},
                     f"{out_prefix}_stage2", "Stage 2 (tube offsets alone)",
-                    **stage_map_kwargs)
+                    params=stage1_params, **stage_map_kwargs)
     off = np.asarray(stage2[offset_site])
     print(f"  stage 2 offsets: SD {off.std():.3f}, range {off.min():+.2f} to "
           f"{off.max():+.2f}", flush=True)
@@ -215,6 +237,8 @@ def run_staged_map(orchestrator, make_ri, run_map, guesses, out_prefix,
     ri = make_ri(orchestrator)
     kwargs = dict(map_kwargs)
     kwargs["adam_step_size"] = staged_step_size
+    if stage1_params:
+        kwargs["init_params"] = stage1_params
     print(f"Stage 3 (joint, step size {staged_step_size:g})", flush=True)
     return run_map(ri,
                    init_values=ri.site_values(start),

@@ -544,6 +544,47 @@ def _compute_epi_obs(params_df, ref_series, param_name):
     return ep_map.reindex(std_pairs).values
 
 
+def _read_keyed_truth(run_dir, name, key):
+    """
+    Read ``*_sim_{name}.csv`` (per-mutation or per-pair truth) indexed by key.
+
+    Returns None when the file is absent (real data, or a theta model with no
+    per-mutation truth) or unreadable (with a warning).  Pair labels are
+    standardized so they match ``standardize_genotypes`` of a fit's pairs.
+    """
+    path = _find_unique(run_dir, f"_sim_{name}.csv", f"sim {name}",
+                        warn_missing=False)
+    if path is None:
+        return None
+    try:
+        df = pd.read_csv(path)
+    except Exception as exc:
+        warnings.warn(f"Could not load {path}: {exc}")
+        return None
+    if key not in df.columns:
+        warnings.warn(f"{path} has no '{key}' column; ignoring it")
+        return None
+    if key == "pair":
+        from tfscreen.genetics import standardize_genotypes
+        df[key] = standardize_genotypes(df[key])
+    return df.set_index(key)
+
+
+def _compute_keyed_obs(params_df, truth_df, column, key):
+    """Return ref array for a params file joined to keyed truth on ``key``.
+
+    Returns ``None`` when params_df has no ``key`` column.  Rows whose key is
+    absent from the truth receive NaN.
+    """
+    if key not in params_df.columns:
+        return None
+    labels = params_df[key]
+    if key == "pair":
+        from tfscreen.genetics import standardize_genotypes
+        labels = pd.Series(standardize_genotypes(labels), index=params_df.index)
+    return truth_df[column].reindex(labels).values
+
+
 def _try_plot_params_corr(out_df, label, pdf_path):
     """Save a scatter correlation plot of ref vs median for a params CSV.
 
@@ -573,20 +614,66 @@ def _try_plot_params_corr(out_df, label, pdf_path):
         warnings.warn(f"Could not generate parameter correlation plot {pdf_path}: {exc}")
 
 
-def _summarize_params(run_dir, out_prefix):
+# Per-structure ddG truth columns (ddG_{structure}) and the fit's prior-mean
+# tables (ddG_prior_mean_{structure}); see theta/thermo/prior.py.
+_DDG_TRUTH = re.compile(r"ddG_(?!prior_mean_)(.+)")
+_DDG_PRIOR_MEAN = re.compile(r"ddG_prior_mean_(.+)")
+
+
+def _ddG_per_state_identified(config_yaml):
+    """
+    Whether the fit's per-state ΔΔG tables are identified by the data.
+
+    The PddG/PnnC models put their prior on Δln K (``thermo/prior.py``).
+    In the U1 models the projection ``DLNK_PROJ`` is square and the
+    per-state ΔΔG is Δln K mapped back exactly; in the U0 models it is the
+    conditional mean under the per-state prior, whose common-mode component
+    (an equal shift of every state) comes from the prior means, not the
+    data.  Returns True when the config is missing or the theta component
+    has no ``DLNK_PROJ``.
+    """
+    from tfscreen.tfmodel.generative.registry import model_registry
+    from tfscreen.tfmodel.generative.components.theta.thermo.prior import (
+        ddG_per_state_identified,
+    )
+
+    components = (config_yaml or {}).get("components", {}) or {}
+    module = model_registry["theta"].get(components.get("theta"))
+    proj = getattr(module, "DLNK_PROJ", None)
+    return True if proj is None else ddG_per_state_identified(proj)
+
+
+def _summarize_params(run_dir, out_prefix, config_yaml=None):
     """Annotate *_params_*.csv files with ground-truth ref from tfs_sim_parameters.csv.
 
     Scans run_dir for a ``*_sim_parameters.csv`` file.  If absent the function
     returns silently (real-data runs have no ground truth).
 
-    For each non-genotype column in sim_parameters the function checks that a
-    matching ``*_params_{col}.csv`` exists and warns if it does not.
+    For each non-genotype column in sim_parameters (and each column of the
+    per-mutation ``*_sim_mutation_parameters.csv`` and per-pair
+    ``*_sim_pair_parameters.csv`` truth, when present) the function checks
+    that a matching ``*_params_{col}.csv`` exists and warns if it does not.
 
     All ``*_params_*.csv`` files in run_dir are then classified by their
     suffix as *direct* (genotype key), *diff* (``_d_`` infix, mutation key),
-    or *epi* (``_epi_`` infix, pair key).  A ``ref`` column is appended to
-    each file whose parameter name resolves via the transform registry and
-    written to the summary directory under ``{out_prefix}_params_*.csv``.
+    or *epi* (``_epi_`` infix, pair key).  A diff or epi file whose full name
+    (``d_ln_K_op``) is a column of the per-mutation or per-pair truth is
+    joined to it directly on ``mutation`` / ``pair``, as is a direct file
+    named for a per-mutation truth column (the thermo models' per-structure
+    ``ddG_H`` tables).  A prior-mean table ``ddG_prior_mean_H`` is joined to
+    the ``ddG_H`` truth and gets no calibration (it is a point).  When the
+    truth has ``ddG_*`` columns but the fit wrote no ddG tables (a PK fit),
+    a note replaces the per-structure warnings.  For a U0 PddG/PnnC fit
+    (``config_yaml``'s theta component; see :func:`_ddG_per_state_identified`)
+    the per-state ``ddG_H`` tables are still written, with the truth in
+    ``ref_unidentified`` instead of ``ref`` and ``per_state_identified`` =
+    False, and get no plot or calibration: their common mode comes from the
+    prior.  Score those fits on ``d_ln_K_*``.  Otherwise the
+    parameter name resolves via the transform registry: direct files by
+    genotype, diff files as sim[mutation] − sim[wt], epi files as the
+    additive epistasis of the per-genotype truth.  A ``ref`` column is
+    appended to each resolved file and written to the summary directory
+    under ``{out_prefix}_params_*.csv``.
     """
     sim_path = _find_unique(run_dir, "_sim_parameters.csv", "sim_parameters",
                             warn_missing=False)
@@ -608,9 +695,38 @@ def _summarize_params(run_dir, out_prefix):
 
     sim_cols = [c for c in sim_df.columns if c != "genotype"]
 
-    for col in sim_cols:
+    # Per-mutation / per-pair truth (thermodynamic models; tfs-simulate's
+    # mutation_parameters / pair_parameters outputs), keyed like the fit's
+    # d_* / epi_* tables.
+    keyed_truth = {
+        "diff": _read_keyed_truth(run_dir, "mutation_parameters", "mutation"),
+        "epi": _read_keyed_truth(run_dir, "pair_parameters", "pair"),
+    }
+    keyed_cols = [c for t in keyed_truth.values() if t is not None
+                  for c in t.columns]
+
+    # Per-structure ddG truth (PddG/PnnC simulations).  A fit with no ddG
+    # (PK parameterizes d_ln_K directly) writes no ddG tables; that is the
+    # "no structural prior" arm, scored on d_ln_K_*, so say so once instead
+    # of warning per structure.
+    ddG_cols = [c for c in keyed_cols if _DDG_TRUTH.fullmatch(c)]
+    if ddG_cols and not glob.glob(os.path.join(run_dir, "*_params_ddG_*.csv")):
+        print(f"Truth has per-structure ddG ({', '.join(ddG_cols)}) but the "
+              f"fit wrote no *_params_ddG_*.csv; expected for a model "
+              f"without ddG (PK). Its d_ln_K_* are scored instead.")
+        keyed_cols = [c for c in keyed_cols if c not in ddG_cols]
+
+    for col in sim_cols + keyed_cols:
         if not glob.glob(os.path.join(run_dir, f"*_params_{col}.csv")):
             warnings.warn(f"Expected *_params_{col}.csv in {run_dir} but none found")
+
+    # U0 structural fits: per-state ΔΔG is not identified by the data.
+    ddG_identified = _ddG_per_state_identified(config_yaml)
+    if ddG_cols and not ddG_identified:
+        print("The fit's theta component has no unfolded state (U0), so its "
+              "per-state ddG common mode comes from the prior means. The "
+              "ddG_* tables are written with the truth as ref_unidentified "
+              "and are not scored; score d_ln_K_* instead.")
 
     transform_registry = _build_transform_registry(sim_df)
 
@@ -630,10 +746,25 @@ def _summarize_params(run_dir, out_prefix):
         else:
             continue
 
-        if param_name not in transform_registry:
+        key = {"diff": "mutation", "epi": "pair"}.get(kind)
+        full_name = f"{'d' if kind == 'diff' else kind}_{param_name}"
+        truth_df = keyed_truth.get(kind)
+        is_prior_mean = False
+        if kind == "direct":
+            # Per-structure ddG tables (ddG_H, ...) are keyed by mutation and
+            # join the per-mutation truth by name.  A prior-mean table
+            # (ddG_prior_mean_H) is scored against the same truth (ddG_H):
+            # how well the structural prior alone predicts it.
+            m_prior = _DDG_PRIOR_MEAN.fullmatch(param_name)
+            key, truth_df = "mutation", keyed_truth["diff"]
+            full_name = f"ddG_{m_prior.group(1)}" if m_prior else param_name
+            is_prior_mean = m_prior is not None
+        use_keyed = truth_df is not None and full_name in truth_df.columns
+
+        if not use_keyed and param_name not in transform_registry:
             continue
 
-        ref_series = transform_registry[param_name]
+        ref_series = None if use_keyed else transform_registry[param_name]
 
         try:
             params_df = pd.read_csv(param_file)
@@ -643,7 +774,9 @@ def _summarize_params(run_dir, out_prefix):
 
         ref = None
         try:
-            if kind == "direct":
+            if use_keyed:
+                ref = _compute_keyed_obs(params_df, truth_df, full_name, key)
+            elif kind == "direct":
                 ref = _compute_direct_obs(params_df, ref_series)
             elif kind == "diff":
                 ref = _compute_diff_obs(params_df, ref_series)
@@ -657,7 +790,14 @@ def _summarize_params(run_dir, out_prefix):
             continue
 
         out_df = params_df.copy()
-        out_df["ref"] = ref
+        unidentified = (kind == "direct" and use_keyed and not is_prior_mean
+                        and not ddG_identified
+                        and _DDG_TRUTH.fullmatch(full_name) is not None)
+        if unidentified:
+            out_df["ref_unidentified"] = ref
+            out_df["per_state_identified"] = False
+        else:
+            out_df["ref"] = ref
 
         if kind == "epi":
             out_name = f"{out_prefix}_params_epi_{param_name}.csv"
@@ -676,9 +816,56 @@ def _summarize_params(run_dir, out_prefix):
             warnings.warn(f"Could not write {out_name}: {exc}")
             continue
 
+        if unidentified:
+            continue
         pdf_name = out_name.replace(".csv", ".pdf")
         _try_plot_params_corr(out_df, plot_label, pdf_name)
-        _try_calibration(out_df, "ref", out_name[:-4], plot_label)
+        # A prior mean is a point (its quantiles coincide), so it has no
+        # calibration; its r and RMSE against the truth are what count.
+        if not is_prior_mean:
+            _try_calibration(out_df, "ref", out_name[:-4], plot_label)
+
+
+def _summarize_ddG_sigma(run_dir, out_prefix):
+    """Annotate *_params_ddG_sigma.csv with the truth in *_sim_ddG_sigma.csv.
+
+    A PddG/PnnC simulation writes the true per-structure σ_s (the SD of the
+    true ΔΔG about the structural prior mean) as ``*_sim_ddG_sigma.csv``
+    (``structure``, ``ddG_sigma``); a PddG/PnnC fit extracts its σ_s as
+    ``*_params_ddG_sigma.csv``, one row per structure (``thermo/prior.py``).
+    They are joined on ``structure``.  Silently skips without the truth
+    (real data, other models) or when the fit wrote no ddG tables at all (a
+    PK fit; ``_summarize_params`` prints the note for that).  No
+    correlation plot: there are only a handful of structures.
+    """
+    sim_path = _find_unique(run_dir, "_sim_ddG_sigma.csv", "sim ddG_sigma",
+                            warn_missing=False)
+    if sim_path is None:
+        return
+    param_file = _find_unique(run_dir, "_params_ddG_sigma.csv",
+                              "ddG_sigma params", warn_missing=False)
+    if param_file is None:
+        if glob.glob(os.path.join(run_dir, "*_params_ddG_*.csv")):
+            warnings.warn(f"Expected *_params_ddG_sigma.csv in {run_dir} "
+                          f"but none found")
+        return
+    try:
+        truth = pd.read_csv(sim_path).set_index("structure")["ddG_sigma"]
+        params_df = pd.read_csv(param_file)
+        out_df = params_df.copy()
+        out_df["ref"] = truth.reindex(params_df["structure"].astype(str)).values
+    except Exception as exc:
+        warnings.warn(f"Could not join ddG_sigma truth: {exc}")
+        return
+
+    out_name = f"{out_prefix}_params_ddG_sigma.csv"
+    try:
+        out_df.to_csv(out_name, index=False)
+        print(f"Wrote parameter summary to {out_name}")
+    except Exception as exc:
+        warnings.warn(f"Could not write {out_name}: {exc}")
+        return
+    _try_calibration(out_df, "ref", out_name[:-4], "ddG_sigma")
 
 
 # Fit-side extract names for the condition_growth component (see
@@ -1412,7 +1599,8 @@ def summarize_fit(run_dir,
         warnings.warn(f"Could not generate loss curve plot: {exc}")
 
     # --- Sim-parameter correlation CSVs ---
-    _summarize_params(run_dir, out_prefix)
+    _summarize_params(run_dir, out_prefix, config_yaml)
+    _summarize_ddG_sigma(run_dir, out_prefix)
     _summarize_growth_params(run_dir, out_prefix, x_gauge)
     _summarize_transformation_lam(run_dir, out_prefix)
 

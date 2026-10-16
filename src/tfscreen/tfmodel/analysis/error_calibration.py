@@ -395,7 +395,8 @@ def _load_h5_params(path: str) -> Dict[str, np.ndarray]:
     out = {}
     with h5py.File(path, "r") as hf:
         for key in hf.keys():
-            out[key] = hf[key][:]
+            if isinstance(hf[key], h5py.Dataset):   # skip model_params group
+                out[key] = hf[key][:]
     return out
 
 

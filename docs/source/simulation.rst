@@ -33,6 +33,65 @@ and ``tfs-configure-model --library_config``. Each tool ignores the keys it
 does not use. Nothing checks that ``library_mixture`` is the same in all
 three places, so a single file is the only guard against drift.
 
+Subsampling the library
+^^^^^^^^^^^^^^^^^^^^^^^
+
+A real double-mutant library has hundreds of thousands of genotypes, far
+too many for some studies (a full Laplace posterior needs a dense Hessian
+over every genotype's parameters). Four optional keys restrict the described
+library to a subset. They belong with the library keys, because
+``tfs-configure-model --library_config`` reads them too and builds its
+library snapshot from the same subset. ``tfs-process-fastq`` ignores them.
+
+.. code-block:: yaml
+
+    # keep every single and 1,000 random cross-tile doubles
+    library_subsample:
+      double-1-2: 1000
+    library_subsample_seed: 20261010
+
+    # or keep exactly the genotypes listed in a file
+    library_genotypes: sampled_genotypes.txt
+
+``library_genotypes`` names a text file with one genotype per line (``#``
+comments allowed), relative to the YAML's own directory. Every genotype not
+listed is dropped from every sub-library that encodes it, so the file lists
+everything to keep, singles included. A listed genotype the library does
+not encode is an error. ``library_subsample`` keeps ``N`` genotypes of a
+sub-library, drawn at random, and leaves the sub-libraries it does not name
+whole. It needs ``library_subsample_seed``, an integer. That seed is
+separate from ``seed`` on purpose: ``tfs-configure-model`` never sees
+``tfs-simulate --seed``, and both must draw the same genotypes. Each
+sub-library draws from its own stream, and a smaller ``N`` keeps a subset
+of what a larger one keeps, so a grid over ``N`` compares nested libraries.
+Both keys can be given; the random draw is then made from the listed
+genotypes. wt and every genotype a spiked sequence encodes are always kept,
+in every sub-library that encodes them, and do not count toward ``N``. A
+``double-x-y`` sub-library also encodes singles (and wt) wherever a site's
+codon set includes the wt residue; those are drawn like any other member.
+
+``library_subsample_depth`` says what the experiment settings describe.
+With ``full_library`` (the default) ``library_mixture``, ``transform_sizes``,
+``total_num_reads`` and ``pcr_template_molecules`` describe the full
+library, and every kept sequence keeps the pool share, transformants, reads
+and PCR templates it has there: each sub-library's mixture weight and
+transformants are multiplied by its kept fraction of sequences, and the
+reads and templates by the kept share of the pool. ``cfu0`` is not changed,
+so tube totals and OD600 stay those of the full experiment and each kept
+genotype has 1 / (kept share) times the cells. A grid over ``N`` then varies
+only the number of genotypes, not the depth per genotype. With
+``as_written`` the settings apply to the subsampled library as given: the
+subsample is the library. ``tfs-simulate`` prints a table of genotypes and
+sequences kept per sub-library and the settings it used.
+
+``tfs_sim_library.csv``, the raw count files and every other output list
+only the kept genotypes. Pass the same YAML to ``tfs-configure-model
+--library_config``; its snapshot (``*_library.csv``) then holds the same
+genotypes with the composition the simulation used, and its config records
+the subsample keys under ``library.subsample``. ``tfs-setup-sim-grid``
+copies a ``library_genotypes`` file into the grid, and ``library_subsample``
+is an ordinary grid variable.
+
 Phenotypes
 ^^^^^^^^^^
 
@@ -43,6 +102,37 @@ when the library has double mutants, adds sparse pairwise epistasis from a
 regularized horseshoe. The ``thermo.*`` keys are thermodynamic
 partition-function models; ``PnnC`` and ``PddG`` variants also need
 ``thermo_data``, the structural ensemble (HDF5) or the per-mutation ΔΔG CSV.
+An optional ``thermo_options`` block says how to read it: ``ddG_units``
+(``kT``, the default, ``kcal/mol`` or ``kJ/mol``), ``temperature_K``,
+``column_map``, ``residue_offset`` and ``max_missing_fraction``, with the
+same meaning as the ``--thermo_*`` flags of ``tfs-configure-model`` (see
+:doc:`model-inputs`). Without it the CSV is read as kT, so the simulated
+truth is unchanged.
+
+In a ``PddG`` or ``PnnC`` simulation the truth is drawn per structure: each
+mutation's ΔΔG in each structure is the structural value plus Normal noise
+with SD σ_s, one σ_s per structure, and the true constants are its
+projection. That is exactly the distribution the models' prior on the
+constants assumes. The simulator fixes σ_s at ``ddG_truth_sd`` instead of
+drawing it from its prior, so the key is the dial for how far the truth
+sits from the structural prior. It is in the
+unit of ``thermo_options`` ``ddG_units`` and converted once at load, like
+the CSV: with ``ddG_units: kcal/mol``, ``ddG_truth_sd: 0.5`` means
+0.5 kcal/mol. Give one number for every structure or a mapping that names
+each structure of the model, such as ``{H: 0.5, HO: 0.5, L: 1.0, LO: 1.0,
+HE2: 0.5, LE2: 0.5}``. With 0 the truth is the CSV exactly. Without the key
+σ_s is 1 kT in every structure. The noise is independent across mutations
+and structures. The true σ_s goes to ``tfs_sim_ddG_sigma.csv`` (one row per
+structure, in kT), which ``tfs-summarize-fit`` compares with the fit's
+``ddG_sigma`` table. The setting changes only the simulated draw. A fit of
+the result still centers the prior on the unperturbed CSV, which its
+``ddG_prior_mean_{structure}`` tables report, and estimates σ_s under its
+own prior. For ``PnnC`` the structural value
+in a simulation is the untrained network's output, 0. Other theta
+components refuse the key, as does ``phenotype_source: empirical``. In a
+``tfs-setup-sim-grid`` grid it is an ordinary top-level variable, and a
+mapping is given whole as one variant.
+
 ``theta_sim_priors`` overrides the simulation priors of ``hill_geno`` and
 ``hill_mut`` (wild-type curve, perturbation widths, epistasis scale), and
 ``theta_priors`` overrides the hyperparameters of the other components. The
@@ -188,6 +278,15 @@ replicates that are read but not sequenced. With
 ``sample_cfu_from_od600: true`` the growth table gets each tube's total as
 estimated from its reading, as in the lab, instead of the true total.
 
+A tube read below the detection threshold has only an upper bound on its
+total, so the lab drops it, and ``tfs-process-counts`` refuses such a
+reading rather than guess. ``tfs-simulate`` drops these tubes from every
+route the same way: from the raw tube table and count files, and from the
+direct growth table ``tfs_sim_growth.csv`` (also with ``--no_write_raw``).
+It prints the dropped tubes. ``tfs_sim_od600.csv`` still lists every
+reading with its ``od600_detectable`` flag, and the presplit table, which
+samples the library before the split, is not affected.
+
 Binding data
 ^^^^^^^^^^^^
 
@@ -211,6 +310,16 @@ many genotypes to pick and is forbidden with a file. It is optional for
 growth simulation, from those that survived with growth data. A file of
 measured parameters needs a Hill theta component (``hill_geno`` or
 ``hill_mut``).
+
+Binding theta is the true theta at the binding concentrations, which need
+not match the growth concentrations: the simulator evaluates each genotype's
+drawn parameters there, so any theta component works. For the Hill
+components, ``stratified`` and ``random`` give the chosen spikes new curves
+drawn from the prior. For the thermodynamic components (``thermo.*``) every
+genotype's theta follows from per-mutation equilibrium constants, so the
+spikes keep their own curves and K truth, and ``stratified`` or ``random``
+only chooses which ``num`` spikes are measured: ``stratified`` takes the
+spikes whose binding curves are most spread out.
 
 Presplit and base-growth data
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -258,7 +367,9 @@ Every run writes these files:
     Every genotype in the library and its origin.
 ``tfs_sim_parameters.csv``
     Ground-truth per-genotype parameters (the theta model's parameters,
-    ``dk_geno``, activity).
+    ``dk_geno``, activity). For the thermodynamic models these are the
+    per-genotype equilibrium constants, such as ``ln_K_op``, ``ln_K_HL``
+    and ``ln_K_E``.
 ``tfs_sim_genotype_theta.csv``
     Ground-truth *θ* per genotype and titrant concentration.
     ``tfs-summarize-fit`` finds this file and uses it as the reference for
@@ -272,6 +383,17 @@ Every run writes these files:
     The config as run, with ``--seed`` applied.
 ``tfs_sim_provenance.json``
     Version, git commit and command line of the run.
+
+The thermodynamic theta models also write ``tfs_sim_mutation_parameters.csv``,
+one row per mutation with its true ``d_*`` effects and, for PddG and PnnC,
+its true ``ddG_{structure}`` values. When the library has multi-mutants they
+write ``tfs_sim_pair_parameters.csv`` as well, one row per mutation pair with
+its true ``epi_*`` terms. The column names match the tables
+``tfs-extract-params`` writes, so ``tfs-summarize-fit`` can score them. The
+``ddG_{structure}`` columns follow the model's structure names, whatever order
+the ΔΔG CSV or structure ensemble lists them in. PddG and PnnC also write
+``tfs_sim_ddG_sigma.csv``, the true σ_s of each structure (``structure``,
+``ddG_sigma``; see ``ddG_truth_sd`` above).
 
 The optional blocks add ``tfs_sim_binding.csv`` (and, with
 ``library_binding``, ``tfs_sim_library_binding.csv`` listing the in-library
@@ -298,7 +420,7 @@ through (see :doc:`process-raw`):
     With an ``od600`` block: one OD600 reading per tube and a copy of the
     calibration. A tube read below the detection threshold is left out of
     the tube table, as a lab would drop it, and the dropped tubes are
-    printed.
+    printed. ``tfs_sim_growth.csv`` leaves out the same tubes.
 
 ``tfs-simulate`` prints the ``tfs-process-counts`` command that processes
 these files. Its output matches ``tfs_sim_growth.csv`` row for row: the same

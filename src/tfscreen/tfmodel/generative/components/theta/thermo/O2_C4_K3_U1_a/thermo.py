@@ -1,47 +1,38 @@
 """
-Shared thermodynamic functions for the lac-dimer-unfolded partition-function θ model.
+Shared thermodynamic functions for the M2 lac-dimer θ model with unfolding (O2_C4 U1).
 
-Extends the four-state lac-dimer model with a globally unfolded state U.
-Destabilising mutations shift population into U, where neither operator nor
-effector can bind, collapsing θ toward zero at all effector concentrations.
-Used by ``theta_lac_dimer_unfolded_lnK_mut`` (PK),
-``theta_lac_dimer_unfolded_lnK_ddG_prior`` (PddG), and
-``theta_lac_dimer_unfolded_lnK_nn_prior`` (PnnC).
+Extends M2 (``O2_C4_K3_U0_a/thermo.py``) with a globally unfolded state U
+that binds neither operator nor effector. K_U = [U]/[H]. In wt K_U << 1;
+destabilizing mutations raise it, shift the dimer into U and pull θ toward
+zero at every effector concentration. Used by ``thermo.O2_C4_K3_U1_a.PK``,
+``.PddG`` and ``.PnnC``.
 
-Five-state partition function for the TF homodimer:
+U adds K_U to the ligand-free part of the TF polynomial:
 
-    State      Weight
-    H          1                               (apo, high-affinity conformation)
-    H·op       K_op · [op_free]                (operator-bound, repressing state)
-    L          K_HL                            (low-affinity conformation)
-    L·E²       K_HL · K_E · [E_free]²          (effector-bound, n=2 hardcoded)
-    U          K_U                             (globally unfolded; no DNA/effector binding)
+    F(e) = 1 + K_HL·(1 + K_E·e)² + K_U
+    h = r / F(e),    W = h·K_op,    θ = W / (1 + W)
 
-    Z     = 1 + K_op·[op_free] + K_HL + K_HL·K_E·[E_free]² + K_U
-    θ     = K_op·[op_free] / Z
-
-The U state is the H→U equilibrium: K_U = [U]/[H].  In WT K_U << 1 (U is
-strongly disfavoured).  Mutations accumulate destabilising effects as additive
-shifts in ln(K_U); when K_U dominates Z, θ collapses toward zero for all
-conditions regardless of effector concentration.
-
-U has no DNA-binding or effector-binding interactions, so the thermodynamic
-projection matrix for the folded states is unchanged.  The only modification
-to the Newton solve for free effector is that K_U appears in Z₀ (the
-ligand-free part of the partition function), which enters the cubic mass
-balance for free effector.
-
-Operator depletion approximation, free-effector cubic, and units are identical
-to lac_dimer/thermo.py.  See that module for details.
+It is M3 with unfolding (``O2_C12_K5_U1_a``) restricted to K_h_e = K_l_o = 0,
+computed by the same ``mwc.mwc_theta``. Constants, units, bookkeeping and the
+free-effector cubic are those of the U0 model and ``thermo/mwc.py``.
 """
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pandas as pd
-from flax.struct import dataclass
+from flax.struct import dataclass, field
 
-NEWTON_ITERATIONS = 8
+from tfscreen.tfmodel.generative.components.theta.thermo import mwc
+# Unit convention and the defaults are shared with the U0 model.
+from tfscreen.tfmodel.generative.components.theta.thermo.O2_C4_K3_U0_a.thermo import (  # noqa: F401
+    DEFAULT_CONC_UNIT_SCALE,
+    DEFAULT_LN_K_E_WT_LOC,
+    DEFAULT_LN_K_HL_WT_LOC,
+    DEFAULT_LN_K_OP_WT_LOC,
+    DEFAULT_TF_TOTAL_M,
+    NEWTON_ITERATIONS,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -52,49 +43,25 @@ NEWTON_ITERATIONS = 8
 class ThetaParam:
     """Assembled partition-function parameters passed between K-assembly and thermo."""
 
-    ln_K_op:  jnp.ndarray   # (G,)    — per-genotype log protein-DNA affinity
-    ln_K_HL:  jnp.ndarray   # (G,)    — per-genotype log conformational equilibrium
-    ln_K_E:   jnp.ndarray   # (T, G)  — per-genotype log effector binding constant
+    ln_K_op:  jnp.ndarray   # (G,)    — per-genotype log K_op (= K_h_o), M⁻¹
+    ln_K_HL:  jnp.ndarray   # (G,)    — per-genotype log K_HL (= K_h_l)
+    ln_K_E:   jnp.ndarray   # (T, G)  — per-genotype log per-site K_E (= K_l_e), M⁻¹
     ln_K_U:   jnp.ndarray   # (G,)    — per-genotype log H→U unfolding equilibrium
-    tf_total: float          # M
-    op_total: float          # M
+    tf_total: float          # M, monomer units
     mu:       jnp.ndarray   # (T, C, 1) — population mean logit-theta
     sigma:    jnp.ndarray   # (T, C, 1) — population std  logit-theta
+    # Factor that converts data.titrant_conc (mM) to M before it enters the
+    # thermodynamic equations (theta_conc_unit_scale, 1e-3 by default).
+    conc_unit_scale: float = field(pytree_node=False)
 
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _solve_free_effector(e_total, tf_total, a, Z0):
+def _compute_theta(ln_K_op, ln_K_HL, ln_K_E, ln_K_U, titrant_conc, tf_total):
     """
-    Solve the cubic mass-balance equation for free effector concentration.
-
-    Identical to lac_dimer/thermo.py; Z0 now includes the K_U term.
-    """
-    coeff_a = a
-    coeff_b = a * (2.0 * tf_total - e_total)
-    coeff_c = Z0
-    coeff_d = -Z0 * e_total
-
-    def f(x):
-        return coeff_a * x**3 + coeff_b * x**2 + coeff_c * x + coeff_d
-
-    def df(x):
-        return 3.0 * coeff_a * x**2 + 2.0 * coeff_b * x + coeff_c
-
-    def step(i, x):
-        dfx = df(x)
-        return x - f(x) / jnp.where(jnp.abs(dfx) < 1e-30, 1e-30, dfx)
-
-    x0 = jnp.broadcast_to(e_total, coeff_b.shape)
-    x_free = jax.lax.fori_loop(0, NEWTON_ITERATIONS, step, x0)
-    return jnp.clip(x_free, 0.0, e_total)
-
-
-def _compute_theta(ln_K_op, ln_K_HL, ln_K_E, ln_K_U, titrant_conc, tf_total, op_total):
-    """
-    Evaluate the five-state partition-function theta for all (T, C, G) combinations.
+    Evaluate θ with the unfolded state for all (T, C, G) combinations.
 
     Parameters
     ----------
@@ -102,31 +69,19 @@ def _compute_theta(ln_K_op, ln_K_HL, ln_K_E, ln_K_U, titrant_conc, tf_total, op_
     ln_K_HL : (G,)
     ln_K_E  : (T, G)
     ln_K_U  : (G,)
-    titrant_conc : (C,)
-    tf_total : scalar
-    op_total : scalar
+    titrant_conc : (C,)  — effector concentrations in M (already scaled)
+    tf_total : scalar   — total TF in M, monomer units
 
     Returns
     -------
     theta : (T, C, G)
     """
-    K_op = jnp.exp(ln_K_op)[None, None, :]     # (1, 1, G)
-    K_HL = jnp.exp(ln_K_HL)[None, None, :]     # (1, 1, G)
-    K_E  = jnp.exp(ln_K_E)[:, None, :]         # (T, 1, G)
-    K_U  = jnp.exp(ln_K_U)[None, None, :]      # (1, 1, G)
-    e_total = titrant_conc[None, :, None]       # (1, C, 1)
-
-    # Z₀ includes K_U: the ligand-free part of the partition function
-    Z0 = 1.0 + K_op * op_total + K_HL + K_U    # (1, 1, G)
-    a  = K_HL * K_E                             # (T, 1, G)
-
-    e_free = _solve_free_effector(e_total, tf_total, a, Z0)  # (T, C, G)
-
-    w_Hop = K_op * op_total                     # (1, 1, G)
-    w_LE  = K_HL * K_E * e_free**2             # (T, C, G)
-    Z     = 1.0 + w_Hop + K_HL + w_LE + K_U   # (T, C, G)
-
-    return w_Hop / Z                            # (T, C, G)
+    return mwc.theta_c4(ln_K_op[None, None, :],
+                        ln_K_HL[None, None, :],
+                        ln_K_E[:, None, :],
+                        ln_K_U[None, None, :],
+                        titrant_conc[None, :, None],
+                        tf_total)
 
 
 def _population_moments(theta, data):
@@ -163,9 +118,8 @@ def run_model(theta_param: ThetaParam, data) -> jnp.ndarray:
         theta_param.ln_K_HL,
         theta_param.ln_K_E,
         theta_param.ln_K_U,
-        data.titrant_conc,
+        data.titrant_conc * theta_param.conc_unit_scale,
         theta_param.tf_total,
-        theta_param.op_total,
     )                                              # (T, C, G)
 
     geno_idx = data.batch_idx[data.geno_theta_idx]
@@ -188,9 +142,9 @@ def get_population_moments(theta_param: ThetaParam, data) -> tuple:
 _ZERO_CONC_VALUE = 1e-20
 
 
-def _solve_theta_np(ln_K_op, ln_K_HL, ln_K_E, ln_K_U, conc, tf_total, op_total):
+def _solve_theta_np(ln_K_op, ln_K_HL, ln_K_E, ln_K_U, conc, tf_total):
     """
-    Pure-numpy Newton solve for lac_dimer_unfolded theta at per-row K values.
+    Numpy θ at per-row K values (the same ``mwc.theta_c4`` as the JAX path).
 
     Parameters
     ----------
@@ -199,34 +153,16 @@ def _solve_theta_np(ln_K_op, ln_K_HL, ln_K_E, ln_K_U, conc, tf_total, op_total):
     ln_K_E  : (S, N)
     ln_K_U  : (S, N)  or broadcastable to (S, N)
     conc    : (N,)  — effector concentrations in M (zero already replaced)
-    tf_total : float
-    op_total : float
+    tf_total : float — M, monomer units
 
     Returns
     -------
     theta : np.ndarray, shape (S, N)
     """
-    K_op = np.exp(ln_K_op)
-    K_HL = np.exp(ln_K_HL)
-    K_E  = np.exp(ln_K_E)
-    K_U  = np.exp(ln_K_U)
-
-    e_total = conc[np.newaxis, :]
-    Z0      = 1.0 + K_op * op_total + K_HL + K_U
-    a       = K_HL * K_E
-    coeff_b = a * (2.0 * tf_total - e_total)
-
-    e_free = e_total * np.ones_like(a)
-    for _ in range(NEWTON_ITERATIONS):
-        f  = a * e_free**3 + coeff_b * e_free**2 + Z0 * e_free - Z0 * e_total
-        df = 3.0 * a * e_free**2 + 2.0 * coeff_b * e_free + Z0
-        e_free = e_free - f / np.where(np.abs(df) < 1e-30, 1e-30, df)
-    e_free = np.clip(e_free, 0.0, e_total)
-
-    w_Hop = K_op * op_total
-    w_LE  = a * e_free**2
-    Z     = 1.0 + w_Hop + K_HL + w_LE + K_U
-    return w_Hop / Z
+    return mwc.theta_c4(np.asarray(ln_K_op, float), np.asarray(ln_K_HL, float),
+                        np.asarray(ln_K_E, float), np.asarray(ln_K_U, float),
+                        np.asarray(conc, float)[np.newaxis, :], tf_total,
+                        xp=np)
 
 
 def build_calc_df(model, manual_titrant_df):
@@ -240,7 +176,7 @@ def build_calc_df(model, manual_titrant_df):
     calc_df : pd.DataFrame
     internal_cols : list of str
     extra_kwargs : dict
-        ``tf_total`` and ``op_total`` scalars (in M).
+        ``tf_total`` (M, monomer units) and ``conc_unit_scale``.
     """
     import tfscreen.util.dataframe
 
@@ -281,12 +217,13 @@ def build_calc_df(model, manual_titrant_df):
 
     extra = {
         "tf_total": float(model.priors.theta.theta_tf_total_M),
-        "op_total": float(model.priors.theta.theta_op_total_M),
+        "conc_unit_scale": float(model.priors.theta.theta_conc_unit_scale),
     }
     return calc_df, ["genotype_idx", "titrant_name_idx"], extra
 
 
-def compute_theta_samples(calc_df, param_posteriors, *, tf_total, op_total):
+def compute_theta_samples(calc_df, param_posteriors, *, tf_total,
+                          conc_unit_scale=1.0):
     """
     Compute posterior theta samples for the lac_dimer_unfolded model.
 
@@ -298,7 +235,9 @@ def compute_theta_samples(calc_df, param_posteriors, *, tf_total, op_total):
     param_posteriors : dict-like
         Posterior samples keyed by parameter name (with ``theta_`` prefix).
     tf_total : float
-    op_total : float
+        Total TF concentration in M, monomer units.
+    conc_unit_scale : float, optional
+        Multiply ``titrant_conc`` by this factor to get M (1e-3 for mM data).
 
     Returns
     -------
@@ -309,7 +248,7 @@ def compute_theta_samples(calc_df, param_posteriors, *, tf_total, op_total):
     geno_indices    = calc_df["genotype_idx"].values.astype(int)
     titrant_indices = calc_df["titrant_name_idx"].values.astype(int)
 
-    conc = calc_df["titrant_conc"].values.copy().astype(float)
+    conc = calc_df["titrant_conc"].values.copy().astype(float) * conc_unit_scale
     conc[conc == 0] = _ZERO_CONC_VALUE
 
     def _load(key):
@@ -329,4 +268,4 @@ def compute_theta_samples(calc_df, param_posteriors, *, tf_total, op_total):
     ln_K_U_pts  = ln_K_U_all[:, geno_indices]
 
     return _solve_theta_np(ln_K_op_pts, ln_K_HL_pts, ln_K_E_pts, ln_K_U_pts,
-                           conc, tf_total, op_total)
+                           conc, tf_total)

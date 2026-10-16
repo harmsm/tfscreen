@@ -5,8 +5,9 @@ Covers: _get_struct_perm, _project_ddG, ModelPriors, get_hyperparameters,
 get_priors, get_guesses, define_model, guide, get_extract_specs.
 
 Key difference from base lac_dimer/lnK_ddG_prior: the unfolded variant adds
-a scalar ln_K_U_wt parameter that is sampled for all genotypes but yields a
-homogeneous ln_K_U (no per-mutation effects on K_U).
+a scalar ln_K_U_wt parameter, and each mutation shifts ln_K_U by its ΔΔG_H
+(K_U = [U]/[H] with ΔΔG_U = 0).  test_unfolding_projection.py covers the
+projection in depth.
 """
 
 import pytest
@@ -15,7 +16,7 @@ import pandas as pd
 import jax.numpy as jnp
 from collections import namedtuple
 from dataclasses import dataclass
-from numpyro.handlers import trace, seed
+from numpyro.handlers import condition, trace, seed
 import unittest.mock as mock
 
 from tfscreen.genetics.build_mut_geno_matrix import build_mut_sparse_indices
@@ -40,6 +41,11 @@ from tfscreen.tfmodel.generative.components.theta.thermo.O2_C4_K3_U1_a.thermo im
 # ---------------------------------------------------------------------------
 
 _S = 4    # number of lac_dimer_unfolded structures: H, HD, L, LE2
+
+
+def _sigma_zero(fn):
+    """``fn`` with every structure's σ_s conditioned to 0: ΔΔG = prior means."""
+    return condition(fn, data={"theta_ddG_sigma": jnp.zeros(_S)})
 _M = 2    # mutations
 _G = 4    # genotypes: wt, M1, M2, M1+M2
 
@@ -176,9 +182,9 @@ class TestProjectDdG:
         ddG = jnp.array([[3.0, 0.0, 1.0, 0.0]])
         assert _project_ddG(ddG)[0, 1] == pytest.approx(3.0 - 1.0)
 
-    def test_K_E_is_L_minus_LE2(self):
+    def test_K_E_is_half_L_minus_LE2(self):
         ddG = jnp.array([[0.0, 0.0, 5.0, 2.0]])
-        assert _project_ddG(ddG)[0, 2] == pytest.approx(5.0 - 2.0)
+        assert _project_ddG(ddG)[0, 2] == pytest.approx((5.0 - 2.0) / 2)
 
     def test_H_perturbation_does_not_affect_K_E(self):
         """Changing H alone should not change d_ln_K_E (which depends only on L and LE2)."""
@@ -205,7 +211,7 @@ class TestConfig:
             "theta_ln_K_HL_wt_loc", "theta_ln_K_HL_wt_scale",
             "theta_ln_K_E_wt_loc",  "theta_ln_K_E_wt_scale",
             "theta_ln_K_U_wt_loc",  "theta_ln_K_U_wt_scale",
-            "theta_tf_total_M", "theta_op_total_M",
+            "theta_tf_total_M",
         ]
         for k in required:
             assert k in hp, f"Missing key: {k}"
@@ -235,13 +241,12 @@ class TestConfig:
 
     def test_physical_constants(self):
         p = get_priors()
-        assert p.theta_tf_total_M == pytest.approx(6.5e-7)
-        assert p.theta_op_total_M == pytest.approx(2.5e-8)
+        assert p.theta_tf_total_M == pytest.approx(1e-5)
 
     def test_get_guesses_required_keys(self):
         g = get_guesses("theta", _make_mock())
         for k in ("theta_ln_K_op_wt", "theta_ln_K_HL_wt", "theta_ln_K_E_wt",
-                  "theta_ln_K_U_wt", "theta_ddG_offset"):
+                  "theta_ln_K_U_wt", "theta_dlnK"):
             assert k in g, f"Missing guess key: {k}"
 
     def test_get_guesses_ln_K_U_wt_value(self):
@@ -254,8 +259,8 @@ class TestConfig:
         assert "theta_epi_lambda" not in g
         assert "theta_epi_offset" not in g
 
-    def test_get_guesses_ddG_offset_shape(self):
-        assert get_guesses("theta", _make_mock())["theta_ddG_offset"].shape == (_S, _M)
+    def test_get_guesses_ddG_shape(self):
+        assert get_guesses("theta", _make_mock())["theta_dlnK"].shape == (_M, 4)
 
     def test_get_guesses_wt_K_shapes(self):
         T = 2
@@ -310,12 +315,15 @@ class TestDefineModel:
         assert out.ln_K_E.shape  == (T, _G)
         assert out.ln_K_U.shape  == (_G,)
 
-    def test_ln_K_U_homogeneous(self):
-        """All elements of ln_K_U must be equal — no per-mutation K_U effects."""
-        out, _ = _run_model(_make_mock())
+    def test_ln_K_U_shifts_by_ddG_H(self):
+        """ln_K_U[g] − ln_K_U[wt] is the summed ΔΔG_H of g's mutations."""
+        out, tr = _run_model(_make_mock())
+        ddG_H = np.asarray(tr["theta_ddG"]["value"])[:, 0]
         vals = np.asarray(out.ln_K_U)
-        np.testing.assert_allclose(vals, vals[0], atol=1e-6,
-                                   err_msg="ln_K_U should be homogeneous across genotypes")
+        np.testing.assert_allclose(vals - vals[0], _MUT_GENO.T @ ddG_H,
+                                   atol=1e-5)
+        np.testing.assert_allclose(tr["theta_d_ln_K_U"]["value"], ddG_H,
+                                   atol=1e-6)
 
     def test_population_moment_shapes(self):
         out, _ = _run_model(_make_mock())
@@ -326,7 +334,7 @@ class TestDefineModel:
     def test_sample_sites_present(self):
         _, tr = _run_model(_make_mock())
         for site in ("theta_ln_K_op_wt", "theta_ln_K_HL_wt", "theta_ln_K_E_wt",
-                     "theta_ln_K_U_wt", "theta_ddG_offset"):
+                     "theta_ln_K_U_wt", "theta_dlnK"):
             assert site in tr, f"Missing sample site: {site}"
 
     def test_deterministic_sites_present(self):
@@ -376,7 +384,7 @@ class TestDefineModel:
         )
 
     def test_ddG_prior_means_shift_delta_lnK(self):
-        """With sigma_s=0, ddG equals the prior means exactly; nonzero prior produces
+        """With σ_s conditioned to 0, ddG equals the prior means exactly; nonzero prior produces
         nonzero delta_lnK for the affected mutation."""
         zero_prior = np.zeros((_M, _S), dtype=np.float32)
         data_zero = _make_mock(ddG_prior=zero_prior)
@@ -387,7 +395,7 @@ class TestDefineModel:
 
         with mock.patch("numpyro.param", side_effect=_zero_param):
             with seed(rng_seed=0):
-                out_zero = define_model("theta", data_zero, priors)
+                out_zero = _sigma_zero(define_model)("theta", data_zero, priors)
 
         np.testing.assert_allclose(
             np.asarray(out_zero.ln_K_op[0]),
@@ -400,7 +408,7 @@ class TestDefineModel:
 
         with mock.patch("numpyro.param", side_effect=_zero_param):
             with seed(rng_seed=0):
-                out_nonzero = define_model("theta", data_nonzero, priors)
+                out_nonzero = _sigma_zero(define_model)("theta", data_nonzero, priors)
 
         assert not np.allclose(
             np.asarray(out_nonzero.ln_K_op[0]),   # WT
@@ -408,10 +416,9 @@ class TestDefineModel:
             atol=1e-5,
         )
 
-    def test_tf_op_totals_preserved(self):
+    def test_tf_total_preserved(self):
         out, _ = _run_model(_make_mock())
-        assert out.tf_total == pytest.approx(6.5e-7)
-        assert out.op_total == pytest.approx(2.5e-8)
+        assert out.tf_total == pytest.approx(1e-5)
 
 
 # ---------------------------------------------------------------------------
@@ -432,10 +439,15 @@ class TestGuide:
         assert out.ln_K_E.shape  == (T, _G)
         assert out.ln_K_U.shape  == (_G,)
 
-    def test_ln_K_U_homogeneous_in_guide(self):
-        out, _ = _run_guide(_make_mock())
+    def test_ln_K_U_shifts_by_ddG_H_in_guide(self):
+        data = _make_mock()
+        out, tr = _run_guide(data)
+        # The guide samples Δln K, shape (M, 4); its last column is
+        # Δln K_U = ΔΔG_H.
+        ddG_H = np.asarray(tr["theta_dlnK"]["value"])[:, 3]
         vals = np.asarray(out.ln_K_U)
-        np.testing.assert_allclose(vals, vals[0], atol=1e-6)
+        np.testing.assert_allclose(vals - vals[0], _MUT_GENO.T @ ddG_H,
+                                   atol=1e-5)
 
     def test_sample_sites_match_model(self):
         data = _make_mock()
@@ -450,8 +462,8 @@ class TestGuide:
         param_names = {k for k, v in tr.items() if v["type"] == "param"}
         for p in ("theta_ln_K_op_wt_loc", "theta_ln_K_op_wt_scale",
                   "theta_ln_K_HL_wt_loc", "theta_ln_K_HL_wt_scale",
-                  "theta_ddG_offset_locs", "theta_ddG_offset_scales",
-                  "theta_ddG_sigma_s"):
+                  "theta_dlnK_locs", "theta_dlnK_scales",
+                  "theta_ddG_sigma_locs", "theta_ddG_sigma_scales"):
             assert p in param_names, f"Missing variational param: {p}"
 
     def test_ln_K_U_wt_variational_params_registered(self):
@@ -474,20 +486,19 @@ class TestGuide:
         assert not any("epi_lambda" in k for k in param_names)
         assert not any("epi_offset" in k for k in param_names)
 
-    def test_ddG_sigma_s_shape(self):
+    def test_ddG_sigma_shape(self):
         _, tr = _run_guide(_make_mock())
-        sigma_val = tr["theta_ddG_sigma_s"]["value"]
+        sigma_val = tr["theta_ddG_sigma"]["value"]
         assert sigma_val.shape == (_S,)
 
-    def test_ddG_offset_locs_shape(self):
+    def test_dlnK_locs_shape(self):
         _, tr = _run_guide(_make_mock())
-        locs_val = tr["theta_ddG_offset_locs"]["value"]
-        assert locs_val.shape == (_S, _M)
+        locs_val = tr["theta_dlnK_locs"]["value"]
+        assert locs_val.shape == (_M, 4)
 
-    def test_tf_op_totals_preserved(self):
+    def test_tf_total_preserved(self):
         out, _ = _run_guide(_make_mock())
-        assert out.tf_total == pytest.approx(6.5e-7)
-        assert out.op_total == pytest.approx(2.5e-8)
+        assert out.tf_total == pytest.approx(1e-5)
 
     def test_permuted_features_give_same_output_as_canonical(self):
         canonical_prior = _make_ddG_prior()
@@ -556,6 +567,11 @@ def _make_ctx(genotypes=None, titrant_names=None, mut_labels=None, pair_labels=N
         pair_labels=pair_labels,
     )
 
+def _base_specs(specs):
+    """Specs other than the per-structure ddG ones (tested in
+    test_ddG_extraction.py)."""
+    return [s for s in specs if "out_names" not in s]
+
 
 class TestGetExtractSpecs:
 
@@ -565,11 +581,11 @@ class TestGetExtractSpecs:
     def test_three_specs(self):
         # scalar K values (ln_K_op, ln_K_HL), titrant K values (ln_K_E),
         # per-mutation d_ln_K values — ln_K_U is WT-only, not extracted per-genotype
-        assert len(get_extract_specs(_make_ctx())) == 3
+        assert len(_base_specs(get_extract_specs(_make_ctx()))) == 3
 
     def test_four_specs_when_pair_labels_present(self):
         ctx = _make_ctx(pair_labels=["M1+M2"])
-        assert len(get_extract_specs(ctx)) == 4
+        assert len(_base_specs(get_extract_specs(ctx))) == 4
 
     def test_first_spec_has_scalar_K_values(self):
         params = get_extract_specs(_make_ctx())[0]["params_to_get"]

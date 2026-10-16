@@ -25,7 +25,8 @@ def _extract_param_est(input_df,
                        get_columns,
                        in_run_prefix,
                        param_posteriors,
-                       q_to_get):
+                       q_to_get,
+                       out_names=None):
     """
     Extract parameter estimates and quantiles from posterior samples.
 
@@ -51,12 +52,19 @@ def _extract_param_est(input_df,
     q_to_get : dict
         Dictionary mapping output column names to quantile values (between 0 and 1)
         to extract from the posterior samples.
+    out_names : list of str, optional
+        Output table name for each entry of `params_to_get` (same length).
+        Lets several specs read slices of one site into separately named
+        tables, e.g. the thermo models' (M, S) ``theta_ddG`` into one
+        ``ddG_{structure}`` table per structure.  Defaults to the parameter
+        names.
 
     Returns
     -------
     out_dfs : dict
-        Dictionary mapping each parameter name to a DataFrame containing the
-        requested quantiles for each parameter, with metadata columns.
+        Dictionary mapping each output name (the parameter name unless
+        `out_names` is given) to a DataFrame containing the requested
+        quantiles for each parameter, with metadata columns.
 
     Raises
     ------
@@ -72,9 +80,16 @@ def _extract_param_est(input_df,
           .reset_index(drop=True)
           .copy())
 
+    if out_names is None:
+        out_names = list(params_to_get)
+    if len(out_names) != len(params_to_get):
+        raise ValueError(
+            f"out_names ({len(out_names)}) must match params_to_get "
+            f"({len(params_to_get)}).")
+
     # Go through all parameters requested
     out_dfs = {}
-    for param in params_to_get:
+    for param, out_name in zip(params_to_get, out_names):
 
         # Grab the posterior distribution of this parameters and flatten.
         model_param = f"{in_run_prefix}{param}"
@@ -97,7 +112,7 @@ def _extract_param_est(input_df,
             to_write[q_name] = q[to_write[map_column].values]
 
         # Record the final dataframe
-        out_dfs[param] = to_write.drop(columns=[map_column])
+        out_dfs[out_name] = to_write.drop(columns=[map_column])
 
     return out_dfs
 
@@ -184,7 +199,8 @@ def extract_parameters(orchestrator, posteriors, q_to_get=None):
                                              q_to_get=q_to_get,
                                              **kwargs))
         except KeyError as exc:
-            param_names = kwargs.get("params_to_get", [])
+            param_names = (kwargs.get("out_names")
+                           or kwargs.get("params_to_get", []))
             warnings.warn(
                 f"Skipping extraction of {param_names}: {exc}. "
                 "This can happen with MAP checkpoints because computed "
@@ -562,8 +578,6 @@ def extract_theta_unmeasured(orchestrator, posteriors, target_genotypes,
     theta_priors = orchestrator.priors.theta
     if hasattr(theta_priors, "theta_tf_total_M"):
         extra_kwargs["tf_total"] = float(theta_priors.theta_tf_total_M)
-    if hasattr(theta_priors, "theta_op_total_M"):
-        extra_kwargs["op_total"] = float(theta_priors.theta_op_total_M)
     if hasattr(theta_priors, "theta_conc_unit_scale"):
         extra_kwargs["conc_unit_scale"] = float(theta_priors.theta_conc_unit_scale)
 

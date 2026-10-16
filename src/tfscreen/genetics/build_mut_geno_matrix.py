@@ -2,7 +2,8 @@
 import numpy as np
 
 
-def build_mut_geno_matrix(genotypes, skip_pairs=False):
+def build_mut_geno_matrix(genotypes, skip_pairs=False, mut_labels=None,
+                          pair_labels=None):
     """
     Build binary indicator matrices mapping mutations and mutation pairs to
     genotypes, from an ordered list of genotype strings.
@@ -20,6 +21,17 @@ def build_mut_geno_matrix(genotypes, skip_pairs=False):
         If True, skip building the pair index arrays entirely and return empty
         arrays of shape ``(0,)``. Use this when epistasis is disabled to avoid
         iterating over all multi-mutation genotypes. Default is False.
+    mut_labels : list of str, optional
+        Fixed mutation index space. When given, the output rows follow this
+        list (mutations absent from ``genotypes`` get all-zero rows) instead
+        of the first-seen order of ``genotypes``. A model rebuilt on a subset
+        of a fitted model's genotypes passes the fitted model's labels so
+        that per-mutation posterior arrays keep their meaning. A mutation in
+        ``genotypes`` that is not in this list raises ``ValueError``.
+    pair_labels : list of str, optional
+        Fixed pair index space, as for ``mut_labels`` (ignored when
+        ``skip_pairs=True``). A pair in ``genotypes`` that is not in this
+        list raises ``ValueError``.
 
     Returns
     -------
@@ -52,12 +64,23 @@ def build_mut_geno_matrix(genotypes, skip_pairs=False):
 
     geno_muts = [_parse(g) for g in genotypes]
 
-    # Collect unique single mutations in first-seen order.
-    mut_seen = {}
-    for muts in geno_muts:
-        for m in muts:
-            if m not in mut_seen:
-                mut_seen[m] = len(mut_seen)
+    # Collect unique single mutations in first-seen order, or use the fixed
+    # index space when one is given.
+    if mut_labels is not None:
+        mut_seen = {m: i for i, m in enumerate(mut_labels)}
+        unknown = sorted({m for muts in geno_muts for m in muts
+                          if m not in mut_seen})
+        if unknown:
+            raise ValueError(
+                f"Genotypes contain mutation(s) not in the fixed mutation "
+                f"labels: {unknown[:10]}"
+            )
+    else:
+        mut_seen = {}
+        for muts in geno_muts:
+            for m in muts:
+                if m not in mut_seen:
+                    mut_seen[m] = len(mut_seen)
 
     mut_labels = list(mut_seen.keys())
     num_mutation = len(mut_labels)
@@ -78,6 +101,9 @@ def build_mut_geno_matrix(genotypes, skip_pairs=False):
         return mut_labels, pair_labels, mut_geno_matrix, pair_nnz_pair_idx, pair_nnz_geno_idx
 
     pair_seen = {}
+    if pair_labels is not None:
+        pair_seen = {p: i for i, p in enumerate(pair_labels)}
+    unknown = set()
     for muts in geno_muts:
         if len(muts) < 2:
             continue
@@ -86,7 +112,15 @@ def build_mut_geno_matrix(genotypes, skip_pairs=False):
                 a, b = sorted([muts[i], muts[j]])
                 label = f"{a}/{b}"
                 if label not in pair_seen:
-                    pair_seen[label] = len(pair_seen)
+                    if pair_labels is not None:
+                        unknown.add(label)
+                    else:
+                        pair_seen[label] = len(pair_seen)
+    if unknown:
+        raise ValueError(
+            f"Genotypes contain mutation pair(s) not in the fixed pair "
+            f"labels: {sorted(unknown)[:10]}"
+        )
 
     pair_labels = list(pair_seen.keys())
 

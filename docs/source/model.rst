@@ -260,7 +260,8 @@ The ``theta`` component sets *θ* as a function of titrant concentration *c*.
    An independent *θ* at every titrant concentration, with no curve.
 ``thermo.*``
    Thermodynamic partition-function models. See
-   :ref:`thermo-naming` below. They need ``--thermo_data``.
+   :ref:`thermo-naming` below. The ``PddG`` and ``PnnC`` variants need
+   ``--thermo_data``.
 
 The population SD of each Hill parameter is learned by default. On real
 data a learned SD can run away and stop shrinking poorly measured genotypes:
@@ -471,10 +472,84 @@ Occupancy models built from an explicit partition function are named
 The trailing letter tells apart models with the same counts and implies no
 order. The implemented models are:
 
-* ``O2_C4_K3_U0_a``: four-state lac repressor homodimer.
-* ``O2_C4_K3_U1_a``: the same with a folding equilibrium.
-* ``O2_C12_K5_U0_a``: two-state MWC homodimer.
+* ``O2_C12_K5_U0_a`` (M3): the standard MWC lac repressor homodimer with
+  five constants.
 * ``O2_C12_K5_U1_a``: the same with a folding equilibrium.
+* ``O2_C4_K3_U0_a`` (M2): M3 restricted to three constants.
+* ``O2_C4_K3_U1_a``: the same with a folding equilibrium.
+
+The C4/K3 labels are historical. They named an earlier partition function
+for M2, which this one replaced on 2026-10-11, and no longer count M2's
+species. The registry keys keep them.
+
+**The MWC dimer.** The dimer is in a high operator affinity conformation H or
+a low affinity conformation L. K\ :sub:`h_l` = [L]/[H]. Conformation X binds
+operator with K\ :sub:`x_o` (M\ :sup:`-1`) and has two identical,
+independent effector sites, each with the microscopic (per-site) constant
+K\ :sub:`x_e` (M\ :sup:`-1`). The effector binding polynomial of
+conformation X is therefore (1 + K\ :sub:`x_e`\ ·e)\ :sup:`2` =
+1 + 2K\ :sub:`x_e`\ ·e + K\ :sub:`x_e`\ :sup:`2`\ ·e\ :sup:`2`. The 2
+counts the two ways to fill one site. Within a conformation the two sites do
+not interact, so the second macroscopic constant is one quarter of the first.
+Cooperativity comes only from the conformational equilibrium, when
+K\ :sub:`l_e` > K\ :sub:`h_e` and K\ :sub:`h_l` > 1. The ``U1`` models add an
+unfolded state U, K\ :sub:`u` = [U]/[H], that binds nothing.
+
+Until 2026-10-11 M3 used the polynomial of Sochor (2014),
+1 + K·e + K\ :sup:`2`\ ·e\ :sup:`2`, which lacks the factor of 2. That sets
+the ratio of the two macroscopic constants to 1 instead of 1/4, a fixed
+fourfold cooperativity inside each conformation that no constant can remove.
+M2 used a third form, one-step binding of two effectors to L with an
+M\ :sup:`-2` constant.
+
+M3 fits all five constants: K\ :sub:`h_l`, K\ :sub:`h_o`,
+K\ :sub:`h_e`, K\ :sub:`l_o` and K\ :sub:`l_e`. M2 is M3 with
+K\ :sub:`h_e` = 0 (H does not bind effector) and K\ :sub:`l_o` = 0 (L does
+not bind operator). Its three constants keep their older names:
+``ln_K_op`` is ln K\ :sub:`h_o`, ``ln_K_HL`` is ln K\ :sub:`h_l` and
+``ln_K_E`` is ln K\ :sub:`l_e`, a per-site constant in M\ :sup:`-1`. Both
+families compute θ with the same function, so M2 is nested in M3 exactly.
+
+TF is in large excess over operator: ``theta_tf_total_M`` defaults to
+1e-5 M of monomer, about 400 times a typical operator concentration. The
+models therefore leave operator-bound TF out of the TF mass balance, and the
+operator concentration does not enter them. With r = tf_total/2 the dimer
+concentration and F(e) the polynomial over all states not bound to operator,
+the free apo H dimer is h = r/F(e), the operator sees
+W = h·(K\ :sub:`h_o`\ ·P\ :sub:`H` + K\ :sub:`h_l`\ ·K\ :sub:`l_o`\ ·P\ :sub:`L`),
+and θ = W/(1 + W). Free effector e comes from the effector mass balance, a
+cubic in e, so effector bound to TF is subtracted from the total. At 1e-5 M
+TF this matters below about 10 µM effector. The equations are in
+``theta/thermo/mwc.py``.
+
+**Default wild type.** ``theta_tf_total_M`` is 1e-5 M monomer in both
+families, the PI's estimate of the in vivo TF level. The M3 defaults aim
+for strong repression and near-complete induction at that level. M3 takes
+K\ :sub:`h_l` = 6.3, K\ :sub:`h_o` = 4.2×10\ :sup:`8` M\ :sup:`-1` and
+K\ :sub:`l_o` = 0.1 M\ :sup:`-1` from Sochor (2014). At saturating IPTG only
+the doubly liganded HE2 and LE2 remain, so with
+ρ = K\ :sub:`l_e`/K\ :sub:`h_e` the operator sees
+
+    W\ :sub:`sat` = r·(K\ :sub:`h_o` + K\ :sub:`h_l`\ ·K\ :sub:`l_o`\ ·ρ\ :sup:`2`) / (1 + K\ :sub:`h_l`\ ·ρ\ :sup:`2`)
+
+and θ at saturation depends on ρ alone. We set θ(saturating) = 0.05,
+W\ :sub:`sat` = 1/19, and solved for ρ:
+
+    ρ\ :sup:`2` = (r·K\ :sub:`h_o` − W\ :sub:`sat`) / (K\ :sub:`h_l`\ ·(W\ :sub:`sat` − r·K\ :sub:`l_o`))
+
+which gives ρ ≈ 79.6. This departs from Sochor's fitted ρ ≈ 13.6. With
+Sochor's ρ the H conformation that remains with two effectors bound still
+occupies the operator at 1e-5 M TF, and θ falls only to 0.64. We then
+scaled K\ :sub:`h_e` and K\ :sub:`l_e` by one common factor, keeping ρ,
+so that the midpoint of the default wild-type θ(IPTG) curve is 80 µM IPTG.
+The midpoint is where θ is halfway between θ(0) and θ at saturating IPTG,
+with effector depletion at 1e-5 M TF. That gives K\ :sub:`h_e` ≈
+3.7×10\ :sup:`3` and K\ :sub:`l_e` ≈ 3.0×10\ :sup:`5` M\ :sup:`-1`, 0.39 times
+Sochor's K\ :sub:`l_e`. M2 takes the same K\ :sub:`h_l` and K\ :sub:`h_o`
+with K\ :sub:`l_e` = 2.5×10\ :sup:`5` M\ :sup:`-1`, also calibrated to an
+80 µM midpoint. Both start at θ(0) = 0.997. M3 falls to 0.05 at saturating
+IPTG and M2 to 0. The M3 curve has a Hill-like n of 1.7 (EC10 27 µM, EC90
+340 µM) and the M2 curve 2.1 (EC10 29 µM, EC90 230 µM).
 
 *PRIOR* sets how the equilibrium constants are parameterized:
 
@@ -489,11 +564,37 @@ order. The implemented models are:
        effects.
    * - ``PddG``
      - Priors centered on supplied ΔΔG estimates, a CSV given with
-       ``--thermo_data`` with one column per structure.
+       ``--thermo_data`` with one column per structure. Values are in kT
+       unless ``--thermo_ddG_units`` says otherwise; positive ΔΔG
+       destabilizes that structure. See :doc:`model-inputs`.
    * - ``PnnC``
      - A neural network that predicts per-conformation ΔΔG from structural
        features, an HDF5 file given with ``--thermo_data``. See
        :doc:`ligandmpnn-features`.
 
+In the ``U1`` models, ``PddG`` and ``PnnC`` take each mutation's effect on
+unfolding from the same ΔΔG values. A mutation shifts the free energy of each
+folded structure and leaves the unfolded state U unchanged. Because
+K\ :sub:`U` = [U]/[H], a mutation changes ln K\ :sub:`U` by its ΔΔG for H. A
+mutation that raises every folded structure by the same ΔΔG leaves the
+folded-state constants alone and raises K\ :sub:`U` by ΔΔG, a pure stability
+effect. The fit reports this shift per mutation as ``d_ln_K_U`` and per pair
+as ``epi_ln_K_U``, or ``d_ln_K_u`` and ``epi_ln_K_u`` for
+``O2_C12_K5_U1_a``. ``PK`` uses the same names for its free per-mutation
+unfolding shift. Before 2026-10-10 these models held K\ :sub:`U` at its wt
+value for every genotype, which moved U together with H and left every
+mutation's stability unchanged.
+
 Full names look like ``thermo.O2_C4_K3_U0_a.PK`` or
 ``thermo.O2_C12_K5_U1_a.PnnC``.
+
+All the thermodynamic models read ``titrant_conc`` in mM, the units of the
+growth and binding tables, and multiply it by the prior
+``theta_conc_unit_scale`` (default 1e-3) so that the equations run in M.
+Every operator and effector constant is in M\ :sup:`-1`, and
+``theta_tf_total_M`` is in M of monomer. Priors files and checkpoints for
+these models written before 2026-10-11 hold constants with the older
+meanings. A priors file still reads, its ``theta_op_total_M`` row is
+ignored, and its old values would be taken with the new meanings, so
+regenerate it with ``tfs-configure-model``. Old checkpoints are not
+supported.

@@ -198,3 +198,41 @@ def test_interrupted_stage_resumes(tmp_path):
     assert fake.calls[0]["checkpoint_file"] == str(tmp_path / "fit_stage1_checkpoint.pkl")
     assert fake.calls[0]["init_values"] is None
     assert fake.calls[1]["checkpoint_file"] is None
+
+
+def test_model_params_follow_the_stages(tmp_path):
+    """The model's own learned params (thermo PnnC NN) are not sites:
+    stage 2 holds them at stage 1's values and stage 3 starts from them."""
+    import numpyro
+    from numpyro import handlers
+
+    class _ParamMap(_FakeMap):
+        def __call__(self, ri, init_values=None, checkpoint_file=None,
+                     out_prefix=None, label=None, **kwargs):
+            out = super().__call__(ri, init_values, checkpoint_file,
+                                   out_prefix, label, **kwargs)
+            if out_prefix.endswith("stage1"):     # stage 1 learned NN weights
+                np.savez(f"{out_prefix}_params.npz",
+                         **{k: v for k, v in out[1].items()},
+                         theta_nn_H_b2=np.array([0.5, 2.0]))
+            self.calls[-1]["model"] = ri.model
+            return out
+
+    fake = _ParamMap()
+    S.run_staged_map(_orch(), make_ri=_FakeRI, run_map=fake,
+                     guesses={"k": 0.0}, out_prefix=str(tmp_path / "fit"),
+                     map_kwargs={"adam_step_size": 1e-3})
+    s1, s2, s3 = fake.calls
+    assert "init_params" not in s1["kwargs"]
+    assert "init_params" not in s2["kwargs"]
+    np.testing.assert_allclose(s3["kwargs"]["init_params"]["theta_nn_H_b2"],
+                               [0.5, 2.0])
+
+    # stage 2's model holds them: an outer substitute cannot replace them
+    class _M:
+        def jax_model(self):
+            return numpyro.param("theta_nn_H_b2", np.ones(2))
+    held = S.HeldModel(_M(), {}, params={"theta_nn_H_b2": np.array([0.5, 2.0])})
+    out = handlers.substitute(handlers.seed(held.jax_model, 0),
+                              data={"theta_nn_H_b2": np.zeros(2)})()
+    np.testing.assert_allclose(out, [0.5, 2.0])

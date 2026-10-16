@@ -182,12 +182,15 @@ block such as ``binding_data``, give the whole block as the variant. The
 keys must be valid simulate-config keys (see :doc:`simulation`); setup does
 not check them, but ``tfs-simulate`` refuses an unknown key when the run
 starts. The random seed is ``seed``. ``auto`` is not available in simulation
-grids.
+grids. A library subsample (see :doc:`simulation`) is set the same way,
+e.g. a block whose variants are ``library_subsample: {double-1-2: 500}`` and
+``library_subsample: {double-1-2: 2000}``; keep ``library_subsample_seed``
+fixed so the runs compare nested libraries.
 
 File-valued simulate keys are copied into ``inputs/`` like model-grid
-inputs: ``thermo_data``, ``empirical.phenotype_model``,
-``od600.calibration`` and any ``binding_data`` ``choose_by`` that names a
-file. A relative path in the base config resolves against the base config's
+inputs: ``thermo_data``, ``design``, ``library_genotypes``,
+``empirical.phenotype_model``, ``od600.calibration`` and any
+``binding_data`` ``choose_by`` that names a file. A relative path in the base config resolves against the base config's
 directory; one in a ``simulate`` override resolves against the grid YAML.
 
 A simulation grid becomes a calibration study when its template also

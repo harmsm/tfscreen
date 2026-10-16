@@ -55,6 +55,7 @@ def _optimization_kwargs(convergence_window_steps=2000,
 
 def _run_map(ri,
              init_values=None,
+             init_params=None,
              checkpoint_file=None,
              out_prefix="tfs",
              adam_step_size=1e-3,
@@ -72,6 +73,9 @@ def _run_map(ri,
     init_values : dict or None, optional
         Constrained site values the MAP starts from (``ri.site_values``).
         Sites without a value start at the prior median.
+    init_params : dict or None, optional
+        Starting values of the model's own ``pyro.param`` sites (thermo PnnC NN
+        weights; ``ri.model_params``), e.g. an earlier fit's.
     checkpoint_file : str or None, optional
         Path to a checkpoint file to resume optimization from, or None to start fresh.
     out_prefix : str, optional
@@ -113,6 +117,8 @@ def _run_map(ri,
                            init_values=init_values)
 
     # Run MAP
+    if init_params:
+        optimization_kwargs["init_params"] = init_params
     svi_state, params, converged = ri.run_optimization(
         map_obj,
         out_prefix=out_prefix,
@@ -150,8 +156,9 @@ def _run_svi(ri,
     ri : RunInference
         RunInference object that manages model setup and optimization routines.
     init_params : dict or None
-        Initial component-guide parameters (``ri.component_guide_start``).
-        Not used by autoguides, whose parameter names differ.
+        Initial component-guide parameters (``ri.component_guide_start``),
+        plus the model's own params (``ri.model_params``). An autoguide,
+        whose parameter names differ, takes only the model's own params.
     checkpoint_file : str or None, optional
         Path to a checkpoint file to resume optimization from, or None to start fresh.
     out_prefix : str, optional
@@ -202,9 +209,11 @@ def _run_svi(ri,
                            init_values=init_values)
 
     # init_params are substituted by parameter name, which only the component
-    # guide's names can match; an autoguide starts from init_values instead.
+    # guide's names can match; an autoguide starts from init_values instead,
+    # and keeps only the model's own params (thermo PnnC NN weights).
     if resolve_guide_type(guide_type) != "component":
-        init_params = None
+        init_params = ri.model_params(init_params) if init_params else None
+        init_params = init_params or None
 
     svi_state, params, converged = ri.run_optimization(
         svi_obj,
@@ -309,17 +318,27 @@ def _check_checkpoint_guide(checkpoint_file, guide_type):
 
 def _read_init_from(path):
     """
-    The ``{site}_auto_loc`` arrays of a MAP ``*_params.npz`` (constrained
-    values, as ``write_params`` saves them), for ``site_values``: they take
-    precedence over guesses keyed by site or by guide parameter.
+    A MAP ``*_params.npz`` (constrained values, as ``write_params`` saves
+    them) as a start.
+
+    Returns
+    -------
+    values : dict
+        The ``{site}_auto_loc`` arrays, for ``site_values``: they take
+        precedence over guesses keyed by site or by guide parameter.
+    others : dict
+        Every other array: the model's own learned params (thermo PnnC NN
+        weights), for ``ri.model_params``.
     """
     with np.load(path) as z:
         values = {k: jnp.asarray(z[k]) for k in z.files if k.endswith("_auto_loc")}
+        others = {k: jnp.asarray(z[k]) for k in z.files
+                  if not k.endswith("_auto_loc")}
     if not values:
         raise ValueError(f"init_from '{path}' has no '*_auto_loc' arrays; it "
                          "should be the *_params.npz of a MAP fit.")
     print(f"Starting from {len(values)} MAP sites in {path}")
-    return values
+    return values, others
 
 
 def fit_model(config_file,
@@ -562,8 +581,10 @@ def fit_model(config_file,
                          "point; give one.")
 
     orchestrator, guesses = read_configuration(config_file)
+    init_from_params = {}
     if init_from is not None:
-        guesses = {**guesses, **_read_init_from(init_from)}
+        init_from_values, init_from_params = _read_init_from(init_from)
+        guesses = {**guesses, **init_from_values}
 
     # For posterior mode the seed is optional: the checkpoint restores the PRNG
     # key for SVI checkpoints, and any valid key works for MAP/Laplace sampling.
@@ -571,6 +592,11 @@ def fit_model(config_file,
 
     # Run SVI / MAP
     ri = RunInference(orchestrator, effective_seed)
+
+    # The model's own learned params (thermo PnnC NN weights) start
+    # where an --init_from fit left them; sample-site values alone would
+    # restart them at their init values.
+    start_params = ri.model_params(init_from_params) if init_from_params else {}
 
     optimizer_kwargs = dict(adam_step_size=adam_step_size,
                             adam_clip_norm=adam_clip_norm,
@@ -599,6 +625,7 @@ def fit_model(config_file,
                 _, map_params, _ = _run_map(
                     ri,
                     init_values=start_values,
+                    init_params=start_params,
                     out_prefix=f"{out_prefix}_premap",
                     label="Pre-MAP",
                     **optimizer_kwargs,
@@ -607,8 +634,10 @@ def fit_model(config_file,
                         checkpoint_interval=pre_map_num_epoch,
                         max_num_epochs=pre_map_num_epoch,
                         epoch_checkpoint_interval=None))
-                # The MAP point replaces the guesses where it has a value.
+                # The MAP point replaces the guesses where it has a value,
+                # and its model-side params carry over too.
                 start_values = {**start_values, **ri.site_values(map_params)}
+                start_params = {**start_params, **ri.model_params(map_params)}
 
             init_scale = (DEFAULT_GUIDE_INIT_SCALE
                           if guide_init_scale is None else guide_init_scale)
@@ -616,9 +645,10 @@ def fit_model(config_file,
                 init_params = ri.component_guide_start(start_values,
                                                        guesses=guesses,
                                                        init_scale=init_scale)
+                init_params = {**init_params, **start_params}
                 init_values = None
             else:
-                init_params = None
+                init_params = start_params or None
                 init_values = start_values
                 if guide_type != "delta":
                     guide_kwargs["init_scale"] = init_scale
@@ -664,6 +694,7 @@ def fit_model(config_file,
             init_values = ri.site_values(guesses)
         return _run_map(ri,
                         init_values=init_values,
+                        init_params=start_params,
                         checkpoint_file=checkpoint_file,
                         out_prefix=out_prefix,
                         **optimizer_kwargs,

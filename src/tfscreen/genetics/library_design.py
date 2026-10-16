@@ -359,7 +359,8 @@ LIBRARY_COMPOSITION_COLUMNS = ["genotype",
 
 
 def library_composition_table(library_config,
-                              spiked_origin=SPIKED_ORIGIN):
+                              spiked_origin=SPIKED_ORIGIN,
+                              base_dir=None):
     """
     Build the per-genotype library composition table from a library config.
 
@@ -379,11 +380,16 @@ def library_composition_table(library_config,
         (a full ``tfs-simulate`` config, say) are ignored.
     spiked_origin : str, default "spiked"
         Library origin holding the monoclonal spiked controls.
+    base_dir : str, optional
+        Directory a relative ``library_genotypes`` path is read against.
+        Default: the YAML's directory when ``library_config`` is a path, else
+        the working directory.
 
     Returns
     -------
     pandas.DataFrame
-        One row per amino-acid genotype in the library, with columns:
+        One row per amino-acid genotype in the library (after any subsample
+        the config names, ``genetics.library_subsample``), with columns:
 
         - ``genotype``: standardized genotype name ("wt", "M42I", ...)
         - ``is_wt``: True for the wildtype genotype
@@ -412,9 +418,16 @@ def library_composition_table(library_config,
     should be the best available estimate of what actually went into the pool.
     """
 
-    from tfscreen.util import read_yaml
-    from tfscreen.genetics.library_manager import LibraryManager
+    import os
 
+    from tfscreen.util import read_yaml
+    from tfscreen.genetics.library_subsample import (
+        build_library,
+        subsample_design,
+    )
+
+    if isinstance(library_config, (str, os.PathLike)) and base_dir is None:
+        base_dir = os.path.dirname(os.path.abspath(library_config))
     config = read_yaml(library_config)
     if "library_mixture" not in config:
         raise ValueError(
@@ -423,9 +436,13 @@ def library_composition_table(library_config,
             "'tile_combos', plus 'spiked' if 'spiked_seqs' is defined)."
         )
 
-    library_df = LibraryManager(config).build_library_df()
+    # A subsampled library (library_genotypes / library_subsample) is the one
+    # tfs-simulate simulated, with the mixture it simulated it with.
+    library_df, summary = build_library(config, base_dir=base_dir)
+    mixture = subsample_design(config, summary).get(
+        "library_mixture", config["library_mixture"])
     composition = expected_library_composition(library_df,
-                                               config["library_mixture"],
+                                               mixture,
                                                spiked_origin=spiked_origin)
 
     library_df = library_df.copy()

@@ -23,6 +23,23 @@ support it.
 The guide (in lnK_nn_prior.py) must provide matching ``pyro.sample`` sites
 for all variables sampled here.
 
+Unlike the per-mutation effects, which ``prior.py`` puts on the constants
+Δln K, the pairwise epistasis stays per state: epi[p, s] is sampled here
+and projected to the constants by the model.  In the U0 models (no unfolded
+state) the common-mode direction of epi[p, :] (an equal shift of every
+state) changes no constant, so the data do not constrain it; only the
+horseshoe shrinkage regularizes it, and the per-pair ``epi_ddG`` site is
+meaningful only up to that shift.  The ``epi_ln_K_*`` constants are what
+the data identify.
+
+The horseshoe stays non-centered.  Its
+scales τ, λ and c² are sample sites with proper priors, not free
+``pyro.param`` values, so under MAP raising them to shrink the offsets
+costs their heavy-tailed log priors and has a finite optimum.  A centered
+horseshoe, epi ~ Normal(0, τ·λ̃), would instead put an unbounded joint
+density at τ·λ̃ → 0 with epi = 0, so MAP would zero every weakly measured
+pair.
+
 Reference
 ---------
 Piironen & Vehtari, 2017. "Sparsity information and regularization in the
@@ -71,6 +88,12 @@ def sample_pair_ddG(name, struct_names, contact_distances,
     -------
     jnp.ndarray, shape (P, S)
         Sampled epistasis ΔΔG per pair per structure.
+
+    Notes
+    -----
+    In the U0 models a shift of epi[p, :] equal across every structure
+    changes no constant, so the data leave that direction free and only
+    the horseshoe shrinkage regularizes it (see the module docstring).
     """
     S = len(struct_names)
     dists = jnp.array(contact_distances)   # (P, S)

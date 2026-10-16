@@ -42,6 +42,21 @@ spiked_seqs:
 - gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgatggcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctgcacgcgccgtcgcaaattgtcgcggcgattctgtctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg  # k84l
 - gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgattgcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctgcacgcgccgtcgcaaattgtcgcggcgattctgtctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg  # m42i/k84l
 
+# Optional: simulate (and fit) only a subset of the described genotypes.
+# library_subsample keeps N random genotypes of a sub-library (others whole)
+# and needs its own integer seed; library_genotypes names a file listing
+# every genotype to keep, relative to this file. wt and spiked genotypes are
+# always kept. With library_subsample_depth: full_library (the default) the
+# mixture, transform sizes, reads and PCR templates below describe the full
+# library and each kept sequence keeps its share; as_written applies them to
+# the subsample as given. tfs-configure-model --library_config reads these
+# keys too. See docs/source/simulation.rst, "Subsampling the library".
+# library_subsample:
+#   double-1-2: 200
+# library_subsample_seed: 1
+# library_genotypes: genotypes.txt
+# library_subsample_depth: full_library
+
 # ---------------------------------------------------------------------------
 # Phenotype calculation
 # ---------------------------------------------------------------------------
@@ -78,6 +93,17 @@ theta_component: "thermo.O2_C12_K5_U0_a.PK"
 #   .h5 / .hdf5  → HDF5 structural ensemble (PnnC)
 #   .csv         → per-mutation per-structure ddG prior means (PddG)
 # thermo_data: null
+
+# Optional: how to read thermo_data (see docs/source/model-inputs.rst).
+# thermo_options:
+#   ddG_units: kcal/mol      # kT (default), kcal/mol or kJ/mol
+#   residue_offset: 0
+
+# Optional (PddG/PnnC only): SD of the simulated per-structure ddG truth around
+# the thermo_data values, in ddG_units. A number for every structure, or
+# {structure: sd} naming each one. 0 makes the truth the table exactly.
+# Omit for 1 kT per structure. The true SDs go to tfs_sim_ddG_sigma.csv.
+# ddG_truth_sd: 0.5
 
 # Optional: overrides for the theta component's default model hyperparameters.
 # Any key returned by the component's get_hyperparameters() can be overridden.

@@ -1,3 +1,6 @@
+import warnings
+
+import numpy as np
 import pandas as pd
 from tfscreen.tfmodel.configuration_io import read_configuration
 from tfscreen.tfmodel.inference.checkpoint_io import resolve_param_file
@@ -7,6 +10,38 @@ from tfscreen.tfmodel.analysis.extraction import (
 )
 from tfscreen.tfmodel.generative.registry import model_registry
 from tfscreen.util.cli import generalized_main, read_lines
+
+
+_NON_VALUE_COLUMNS = ("titrant_conc", "in_training_data")
+
+
+def warn_nonfinite_theta(result_df, max_listed=10):
+    """
+    Warn if any predicted theta value is NaN or infinite.
+
+    A non-finite theta in any posterior draw makes every quantile of that
+    row NaN. Until 2026-10-11 the thermodynamic theta overflowed on extreme
+    Laplace draws and whole genotypes were written as NaN without a word.
+
+    Returns the number of rows with a non-finite value.
+    """
+    value_cols = [c for c in result_df.columns
+                  if c not in _NON_VALUE_COLUMNS
+                  and pd.api.types.is_numeric_dtype(result_df[c])]
+    if not value_cols:
+        return 0
+    bad = ~np.isfinite(result_df[value_cols].to_numpy(dtype=float)).all(axis=1)
+    n_bad = int(bad.sum())
+    if n_bad:
+        genos = pd.unique(result_df.loc[bad, "genotype"]).tolist()
+        listed = ", ".join(str(g) for g in genos[:max_listed])
+        more = (f" and {len(genos) - max_listed} more"
+                if len(genos) > max_listed else "")
+        warnings.warn(f"{n_bad} of {len(result_df)} predicted theta rows "
+                      f"({len(genos)} genotype(s): {listed}{more}) have NaN "
+                      f"or infinite values; they are written as they are.",
+                      RuntimeWarning, stacklevel=2)
+    return n_bad
 
 
 def predict_theta(config_file,
@@ -236,6 +271,7 @@ def predict_theta(config_file,
     if theta_scale != "theta":
         result_df["theta_scale"] = theta_scale
 
+    warn_nonfinite_theta(result_df)
     out_file = f"{out_prefix}.csv"
     result_df.to_csv(out_file, index=False)
     print(f"Wrote {len(result_df)} rows to {out_file}", flush=True)

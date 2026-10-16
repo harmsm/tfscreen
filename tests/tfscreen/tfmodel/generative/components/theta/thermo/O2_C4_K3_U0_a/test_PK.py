@@ -204,7 +204,7 @@ def test_get_hyperparameters_keys():
     hp = get_hyperparameters()
     assert isinstance(hp, dict)
     for key in ["theta_ln_K_op_wt_loc", "theta_ln_K_HL_wt_loc", "theta_ln_K_E_wt_loc",
-                "theta_tf_total_M", "theta_op_total_M",
+                "theta_tf_total_M",
                 "theta_sigma_d_ln_K_op_scale",
                 "theta_epi_tau_scale", "theta_epi_slab_scale", "theta_epi_slab_df"]:
         assert key in hp
@@ -213,8 +213,7 @@ def test_get_hyperparameters_keys():
 def test_get_priors_values():
     priors = get_priors()
     assert isinstance(priors, ModelPriors)
-    assert priors.theta_tf_total_M == pytest.approx(6.5e-7)
-    assert priors.theta_op_total_M == pytest.approx(2.5e-8)
+    assert priors.theta_tf_total_M == pytest.approx(1e-5)
     assert priors.theta_ln_K_op_wt_loc == get_hyperparameters()["theta_ln_K_op_wt_loc"]
 
 
@@ -416,12 +415,11 @@ class TestGuide:
         sample_names = {k for k, v in tr.items() if v["type"] == "sample"}
         assert not any("epi" in k for k in sample_names)
 
-    def test_tf_op_totals_preserved(self, mock_data_no_epi):
+    def test_tf_total_preserved(self, mock_data_no_epi):
         priors = get_priors()
         with seed(rng_seed=0):
             tp = guide(name="theta", data=mock_data_no_epi, priors=priors)
-        assert tp.tf_total == pytest.approx(6.5e-7)
-        assert tp.op_total == pytest.approx(2.5e-8)
+        assert tp.tf_total == pytest.approx(1e-5)
 
 
 # ---------------------------------------------------------------------------

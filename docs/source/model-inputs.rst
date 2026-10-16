@@ -44,6 +44,12 @@ growth-only model; with binding only, a binding-only model.
    * - ``--thermo_data``
      - Thermodynamic *θ* models
      - Structural features of each mutation
+   * - ``--thermo_ddG_units``, ``--thermo_temperature_K``,
+       ``--thermo_column_map``, ``--thermo_residue_offset``,
+       ``--thermo_max_missing_fraction``
+     - Optional
+     - How ``--thermo_data`` is read: ΔΔG units, column names, residue
+       numbering, coverage warning
    * - ``--set_priors``, ``--growth_priors``, ``--growth_priors_wt_rates``
      - Optional
      - Prior values, without editing the priors CSV
@@ -190,6 +196,12 @@ spike that really dropped out.
 recorded as given in the configuration's ``library`` block, and that record
 is its only defense. Give the best estimate of what went into the pool.
 
+A simulation's library YAML can restrict the library to a subsample
+(``library_genotypes``, ``library_subsample``; see :doc:`simulation`). Given
+that same YAML, ``tfs-configure-model`` builds the snapshot from the same
+subset, with the composition the simulation used, and records the
+subsample keys under ``library.subsample``.
+
 Presplit data
 -------------
 
@@ -280,11 +292,120 @@ written to the configuration. Other theta models refuse the flag.
 Structural data
 ---------------
 
-``--thermo_data`` is required by the thermodynamic partition-function theta
-models and ignored by the others. For ``PnnC`` models it is the HDF5 file
-written by ``scripts/generate_struct_ensemble.py``; see
-:doc:`ligandmpnn-features`. For ``PddG`` models it is a CSV with a ``mut``
-column and one column of prior mean ΔΔG per structure.
+``--thermo_data`` is required by the ``PddG`` and ``PnnC`` thermodynamic
+theta models and ignored by the others. For ``PnnC`` models it is the HDF5
+file written by ``scripts/generate_struct_ensemble.py``; see
+:doc:`ligandmpnn-features`. For ``PddG`` models it is a CSV with a mutation
+column and one column of prior mean ΔΔG per structure: ``H``, ``HD``, ``L``
+and ``LE2`` for the ``O2_C4`` models, and ``H``, ``HO``, ``L``, ``LO``,
+``HE2`` and ``LE2`` for the ``O2_C12`` models.
+
+The mutation column may be called ``mut``, ``Mutation`` or ``mutation``, with
+labels like ``H29A``. An unnamed pandas index column is dropped. Columns the
+model does not use are ignored, and the loader prints their names. A missing
+structure column is an error that lists the columns found.
+``--thermo_column_map HD=HO`` reads a model structure from a column with
+another name. Rows that are not single mutations are skipped.
+
+**Units and sign.** ΔΔG\ :sub:`X` is the change a mutation makes to the free
+energy of state X, so a positive value destabilizes X. For an equilibrium
+constant K\ :sub:`A→B` = [B]/[A] the models use
+Δln K\ :sub:`A→B` = ΔΔG\ :sub:`A` − ΔΔG\ :sub:`B`, which needs ΔΔG in units of
+kT. By default the CSV values are used as they are, in kT.
+``--thermo_ddG_units kcal/mol`` (or ``kJ/mol``) divides them by RT once at
+load, at ``--thermo_temperature_K`` (default 298.15 K). At 298 K one kcal/mol
+is 1.69 kT, so kcal/mol values read as kT understate every effect by that
+factor. A predictor that reports folding ΔG, where negative means more
+stable, must be sign-flipped first.
+
+**Projection.** The effector constants are per site, and a doubly liganded
+structure XE2 has weight K\ :sub:`x_e`\ :sup:`2`\ ·e\ :sup:`2` relative to X,
+so ΔΔG\ :sub:`X` − ΔΔG\ :sub:`XE2` is twice Δln K\ :sub:`x_e`. The models
+map ΔΔG to constant shifts as follows:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 35 40
+
+   * - Constant
+     - ``O2_C12`` structures
+     - ``O2_C4`` structures
+   * - K\ :sub:`h_l` (C4: K\ :sub:`HL`)
+     - ΔΔG\ :sub:`H` − ΔΔG\ :sub:`L`
+     - ΔΔG\ :sub:`H` − ΔΔG\ :sub:`L`
+   * - K\ :sub:`h_o` (C4: K\ :sub:`op`)
+     - ΔΔG\ :sub:`H` − ΔΔG\ :sub:`HO`
+     - ΔΔG\ :sub:`H` − ΔΔG\ :sub:`HD`
+   * - K\ :sub:`h_e`
+     - (ΔΔG\ :sub:`H` − ΔΔG\ :sub:`HE2`)/2
+     - fixed at 0
+   * - K\ :sub:`l_o`
+     - ΔΔG\ :sub:`L` − ΔΔG\ :sub:`LO`
+     - fixed at 0
+   * - K\ :sub:`l_e` (C4: K\ :sub:`E`)
+     - (ΔΔG\ :sub:`L` − ΔΔG\ :sub:`LE2`)/2
+     - (ΔΔG\ :sub:`L` − ΔΔG\ :sub:`LE2`)/2
+   * - K\ :sub:`u` (``U1`` only)
+     - ΔΔG\ :sub:`H`
+     - ΔΔG\ :sub:`H`
+
+Before 2026-10-11 the ``O2_C4`` K\ :sub:`E` row was ΔΔG\ :sub:`L` −
+ΔΔG\ :sub:`LE2`, for a two-effector M\ :sup:`-2` constant.
+
+**Numbering and coverage.** The loader matches CSV labels to the library's
+mutations and prints how many it covers. It stops with an error when the
+CSV covers none of them, or when the CSV's wild-type residue at a library
+position differs from the library's. Both usually mean the two number
+residues differently. The error suggests the offset that lines them up, and
+``--thermo_residue_offset N`` adds N to every CSV residue number, for
+example 1 for a 0-based file. A library mutation absent from the CSV gets a
+prior mean of 0, no structural prediction. When more than
+``--thermo_max_missing_fraction`` of them (default 0.1) are absent, a
+warning lists them.
+
+The ``PnnC`` HDF5 path applies the same residue offset. Every library
+residue must be present in every structure, since there is no neutral
+feature value for a missing one. When the file stores ``wt_aa``, the wt
+residues are checked against the library too.
+
+The five ``--thermo_*`` flags are stored in the configuration as
+``components.thermo_options``. A configuration without it reads the file as
+before: kT, file numbering, model column names.
+
+A fit uses the CSV values as the prior means of each mutation's ΔΔG and
+estimates one SD σ_s per structure for how far the true ΔΔG stray from
+them, ΔΔG ~ Normal(CSV value, σ_s). The data see only the constants, so the
+fit puts this prior on the constant shifts it implies: each mutation's
+Δln K is multivariate normal around the projected CSV values, with the
+covariance that per-structure scatter produces. σ_s has a LogNormal prior
+whose median is 1 kT and whose 95% range is about 0.1 to 10 kT
+(``theta_ddG_sigma_loc`` = 0 and ``theta_ddG_sigma_scale`` = 1.2 in the
+priors file, in log kT). Every σ_s is identified by how the constants vary
+together, in every model. The fit starts at the projected CSV values and
+σ_s = 1 kT. Under MAP, σ_s settles near the scatter of the fitted constants
+about the CSV. A σ_s that runs toward 0 means the data cannot resolve the
+constants more finely than the CSV gives them, not that the CSV is exact.
+This can happen when the data are weak.
+
+To hold σ_s at a known value instead of estimating it, set
+``theta_ddG_sigma_fixed`` to that value in kT, for example
+``--set_priors theta_ddG_sigma_fixed=1.69``. The value is in kT whatever
+``--thermo_ddG_units`` says. Every structure gets the same value; there is
+no per-structure hold. The fit then has no σ_s parameters, the LogNormal
+prior is unused, and the extracted ``ddG_sigma`` table reports the held
+value. The default 0 estimates σ_s. A held σ_s suits a simulation study
+that compares a fit told the true noise with one that estimates it.
+
+The fit reports a per-structure ΔΔG for each mutation. In the models with
+an unfolded state (``U1``) it follows from the constants exactly. In the
+models without one (``U0``) every constant is a difference of structures, so
+a shift shared by all structures changes nothing the data see. There the
+reported ΔΔG is the most probable per-structure ΔΔG given the constants and
+the prior, and its shared shift comes from the CSV, not from the data.
+Compare U0 fits on their constants. To test whether the structural prior
+helps, simulate with the simulate-config key ``ddG_truth_sd`` (see
+:doc:`simulation`), which sets how far the simulated truth sits from the
+same CSV, and fit with the unchanged CSV.
 
 Prior inputs
 ------------
@@ -304,7 +425,9 @@ Common uses: ``sigma_fixed=0.17`` holds the SD of the level tube offsets;
 ``log(hill_n)``; for ``hill_relative``, ``theta_X_low_hyper_scale_fixed``,
 ``theta_X_delta_hyper_scale_fixed`` and
 ``theta_log_hill_K_hyper_scale_fixed`` hold the population SDs of its other
-parameters. A value of 0 leaves the SD learned.
+parameters; for the ``PddG`` and ``PnnC`` models,
+``theta_ddG_sigma_fixed`` holds the per-structure ΔΔG scale σ_s (full name
+``theta.theta_ddG_sigma_fixed``). A value of 0 leaves the SD learned.
 
 **--growth_priors table.csv** sets per-condition priors for ``linear``
 condition growth. The table has a ``condition_rep`` column, the condition

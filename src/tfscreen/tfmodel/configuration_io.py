@@ -75,6 +75,66 @@ def _gather_dict_field(full_key, flat_dict):
     return sub_dict
 
 
+def _dataclass_fields(dc):
+    """Fields of a standard or flax struct dataclass."""
+    import dataclasses
+    if dataclasses.is_dataclass(dc):
+        return dataclasses.fields(dc)
+    return dc.__dataclass_fields__.values()
+
+
+def _known_keys(dc, prefix=""):
+    """
+    The flat keys a dataclass accepts, as ``(exact_keys, dict_prefixes)``.
+
+    Every field name is an exact key, whatever its value (a field left at
+    None, or a static tuple that :func:`_update_dataclass` keeps, is still a
+    field). Nested dataclasses contribute their own keys under
+    ``"{field}."``. A dict-typed field accepts any one-level key
+    ``"{field}.<sub>"``, so its ``"{field}."`` is returned as a prefix.
+    """
+    exact, prefixes = set(), []
+    if not hasattr(dc, "__dataclass_fields__"):
+        return exact, prefixes
+    for f in _dataclass_fields(dc):
+        full_key = f"{prefix}{f.name}"
+        val = getattr(dc, f.name)
+        if hasattr(val, "__dataclass_fields__"):
+            sub_exact, sub_prefixes = _known_keys(val, full_key + ".")
+            exact |= sub_exact
+            prefixes.extend(sub_prefixes)
+        elif isinstance(val, dict):
+            prefixes.append(full_key + ".")
+        else:
+            exact.add(full_key)
+    return exact, prefixes
+
+
+def _check_unknown_keys(dc, prefix, flat_dict):
+    """
+    Raise if ``flat_dict`` names a key that is not a field of ``dc``.
+
+    A priors CSV row that names no field used to be ignored. A file written
+    for another version of a model then loaded without complaint, and rows
+    whose names a model kept were read with whatever meaning they have now.
+    """
+    exact, prefixes = _known_keys(dc, prefix)
+    unknown = []
+    for k in flat_dict:
+        if k in exact:
+            continue
+        if any(k.startswith(p) and "." not in k[len(p):] for p in prefixes):
+            continue
+        unknown.append(k)
+    if unknown:
+        raise ValueError(
+            f"The priors file has {len(unknown)} row(s) that name no prior of "
+            f"the configured model: {sorted(unknown)}. The file was likely "
+            f"written for another model or an older tfscreen. Regenerate it "
+            f"with tfs-configure-model."
+        )
+
+
 def _static_flag(value):
     """
     A bool field's value read from the priors CSV.
@@ -100,7 +160,7 @@ def _static_flag(value):
     return flags[0] if len(set(flags)) == 1 else flags
 
 
-def _update_dataclass(dc, prefix, flat_dict):
+def _update_dataclass(dc, prefix, flat_dict, check_unknown=True):
     """
     Recursively update a dataclass from a flat dictionary of values.
 
@@ -111,13 +171,19 @@ def _update_dataclass(dc, prefix, flat_dict):
       via :func:`_gather_dict_field`).  Used by the ``pinned`` field on
       component ``ModelPriors`` to inject empirical-Bayes hyperprior
       values from the calibration pre-fit.
+
+    A key in ``flat_dict`` that names none of these raises ``ValueError``
+    (see :func:`_check_unknown_keys`); ``check_unknown=False`` skips the
+    check, which the recursion does since the top call has made it.
     """
     import dataclasses
+    if check_unknown:
+        _check_unknown_keys(dc, prefix, flat_dict)
     updates = {}
 
     # Check if this is a standard dataclass or a flax struct dataclass
     if hasattr(dc, '__dataclass_fields__'):
-        fields = dataclasses.fields(dc) if dataclasses.is_dataclass(dc) else dc.__dataclass_fields__.values()
+        fields = _dataclass_fields(dc)
 
         for field in fields:
             field_name = field.name
@@ -128,7 +194,9 @@ def _update_dataclass(dc, prefix, flat_dict):
                 # Absent component; nothing to update (see _extract_scalars).
                 continue
             if hasattr(attr_val, '__dataclass_fields__'):
-                updates[field_name] = _update_dataclass(attr_val, full_key + ".", flat_dict)
+                updates[field_name] = _update_dataclass(attr_val, full_key + ".",
+                                                        flat_dict,
+                                                        check_unknown=False)
             elif isinstance(attr_val, dict):
                 # Dict-typed field — gather any "{full_key}.<suffix>" rows.
                 # Merge with the existing dict so previously-set entries

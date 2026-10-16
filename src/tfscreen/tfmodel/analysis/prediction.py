@@ -3,7 +3,13 @@ import numpy as np
 import itertools
 from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator, _RELATIVE_THETA
 from tfscreen.tfmodel.inference.posteriors import load_posteriors, get_posterior_samples
+from tfscreen.tfmodel.inference.model_params import (
+    hold_model_params,
+    read_model_params,
+    sample_keys,
+)
 from tfscreen.tfmodel.tensors.batch import get_batch as _get_batch
+from tfscreen.tfmodel.inference.initialization import structure_trace
 import jax
 from jax import numpy as jnp
 from numpyro.handlers import seed, substitute, trace
@@ -303,10 +309,26 @@ def copy_orchestrator(orchestrator,
             g for g in orig_spiked if str(g) in geno_set
         ]
 
+    # Per-mutation and per-pair parameters (the *_mutation_plate and
+    # *_pair_plate sites of hill_mut, the *_mut activity components and the
+    # thermodynamic theta models, and the per-structure data built from
+    # those labels) are indexed by the fitted model's mut_labels and
+    # pair_labels. Built from a genotype subset alone, the labels would be
+    # the subset's mutations in a different first-seen order, and posterior
+    # arrays would land on the wrong mutations and pairs. Keep the fitted
+    # model's index space and rebuild only the genotype columns.
+    mut_label_kwargs = {}
+    if len(getattr(orchestrator, "mut_labels", None) or []) > 0:
+        mut_label_kwargs = {
+            "mut_labels": list(orchestrator.mut_labels),
+            "pair_labels": list(orchestrator.pair_labels),
+        }
+
     return ModelOrchestrator(
         growth_df=new_growth_df,
         binding_df=new_binding_df,
-        **settings
+        **settings,
+        **mut_label_kwargs,
     )
 
 def _convert_map_params(map_params, model_trace):
@@ -381,7 +403,7 @@ def _posterior_median(param_posteriors, site, max_samples):
 
 
 def _population_theta(orchestrator, param_posteriors, pred_growth,
-                      max_samples):
+                      max_samples, model_params=None):
     """
     Every fitted genotype's theta at the prediction's titrant concentrations.
 
@@ -403,7 +425,9 @@ def _population_theta(orchestrator, param_posteriors, pred_growth,
         for name, site in theta_trace.items()
         if site["type"] == "sample" and not site.get("is_observed", False)
     }
-    theta_param = substitute(seed(sample_theta, rng_seed=0), data=latents)(
+    # the theta component's own learned params (thermo PnnC NN) too
+    theta_param = substitute(seed(sample_theta, rng_seed=0),
+                             data={**(model_params or {}), **latents})(
         "theta", growth, orchestrator.priors.theta)
 
     view = growth.replace(batch_idx=full,
@@ -415,7 +439,7 @@ def _population_theta(orchestrator, param_posteriors, pred_growth,
 
 
 def _build_population_references(orchestrator, param_posteriors, pred_growth,
-                                 max_samples=20):
+                                 max_samples=20, model_params=None):
     """
     Library-wide theta, dk_geno and activity references for the congression
     mixture (transformation components with ``NEEDS_POPULATION``).
@@ -468,7 +492,8 @@ def _build_population_references(orchestrator, param_posteriors, pred_growth,
         references[field_name] = jnp.asarray(values)
 
     references["external_theta_population"] = _population_theta(
-        orchestrator, param_posteriors, pred_growth, max_samples)
+        orchestrator, param_posteriors, pred_growth, max_samples,
+        model_params=model_params)
     return references
 
 
@@ -578,10 +603,11 @@ def predict(orchestrator,
     #
     # We use the original orchestrator because posteriors match its structure.
 
-    seeded_model = seed(orchestrator.jax_model, rng_seed=0)
-    traced_model = trace(seeded_model)
-    model_trace = traced_model.get_trace(data=orchestrator.data,
-                                         priors=orchestrator.priors)
+    # A structure trace: a prior draw that predicts a non-finite ln_cfu must
+    # not stop it at the count observation (see structure_trace).
+    model_trace = structure_trace(orchestrator.jax_model,
+                                  data=orchestrator.data,
+                                  priors=orchestrator.priors)
 
     # -------------------------------------------------------------------------
     # MAP param conversion (if needed)
@@ -597,6 +623,14 @@ def predict(orchestrator,
     # already store constrained values keyed by bare site name and are left
     # unchanged.
 
+    # The model's own learned params (thermo PnnC NN weights): a
+    # posterior file stores them in its model_params group, a raw MAP params
+    # file under their own names. They are held fixed in every model run
+    # below; without them the model would use their init values.
+    model_param_names = [name for name, site in model_trace.items()
+                         if site["type"] == "param"]
+    model_params = read_model_params(param_posteriors, model_param_names)
+
     if any(str(k).endswith("_auto_loc") for k in param_posteriors.keys()):
         param_posteriors = _convert_map_params(param_posteriors, model_trace)
 
@@ -604,7 +638,7 @@ def predict(orchestrator,
     # Sample selection from posterior
 
     # Identify how many samples we have
-    first_key = next(iter(param_posteriors.keys()))
+    first_key = sample_keys(param_posteriors)[0]
     total_available = param_posteriors[first_key].shape[0]
 
     # Sample indices for running through the model (quantile computation)
@@ -707,7 +741,8 @@ def predict(orchestrator,
     # -------------------------------------------------------------------------
     # Run Prediction
     
-    predictive = Predictive(new_orchestrator.jax_model,
+    predictive = Predictive(hold_model_params(new_orchestrator.jax_model,
+                                              model_params),
                             posterior_samples=sliced_samples,
                             return_sites=predict_sites)
 
@@ -732,7 +767,8 @@ def predict(orchestrator,
 
     if transformation_needs_population:
         population_references = _build_population_references(
-            orchestrator, param_posteriors, pred_data.growth)
+            orchestrator, param_posteriors, pred_data.growth,
+            model_params=model_params)
         # The subset model draws its own co-resident sets over the subset;
         # use the fitted model's instead. Their entries index the original
         # library, which is what the external references cover.
@@ -748,6 +784,31 @@ def predict(orchestrator,
                 **population_references,
             )
         )
+
+    # Every posterior array must have the shape the prediction model expects.
+    # A plate the slicing loop above does not know how to remap (one sized by
+    # something other than a growth-tensor dimension or condition_rep) would
+    # otherwise be indexed silently by the wrong entries, as the mutation and
+    # pair plates were before copy_orchestrator kept the fitted labels.
+    # Until 2026-10-11 this trace ran with argument validation on: with the
+    # PddG fits' learned sigma_s held, the prior draw of ln K reached +/-60,
+    # ln_cfu went non-finite and the count observation refused it, which
+    # stopped tfs-summarize-fit's trajectory plots.
+    new_trace = structure_trace(hold_model_params(new_orchestrator.jax_model,
+                                                  model_params),
+                                data=pred_data, priors=orchestrator.priors)
+    for site_name, val in sliced_samples.items():
+        new_site = new_trace.get(site_name)
+        if new_site is None:
+            continue
+        expected = tuple(jnp.shape(new_site["value"]))
+        if tuple(val.shape[1:]) != expected:
+            raise ValueError(
+                f"Posterior site '{site_name}' has shape "
+                f"{tuple(val.shape[1:])} but the prediction model expects "
+                f"{expected}; its plate cannot be mapped onto the requested "
+                f"genotypes/conditions."
+            )
 
     # Use the ORIGINAL orchestrator's priors so that any pinned hyperpriors
     # (e.g. activity_hyper_loc/activity_hyper_scale in the calibration model)

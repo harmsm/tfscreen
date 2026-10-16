@@ -64,6 +64,31 @@ def _tube_names(tubes):
     return sample_names(len(tubes))
 
 
+def undetectable_tubes(sample_df, od600_config):
+    """
+    Boolean mask of the tubes whose OD600 read below the detection threshold.
+
+    These are the tubes a lab drops (``tfs-process-counts`` refuses a reading
+    below the threshold, since its total is only an upper bound), so the raw
+    writer leaves them out and ``tfs-simulate`` drops them from its direct
+    growth table too. All False without an ``od600`` block.
+
+    Parameters
+    ----------
+    sample_df : pandas.DataFrame
+        Simulated tubes, with ``od600_detectable`` when there is OD600.
+    od600_config : dict or None
+        The simulate config's ``od600`` block.
+
+    Returns
+    -------
+    numpy.ndarray of bool
+    """
+    if od600_config is None or "od600_detectable" not in sample_df.columns:
+        return np.zeros(len(sample_df), dtype=bool)
+    return ~sample_df["od600_detectable"].astype(bool).to_numpy()
+
+
 def write_raw_experiment(sample_df, counts_df, library_genotypes, out_prefix,
                          od600_config=None):
     """
@@ -99,8 +124,8 @@ def write_raw_experiment(sample_df, counts_df, library_genotypes, out_prefix,
     tubes["sample"] = tubes.index.map(names)
 
     dropped = []
-    if od600_config is not None and "od600_detectable" in tubes.columns:
-        bad = ~tubes["od600_detectable"].astype(bool)
+    bad = undetectable_tubes(tubes, od600_config)
+    if bad.any():
         dropped = tubes.loc[bad, "sample"].tolist()
         tubes = tubes.loc[~bad]
 

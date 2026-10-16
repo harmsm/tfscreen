@@ -3,6 +3,9 @@ PK — mutation effects on equilibrium constants inferred from growth/binding da
 
 Each mutation shifts the three equilibrium constants (K_op, K_HL, K_E) by an
 independent Δln_K drawn from a hierarchical Normal prior with learned scale.
+K_op = K_h_o (M⁻¹), K_HL = K_h_l and K_E = K_l_e, the per-site effector
+constant of L (M⁻¹), of the MWC dimer in ``thermo/mwc.py``; this model (M2)
+fixes K_h_e = K_l_o = 0.
 No structural information is used; all mutation effects are inferred directly
 from the observations.  This is the simplest and most data-efficient K-assembly
 variant.  Registry name: ``theta_lac_dimer_lnK_mut``.
@@ -23,7 +26,7 @@ and   P[p, g] = 1 if pair   p is in genotype g    (shape: num_pair    × G).
 K_op and K_HL are protein properties with no dependence on effector identity
 (no T dimension). K_E is per effector species (T dimension).
 
-Epistasis uses a regularised horseshoe prior (shared τ, slab c², per-pair λ)
+Epistasis uses a regularized horseshoe prior (shared τ, slab c², per-pair λ)
 and is only sampled when data.num_pair > 0.
 
 Thermodynamic functions (partition function, Newton solve for free effector,
@@ -42,6 +45,11 @@ from typing import Dict, Any
 from tfscreen.tfmodel.data_class import GrowthData
 from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix, apply_mut_matrix
 from tfscreen.tfmodel.generative.components.theta.thermo.O2_C4_K3_U0_a.thermo import (
+    DEFAULT_CONC_UNIT_SCALE,
+    DEFAULT_LN_K_E_WT_LOC,
+    DEFAULT_LN_K_HL_WT_LOC,
+    DEFAULT_LN_K_OP_WT_LOC,
+    DEFAULT_TF_TOTAL_M,
     ThetaParam,
     _compute_theta,
     _population_moments,
@@ -66,17 +74,17 @@ class ModelPriors:
     theta_ln_K_E_wt_loc: float
     theta_ln_K_E_wt_scale: float
 
-    # Total TF and operator concentrations (M); treated as fixed physical constants.
-    # Default values from Sochor, PeerJ 2014, https://doi.org/10.7717/peerj.498
-    theta_tf_total_M: float   # ≈ 6.5e-7 M (650 nM)
-    theta_op_total_M: float   # ≈ 2.5e-8 M (25 nM)
+    # Total TF (M, monomer units); a fixed physical constant.
+    theta_tf_total_M: float   # M, monomer units; default 1e-5 (thermo/mwc.py)
+    # Factor converting data titrant_conc (mM) to M (1e-3); see thermo.py.
+    theta_conc_unit_scale: float
 
     # HalfNormal scales for mutation delta distributions
     theta_sigma_d_ln_K_op_scale: float
     theta_sigma_d_ln_K_HL_scale: float
     theta_sigma_d_ln_K_E_scale: float
 
-    # Shared regularised horseshoe hyperparameters for pairwise epistasis
+    # Shared regularized horseshoe hyperparameters for pairwise epistasis
     theta_epi_tau_scale: float     # HalfCauchy scale for global τ (shared across K_op, K_HL, K_E)
     theta_epi_slab_scale: float    # typical size of a large epistasis effect
     theta_epi_slab_df: float       # InvGamma shape ν (usually 4)
@@ -158,7 +166,7 @@ def define_model(name: str,
 
     Samples WT equilibrium constants and per-mutation delta parameters, then
     assembles per-genotype constants via matrix multiplication.  Epistasis uses
-    a regularised horseshoe prior (shared τ and slab c², per-pair local λ).
+    a regularized horseshoe prior (shared τ and slab c², per-pair local λ).
 
     Parameters
     ----------
@@ -182,7 +190,7 @@ def define_model(name: str,
     has_epi = data.num_pair > 0
 
     tf_total = priors.theta_tf_total_M
-    op_total = priors.theta_op_total_M
+    conc_unit_scale = priors.theta_conc_unit_scale
 
     # ------------------------------------------------------------------
     # WT parameters for K_op and K_HL (scalars — no T dimension)
@@ -215,22 +223,29 @@ def define_model(name: str,
     # ------------------------------------------------------------------
     # Mutation delta offsets for K_op and K_HL: shape (num_mutation,)
     # ------------------------------------------------------------------
-    with pyro.plate(f"{name}_mutation_scalar_plate", num_mut, dim=-1):
-        d_K_op_off = pyro.sample(
-            f"{name}_d_ln_K_op_offset", dist.Normal(0.0, 1.0))
-        d_K_HL_off = pyro.sample(
-            f"{name}_d_ln_K_HL_offset", dist.Normal(0.0, 1.0))
+    if num_mut > 0:
+        with pyro.plate(f"{name}_mutation_scalar_plate", num_mut, dim=-1):
+            d_K_op_off = pyro.sample(
+                f"{name}_d_ln_K_op_offset", dist.Normal(0.0, 1.0))
+            d_K_HL_off = pyro.sample(
+                f"{name}_d_ln_K_HL_offset", dist.Normal(0.0, 1.0))
+
+        # ------------------------------------------------------------------
+        # Mutation delta offsets for K_E: shape (T, num_mutation)
+        # ------------------------------------------------------------------
+        with pyro.plate(f"{name}_titrant_mut_outer_plate", T, dim=-2):
+            with pyro.plate(f"{name}_mutation_plate", num_mut, dim=-1):
+                d_K_E_off = pyro.sample(
+                    f"{name}_d_ln_K_E_offset", dist.Normal(0.0, 1.0))
+    else:
+        # num_mut == 0 (wt-only library, e.g. a stratified binding
+        # pool): numpyro.plate needs size > 0, so skip the sites.  The
+        # empty offsets scatter to zeros, so every genotype is wt.
+        d_K_op_off = d_K_HL_off = jnp.zeros((0,))
+        d_K_E_off = jnp.zeros((T, 0))
 
     # ------------------------------------------------------------------
-    # Mutation delta offsets for K_E: shape (T, num_mutation)
-    # ------------------------------------------------------------------
-    with pyro.plate(f"{name}_titrant_mut_outer_plate", T, dim=-2):
-        with pyro.plate(f"{name}_mutation_plate", num_mut, dim=-1):
-            d_K_E_off = pyro.sample(
-                f"{name}_d_ln_K_E_offset", dist.Normal(0.0, 1.0))
-
-    # ------------------------------------------------------------------
-    # Optional epistasis — regularised horseshoe prior
+    # Optional epistasis — regularized horseshoe prior
     # ------------------------------------------------------------------
     if has_epi:
         pair_scatter = partial(apply_pair_matrix,
@@ -312,16 +327,17 @@ def define_model(name: str,
     # Population moments over growth concentrations
     # ------------------------------------------------------------------
     theta_for_moments = _compute_theta(ln_K_op, ln_K_HL, ln_K_E,
-                                       data.titrant_conc, tf_total, op_total)
+                                       data.titrant_conc * conc_unit_scale,
+                                tf_total)
     mu, sigma = _population_moments(theta_for_moments, data)
 
     return ThetaParam(ln_K_op=ln_K_op,
                       ln_K_HL=ln_K_HL,
                       ln_K_E=ln_K_E,
                       tf_total=tf_total,
-                      op_total=op_total,
                       mu=mu,
-                      sigma=sigma)
+                      sigma=sigma,
+                      conc_unit_scale=conc_unit_scale)
 
 
 # ---------------------------------------------------------------------------
@@ -342,7 +358,7 @@ def guide(name: str,
     has_epi = data.num_pair > 0
 
     tf_total = priors.theta_tf_total_M
-    op_total = priors.theta_op_total_M
+    conc_unit_scale = priors.theta_conc_unit_scale
 
     # ------------------------------------------------------------------
     # Scalar variational parameters for K_op_wt, K_HL_wt, sigma_d_K_op/HL
@@ -408,7 +424,7 @@ def guide(name: str,
         constraint=dist.constraints.positive)
 
     # ------------------------------------------------------------------
-    # Optional epistasis — regularised horseshoe variational parameters
+    # Optional epistasis — regularized horseshoe variational parameters
     # ------------------------------------------------------------------
     if has_epi:
         pair_scatter = partial(apply_pair_matrix,
@@ -485,19 +501,26 @@ def guide(name: str,
             f"{name}_sigma_d_ln_K_E",
             dist.LogNormal(sigma_d_K_E_locs, sigma_d_K_E_scales))
 
-    with pyro.plate(f"{name}_mutation_scalar_plate", num_mut, dim=-1):
-        d_K_op_off = pyro.sample(
-            f"{name}_d_ln_K_op_offset",
-            dist.Normal(d_K_op_locs, d_K_op_scales))
-        d_K_HL_off = pyro.sample(
-            f"{name}_d_ln_K_HL_offset",
-            dist.Normal(d_K_HL_locs, d_K_HL_scales))
+    if num_mut > 0:
+        with pyro.plate(f"{name}_mutation_scalar_plate", num_mut, dim=-1):
+            d_K_op_off = pyro.sample(
+                f"{name}_d_ln_K_op_offset",
+                dist.Normal(d_K_op_locs, d_K_op_scales))
+            d_K_HL_off = pyro.sample(
+                f"{name}_d_ln_K_HL_offset",
+                dist.Normal(d_K_HL_locs, d_K_HL_scales))
 
-    with pyro.plate(f"{name}_titrant_mut_outer_plate", T, dim=-2):
-        with pyro.plate(f"{name}_mutation_plate", num_mut, dim=-1):
-            d_K_E_off = pyro.sample(
-                f"{name}_d_ln_K_E_offset",
-                dist.Normal(d_K_E_locs, d_K_E_scales))
+        with pyro.plate(f"{name}_titrant_mut_outer_plate", T, dim=-2):
+            with pyro.plate(f"{name}_mutation_plate", num_mut, dim=-1):
+                d_K_E_off = pyro.sample(
+                    f"{name}_d_ln_K_E_offset",
+                    dist.Normal(d_K_E_locs, d_K_E_scales))
+    else:
+        # num_mut == 0 (wt-only library, e.g. a stratified binding
+        # pool): numpyro.plate needs size > 0, so skip the sites.  The
+        # empty offsets scatter to zeros, so every genotype is wt.
+        d_K_op_off = d_K_HL_off = jnp.zeros((0,))
+        d_K_E_off = jnp.zeros((T, 0))
 
     if has_epi:
         tau_epi = pyro.sample(f"{name}_epi_tau",
@@ -544,16 +567,17 @@ def guide(name: str,
         ln_K_E  = ln_K_E  + pair_scatter(epi_K_E_off  * tau_epi * _lam_tilde(epi_K_E_lam))
 
     theta_for_moments = _compute_theta(ln_K_op, ln_K_HL, ln_K_E,
-                                       data.titrant_conc, tf_total, op_total)
+                                       data.titrant_conc * conc_unit_scale,
+                                tf_total)
     mu, sigma = _population_moments(theta_for_moments, data)
 
     return ThetaParam(ln_K_op=ln_K_op,
                       ln_K_HL=ln_K_HL,
                       ln_K_E=ln_K_E,
                       tf_total=tf_total,
-                      op_total=op_total,
                       mu=mu,
-                      sigma=sigma)
+                      sigma=sigma,
+                      conc_unit_scale=conc_unit_scale)
 
 
 # ---------------------------------------------------------------------------
@@ -562,23 +586,21 @@ def guide(name: str,
 
 def get_hyperparameters() -> Dict[str, Any]:
     p = {}
-    # K_op ≈ 10 nM⁻¹ = 1e10 M⁻¹  → ln_K_op ≈ 23.0  (protein-DNA association)
-    p["theta_ln_K_op_wt_loc"]   = 23.0
+    # Wild-type defaults: see thermo/mwc.py (Sochor 2014 constants and the
+    # 80 µM midpoint calibration at tf_total = 1e-5 M monomer).
+    p["theta_ln_K_op_wt_loc"]   = DEFAULT_LN_K_OP_WT_LOC   # = K_h_o; Sochor: 4.2e8 M⁻¹
     p["theta_ln_K_op_wt_scale"] = 2.0
-    # K_HL ≈ 1e-4 → ln_K_HL ≈ -9.0  (dimensionless conformational equilibrium)
-    p["theta_ln_K_HL_wt_loc"]   = -9.0
+    p["theta_ln_K_HL_wt_loc"]   = DEFAULT_LN_K_HL_WT_LOC   # = K_h_l; Sochor: 6.3
     p["theta_ln_K_HL_wt_scale"] = 3.0
-    # K_E ≈ 1e-4 nM⁻² = 1e14 M⁻²  → ln_K_E ≈ 33.4  (effector-binding constant)
-    p["theta_ln_K_E_wt_loc"]    = 33.4
+    p["theta_ln_K_E_wt_loc"]    = DEFAULT_LN_K_E_WT_LOC   # = K_l_e, per site (M⁻¹); midpoint 80 µM
     p["theta_ln_K_E_wt_scale"]  = 3.0
-    # Physical concentrations (M); Sochor, PeerJ 2014
-    p["theta_tf_total_M"]  = 6.5e-7   # 650 nM
-    p["theta_op_total_M"]  = 2.5e-8   # 25 nM
+    p["theta_tf_total_M"]  = DEFAULT_TF_TOTAL_M   # M, monomer units (5e-6 M dimer)
+    p["theta_conc_unit_scale"] = DEFAULT_CONC_UNIT_SCALE   # titrant_conc mM → M
     # Mutation effect scales
     p["theta_sigma_d_ln_K_op_scale"]  = 1.0
     p["theta_sigma_d_ln_K_HL_scale"]  = 1.0
     p["theta_sigma_d_ln_K_E_scale"]   = 1.0
-    # Shared regularised horseshoe hyperparameters for pairwise epistasis
+    # Shared regularized horseshoe hyperparameters for pairwise epistasis
     p["theta_epi_tau_scale"]   = 0.1
     p["theta_epi_slab_scale"]  = 2.0
     p["theta_epi_slab_df"]     = 4.0
@@ -589,9 +611,9 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, Any]:
     T = data.num_titrant_name
     M = data.num_mutation
     g = {}
-    g[f"{name}_ln_K_op_wt"]         = jnp.array(23.0)
-    g[f"{name}_ln_K_HL_wt"]         = jnp.array(-9.0)
-    g[f"{name}_ln_K_E_wt"]          = jnp.full(T, 33.4)
+    g[f"{name}_ln_K_op_wt"]         = jnp.array(DEFAULT_LN_K_OP_WT_LOC)
+    g[f"{name}_ln_K_HL_wt"]         = jnp.array(DEFAULT_LN_K_HL_WT_LOC)
+    g[f"{name}_ln_K_E_wt"]          = jnp.full(T, DEFAULT_LN_K_E_WT_LOC)
     g[f"{name}_sigma_d_ln_K_op"]    = jnp.array(0.5)
     g[f"{name}_sigma_d_ln_K_HL"]    = jnp.array(0.5)
     g[f"{name}_sigma_d_ln_K_E"]     = jnp.full(T, 0.5)
@@ -625,7 +647,7 @@ def predict_unmeasured(
     q_to_get,
     *,
     tf_total,
-    op_total,
+    conc_unit_scale=1.0,
 ):
     """
     Predict theta for unmeasured genotypes using additive ln-K assembly.
@@ -641,13 +663,13 @@ def predict_unmeasured(
     param_posteriors : dict-like
     q_to_get : dict  mapping column name -> quantile value
     tf_total : float  — total TF concentration in M
-    op_total : float  — total operator concentration in M
+    conc_unit_scale : float  — converts titrant_conc to M (1e-3 for mM data)
 
     Returns
     -------
     pd.DataFrame
         Columns: 'genotype', 'titrant_name', 'titrant_conc', then one per q_to_get key.
-        Rows with unrecognised mutations have NaN quantiles.
+        Rows with unrecognized mutations have NaN quantiles.
     """
     import numpy as np
     from tfscreen.tfmodel.inference.posteriors import get_posterior_samples
@@ -704,11 +726,11 @@ def predict_unmeasured(
     ln_K_HL_rows = ln_K_HL_geno[:, geno_idx]
     ln_K_E_rows  = ln_K_E_geno[:, titrant_idx, geno_idx]        # (S, N_rows)
 
-    conc = calc_df["titrant_conc"].values.copy().astype(float)
+    conc = calc_df["titrant_conc"].values.copy().astype(float) * conc_unit_scale
     conc[conc == 0] = _ZERO_CONC_VALUE
 
     theta_samples = _solve_theta_np(
-        ln_K_op_rows, ln_K_HL_rows, ln_K_E_rows, conc, tf_total, op_total
+        ln_K_op_rows, ln_K_HL_rows, ln_K_E_rows, conc, tf_total
     )   # (S, N_rows)
 
     theta_samples[:, ~is_valid[geno_idx]] = np.nan

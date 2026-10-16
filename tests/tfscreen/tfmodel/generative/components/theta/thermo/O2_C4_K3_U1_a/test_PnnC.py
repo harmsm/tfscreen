@@ -7,7 +7,7 @@ import pandas as pd
 from collections import namedtuple
 from dataclasses import dataclass
 from functools import partial
-from numpyro.handlers import trace, seed
+from numpyro.handlers import condition, trace, seed
 
 from tfscreen.genetics.build_mut_geno_matrix import build_mut_sparse_indices
 from tfscreen.tfmodel.generative.components.theta.thermo.O2_C4_K3_U1_a.PnnC import (
@@ -32,6 +32,11 @@ from tfscreen.tfmodel.generative.components.theta.thermo.O2_C4_K3_U1_a.thermo im
 # ──────────────────────────────────────────────────────────────────────────────
 
 _S = 4   # number of structures: H, HD, L, LE2
+
+
+def _sigma_zero(fn):
+    """``fn`` with every structure's σ_s conditioned to 0: ΔΔG = prior means."""
+    return condition(fn, data={"theta_ddG_sigma": jnp.zeros(_S)})
 _M = 2   # number of mutations
 _G = 4   # genotypes: wt, mut0, mut1, double
 
@@ -172,10 +177,10 @@ class TestProjectDdG:
         out = _project_ddG(ddG)
         assert out[0, 1] == pytest.approx(3.0 - 1.0)  # K_HL = H - L
 
-    def test_K_E_equals_L_minus_LE2(self):
+    def test_K_E_is_half_L_minus_LE2(self):
         ddG = jnp.array([[0.0, 0.0, 5.0, 2.0]])
         out = _project_ddG(ddG)
-        assert out[0, 2] == pytest.approx(5.0 - 2.0)  # K_E = L - LE2
+        assert out[0, 2] == pytest.approx((5.0 - 2.0) / 2)  # per-site K_E = (L - LE2)/2
 
     def test_leading_batch_dim(self):
         ddG = jnp.ones((2, 7, 4))
@@ -195,7 +200,7 @@ class TestConfig:
             "theta_ln_K_HL_wt_loc", "theta_ln_K_HL_wt_scale",
             "theta_ln_K_E_wt_loc",  "theta_ln_K_E_wt_scale",
             "theta_ln_K_U_wt_loc",  "theta_ln_K_U_wt_scale",
-            "theta_tf_total_M", "theta_op_total_M",
+            "theta_tf_total_M",
             "theta_nn_hidden_size",
             "theta_epi_tau_scale", "theta_epi_slab_scale", "theta_epi_slab_df",
             "theta_epi_d0",
@@ -220,8 +225,7 @@ class TestConfig:
 
     def test_physical_constants(self):
         priors = get_priors()
-        assert priors.theta_tf_total_M == pytest.approx(6.5e-7)
-        assert priors.theta_op_total_M == pytest.approx(2.5e-8)
+        assert priors.theta_tf_total_M == pytest.approx(1e-5)
 
     def test_get_guesses_keys_no_epi(self):
         data = _make_mock()
@@ -230,7 +234,7 @@ class TestConfig:
         assert "theta_ln_K_HL_wt"  in g
         assert "theta_ln_K_E_wt"   in g
         assert "theta_ln_K_U_wt"   in g
-        assert "theta_ddG_offset"  in g
+        assert "theta_dlnK"  in g
         assert "theta_epi_tau" not in g
 
     def test_get_guesses_ln_K_U_wt_value(self):
@@ -246,10 +250,10 @@ class TestConfig:
         assert "theta_epi_lambda" in g
         assert "theta_epi_offset" in g
 
-    def test_get_guesses_ddG_offset_shape(self):
+    def test_get_guesses_ddG_shape(self):
         data = _make_mock()
         g = get_guesses("theta", data)
-        assert g["theta_ddG_offset"].shape == (_S, _M)
+        assert g["theta_dlnK"].shape == (_M, 4)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -308,13 +312,14 @@ class TestDefineModel:
         out, _ = _run_model(data)
         assert out.ln_K_U.shape == (_G,)
 
-    def test_ln_K_U_homogeneous(self):
-        """All elements of ln_K_U must be equal — K_U is WT-only with no per-mut effects."""
+    def test_ln_K_U_shifts_by_ddG_H(self):
+        """ln_K_U[g] − ln_K_U[wt] is the summed ΔΔG_H (K_U = [U]/[H], ΔΔG_U = 0)."""
         data = _make_mock()
-        out, _ = _run_model(data)
+        out, tr = _run_model(data)
+        ddG_H = np.asarray(tr["theta_ddG"]["value"])[:, 0]
         vals = np.asarray(out.ln_K_U)
-        np.testing.assert_allclose(vals, vals[0], atol=1e-6,
-                                   err_msg="ln_K_U should be homogeneous across genotypes")
+        np.testing.assert_allclose(vals - vals[0], _MUT_GENO.T @ ddG_H,
+                                   atol=1e-5)
 
     def test_sample_sites_present(self):
         data = _make_mock()
@@ -322,7 +327,7 @@ class TestDefineModel:
         assert "theta_ln_K_op_wt" in tr
         assert "theta_ln_K_HL_wt" in tr
         assert "theta_ln_K_E_wt"  in tr
-        assert "theta_ddG_offset" in tr
+        assert "theta_ddG" in tr
         assert "theta_ln_K_U_wt"  in tr
 
     def test_deterministic_sites_present(self):
@@ -359,7 +364,7 @@ class TestDefineModel:
         assert "theta_epi_tau" not in tr
 
     def test_zero_nn_weights_zero_offsets_all_genotypes_at_wt(self):
-        """With NN weights=0 and ddG_offset=0, all mutations have zero effect."""
+        """With NN weights=0 and σ_s=0, all mutations have zero effect."""
         data = _make_mock()
         priors = get_priors()
 
@@ -370,7 +375,7 @@ class TestDefineModel:
 
         with mock.patch("numpyro.param", side_effect=mock_param):
             with seed(rng_seed=0):
-                out = define_model("theta", data, priors)
+                out = _sigma_zero(define_model)("theta", data, priors)
 
         # All four genotypes should have the same K_op and K_HL when all effects are zero
         np.testing.assert_allclose(
@@ -380,18 +385,23 @@ class TestDefineModel:
             np.asarray(out.ln_K_op[1]), np.asarray(out.ln_K_op[2]), atol=1e-5
         )
 
-    def test_ln_K_U_homogeneous_with_epi(self):
-        """K_U homogeneity holds even when epistasis is active."""
+    def test_ln_K_U_takes_pair_epistasis_on_H(self):
+        """The double mutant's ln_K_U adds the pair's epistatic ΔΔG_H."""
         data = _make_mock(num_pair=1)
-        out, _ = _run_model(data)
+        out, tr = _run_model(data)
+        ddG_H = np.asarray(tr["theta_ddG"]["value"])[:, 0]
+        epi_H = np.asarray(tr["theta_epi_ddG"]["value"])[:, 0]
+        np.testing.assert_allclose(tr["theta_epi_ln_K_U"]["value"], epi_H,
+                                   atol=1e-6)
+        expected = _MUT_GENO.T @ ddG_H
+        expected[3] += epi_H[0]
         vals = np.asarray(out.ln_K_U)
-        np.testing.assert_allclose(vals, vals[0], atol=1e-6)
+        np.testing.assert_allclose(vals - vals[0], expected, atol=1e-5)
 
-    def test_tf_op_totals_preserved(self):
+    def test_tf_total_preserved(self):
         data = _make_mock()
         out, _ = _run_model(data)
-        assert out.tf_total == pytest.approx(6.5e-7)
-        assert out.op_total == pytest.approx(2.5e-8)
+        assert out.tf_total == pytest.approx(1e-5)
 
     def test_population_moment_shapes(self):
         data = _make_mock()
@@ -416,11 +426,12 @@ class TestGuide:
         out, _ = _run_guide(data)
         assert out.ln_K_U.shape == (_G,)
 
-    def test_ln_K_U_homogeneous_in_guide(self):
+    def test_ln_K_U_varies_in_guide(self):
+        """The guide assembles ln_K_U from ΔΔG_H too, so genotypes differ."""
         data = _make_mock()
         out, _ = _run_guide(data)
         vals = np.asarray(out.ln_K_U)
-        np.testing.assert_allclose(vals, vals[0], atol=1e-6)
+        assert not np.allclose(vals, vals[0], atol=1e-6)
 
     def test_sample_sites_match_model(self):
         """Guide must contain exactly the same pyro.sample site names as the model."""
@@ -449,8 +460,8 @@ class TestGuide:
         assert "theta_ln_K_op_wt_scale"  in param_names
         assert "theta_ln_K_HL_wt_loc"    in param_names
         assert "theta_ln_K_HL_wt_scale"  in param_names
-        assert "theta_ddG_offset_locs"   in param_names
-        assert "theta_ddG_offset_scales" in param_names
+        assert "theta_dlnK_locs"   in param_names
+        assert "theta_dlnK_scales" in param_names
 
     def test_ln_K_U_wt_variational_params_registered(self):
         """Guide must register variational parameters for ln_K_U_wt."""
@@ -460,11 +471,13 @@ class TestGuide:
         assert "theta_ln_K_U_wt_loc"   in param_names
         assert "theta_ln_K_U_wt_scale" in param_names
 
-    def test_sigma_s_param_registered_in_guide(self):
+    def test_sigma_guide_params_registered(self):
         data = _make_mock()
         _, tr = _run_guide(data)
         param_names = {k for k, v in tr.items() if v["type"] == "param"}
-        assert "theta_ddG_sigma_s" in param_names
+        assert "theta_ddG_sigma_locs" in param_names
+        assert "theta_ddG_sigma_scales" in param_names
+        assert tr["theta_ddG_sigma"]["type"] == "sample"
 
     def test_nn_params_registered_in_guide(self):
         data = _make_mock()
@@ -474,11 +487,10 @@ class TestGuide:
         for sname in STRUCTURE_NAMES:
             assert f"theta_nn_{sname}_W1" in param_names, f"Missing theta_nn_{sname}_W1"
 
-    def test_tf_op_totals_preserved(self):
+    def test_tf_total_preserved(self):
         data = _make_mock()
         out, _ = _run_guide(data)
-        assert out.tf_total == pytest.approx(6.5e-7)
-        assert out.op_total == pytest.approx(2.5e-8)
+        assert out.tf_total == pytest.approx(1e-5)
 
     def test_K_shapes(self):
         data = _make_mock()
@@ -541,6 +553,11 @@ def _make_ctx(genotypes=None, titrant_names=None, mut_labels=None, pair_labels=N
         pair_labels=pair_labels,
     )
 
+def _base_specs(specs):
+    """Specs other than the per-structure ddG ones (tested in
+    test_ddG_extraction.py)."""
+    return [s for s in specs if "out_names" not in s]
+
 
 class TestGetExtractSpecs:
     def test_returns_list(self):
@@ -551,7 +568,7 @@ class TestGetExtractSpecs:
     def test_has_three_specs_without_epi(self):
         ctx = _make_ctx()
         specs = get_extract_specs(ctx)
-        assert len(specs) == 3
+        assert len(_base_specs(specs)) == 3
 
     def test_has_four_specs_with_epi(self):
         ctx = _make_ctx(
@@ -560,7 +577,7 @@ class TestGetExtractSpecs:
             pair_labels=["K84L/M42I"],
         )
         specs = get_extract_specs(ctx)
-        assert len(specs) == 4
+        assert len(_base_specs(specs)) == 4
 
     def test_first_spec_has_ln_K_op_and_ln_K_HL(self):
         ctx = _make_ctx()
