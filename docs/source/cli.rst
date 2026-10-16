@@ -1910,6 +1910,53 @@ tfs-summarize-calibration
                            θ within [regime_eps, 1 - regime_eps] is resolvable (default
                            0.01).
 
+tfs-correct-tubes
+-----------------
+
+.. code-block:: text
+
+   usage: tfs-correct-tubes [-h] [--out_prefix OUT_PREFIX]
+                            tube_table_file corrections_file
+
+   Apply documented corrections to a tube table, leaving the original as is.
+
+   A correction is an entry in a YAML corrections file kept with the
+   experiment's data: an id, an action, the tubes it names (by
+   the tube table's sample), a reason, who decided it (by) and
+   when (date), and optional evidence such as a QC table. Actions:
+   swap (two tubes of one library exchange their design columns),
+   relabel (one tube gets the design values in set) and exclude
+   (tubes left out). The design columns are replicate,
+   condition_pre, t_pre, condition_sel, t_sel,
+   titrant_name and titrant_conc. Every other column (the sample
+   name and so its count file, OD600, tube totals, barcodes) stays with the
+   physical sample it was measured on, which is right whether the tubes
+   were swapped at the bench or the sample sheet was. library never
+   changes, and a swap across libraries is refused.
+
+   Writes {out_prefix}.csv (the corrected tube table, with a
+   correction_id column, for tfs-process-counts),
+   {out_prefix}_changes.csv (one row per changed value or excluded
+   tube, with its original and corrected value) and
+   {out_prefix}_provenance.json (the corrections and the SHA-256 of
+   the inputs, the evidence files and the output).
+
+   Fails on an unknown tube, a tube named in two corrections, a swap
+   across libraries or one that changes nothing, a relabel of a column that
+   is not a design column, a correction that leaves two tubes with the same
+   library and design, a missing or empty reason, by or date, or an output
+   that would overwrite an input.
+
+   positional arguments:
+     tube_table_file       The original tube table (CSV, TSV or Excel), in tfs-process-
+                           counts format.
+     corrections_file      YAML corrections file.
+
+   options:
+     -h, --help            show this help message and exit
+     --out_prefix OUT_PREFIX
+                           Output prefix. (default: 'tfs_tubes_corrected')
+
 tfs-fit-two-stage
 -----------------
 

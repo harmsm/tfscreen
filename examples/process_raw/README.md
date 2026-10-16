@@ -13,11 +13,26 @@ numbers are made up. They show the formats, not a realistic screen.
 - `counts/`: one count file per tube, in the format `tfs-process-fastq`
   writes, including the `__unknown__` row.
 
+- `corrections.yaml`: example corrections for `tfs-correct-tubes` (one
+  swap, one relabel, one exclusion). The tubes and reasons are made up.
+
 The OD600 calibration is in `../od600/`. To build the growth table:
 
 ```bash
 python make_example_data.py
 tfs-process-counts tube_table.csv counts \
+    --od600_file od600.csv \
+    --od600_calibration_file ../od600/od600_calibration.yaml \
+    --tube_volume_mL 5 \
+    --out_prefix growth
+```
+
+To apply the corrections first and build the growth table from the
+corrected tube table:
+
+```bash
+tfs-correct-tubes tube_table.csv corrections.yaml --out_prefix tubes_corrected
+tfs-process-counts tubes_corrected.csv counts \
     --od600_file od600.csv \
     --od600_calibration_file ../od600/od600_calibration.yaml \
     --tube_volume_mL 5 \
