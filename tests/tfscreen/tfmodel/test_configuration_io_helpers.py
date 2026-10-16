@@ -519,4 +519,3 @@ class TestUnknownPriorRows:
     ])
     def test_static_flag(self, value, expected):
         assert _static_flag(value) == expected
->>>>>>> main
