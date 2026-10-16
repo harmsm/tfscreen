@@ -772,3 +772,216 @@ def test_k_pinned_alone_keeps_m_sampled(mock_data):
             name=name, data=mock_data, priors=priors)
     assert model_trace[f"{name}_k"]["type"] == "deterministic"
     assert model_trace[f"{name}_m"]["type"] == "sample"
+
+
+# --- per-condition pins (a tuple of flags) ---
+
+def _mixed_priors():
+    """k pinned in condition 0 only, m pinned in conditions 0 and 2."""
+    return get_priors().replace(k_loc=jnp.array([0.01, 0.02, 0.03]),
+                                m_loc=jnp.array([0.1, 0.2, 0.3]),
+                                k_pinned=(True, False, False),
+                                m_pinned=(True, False, True))
+
+
+def test_per_condition_pins_sample_only_free_conditions(mock_data):
+    """The free conditions are a '{name}_{param}_free' sample site sized to
+    them; '{name}_{param}' is deterministic, pinned entries at their loc and
+    free entries the sampled values."""
+    name = "pin"
+    priors = _mixed_priors()
+    with seed(rng_seed=0):
+        model_trace = trace(define_model).get_trace(
+            name=name, data=mock_data, priors=priors)
+
+    k_free = model_trace[f"{name}_k_free"]
+    m_free = model_trace[f"{name}_m_free"]
+    assert k_free["type"] == "sample" and k_free["value"].shape == (2,)
+    assert m_free["type"] == "sample" and m_free["value"].shape == (1,)
+    np.testing.assert_allclose(_site_loc(k_free), [0.02, 0.03])
+    np.testing.assert_allclose(_site_loc(m_free), [0.2])
+
+    k = np.asarray(model_trace[f"{name}_k"]["value"])
+    m = np.asarray(model_trace[f"{name}_m"]["value"])
+    assert model_trace[f"{name}_k"]["type"] == "deterministic"
+    assert model_trace[f"{name}_m"]["type"] == "deterministic"
+    np.testing.assert_allclose(k, [0.01, *np.asarray(k_free["value"])])
+    np.testing.assert_allclose(m, [0.1, float(m_free["value"][0]), 0.3])
+
+
+def test_per_condition_pins_guide_matches_model(mock_data):
+    """Model and guide agree on the free sample sites; the guide's free
+    params follow the '{site}_locs' convention and start at the free locs;
+    the guide's full k and m hold the pinned locs."""
+    name = "pin"
+    priors = _mixed_priors()
+    with seed(rng_seed=0):
+        model_trace = trace(define_model).get_trace(
+            name=name, data=mock_data, priors=priors)
+    with seed(rng_seed=0):
+        guide_trace = trace(guide).get_trace(
+            name=name, data=mock_data, priors=priors)
+
+    model_samples = {n for n, s in model_trace.items()
+                     if s["type"] == "sample" and not s.get("is_observed", False)}
+    guide_samples = {n for n, s in guide_trace.items() if s["type"] == "sample"}
+    assert model_samples == guide_samples == {f"{name}_k_free", f"{name}_m_free"}
+    np.testing.assert_allclose(
+        np.asarray(guide_trace[f"{name}_k_free_locs"]["value"]), [0.02, 0.03])
+    np.testing.assert_allclose(
+        np.asarray(guide_trace[f"{name}_m_free_locs"]["value"]), [0.2])
+    assert f"{name}_k_locs" not in guide_trace
+
+    with seed(rng_seed=0):
+        params = guide(name=name, data=mock_data, priors=priors)
+    k_full = np.asarray(params.k_sel)
+    sel = np.asarray(mock_data.map_condition_sel)
+    np.testing.assert_allclose(k_full[sel == 0], 0.01)
+    m_full = np.asarray(params.m_sel)
+    np.testing.assert_allclose(m_full[sel == 0], 0.1)
+    np.testing.assert_allclose(m_full[sel == 2], 0.3)
+
+
+def test_uniform_pin_tuples_match_the_bool(mock_data):
+    """A tuple with every flag the same behaves as the bool."""
+    name = "pin"
+    base = get_priors().replace(m_loc=jnp.array([0.1, 0.2, 0.3]))
+    for flags, expected in (((True,) * 3, "deterministic"),
+                            ((False,) * 3, "sample")):
+        with seed(rng_seed=0):
+            tr = trace(define_model).get_trace(
+                name=name, data=mock_data, priors=base.replace(m_pinned=flags))
+        assert tr[f"{name}_m"]["type"] == expected
+        assert f"{name}_m_free" not in tr
+
+
+def test_pin_tuple_of_wrong_length_raises(mock_data):
+    priors = get_priors().replace(m_pinned=(True, False))
+    with pytest.raises(ValueError, match="do not match"):
+        with seed(rng_seed=0):
+            define_model(name="pin", data=mock_data, priors=priors)
+
+
+# --- titrant-dependent k (selection conditions) ---
+
+from types import SimpleNamespace  # noqa: E402
+
+_CONC = np.array([0.0, 1e-3, 1.0])
+
+
+def _titrant_data():
+    # condition 0: control (pre), 1: kan selection, 2: control, 3: 4CP selection
+    num_cr, C, G = 4, 3, 2
+    sel_map = np.broadcast_to(np.array([1, 2, 3, 3])[:, None, None], (4, C, G))
+    return SimpleNamespace(num_condition_rep=num_cr, num_titrant_conc=C,
+                           titrant_conc=jnp.asarray(_CONC),
+                           map_condition_pre=jnp.zeros((4, C, G), dtype=int),
+                           map_condition_sel=jnp.asarray(sel_map))
+
+
+def _titrant_priors(**kw):
+    return get_priors(is_selection=[False, True, False, True]).replace(**kw)
+
+
+def test_k_titrant_loglinear_is_a_line_in_log_conc():
+    data = _titrant_data()
+    priors = _titrant_priors(k_titrant_loglinear_scale=0.005)
+    tr = trace(seed(define_model, 2)).get_trace("g", data, priors)
+    slope = np.asarray(tr["g_k_titrant_slope"]["value"])
+    assert slope.shape == (2,)
+    params = seed(define_model, 2)("g", data, priors)
+    base = seed(define_model, 2)("g", data, priors.replace(k_titrant_loglinear_scale=0.0))
+    shift = np.asarray(params.k_sel) - np.asarray(base.k_sel)
+    L = np.log(np.maximum(_CONC, 1e-4) / 1e-4)
+    assert np.allclose(shift[0, :, 0], slope[0] * L, atol=1e-7)
+    assert np.allclose(shift[2, :, 1], slope[1] * L, atol=1e-7)
+    assert np.allclose(shift[1], 0.0)
+
+
+def test_k_titrant_refusals():
+    data = _titrant_data()
+    with pytest.raises(ValueError, match=">= 0"):
+        seed(define_model, 0)("g", data, _titrant_priors(k_titrant_loglinear_scale=-0.01))
+    with pytest.raises(ValueError, match="selection flags"):
+        seed(define_model, 0)("g", data, get_priors().replace(k_titrant_loglinear_scale=0.01))
+    flat = SimpleNamespace(**{**vars(data), "map_condition_sel": jnp.array([1, 2, 3, 3])})
+    with pytest.raises(ValueError, match="second-to-last"):
+        seed(define_model, 0)("g", flat, _titrant_priors(k_titrant_loglinear_scale=0.01))
+    # off by default: no new site
+    tr = trace(seed(define_model, 0)).get_trace("g", data, _titrant_priors())
+    assert "g_k_titrant_slope" not in tr
+    assert not hasattr(_titrant_priors(), "k_titrant_free_scale")
+
+
+@pytest.mark.parametrize("fn", [define_model, guide])
+def test_k_titrant_shifts_selection_only(fn):
+    data = _titrant_data()
+    priors = _titrant_priors(k_titrant_loglinear_scale=0.005)
+    params = seed(fn, 1)("g", data, priors)
+    base = seed(fn, 1)("g", data, priors.replace(k_titrant_loglinear_scale=0.0))
+    shift = np.asarray(params.k_sel) - np.asarray(base.k_sel)
+    assert np.allclose(shift[:, 0, :], 0.0)       # no titrant
+    assert np.allclose(shift[1], 0.0)             # control condition
+    assert np.allclose(np.asarray(params.k_pre), np.asarray(base.k_pre))
+
+
+@pytest.mark.parametrize("field", ["k_titrant_loglinear_scale"])
+def test_k_titrant_traces_under_jit(field):
+    # titrant_conc is a traced argument inside the jitted fit
+    import jax
+    data = _titrant_data()
+    priors = _titrant_priors(**{field: 0.01})
+
+    def run(conc):
+        d = SimpleNamespace(**{**vars(data), "titrant_conc": conc})
+        return seed(define_model, 0)("g", d, priors).k_sel
+
+    out = jax.jit(run)(jnp.asarray(_CONC))
+    assert np.allclose(np.asarray(out), np.asarray(run(jnp.asarray(_CONC))))
+
+
+# --- per-condition warp of theta ---
+
+def test_warp_theta_fixes_ends_and_is_monotone():
+    x = jnp.linspace(-0.5, 1.5, 41)
+    for a, x0 in [(0.5, 0.5), (8.0, 0.3), (20.0, 0.8)]:
+        f = np.asarray(_lin_warp(x, jnp.full_like(x, a), jnp.full_like(x, x0)))
+        assert np.all(np.diff(f) > 0)
+        f01 = np.asarray(_lin_warp(jnp.array([0.0, 1.0]), jnp.full(2, a), jnp.full(2, x0)))
+        assert np.allclose(f01, [0.0, 1.0], atol=1e-6)
+    # a -> 0 is (nearly) linear; a == 0 is exactly theta
+    f = np.asarray(_lin_warp(x, jnp.full_like(x, 1e-3), jnp.full_like(x, 0.4)))
+    assert np.allclose(f, np.asarray(x), atol=1e-3)
+    assert np.allclose(np.asarray(_lin_warp(x, jnp.zeros_like(x), jnp.full_like(x, 0.4))),
+                       np.asarray(x))
+    assert _lin_warp(x, None, None) is x
+
+
+def _lin_warp(theta, a, x0):
+    from tfscreen.tfmodel.generative.components.growth.linear import warp_theta
+    return warp_theta(theta, a, x0)
+
+
+@pytest.mark.parametrize("fn", [define_model, guide])
+def test_m_warp_only_warped_conditions(fn):
+    from tfscreen.tfmodel.generative.components.growth.linear import calculate_growth
+    data = _titrant_data()
+    priors = _titrant_priors(m_warp=(False, True, False, False))
+    tr = trace(seed(fn, 3)).get_trace("g", data, priors)
+    assert tr["g_warp_log_a"]["value"].shape == (1,)
+    assert tr["g_warp_x0"]["value"].shape == (1,)
+    params = seed(fn, 3)("g", data, priors)
+    a = np.asarray(params.warp_a_sel)
+    # map_condition_sel rows: [1, 2, 3, 3]; only condition 1 is warped
+    assert (a[0] > 0).all() and (a[1:] == 0).all()
+    theta = jnp.full(np.asarray(data.map_condition_sel).shape, 0.3)
+    g_pre, g_sel = calculate_growth(params, jnp.zeros_like(theta), 1.0, theta)
+    base = params.replace(warp_a_pre=None, warp_x0_pre=None, warp_a_sel=None,
+                          warp_x0_sel=None)
+    _, g_lin = calculate_growth(base, jnp.zeros_like(theta), 1.0, theta)
+    diff = np.asarray(g_sel) - np.asarray(g_lin)
+    assert not np.allclose(diff[0], 0.0) and np.allclose(diff[1:], 0.0)
+    # off by default
+    tr = trace(seed(fn, 3)).get_trace("g", data, _titrant_priors())
+    assert "g_warp_log_a" not in tr
+    assert seed(fn, 3)("g", data, _titrant_priors()).warp_a_sel is None

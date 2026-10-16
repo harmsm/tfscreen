@@ -52,7 +52,9 @@ def predict_theta(config_file,
                   titrant_concs_file=None,
                   only_files=False,
                   num_samples=0,
-                  genotype_batch_size=2000):
+                  genotype_batch_size=2000,
+                  shared_shift=None,
+                  shift_seed=0):
     """
     Predict operator occupancy (theta) from a fitted hierarchical model.
 
@@ -128,6 +130,18 @@ def predict_theta(config_file,
         cap the memory used by the epistasis pair-indicator matrix
         (batch_size × N_pair × 4 bytes).  Smaller values reduce peak memory
         at the cost of more iterations.  Default 2000.
+    shared_shift : str or None, optional
+        CSV of a shift shared by every non-wt genotype (columns genotype,
+        titrant_name, titrant_conc, shift), written by the two-stage fit:
+        the X change from one standard deviation of stage 1's k. Each
+        posterior draw gets one standard-normal multiple of it, the same
+        for every row, before quantiles are taken, so each genotype's
+        interval carries k's uncertainty while differences between
+        genotypes keep only what does not cancel. wt (fixed by the X gauge)
+        does not move. Needs a posterior file with draws (not a MAP
+        checkpoint) and training genotypes only. Default None.
+    shift_seed : int, optional
+        Seed for the shared per-draw multiples. Default 0.
     """
     if (titrant_names_file is None) != (titrant_concs_file is None):
         raise ValueError(
@@ -195,6 +209,12 @@ def predict_theta(config_file,
     # Decide extraction path.
     out_of_training = [g for g in requested_genotypes if g not in training_genotypes]
 
+    if out_of_training and shared_shift is not None:
+        raise ValueError(
+            "shared_shift applies to training genotypes only; "
+            f"{len(out_of_training)} requested genotype(s) were not in the "
+            "training data.")
+
     if out_of_training:
         module = model_registry.get("theta", {}).get(orchestrator._theta)
         if module is None or not hasattr(module, "predict_unmeasured"):
@@ -232,6 +252,8 @@ def predict_theta(config_file,
             manual_titrant_df=manual_titrant_df,
             num_samples=num_samples,
             q_to_get=q_to_get,
+            shared_shift=shared_shift,
+            shift_seed=shift_seed,
         )
         # extract_theta_curves returns all training genotypes when manual_titrant_df
         # has no 'genotype' column; filter to the requested subset.
@@ -262,7 +284,8 @@ def main():
                                        "titrant_concs_file": str,
                                        "only_files": bool,
                                        "num_samples": int,
-                                       "genotype_batch_size": int})
+                                       "genotype_batch_size": int,
+                                       "shared_shift": str})
 
 
 if __name__ == "__main__":

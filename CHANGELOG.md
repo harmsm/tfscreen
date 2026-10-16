@@ -31,6 +31,12 @@ fall into two kinds:
 
 ### Fixed
 
+- **`tfs-fit-two-stage` with a pinned k or m in stage 1.** A pinned k or
+  m is a deterministic site, which a MAP checkpoint does not hold, so
+  `tfs-extract-params` skipped both and stage 1 failed writing `km.csv`.
+  It now falls back to `two_stage.km_from_map`, which reads the MAP's
+  parameters and takes a pinned condition's prior location.
+
 - **`total_num_reads` is the total over all replicates.** `tfs-simulate`
   passed every replicate the full total and each split it over its own
   tubes, so a simulation had N times the configured reads, and with a
@@ -67,6 +73,71 @@ fall into two kinds:
   step-size cut or a stop.
 
 ### Added
+
+- **A per-condition warp of theta in `linear` growth.** `m_warp` (bool, or
+  per condition through a 0/1 `--growth_priors` column) makes a
+  condition's growth follow f(theta) = (s(theta) - s(0)) / (s(1) - s(0)),
+  s a logistic with steepness a and threshold x0 sampled per warped
+  condition (priors `warp_log_a_*`, `warp_x0_*`); f(0) = 0 and f(1) = 1,
+  so wt's gauge and m keep their meaning, and f is linear as a -> 0. For
+  selection markers that read occupancy through differently shaped maps
+  (dev data: kanR switch-like, pheS graded;
+  `planning/studies/relative-m/`).
+- **A titrant-dependent k in `linear` growth.** The prior
+  `k_titrant_loglinear_scale`, set with `tfs-configure-model
+  --set_priors`, adds a growth shift shared by every genotype to the
+  selection phase of selection conditions, one slope in log
+  concentration per selection condition; 0 at no titrant, 0 (off) by
+  default. The dev data's flat genotypes grow faster at 1 mM IPTG than
+  at none under both selections (`planning/studies/within-tube-m/`). A
+  free shift at every concentration was tried and dropped: it is not
+  identified when every genotype has its own curve.
+- **Hold wt's curve in `hill_relative`.** Priors `theta_wt_hill_K_fixed`
+  (a titrant concentration) and `theta_wt_hill_n_fixed`, set with
+  `tfs-configure-model --set_priors`, hold wt's Hill K and n when > 0
+  (default 0, free). wt's curve sets the X gauge, and a one-library fit
+  of the dev data collapsed it below 1 uM IPTG.
+- **`--shared_shift` for `tfs-predict-theta` and `tfs-predict-epistasis`.**
+  A table of X shifts (`genotype`, `titrant_name`, `titrant_conc`,
+  `shift`) shared by every non-wt genotype: each posterior draw gets one
+  standard-normal multiple of it before quantiles (or epistasis) are taken
+  (`tfmodel/analysis/shared_shift.py`), so each genotype's interval carries
+  the uncertainty while differences between genotypes keep only what does
+  not cancel; wt (fixed by the X gauge) does not move. Needs a posterior
+  with draws. Written for the two-stage fit's k uncertainty, which moves
+  every genotype's X nearly alike.
+- **`tfs-fit-two-stage`**: the two-stage fit of a growth-only relative
+  model as one command (`planning/two-stage-fit.md`). In its output
+  directory it runs stage 1 (wt, spikes and singles with the congression
+  mixture, `max` rule, lambda fitted with the measured value as its prior),
+  a delete-d jackknife of stage 1 (30 refits, 20% of tubes dropped,
+  stratified by condition and IPTG), stage 2 (the full library with every
+  condition's k and m pinned at stage 1; MAP, Laplace, X), two stage 2
+  refits at k plus and minus one jackknife SD (the X shift per SD), X (and
+  optionally epistasis) with that shift as one shared offset per draw, and
+  a marker-consistency check (stage 2 on one library alone; per-genotype
+  z-scores; on by default, `--no_consistency`). The YAML's top-level keys
+  are `tfs-configure-model`'s arguments; a `two_stage` block holds the rest
+  (`examples/tfmodel/two_stage.yaml`). Steps skip finished work, `--step`
+  runs one and `--jackknife_task i` one jackknife subsample (for a cluster
+  array).
+- **`tfmodel/two_stage.py`**: the two-stage fit's pieces as functions
+  (stage-1 genotypes, stratified delete-d jackknife subsamples of tubes,
+  jackknife k/m standard errors and k's main direction, pinned growth-prior
+  tables, the X shift table), ported from `planning/studies/m-bias-factorial/`
+  and checked to reproduce its numbers; also chunked growth-table filters
+  and the marker-consistency statistic. `tfs-fit-two-stage` chains them.
+
+- **Per-condition k/m pins in `linear` growth.** `m_pinned` and `k_pinned`
+  take one flag per `condition_rep` as well as a single bool, so one
+  marker's k and m can be held at an independent estimate while the
+  other's are fitted. `tfs-configure-model --growth_priors` takes 0/1
+  `k_pinned`/`m_pinned` columns (indexed rows in the priors CSV, read back
+  as a tuple; flags that all agree collapse to the bool). The free
+  conditions are sampled as `condition_growth_{k,m}_free` and
+  `condition_growth_{k,m}` is a deterministic site holding every condition,
+  so it is read from a posterior file, not a MAP checkpoint. Configs
+  without per-condition pins trace exactly as before.
 
 - **Merged transformants, per-origin skew.** The simulator draws
   single-plasmid cells as clone counts per genotype, one weighted row each

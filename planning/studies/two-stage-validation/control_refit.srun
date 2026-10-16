@@ -1,0 +1,22 @@
+#!/bin/bash -l
+#SBATCH --account=harmslab
+#SBATCH --partition=gpulong
+#SBATCH --time=02-00:00:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --gpus=1
+#SBATCH --mem=0
+#SBATCH --ntasks-per-node=1
+#SBATCH --job-name=ts_control
+
+# The k-shift control refit (control_refit.py). Run from the validation
+# directory:
+#   sbatch --export=ALL,RUN=real .../control_refit.srun
+
+module load cuda/12.4.1
+set -e
+RUN="${RUN:?set RUN (seed1, seed2 or real)}"
+HERE=/gpfs/home/harms/tfscreen/planning/studies/two-stage-validation
+echo ">>> control ${RUN} $(date)"
+python "${HERE}/control_refit.py" "${HERE}/two_stage_${RUN}.yaml" "run_${RUN}"
+echo ">>> Done control ${RUN} $(date)"

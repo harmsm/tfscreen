@@ -7,6 +7,7 @@ from typing import List, Any
 from tqdm import tqdm
 from tfscreen.tfmodel.inference.posteriors import load_posteriors, get_posterior_samples
 from tfscreen.tfmodel.generative.registry import model_registry
+from tfscreen.tfmodel.analysis.shared_shift import apply_shared_shift
 
 
 @dataclass
@@ -212,7 +213,7 @@ def extract_parameters(orchestrator, posteriors, q_to_get=None):
     return params
 
 def extract_theta_curves(orchestrator, posteriors, q_to_get=None, manual_titrant_df=None,
-                         num_samples=100):
+                         num_samples=100, shared_shift=None, shift_seed=0):
     """
     Extract theta curves by sampling from the joint posterior distribution.
 
@@ -246,6 +247,15 @@ def extract_theta_curves(orchestrator, posteriors, q_to_get=None, manual_titrant
         columns. Sampling is with replacement when ``num_samples`` exceeds the
         total number of posterior samples. Set to ``None`` to suppress sample
         columns and return only quantiles. Default 100.
+    shared_shift : str, pandas.DataFrame or None, optional
+        A shift shared by every non-wt genotype (``genotype``,
+        ``titrant_name``, ``titrant_conc``, ``shift``; the two-stage fit's
+        k uncertainty). Each draw gets one standard-normal multiple of it
+        before quantiles and samples are taken
+        (``analysis.shared_shift.apply_shared_shift``). Needs more than one
+        draw. Default None.
+    shift_seed : int, optional
+        Seed for the shared multiples. Default 0.
 
     Returns
     -------
@@ -274,6 +284,9 @@ def extract_theta_curves(orchestrator, posteriors, q_to_get=None, manual_titrant
 
     calc_df, internal_cols, extra_kwargs = module.build_calc_df(orchestrator, manual_titrant_df)
     theta_samples = module.compute_theta_samples(calc_df, param_posteriors, **extra_kwargs)
+    if shared_shift is not None:
+        theta_samples = apply_shared_shift(theta_samples, calc_df,
+                                           shared_shift, seed=shift_seed)
 
     for q_name, q_val in q_to_get.items():
         calc_df[q_name] = np.quantile(theta_samples, q_val, axis=0)
@@ -294,7 +307,8 @@ def extract_theta_epistasis(orchestrator, posteriors, q_to_get=None,
                             manual_titrant_df=None, scale="logit",
                             scale_constant=1.0,
                             group_by=("titrant_name", "titrant_conc"),
-                            regime_eps=0.01, regime_ci=0.95):
+                            regime_eps=0.01, regime_ci=0.95,
+                            shared_shift=None, shift_seed=0):
     """
     Extract second-order epistasis quantiles from the joint theta posterior.
 
@@ -350,6 +364,13 @@ def extract_theta_epistasis(orchestrator, posteriors, q_to_get=None,
         Central posterior-mass fraction that must lie inside the band for a
         corner to count as in-regime (e.g. 0.95 requires the theta 2.5-97.5%
         interval within ``[regime_eps, 1 - regime_eps]``).  Must be in (0, 1).
+    shared_shift : str, pandas.DataFrame or None, optional
+        A shift shared by every non-wt genotype, added to each joint draw
+        as one standard-normal multiple before epistasis is computed (see
+        ``extract_theta_curves``); the cycle's wt corner does not move, so
+        epistasis keeps one copy of it. Default None.
+    shift_seed : int, optional
+        Seed for the shared multiples. Default 0.
 
     Returns
     -------
@@ -422,6 +443,9 @@ def extract_theta_epistasis(orchestrator, posteriors, q_to_get=None,
         orchestrator, manual_titrant_df)
     theta_samples = module.compute_theta_samples(
         calc_df, param_posteriors, **extra_kwargs)
+    if shared_shift is not None:
+        theta_samples = apply_shared_shift(theta_samples, calc_df,
+                                           shared_shift, seed=shift_seed)
 
     group_by = list(group_by)
 

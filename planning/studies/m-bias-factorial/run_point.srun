@@ -1,0 +1,30 @@
+#!/bin/bash -l
+#SBATCH --account=harmslab
+#SBATCH --job-name=tfs_point
+#SBATCH --output=run_point.out
+#SBATCH --error=run_point.err
+#SBATCH --partition=gpulong
+#SBATCH --time=00-08:00:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --gpus=1
+#SBATCH --mem=0
+#SBATCH --ntasks-per-node=1
+
+# Finish a held fit whose arrowhead Laplace refuses the model (a congression
+# mixture couples genotypes through their co-resident partners): the MAP
+# point as a one-draw posterior, then predict and summarize, as run_held.srun
+# would. X points only (no intervals). Submit from the fit's directory.
+
+module load cuda/12.4.1
+
+set -e
+echo ">>> MAP point $(date)"
+tfs-sample-posterior tfs_configure_config.yaml tfs_fit_model_checkpoint.pkl \
+    --laplace point --skip_growth_observations
+echo ">>> Extract and predict $(date)"
+tfs-extract-params tfs_configure_config.yaml tfs_posterior.h5
+tfs-predict-theta tfs_configure_config.yaml tfs_posterior.h5
+echo ">>> Summarize against the truth $(date)"
+tfs-summarize-fit .
+echo ">>> Done $(date)"

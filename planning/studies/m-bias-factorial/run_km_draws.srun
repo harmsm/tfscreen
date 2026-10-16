@@ -1,0 +1,40 @@
+#!/bin/bash -l
+#SBATCH --account=harmslab
+#SBATCH --job-name=tfs_kmdraw
+#SBATCH --output=run_km_draws.out
+#SBATCH --error=run_km_draws.err
+#SBATCH --partition=gpulong
+#SBATCH --time=00-08:00:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --gpus=1
+#SBATCH --mem=0
+#SBATCH --ntasks-per-node=1
+
+# Step 2 of planning/deep-coverage.md, part 1: the arrowhead Laplace of a
+# stage-1 (no-doubles) fit, then km_draws.py, which writes one directory per
+# joint draw of every condition's k and m (README "Step 2"). Run from the
+# directory that will hold km_draws/.
+#
+#   STAGE1  the stage-1 fit's directory (default m_subsets/no_doubles)
+#   DRAWS   number of draws (default 10)
+#   TFS     the tfscreen checkout (default /gpfs/home/harms/tfscreen)
+
+module load cuda/12.4.1
+
+set -e
+STAGE1="${STAGE1:-m_subsets/no_doubles}"
+DRAWS="${DRAWS:-10}"
+TFS="${TFS:-/gpfs/home/harms/tfscreen}"
+
+if [[ ! -f "${STAGE1}/tfs_posterior.h5" ]]; then
+    echo ">>> Stage 1 Laplace $(date)"
+    (cd "${STAGE1}" && tfs-sample-posterior tfs_configure_config.yaml \
+        tfs_fit_model_checkpoint.pkl --laplace arrowhead \
+        --num_posterior_samples 1000 --skip_growth_observations)
+fi
+
+echo ">>> Draws $(date)"
+python "${TFS}/planning/studies/m-bias-factorial/km_draws.py" "${STAGE1}" \
+    --num_draws "${DRAWS}" --out_dir km_draws
+echo ">>> Done $(date)"

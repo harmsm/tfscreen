@@ -1,3 +1,4 @@
+import ast
 import os
 import yaml
 import pandas as pd
@@ -134,6 +135,31 @@ def _check_unknown_keys(dc, prefix, flat_dict):
         )
 
 
+def _static_flag(value):
+    """
+    A bool field's value read from the priors CSV.
+
+    Scalar rows give a bool (``1.0``, ``"True"``). Indexed per-condition rows
+    (``condition_growth.m_pinned`` per ``condition_rep``) arrive as an array
+    and become a tuple of bools, hashable as a static pytree field must be;
+    an array whose flags all agree collapses to that bool. A tuple written as
+    text (``"(True, False)"``) is parsed back.
+    """
+    if isinstance(value, str):
+        text = value.strip()
+        if text.startswith("("):
+            value = ast.literal_eval(text)
+        elif text.lower() in ("true", "false"):
+            return text.lower() == "true"
+        else:
+            value = float(text)
+    arr = np.asarray(value)
+    if arr.ndim == 0:
+        return bool(arr)
+    flags = tuple(bool(v) for v in arr.ravel())
+    return flags[0] if len(set(flags)) == 1 else flags
+
+
 def _update_dataclass(dc, prefix, flat_dict, check_unknown=True):
     """
     Recursively update a dataclass from a flat dictionary of values.
@@ -187,6 +213,10 @@ def _update_dataclass(dc, prefix, flat_dict, check_unknown=True):
                 # overwrite the correctly-typed tuple with that string — keep
                 # the freshly-built value.
                 continue
+            elif isinstance(attr_val, bool) and full_key in flat_dict:
+                # Flags such as condition_growth.m_pinned: a bool, or a tuple
+                # of per-condition flags (see _static_flag).
+                updates[field_name] = _static_flag(flat_dict[full_key])
             elif full_key in flat_dict:
                 new_val = flat_dict[full_key]
                 if isinstance(attr_val, int) and not isinstance(attr_val, bool):

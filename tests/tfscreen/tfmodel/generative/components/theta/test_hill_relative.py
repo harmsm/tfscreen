@@ -255,3 +255,33 @@ def test_get_extract_specs_reads_the_growth_rows():
     assert spec["map_column"] == "map_theta_group"
     assert spec["get_columns"] == ["genotype", "titrant_name"]
     assert spec["in_run_prefix"] == "theta_"
+
+
+@pytest.mark.parametrize("fn", [hr.define_model, hr.guide])
+def test_wt_hill_K_and_n_held(fn):
+    data = _data()
+    priors = hr.get_priors().replace(theta_wt_hill_K_fixed=0.03,
+                                     theta_wt_hill_n_fixed=1.2)
+    with handlers.seed(rng_seed=5):
+        tp = fn("theta", data, priors)
+    K, n = np.asarray(tp.log_hill_K), np.asarray(tp.hill_n)
+    assert K[0, 1] == pytest.approx(np.log(0.03))
+    assert n[0, 1] == pytest.approx(1.2)
+    # other genotypes keep their own K and n; wt is still gauged
+    assert not np.allclose(K[0, [0, 2, 3]], np.log(0.03))
+    X = _X(tp, data)
+    assert X[0, 0, 1] == pytest.approx(1.0, abs=1e-5)
+    assert X[0, -1, 1] == pytest.approx(0.0, abs=1e-5)
+    occ = expit(1.2 * (LOG_CONC - np.log(0.03)))
+    low, high = hr.gauge_baselines(jnp.array(np.log(0.03)), jnp.array(1.2), GAUGE)
+    assert X[0, :, 1] == pytest.approx(float(low) + (float(high) - float(low)) * occ,
+                                       abs=1e-5)
+
+
+def test_wt_hill_held_off_by_default_and_refuses_negative():
+    p = hr.get_priors()
+    assert p.theta_wt_hill_K_fixed == 0.0 and p.theta_wt_hill_n_fixed == 0.0
+    data = _data()
+    with pytest.raises(ValueError, match="theta_wt_hill"):
+        with handlers.seed(rng_seed=0):
+            hr.define_model("theta", data, p.replace(theta_wt_hill_n_fixed=-1.0))

@@ -109,6 +109,19 @@ def test_growth_prior_updates_refuses(table, match):
         P.growth_prior_updates(table, _labels(), _DEFAULTS)
 
 
+def test_growth_prior_updates_pin_columns():
+    """0/1 pin columns become per-condition flag arrays; others refused."""
+    defaults = dict(_DEFAULTS, k_pinned=0.0, m_pinned=0.0)
+    table = pd.DataFrame({"condition_rep": ["a"], "k_pinned": [1],
+                          "m_pinned": [1]})
+    up = P.growth_prior_updates(table, _labels(replicates=False), defaults)
+    assert np.array_equal(up[P.GROWTH_PRIOR_PREFIX + "k_pinned"], [1.0, 0.0])
+    assert np.array_equal(up[P.GROWTH_PRIOR_PREFIX + "m_pinned"], [1.0, 0.0])
+    bad = pd.DataFrame({"condition_rep": ["a"], "m_pinned": [0.5]})
+    with pytest.raises(ValueError, match="0 or 1"):
+        P.growth_prior_updates(bad, _labels(replicates=False), defaults)
+
+
 def test_growth_priors_from_wt_rates():
     rates = pd.DataFrame({
         "condition_sel": ["kanR+kan", "kanR+kan", "kanR-kan", "kanR-kan"],
@@ -150,6 +163,18 @@ def test_configure_set_priors(tmp_path):
     assert float(o.priors.theta.theta_log_hill_n_hyper_scale_fixed) == 0.5
 
 
+def test_configure_holds_wt_hill_curve(tmp_path):
+    prefix = _configure(tmp_path, set_priors=[
+        "theta_wt_hill_K_fixed=0.0238", "theta_wt_hill_n_fixed=0.753"])
+    o, _ = read_configuration(f"{prefix}_config.yaml")
+    assert float(o.priors.theta.theta_wt_hill_K_fixed) == pytest.approx(0.0238)
+    assert float(o.priors.theta.theta_wt_hill_n_fixed) == pytest.approx(0.753)
+    # free by default
+    (tmp_path / "b").mkdir()
+    o, _ = read_configuration(f"{_configure(tmp_path / 'b')}_config.yaml")
+    assert float(o.priors.theta.theta_wt_hill_K_fixed) == 0.0
+
+
 def test_configure_set_priors_unknown_name(tmp_path):
     with pytest.raises(ValueError, match="No prior named"):
         _configure(tmp_path, set_priors=["not_a_prior=1"])
@@ -177,6 +202,38 @@ def test_configure_growth_priors_and_wt_rates(tmp_path):
     assert k["kanR+kan"] == pytest.approx(0.012)   # from the wt rates
     assert m["kanR+kan"] == pytest.approx(0.008)
     assert k["pheS+4CP"] == pytest.approx(0.015)   # from the table
+
+
+def test_configure_growth_priors_per_condition_pins(tmp_path):
+    """Pin columns in --growth_priors reach the model as per-condition flags:
+    kanR's k and m clamped (deterministic), pheS's sampled."""
+    import numpyro.handlers as handlers
+    from tfscreen.tfmodel.generative.components.growth.linear import (
+        define_model)
+
+    table = tmp_path / "gp.csv"
+    pins = [1 if c.startswith("kanR") else 0 for c in _CONDITIONS]
+    pd.DataFrame({"condition_rep": _CONDITIONS,
+                  "k_loc": [0.016, 0.017, 0.015, 0.015], "k_scale": [0.01] * 4,
+                  "m_loc": [-0.014, 0.001, 0.0, 0.0], "m_scale": [0.01] * 4,
+                  "k_pinned": pins, "m_pinned": pins}).to_csv(table, index=False)
+    prefix = _configure(tmp_path, growth_priors=str(table))
+    o, _ = read_configuration(f"{prefix}_config.yaml")
+    g = o.priors.growth.condition_growth
+    order = list(P.condition_rep_labels(o)["condition_rep"])
+    expected = tuple(c.startswith("kanR") for c in order)
+    assert g.k_pinned == expected and g.m_pinned == expected
+
+    with handlers.seed(rng_seed=0):
+        tr = handlers.trace(define_model).get_trace(
+            name="condition_growth", data=o.data.growth, priors=g)
+    k = dict(zip(order, np.asarray(tr["condition_growth_k"]["value"])))
+    m = dict(zip(order, np.asarray(tr["condition_growth_m"]["value"])))
+    assert tr["condition_growth_m"]["type"] == "deterministic"
+    assert tr["condition_growth_m_free"]["value"].shape == (2,)
+    assert k["kanR+kan"] == pytest.approx(0.016)
+    assert m["kanR+kan"] == pytest.approx(-0.014)
+    assert m["kanR-kan"] == pytest.approx(0.001)
 
 
 def test_configure_wt_rates_needs_relative_theta(tmp_path):
@@ -324,3 +381,39 @@ def test_configure_wt_rates_alone(tmp_path):
     assert m["kanR+kan"] == pytest.approx(0.008)
     # conditions without wt rates keep the default
     assert k["pheS+4CP"] != pytest.approx(0.012)
+
+
+@pytest.mark.parametrize("field,site", [("k_titrant_loglinear_scale",
+                                         "condition_growth_k_titrant_slope")])
+def test_configure_titrant_k_traces_on_real_tensors(tmp_path, field, site):
+    import jax
+    from numpyro import handlers
+    prefix = _configure(tmp_path, set_priors=[f"{field}=0.01"])
+    o, _ = read_configuration(f"{prefix}_config.yaml")
+    assert float(getattr(o.priors.growth.condition_growth, field)) == 0.01
+    tr = handlers.trace(handlers.seed(o.jax_model, jax.random.PRNGKey(0))).get_trace(
+        data=o.data, priors=o.priors)
+    assert site in tr
+    n_sel = sum(o.priors.growth.condition_growth.m_is_selection)
+    assert tr[site]["value"].shape[0] == n_sel
+
+
+def test_configure_m_warp_column_traces(tmp_path):
+    import jax
+    import pandas as pd
+    from numpyro import handlers
+    gp = tmp_path / "gp.csv"
+    pd.DataFrame({"condition_rep": ["kanR+kan", "kanR-kan", "pheS+4CP", "pheS-4CP"],
+                  "m_warp": [1, 0, 0, 0]}).to_csv(gp, index=False)
+    prefix = _configure(tmp_path, growth_priors=str(gp))
+    o, _ = read_configuration(f"{prefix}_config.yaml")
+    flags = o.priors.growth.condition_growth.m_warp
+    assert isinstance(flags, tuple) and sum(flags) == 1
+    tr = handlers.trace(handlers.seed(o.jax_model, jax.random.PRNGKey(0))).get_trace(
+        data=o.data, priors=o.priors)
+    assert tr["condition_growth_warp_log_a"]["value"].shape == (1,)
+    bad = tmp_path / "bad.csv"
+    pd.DataFrame({"condition_rep": ["kanR+kan"], "m_warp": [0.5]}).to_csv(bad, index=False)
+    (tmp_path / "x").mkdir()
+    with pytest.raises(ValueError, match="0 or 1"):
+        _configure(tmp_path / "x", growth_priors=str(bad))

@@ -219,6 +219,27 @@ planning/studies/recipe/
 planning/studies/full-size-sim/sim_*/
 planning/studies/full-size-sim/pilot_*/
 planning/studies/full-size-sim-*/
+planning/studies/m-bias-factorial/m_bias/
+planning/studies/m-bias-factorial/m_subsets/
+planning/studies/m-bias-factorial/m_subsets_real/
+planning/studies/m-bias-factorial/m_subsets_poisson/
+planning/studies/m-bias-factorial/held_s2/
+planning/studies/m-bias-factorial/held_kanR_*/
+planning/studies/m-bias-factorial/held_all_*/
+planning/studies/m-bias-factorial/held_mix_*/
+planning/studies/m-bias-factorial/kanR_only_*/
+planning/studies/m-bias-factorial/jk_seed*/
+planning/studies/m-bias-factorial/km_draws/
+planning/studies/m-bias-factorial/sim_realistic_seed2/
+planning/studies/m-bias-factorial/sim_realistic_s2/
+planning/studies/m-bias-factorial/real_depth/
+planning/studies/m-bias-factorial/sim_realistic_nocong/
+planning/studies/two-stage-validation/run_*/
+planning/studies/m-bias-factorial/stage2_*/
 
 .DS_Store 
 
+planning/studies/x-vs-binding/out/
+planning/studies/within-tube-m/out/
+planning/studies/within-tube-m/runs/
+planning/studies/relative-m/runs/

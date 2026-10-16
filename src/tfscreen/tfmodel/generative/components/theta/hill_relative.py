@@ -82,6 +82,15 @@ class ModelPriors:
                                                       default=0.0)
     theta_log_hill_n_hyper_scale_fixed: float = field(pytree_node=False,
                                                       default=0.0)
+    # > 0: hold wt's Hill K (a titrant concentration, the units of
+    # titrant_conc) or Hill n at this value; 0 leaves it free. wt's curve
+    # sets the gauge, and a one-library fit can collapse it (the pheS-only
+    # dev-data fit put wt's whole drop below 1 uM IPTG, where wt's own
+    # trajectories put it at 10-30 uM; planning/studies/x-vs-binding/).
+    # wt's own K or n offset then leaves the likelihood and sits at its
+    # prior.
+    theta_wt_hill_K_fixed: float = field(pytree_node=False, default=0.0)
+    theta_wt_hill_n_fixed: float = field(pytree_node=False, default=0.0)
 
 
 @dataclass(frozen=True)
@@ -121,8 +130,9 @@ def gauge_baselines(log_hill_K, hill_n, gauge_log_conc):
     return X_low, X_high
 
 
-def _assemble(hyper, offsets, data):
-    """Per-genotype parameters from hyperparameters and offsets, wt gauged."""
+def _assemble(hyper, offsets, data, priors):
+    """Per-genotype parameters from hyperparameters and offsets, wt gauged
+    (and wt's K and n held when the priors say so)."""
     (low_loc, low_scale, delta_loc, delta_scale,
      K_loc, K_scale, n_loc, n_scale) = hyper
     low_off, delta_off, K_off, n_off = offsets
@@ -132,10 +142,20 @@ def _assemble(hyper, offsets, data):
     log_hill_K = K_loc[:, None] + K_off * K_scale[:, None]
     hill_n = jnp.exp(n_loc[:, None] + n_off * n_scale[:, None])
 
+    is_wt = jnp.zeros(data.num_genotype, dtype=bool).at[data.wt_indexes].set(True)
+    wt_K = float(getattr(priors, "theta_wt_hill_K_fixed", 0.0))
+    wt_n = float(getattr(priors, "theta_wt_hill_n_fixed", 0.0))
+    if wt_K < 0 or wt_n < 0:
+        raise ValueError("theta_wt_hill_K_fixed and theta_wt_hill_n_fixed "
+                         "must be > 0 to hold, or 0 to leave free")
+    if wt_K > 0:
+        log_hill_K = jnp.where(is_wt[None, :], np.log(wt_K), log_hill_K)
+    if wt_n > 0:
+        hill_n = jnp.where(is_wt[None, :], wt_n, hill_n)
+
     wt = data.wt_indexes[0]
     wt_low, wt_high = gauge_baselines(log_hill_K[:, wt], hill_n[:, wt],
                                       data.theta_gauge_log_conc)
-    is_wt = jnp.zeros(data.num_genotype, dtype=bool).at[data.wt_indexes].set(True)
     X_low = jnp.where(is_wt[None, :], wt_low[:, None], X_low)
     X_high = jnp.where(is_wt[None, :], wt_high[:, None], X_low + X_delta)
 
@@ -183,7 +203,7 @@ def define_model(name: str,
             offsets = [pyro.sample(f"{name}_{o}", dist.Normal(0.0, 1.0))
                        for o in _OFFSETS]
 
-    theta_param = _assemble(hyper, offsets, data)
+    theta_param = _assemble(hyper, offsets, data, priors)
 
     pyro.deterministic(f"{name}_X_low", theta_param.X_low)
     pyro.deterministic(f"{name}_X_high", theta_param.X_high)
@@ -234,7 +254,7 @@ def guide(name: str,
             offsets = [pyro.sample(f"{name}_{o}", dist.Normal(l, s))
                        for o, l, s in zip(_OFFSETS, locs, scales)]
 
-    return _assemble(hyper, offsets, data)
+    return _assemble(hyper, offsets, data, priors)
 
 
 def run_model(theta_param: ThetaParam, data: DataClass) -> jnp.ndarray:
@@ -284,6 +304,8 @@ def get_hyperparameters() -> Dict[str, Any]:
         "theta_X_delta_hyper_scale_fixed": 0.0,
         "theta_log_hill_K_hyper_scale_fixed": 0.0,
         "theta_log_hill_n_hyper_scale_fixed": 0.0,
+        "theta_wt_hill_K_fixed": 0.0,
+        "theta_wt_hill_n_fixed": 0.0,
     }
 
 

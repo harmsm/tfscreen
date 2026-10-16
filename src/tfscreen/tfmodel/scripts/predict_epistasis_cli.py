@@ -15,7 +15,9 @@ def predict_epistasis(config_file,
                       scale="logit",
                       scale_constant=1.0,
                       regime_eps=0.01,
-                      regime_ci=0.95):
+                      regime_ci=0.95,
+                      shared_shift=None,
+                      shift_seed=0):
     """
     Predict second-order epistasis from the joint posterior of a fitted model.
 
@@ -102,6 +104,16 @@ def predict_epistasis(config_file,
         Central posterior-mass fraction required inside the band for a corner to
         count as in-regime. Default 0.95 (checks the theta 2.5-97.5% interval).
         Must be in (0, 1).
+    shared_shift : str or None, optional
+        CSV of a shift shared by every non-wt genotype (genotype,
+        titrant_name, titrant_conc, shift), written by the two-stage fit: the
+        X change from one standard deviation of stage 1's k. Each joint draw
+        gets one standard-normal multiple of it before epistasis is
+        computed. The cycle's wt corner does not move, so an epistasis on X
+        (X_ab - X_a - X_b + X_wt) keeps one net copy of the shift. Needs a
+        posterior file with draws. Default None.
+    shift_seed : int, optional
+        Seed for the shared per-draw multiples. Default 0.
     """
     if (titrant_names_file is None) != (titrant_concs_file is None):
         raise ValueError(
@@ -181,6 +193,8 @@ def predict_epistasis(config_file,
         scale_constant=scale_constant,
         regime_eps=regime_eps,
         regime_ci=regime_ci,
+        shared_shift=shared_shift,
+        shift_seed=shift_seed,
     )
 
     # Restrict cycles to those whose double mutant is a requested genotype.
@@ -200,7 +214,8 @@ def main():
                                        "titrant_names_file": str,
                                        "titrant_concs_file": str,
                                        "only_files": bool,
-                                       "scale": str})
+                                       "scale": str,
+                                       "shared_shift": str})
 
 
 if __name__ == "__main__":

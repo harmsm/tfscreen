@@ -19,6 +19,7 @@ from tfscreen.tfmodel.configuration_io import (
     _extract_prior_arrays,
     _assemble_condition_array,
     _read_priors_flat,
+    _static_flag,
     _update_dataclass,
 )
 from tfscreen.tfmodel.generative.components.growth.linear import (
@@ -389,7 +390,6 @@ class TestUpdateDataclassStaticFields:
         updated = _update_dataclass(priors, "", {"m_pinned": 1.0})
         assert bool(updated.m_pinned)
 
-
 # ---------------------------------------------------------------------------
 # Unknown priors rows
 # ---------------------------------------------------------------------------
@@ -499,3 +499,24 @@ class TestUnknownPriorRows:
 
         with pytest.raises(ValueError, match=r"theta\.theta_op_total_M"):
             read_configuration(str(tmp_path / "config.yaml"))
+    
+    def test_m_pinned_per_condition_rows_become_a_tuple(self):
+        """Indexed per-condition rows arrive as an array; a static field
+        must be hashable, so they become a tuple of bools, or a bool when
+        every condition agrees."""
+        priors = _linear_get_priors()
+        updated = _update_dataclass(
+            priors, "", {"m_pinned": jnp.array([1.0, 0.0, 1.0])})
+        assert updated.m_pinned == (True, False, True)
+        hash(updated.m_pinned)
+        same = _update_dataclass(priors, "", {"m_pinned": jnp.array([1.0, 1.0])})
+        assert same.m_pinned is True
+
+    @pytest.mark.parametrize("value,expected", [
+        (1.0, True), (0.0, False), ("True", True), ("false", False),
+        ("1.0", True), ("(True, False)", (True, False)),
+        ("(False, False)", False), (np.array([0.0, 1.0]), (False, True)),
+    ])
+    def test_static_flag(self, value, expected):
+        assert _static_flag(value) == expected
+>>>>>>> main

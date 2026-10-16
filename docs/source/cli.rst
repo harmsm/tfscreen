@@ -479,9 +479,13 @@ tfs-configure-model
                            CSV of per-condition growth priors for linear condition
                            growth: a condition_rep column (and replicate, if conditions
                            are not shared across replicates) plus any of k_loc, k_scale,
-                           m_loc, m_scale. Conditions or values it leaves out keep the
-                           defaults. Use it where tfs-prefit-calibration does not run (a
-                           growth-only model); the pre-fit overwrites k_loc and m_loc.
+                           m_loc, m_scale, and the 0/1 flags k_pinned, m_pinned, which
+                           hold that condition's k or m at its loc instead of fitting it
+                           (say, one marker's k and m held at an independent estimate
+                           while the other's are fitted). Conditions or values it leaves
+                           out keep the defaults. Use it where tfs-prefit-calibration
+                           does not run (a growth-only model); the pre-fit overwrites
+                           k_loc and m_loc.
      --growth_priors_wt_rates GROWTH_PRIORS_WT_RATES
                            CSV of wt monoculture growth rates (condition_sel,
                            titrant_conc, rate_mean, rate_sd, num_replicates), for
@@ -992,6 +996,7 @@ tfs-predict-theta
                             [--titrant_concs_file TITRANT_CONCS_FILE] [--only_files]
                             [--num_samples NUM_SAMPLES]
                             [--genotype_batch_size GENOTYPE_BATCH_SIZE]
+                            [--shared_shift SHARED_SHIFT] [--shift_seed SHIFT_SEED]
                             config_file param_file
 
    Predict operator occupancy (theta) from a fitted hierarchical model.
@@ -1065,6 +1070,19 @@ tfs-predict-theta
                            time to cap the memory used by the epistasis pair-indicator
                            matrix (batch_size × N_pair × 4 bytes). Smaller values reduce
                            peak memory at the cost of more iterations. Default 2000.
+     --shared_shift SHARED_SHIFT
+                           CSV of a shift shared by every non-wt genotype (columns
+                           genotype, titrant_name, titrant_conc, shift), written by the
+                           two-stage fit: the X change from one standard deviation of
+                           stage 1's k. Each posterior draw gets one standard-normal
+                           multiple of it, the same for every row, before quantiles are
+                           taken, so each genotype's interval carries k's uncertainty
+                           while differences between genotypes keep only what does not
+                           cancel. wt (fixed by the X gauge) does not move. Needs a
+                           posterior file with draws (not a MAP checkpoint) and training
+                           genotypes only. Default None.
+     --shift_seed SHIFT_SEED
+                           Seed for the shared per-draw multiples. Default 0.
 
 tfs-predict-growth
 ------------------
@@ -1171,6 +1189,7 @@ tfs-predict-epistasis
                                 [--titrant_concs_file TITRANT_CONCS_FILE] [--only_files]
                                 [--scale SCALE] [--scale_constant SCALE_CONSTANT]
                                 [--regime_eps REGIME_EPS] [--regime_ci REGIME_CI]
+                                [--shared_shift SHARED_SHIFT] [--shift_seed SHIFT_SEED]
                                 config_file param_file
 
    Predict second-order epistasis from the joint posterior of a fitted model.
@@ -1262,6 +1281,16 @@ tfs-predict-epistasis
                            Central posterior-mass fraction required inside the band for a
                            corner to count as in-regime. Default 0.95 (checks the theta
                            2.5-97.5% interval). Must be in (0, 1).
+     --shared_shift SHARED_SHIFT
+                           CSV of a shift shared by every non-wt genotype (genotype,
+                           titrant_name, titrant_conc, shift), written by the two-stage
+                           fit: the X change from one standard deviation of stage 1's k.
+                           Each joint draw gets one standard-normal multiple of it before
+                           epistasis is computed. The cycle's wt corner does not move, so
+                           an epistasis on X (X_ab - X_a - X_b + X_wt) keeps one net copy
+                           of the shift. Needs a posterior file with draws. Default None.
+     --shift_seed SHIFT_SEED
+                           Seed for the shared per-draw multiples. Default 0.
 
 tfs-extract-epistasis
 ---------------------
@@ -1945,3 +1974,61 @@ tfs-summarize-calibration
      --regime_eps REGIME_EPS
                            θ within [regime_eps, 1 - regime_eps] is resolvable (default
                            0.01).
+
+tfs-fit-two-stage
+-----------------
+
+.. code-block:: text
+
+   usage: tfs-fit-two-stage [-h] [--out_dir OUT_DIR] [--step STEP]
+                            [--jackknife_task JACKKNIFE_TASK] [--no_consistency]
+                            config_file
+
+   Fit a growth-only relative model in two stages, with X intervals that
+   carry stage 1's k uncertainty.
+
+   The full-library MAP makes the growth slope m too steep (each double
+   mutant pulls it a little and the pulls add), and congression flattens a
+   marker's m in any stage 1 large enough to pin X's scale
+   (planning/studies/m-bias-factorial/). This command runs, in out_dir:
+   stage1 (wt, spikes and singles with the congression mixture, max rule,
+   lambda fitted with two_stage.transformation_lambda as its prior: every
+   condition's k and m); jackknife (two_stage.jackknife_subsamples refits
+   of stage 1, each dropping two_stage.jackknife_drop_frac of the tubes,
+   stratified by condition and IPTG: k and m standard errors and k's main
+   direction); stage2 (the full library with every condition's k and m
+   pinned at stage 1; MAP, Laplace, X); kshift (two stage 2 refits at k
+   plus and minus one jackknife SD along its main direction, from stage
+   2's MAP: X's shift per SD, kshift/shift.csv); predict (stage 2's X, and
+   with two_stage.predict_epistasis its epistasis, with the shift added as
+   one shared multiple per posterior draw, predict/); consistency (stage 2
+   on one library's tubes alone against the full stage 2, per genotype
+   z-scores, consistency/consistency.csv). Each step skips work whose
+   outputs exist, so a run resumes and a step reruns by deleting its
+   directory.
+
+   positional arguments:
+     config_file           YAML whose top-level keys are tfs-configure-model's arguments
+                           (growth_df and library_config required; theta_model
+                           hill_relative, growth_shares_replicates true; file paths
+                           relative to the YAML), plus a two_stage block:
+                           transformation_lambda (mean, std; required), seed (1),
+                           jackknife_subsamples (30), jackknife_drop_frac (0.2),
+                           num_posterior_samples (500), consistency (true),
+                           consistency_library (default the first library
+                           alphabetically), predict_epistasis (false), fit (extra tfs-
+                           fit-model arguments) and posterior (extra tfs-sample-posterior
+                           arguments).
+
+   options:
+     -h, --help            show this help message and exit
+     --out_dir OUT_DIR     Directory for every step's outputs. Default 'two_stage'.
+     --step STEP           'all' (default) or one of stage1, jackknife, stage2, kshift,
+                           predict, consistency.
+     --jackknife_task JACKKNIFE_TASK
+                           Run only this jackknife subsample (1 to jackknife_subsamples),
+                           for a cluster array; needs stage 1 done. The kshift step
+                           collects them. (default: None)
+     --no_consistency      Turn off (on by default): Run the consistency step with 'all'
+                           (default True; --no_consistency skips it, as does consistency:
+                           false in the YAML).

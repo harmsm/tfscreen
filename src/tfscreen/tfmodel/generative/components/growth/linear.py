@@ -1,4 +1,5 @@
 import numpy as np
+import jax
 import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
@@ -24,6 +25,12 @@ class LinearParams:
     m_pre: jnp.ndarray
     k_sel: jnp.ndarray
     m_sel: jnp.ndarray
+    # Per-element warp of theta (see ModelPriors.m_warp); a = 0 is no warp.
+    # None when no condition is warped.
+    warp_a_pre: jnp.ndarray = None
+    warp_x0_pre: jnp.ndarray = None
+    warp_a_sel: jnp.ndarray = None
+    warp_x0_sel: jnp.ndarray = None
 
 @dataclass(frozen=True)
 class ModelPriors:
@@ -63,20 +70,52 @@ class ModelPriors:
         conditions, ``False`` for control ('-') conditions.  ``None``
         disables the per-condition logic and uses ``m_scale`` for all
         conditions (backward-compatible default).
-    m_pinned : bool
+    m_pinned : bool or tuple of bool
         When ``True``, the per-condition slope m is *clamped* to ``m_loc``
         (a ``deterministic`` site) instead of sampled, so the growth
         likelihood cannot inflate it away from the calibration-pinned value.
         A soft Normal prior — however tight — is only a KL penalty in SVI and
         the likelihood over many observations can override it; this is a hard
-        clamp.  ``k`` is not clamped this way in production fits: it carries
-        real per-experiment (tube-noise) variance and sits in the additive
+        clamp.  A tuple (one flag per ``condition_rep``) clamps only the
+        conditions flagged; the others are sampled as ``{name}_m_free`` and
+        ``{name}_m`` becomes a deterministic site holding every condition
+        (indexed 0/1 rows in the priors CSV; ``tfs-configure-model
+        --growth_priors`` takes ``k_pinned``/``m_pinned`` columns).  ``k`` is
+        not clamped this way in production fits: it carries real
+        per-experiment (tube-noise) variance and sits in the additive
         k/dk_geno slide, so it keeps a floored soft prior.  Default ``False``.
-    k_pinned : bool
-        When ``True``, ``k`` is clamped to ``k_loc`` the same way.  For
-        conditional fits at a fixed draw of (k, m), such as the two-stage fit
-        of ``planning/studies/svi-overconfidence/``, not for production.
-        Default ``False``.
+    k_pinned : bool or tuple of bool
+        When ``True``, ``k`` is clamped to ``k_loc`` the same way, per
+        condition with a tuple.  For conditional fits at a fixed (k, m), such
+        as the two-stage fit of ``planning/studies/svi-overconfidence/`` or a
+        fit holding one marker's k and m at an independent estimate
+        (``planning/studies/m-bias-factorial/``).  Default ``False``.
+    m_warp : bool or tuple of bool
+        True for a condition (a tuple: per condition) makes its growth
+        follow a monotone warp of theta instead of theta itself,
+        ``f(x) = (s(x) - s(0)) / (s(1) - s(0))``, ``s(x) = sigmoid(a (x -
+        x0))``, so f(0) = 0 and f(1) = 1 (wt's gauge and m keep their
+        meaning) and f is linear as a -> 0. Per warped condition
+        ``{name}_warp_log_a`` ~ Normal(warp_log_a_loc, warp_log_a_scale) and
+        ``{name}_warp_x0`` ~ Normal(warp_x0_loc, warp_x0_scale). For markers
+        that read occupancy through differently shaped maps
+        (``planning/studies/relative-m/``: kanR switch-like, pheS graded).
+        Default False. ``--growth_priors`` takes a 0/1 ``m_warp`` column.
+    warp_log_a_loc, warp_log_a_scale, warp_x0_loc, warp_x0_scale : float
+        Priors of the warp's log steepness and threshold.
+    k_titrant_loglinear_scale : float
+        > 0: in every selection condition (``m_is_selection``), the selection
+        phase's k gets a shift shared by every genotype that is linear in
+        log titrant concentration, ``s * log(max(c, c_floor) / c_floor)``
+        with ``c_floor`` a tenth of the lowest nonzero concentration (so 0 at
+        no titrant), one slope ``{name}_k_titrant_slope`` ~ Normal(0, scale)
+        per selection condition.  0 (the default) is off.  The within-tube
+        study (``planning/studies/within-tube-m/``) found flat genotypes
+        growing faster at 1 mM IPTG than at none in both selection
+        conditions and not in the controls.  A free shift at every
+        concentration was tried and dropped: with a curve per genotype it
+        trades with m along wt's own curve (on a simulation with no such
+        term it made m 2.5x too steep).
     """
     k_loc: float
     k_scale: float
@@ -85,8 +124,14 @@ class ModelPriors:
     m_scale_minus: float
     m_scale_plus: float
     m_is_selection: tuple = field(pytree_node=False, default=None)
-    m_pinned: bool = field(pytree_node=False, default=False)
-    k_pinned: bool = field(pytree_node=False, default=False)
+    m_pinned: bool | tuple = field(pytree_node=False, default=False)
+    k_pinned: bool | tuple = field(pytree_node=False, default=False)
+    k_titrant_loglinear_scale: float = field(pytree_node=False, default=0.0)
+    m_warp: bool | tuple = field(pytree_node=False, default=False)
+    warp_log_a_loc: float = field(pytree_node=False, default=1.0)
+    warp_log_a_scale: float = field(pytree_node=False, default=1.5)
+    warp_x0_loc: float = field(pytree_node=False, default=0.5)
+    warp_x0_scale: float = field(pytree_node=False, default=0.5)
 
 
 # ---------------------------------------------------------------------------
@@ -143,6 +188,178 @@ def _parse_condition_label(label: str) -> bool:
     )
 
 
+def _pin_mask(pinned, num_cr: int) -> np.ndarray:
+    """
+    Per-condition pin flags as a static numpy bool array.
+
+    ``pinned`` is a bool (every condition) or a tuple with one flag per
+    ``condition_rep``.
+    """
+    mask = np.asarray(pinned, dtype=bool)
+    if mask.ndim == 0:
+        return np.full(num_cr, bool(mask))
+    if mask.shape != (num_cr,):
+        raise ValueError(f"Per-condition pin flags {tuple(mask)} do not match "
+                         f"the model's {num_cr} condition(s).")
+    return mask
+
+
+def _with_free(loc_arr, free, values, num_cr):
+    """``loc_arr`` with the free conditions' entries replaced by ``values``."""
+    full = jnp.broadcast_to(loc_arr, values.shape[:-1] + (num_cr,))
+    return full.at[..., free].set(values)
+
+
+def _sample_condition_param(name, param, loc_arr, scale_arr, mask, num_cr):
+    """
+    Model side of k or m: sampled per condition, clamped to ``loc_arr``
+    (deterministic), or, with some conditions pinned, the free ones sampled
+    as ``{name}_{param}_free`` and the full array a deterministic site.
+    """
+    site = f"{name}_{param}"
+    if not mask.any():
+        with pyro.plate(f"{name}_condition_parameters", num_cr) as idx:
+            return pyro.sample(site, dist.Normal(loc_arr[idx], scale_arr[idx]))
+    if mask.all():
+        # Hard clamp, registered as a site so extraction / posterior sampling
+        # still find "{name}_{param}".
+        return pyro.deterministic(site, loc_arr)
+    free = np.flatnonzero(~mask)
+    with pyro.plate(f"{name}_{param}_free_conditions", free.size):
+        values = pyro.sample(f"{site}_free",
+                             dist.Normal(loc_arr[free], scale_arr[free]))
+    return pyro.deterministic(site, _with_free(loc_arr, free, values, num_cr))
+
+
+def _guide_condition_param(name, param, loc_arr, scale_arr, mask, num_cr):
+    """Guide side of ``_sample_condition_param``."""
+    site = f"{name}_{param}"
+    if mask.all():
+        # Clamped in the model (deterministic); no variational site here.
+        return loc_arr
+    if not mask.any():
+        locs = pyro.param(f"{site}_locs", loc_arr)
+        scales = pyro.param(f"{site}_scales", scale_arr,
+                            constraint=dist.constraints.positive)
+        with pyro.plate(f"{name}_condition_parameters", num_cr) as idx:
+            return pyro.sample(site, dist.Normal(locs[..., idx],
+                                                 scales[..., idx]))
+    free = np.flatnonzero(~mask)
+    locs = pyro.param(f"{site}_free_locs", loc_arr[free])
+    scales = pyro.param(f"{site}_free_scales", scale_arr[free],
+                        constraint=dist.constraints.positive)
+    with pyro.plate(f"{name}_{param}_free_conditions", free.size):
+        values = pyro.sample(f"{site}_free", dist.Normal(locs, scales))
+    return _with_free(loc_arr, free, values, num_cr)
+
+
+
+def _titrant_scale(priors):
+    """The log-linear titrant k's prior SD, or 0 when it is off."""
+    scale = float(getattr(priors, "k_titrant_loglinear_scale", 0.0))
+    if scale < 0:
+        raise ValueError("k_titrant_loglinear_scale must be >= 0")
+    if scale > 0 and priors.m_is_selection is None:
+        raise ValueError("a titrant-dependent k needs the selection flags "
+                         "(m_is_selection) to know which conditions get it")
+    return scale
+
+
+def _log_titrant_offsets(titrant_conc):
+    """log(max(c, c_floor) / c_floor), c_floor a tenth of the lowest nonzero
+    concentration, so 0 at no titrant. jax only: titrant_conc is traced
+    inside the jitted fit."""
+    conc = jnp.asarray(titrant_conc, dtype=float)
+    floor = jnp.min(jnp.where(conc > 0, conc, jnp.inf)) / 10.0
+    return jnp.log(jnp.maximum(conc, floor) / floor)
+
+
+def _titrant_table(name, data, priors, guide=False):
+    """
+    The selection-phase k shift per (condition_rep, titrant_conc), or None.
+    Rows of control conditions and the no-titrant column are 0.
+    """
+    scale = _titrant_scale(priors)
+    if scale == 0:
+        return None
+    num_cr, C = data.num_condition_rep, data.num_titrant_conc
+    sel = np.flatnonzero(np.asarray(priors.m_is_selection, dtype=bool))
+    site = f"{name}_k_titrant_slope"
+    if guide:
+        locs = pyro.param(f"{site}_locs", jnp.zeros(sel.size))
+        scales = pyro.param(f"{site}_scales", jnp.full(sel.size, 1e-4),
+                            constraint=dist.constraints.positive)
+    else:
+        locs, scales = jnp.zeros(sel.size), jnp.full(sel.size, scale)
+    with pyro.plate(f"{name}_k_titrant_conditions", sel.size):
+        slope = pyro.sample(site, dist.Normal(locs, scales))
+    L = _log_titrant_offsets(data.titrant_conc)
+    table = jnp.zeros(slope.shape[:-1] + (num_cr, C))
+    return table.at[..., sel, :].set(slope[..., :, None] * L)
+
+
+
+def _warp_tables(name, data, priors, guide=False):
+    """
+    Per-condition warp steepness a (0 = no warp) and threshold x0, or
+    (None, None) when no condition is warped.
+    """
+    num_cr = data.num_condition_rep
+    mask = _pin_mask(getattr(priors, "m_warp", False), num_cr)
+    if not mask.any():
+        return None, None
+    idx = np.flatnonzero(mask)
+    la_loc = jnp.full(idx.size, float(priors.warp_log_a_loc))
+    x0_loc = jnp.full(idx.size, float(priors.warp_x0_loc))
+    if guide:
+        la_l = pyro.param(f"{name}_warp_log_a_locs", la_loc)
+        la_s = pyro.param(f"{name}_warp_log_a_scales", jnp.full(idx.size, 0.1),
+                          constraint=dist.constraints.positive)
+        x0_l = pyro.param(f"{name}_warp_x0_locs", x0_loc)
+        x0_s = pyro.param(f"{name}_warp_x0_scales", jnp.full(idx.size, 0.1),
+                          constraint=dist.constraints.positive)
+    else:
+        la_l, la_s = la_loc, jnp.full(idx.size, float(priors.warp_log_a_scale))
+        x0_l, x0_s = x0_loc, jnp.full(idx.size, float(priors.warp_x0_scale))
+    with pyro.plate(f"{name}_warp_conditions", idx.size):
+        log_a = pyro.sample(f"{name}_warp_log_a", dist.Normal(la_l, la_s))
+        x0 = pyro.sample(f"{name}_warp_x0", dist.Normal(x0_l, x0_s))
+    a = jnp.zeros(log_a.shape[:-1] + (num_cr,)).at[..., idx].set(jnp.exp(log_a))
+    x0_full = jnp.full(x0.shape[:-1] + (num_cr,), 0.5).at[..., idx].set(x0)
+    return a, x0_full
+
+
+def warp_theta(theta, a, x0):
+    """
+    The monotone warp f(theta) of ModelPriors.m_warp; theta itself where
+    a == 0 (computed with a safe a so the unused branch cannot give NaN).
+    """
+    if a is None:
+        return theta
+    warped = a > 0
+    a_safe = jnp.where(warped, a, 1.0)
+    s0 = jax.nn.sigmoid(-a_safe * x0)
+    s1 = jax.nn.sigmoid(a_safe * (1.0 - x0))
+    f = (jax.nn.sigmoid(a_safe * (theta - x0)) - s0) / (s1 - s0)
+    return jnp.where(warped, f, theta)
+
+
+def _add_titrant_shift(k_sel, table, data):
+    """k_sel plus the shift for each element's condition and titrant
+    concentration (the growth tensor's second-to-last axis)."""
+    if table is None:
+        return k_sel
+    num_titrant_conc = data.num_titrant_conc
+    m = jnp.asarray(data.map_condition_sel)
+    if m.ndim < 2 or m.shape[-2] not in (num_titrant_conc,):
+        raise ValueError("a titrant-dependent k needs the full growth-tensor "
+                         "condition map (titrant_conc on its second-to-last "
+                         f"axis); got shape {tuple(m.shape)}")
+    ci = jnp.arange(num_titrant_conc).reshape((1,) * (m.ndim - 2)
+                                              + (num_titrant_conc, 1))
+    return k_sel + table[..., m, ci]
+
+
 def define_model(name: str,
                  data: GrowthData,
                  priors: ModelPriors) -> LinearParams:
@@ -187,31 +404,25 @@ def define_model(name: str,
     k_scale_arr = jnp.broadcast_to(jnp.asarray(priors.k_scale, dtype=float), (num_cr,))
     m_loc_arr = jnp.broadcast_to(jnp.asarray(priors.m_loc, dtype=float), (num_cr,))
 
-    m_pinned = bool(priors.m_pinned)
-    k_pinned = bool(priors.k_pinned)
-
-    with pyro.plate(f"{name}_condition_parameters", num_cr) as idx:
-        if not k_pinned:
-            growth_k = pyro.sample(f"{name}_k",
-                                   dist.Normal(k_loc_arr[idx], k_scale_arr[idx]))
-        if not m_pinned:
-            growth_m = pyro.sample(f"{name}_m",
-                                   dist.Normal(m_loc_arr[idx], m_scale_arr[idx]))
-
-    if m_pinned:
-        # Hard clamp: hold m at its per-condition loc (deterministic) rather
-        # than sampling it.  Registered as a site so extraction / posterior
-        # sampling still find "{name}_m".
-        growth_m = pyro.deterministic(f"{name}_m", m_loc_arr)
-    if k_pinned:
-        growth_k = pyro.deterministic(f"{name}_k", k_loc_arr)
+    growth_k = _sample_condition_param(name, "k", k_loc_arr, k_scale_arr,
+                                       _pin_mask(priors.k_pinned, num_cr), num_cr)
+    growth_m = _sample_condition_param(name, "m", m_loc_arr, m_scale_arr,
+                                       _pin_mask(priors.m_pinned, num_cr), num_cr)
 
     k_pre = growth_k[data.map_condition_pre]
     m_pre = growth_m[data.map_condition_pre]
     k_sel = growth_k[data.map_condition_sel]
     m_sel = growth_m[data.map_condition_sel]
+    k_sel = _add_titrant_shift(k_sel, _titrant_table(name, data, priors), data)
 
-    return LinearParams(k_pre=k_pre, m_pre=m_pre, k_sel=k_sel, m_sel=m_sel)
+    a, x0 = _warp_tables(name, data, priors)
+    if a is None:
+        return LinearParams(k_pre=k_pre, m_pre=m_pre, k_sel=k_sel, m_sel=m_sel)
+    return LinearParams(k_pre=k_pre, m_pre=m_pre, k_sel=k_sel, m_sel=m_sel,
+                        warp_a_pre=a[..., data.map_condition_pre],
+                        warp_x0_pre=x0[..., data.map_condition_pre],
+                        warp_a_sel=a[..., data.map_condition_sel],
+                        warp_x0_sel=x0[..., data.map_condition_sel])
 
 
 def guide(name: str,
@@ -223,41 +434,31 @@ def guide(name: str,
     Maintains per-condition variational parameters for k and m.
     """
     num_cr = data.num_condition_rep
-    m_pinned = bool(priors.m_pinned)
-    k_pinned = bool(priors.k_pinned)
-    if not k_pinned:
-        k_locs = pyro.param(f"{name}_k_locs",
-                            jnp.broadcast_to(jnp.asarray(priors.k_loc, dtype=float), (num_cr,)))
-        k_scales = pyro.param(f"{name}_k_scales",
-                              jnp.broadcast_to(jnp.asarray(priors.k_scale, dtype=float), (num_cr,)),
-                              constraint=dist.constraints.positive)
-    if not m_pinned:
-        m_locs = pyro.param(f"{name}_m_locs",
-                            jnp.broadcast_to(jnp.asarray(priors.m_loc, dtype=float), (num_cr,)))
-        m_scales = pyro.param(f"{name}_m_scales",
-                              jnp.broadcast_to(jnp.asarray(priors.m_scale, dtype=float), (num_cr,)),
-                              constraint=dist.constraints.positive)
 
-    with pyro.plate(f"{name}_condition_parameters", data.num_condition_rep) as idx:
-        if not k_pinned:
-            growth_k = pyro.sample(f"{name}_k",
-                                   dist.Normal(k_locs[..., idx], k_scales[..., idx]))
-        if not m_pinned:
-            growth_m = pyro.sample(f"{name}_m",
-                                   dist.Normal(m_locs[..., idx], m_scales[..., idx]))
+    def _arr(v):
+        return jnp.broadcast_to(jnp.asarray(v, dtype=float), (num_cr,))
 
-    if m_pinned:
-        # Clamped in the model (deterministic); no variational site here.
-        growth_m = jnp.broadcast_to(jnp.asarray(priors.m_loc, dtype=float), (num_cr,))
-    if k_pinned:
-        growth_k = jnp.broadcast_to(jnp.asarray(priors.k_loc, dtype=float), (num_cr,))
+    growth_k = _guide_condition_param(name, "k", _arr(priors.k_loc),
+                                      _arr(priors.k_scale),
+                                      _pin_mask(priors.k_pinned, num_cr), num_cr)
+    growth_m = _guide_condition_param(name, "m", _arr(priors.m_loc),
+                                      _arr(priors.m_scale),
+                                      _pin_mask(priors.m_pinned, num_cr), num_cr)
 
     k_pre = growth_k[data.map_condition_pre]
     m_pre = growth_m[data.map_condition_pre]
     k_sel = growth_k[data.map_condition_sel]
     m_sel = growth_m[data.map_condition_sel]
+    k_sel = _add_titrant_shift(k_sel, _titrant_table(name, data, priors, guide=True), data)
 
-    return LinearParams(k_pre=k_pre, m_pre=m_pre, k_sel=k_sel, m_sel=m_sel)
+    a, x0 = _warp_tables(name, data, priors, guide=True)
+    if a is None:
+        return LinearParams(k_pre=k_pre, m_pre=m_pre, k_sel=k_sel, m_sel=m_sel)
+    return LinearParams(k_pre=k_pre, m_pre=m_pre, k_sel=k_sel, m_sel=m_sel,
+                        warp_a_pre=a[..., data.map_condition_pre],
+                        warp_x0_pre=x0[..., data.map_condition_pre],
+                        warp_a_sel=a[..., data.map_condition_sel],
+                        warp_x0_sel=x0[..., data.map_condition_sel])
 
 
 def calculate_growth(params: LinearParams,
@@ -285,8 +486,10 @@ def calculate_growth(params: LinearParams,
     g_sel : jnp.ndarray
         Selection growth rate tensor.
     """
-    g_pre = params.k_pre + dk_geno + activity * params.m_pre * theta
-    g_sel = params.k_sel + dk_geno + activity * params.m_sel * theta
+    theta_pre = warp_theta(theta, params.warp_a_pre, params.warp_x0_pre)
+    theta_sel = warp_theta(theta, params.warp_a_sel, params.warp_x0_sel)
+    g_pre = params.k_pre + dk_geno + activity * params.m_pre * theta_pre
+    g_sel = params.k_sel + dk_geno + activity * params.m_sel * theta_sel
 
     return g_pre, g_sel
 
@@ -302,8 +505,14 @@ def get_hyperparameters():
     parameters["m_scale"] = 0.01        # used when m_is_selection is None
     parameters["m_scale_minus"] = 0.001 # tight prior for '-' control conditions
     parameters["m_scale_plus"] = 0.01   # normal prior for '+' selection conditions
-    parameters["m_pinned"] = False      # hard-clamp m to m_loc when True
-    parameters["k_pinned"] = False      # hard-clamp k to k_loc when True
+    parameters["m_pinned"] = False      # hard-clamp m to m_loc (bool or per-condition tuple)
+    parameters["k_pinned"] = False      # hard-clamp k to k_loc (bool or per-condition tuple)
+    parameters["k_titrant_loglinear_scale"] = 0.0  # > 0: k shift linear in log conc (selection)
+    parameters["m_warp"] = False        # monotone warp of theta (bool or per-condition tuple)
+    parameters["warp_log_a_loc"] = 1.0
+    parameters["warp_log_a_scale"] = 1.5
+    parameters["warp_x0_loc"] = 0.5
+    parameters["warp_x0_scale"] = 0.5
 
     return parameters
 

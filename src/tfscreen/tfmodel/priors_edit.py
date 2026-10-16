@@ -32,7 +32,13 @@ GROWTH_PRIOR_FIELDS = {
     "k_scale": ("k_scale",),
     "m_loc": ("m_loc",),
     "m_scale": ("m_scale_plus", "m_scale_minus"),
+    "k_pinned": ("k_pinned",),
+    "m_pinned": ("m_pinned",),
+    "m_warp": ("m_warp",),
 }
+
+# Growth-priors columns that are 0/1 flags (linear's per-condition clamps).
+GROWTH_PIN_FIELDS = ("k_pinned", "m_pinned", "m_warp")
 
 GROWTH_PRIOR_PREFIX = "growth.condition_growth."
 
@@ -268,15 +274,17 @@ def growth_prior_updates(table, cond_rep_labels, defaults):
     ----------
     table : pandas.DataFrame
         One row per condition: ``condition_rep``, optionally ``replicate``,
-        and any of ``k_loc``, ``k_scale``, ``m_loc``, ``m_scale``. A table
-        without ``replicate`` applies each row to every replicate. A missing
-        value (NaN) keeps the default.
+        and any of ``k_loc``, ``k_scale``, ``m_loc``, ``m_scale``, and the
+        0/1 clamps ``k_pinned``, ``m_pinned`` (linear holds a pinned
+        condition's k or m at its loc and samples the rest). A table without
+        ``replicate`` applies each row to every replicate. A missing value
+        (NaN) keeps the default.
     cond_rep_labels : pandas.DataFrame
         The model's per-condition labels (``condition_rep_labels``).
     defaults : dict[str, float]
         Scalar default for each prior row (``k_loc``, ``k_scale``, ``m_loc``,
-        ``m_scale_plus``, ``m_scale_minus``), used for conditions or values
-        the table leaves out.
+        ``m_scale_plus``, ``m_scale_minus``, ``k_pinned``, ``m_pinned``),
+        used for conditions or values the table leaves out.
 
     Returns
     -------
@@ -288,7 +296,8 @@ def growth_prior_updates(table, cond_rep_labels, defaults):
     ------
     ValueError
         On an unknown column, a condition the model does not have, a
-        condition given twice, or a non-positive scale.
+        condition given twice, a non-positive scale or a pin flag other than
+        0 or 1.
     """
     if cond_rep_labels is None:
         raise ValueError("Per-condition growth priors need a growth model.")
@@ -323,10 +332,11 @@ def growth_prior_updates(table, cond_rep_labels, defaults):
                          f"the model does not have; it has {sorted(known)}.")
 
     for col in value_cols:
-        if col.endswith("_scale"):
-            vals = pd.to_numeric(table[col], errors="coerce")
-            if (vals.dropna() <= 0).any():
-                raise ValueError(f"Growth-priors column '{col}' must be > 0.")
+        vals = pd.to_numeric(table[col], errors="coerce")
+        if col.endswith("_scale") and (vals.dropna() <= 0).any():
+            raise ValueError(f"Growth-priors column '{col}' must be > 0.")
+        if col in GROWTH_PIN_FIELDS and not vals.dropna().isin([0, 1]).all():
+            raise ValueError(f"Growth-priors column '{col}' must be 0 or 1.")
 
     merged = labels.merge(table, on=key_cols, how="left")
     updates = {}
