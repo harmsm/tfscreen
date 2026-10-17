@@ -201,6 +201,13 @@ anchored by binding (the k-shift refits failed and are not reused).
    - [ ] The study (`planning/studies/joint-fit-sim/`): joint and null
      simulations from the full-size realistic config, fitted with the full
      and plain joint stage 1 (three runs).
+     Run 1 (2026-10-17): on the joint simulation the full model recovers
+     kanR's m (2%) and warp and s (16%) and halves the singles' theta error
+     of the plain model; on the null simulation it finds a wrong mode (the
+     same steep warp on both markers, s 0.25, large offsets, theta off by
+     0.3). A warp shared by both markers is pinned only by the binding
+     genotypes, which the offsets loosen. Next: is that a trap or a
+     degeneracy (null fitted with the plain model; compare losses).
 6. [ ] **Real stage 1.** wt, spikes and singles with binding at 2 uM, the
    swapped row corrected; report m against the within-tube values, the
    maps, s, the deviations (M42I), and binding residuals per genotype;

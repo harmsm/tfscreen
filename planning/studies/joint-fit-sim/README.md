@@ -95,4 +95,55 @@ concentrations.
 
 ## Results
 
-Not run yet.
+### Run 1 (2026-10-17, commit of 2026-10-16)
+
+Simulations from `sim_realistic_s2`'s config, seed 1; 955 stage-1
+genotypes (wt, 8 spikes with binding, 946 singles); M42I/H74A survived
+this time. Final MAP losses: joint/full 780,800 (converged), joint/plain
+798,807 (converged), null/full 784,304 (still descending at step 1e-5).
+
+Shared parameters, median [95%] against the truth:
+
+| | truth | joint/full | joint/plain | null/full (truth) |
+|---|---|---|---|---|
+| m kanR+kan | -0.0141 | -0.0144 [-0.0145, -0.0143] | -0.0187 | -0.0167 (-0.0141) |
+| m pheS+4CP | +0.0144 | +0.0164 [0.0160, 0.0167] | +0.0155 | +0.0169 (+0.0144) |
+| kanR warp log a / x0 | 2.08 / 0.50 | 2.20 / 0.57 | - | 2.78 / 0.70 (linear) |
+| pheS warp log a / x0 | 0.41 / 0.40 | -0.14 [-0.68, 0.44] / 1.25 [0.28, 2.16] | - | 2.71 / 0.70 (linear) |
+| s | 0.50 | 0.42 [0.37, 0.48] | (1) | 0.25 [0.17, 0.35] (1) |
+| offset scale tau | 0.10 | 0.25 [0.11, 0.51] | - | 0.34 (0) |
+| k, every condition | | 0.002-0.005 high | 0.003-0.005 high | 0.000-0.003 high |
+
+Theta RMSE of the median (95% coverage), binding units, and the RMSE as
+growth sees it (each curve at its own s times nominal):
+
+| | joint/full | joint/plain | null/full |
+|---|---|---|---|
+| singles (946) | 0.072 (0.18); in vivo 0.074 | 0.130 (0.04); in vivo 0.091 | 0.293 (0.04); in vivo 0.302 |
+| spikes (8) | 0.059 (0.31) | 0.047 (0.31) | 0.226 (0.09) |
+| wt | 0.055 (0.25) | 0.137 (0.00) | 0.151 (0.13) |
+
+What it says:
+
+- **On the joint simulation the pieces work and are needed.** The full
+  model gets kanR's m within 2% and its warp close (a 9.0 against 8,
+  x0 0.57 against 0.50), s within 16%, and halves the singles' theta
+  error of the plain model, which steepens kanR's m by 33% to bend a
+  linear map round a switch. pheS's graded warp is weakly identified
+  (wide, covers) and its m is 14% steep. Most offsets are near their
+  truth; tau is high (0.25 against 0.1).
+- **The null fit finds a wrong mode.** With linear truth, both markers get
+  the same steep warp (a about 16, x0 0.70), s drops to 0.25 and the
+  spikes take large offsets (K84L -0.32, M42I/K84L -0.38); theta is off by
+  0.3 whether read in binding or growth units. A warp shared by both
+  markers trades exactly with every single's curve (growth sees f(theta),
+  and singles have no binding), so only the binding genotypes pin it, and
+  the offsets let those same genotypes disagree with their binding. On
+  the joint arm the two markers' warps differ, so the singles pin their
+  difference and binding only sets the common scale.
+- **Intervals are far too narrow everywhere** (theta 18-31% coverage
+  where the median error is small; m's interval excludes the truth),
+  the MAP plus Laplace holding the shared parameters' error out of each
+  genotype, as before.
+- k sits high in every condition, the k/dk_geno slide, as in every stage
+  1 so far.
