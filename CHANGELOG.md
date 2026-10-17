@@ -86,6 +86,21 @@ fall into two kinds:
 
 ### Added
 
+- **Simulator pieces for the joint fit.** A linear growth condition takes
+  `warp_a` and `warp_x0` (`growth_linkage.warp_theta`, the fit's `m_warp`
+  in numpy; truth `warp_log_a`, `warp_x0` in
+  `tfs_sim_growth_parameters.csv`); the top-level `growth_titrant_scale`
+  (s) makes growth see each curve at s times the nominal titrant while
+  binding sees the nominal one (`library_prediction` scales the growth
+  concentrations of the simulator's data, so the prior draw, wt's
+  reference and the overrides all follow; truth log s in
+  `tfs_sim_growth_titrant_scale.csv`); `binding_data.genotype_offset_sd`
+  adds one Normal offset per binding genotype to its whole curve
+  (`binding_data.apply_genotype_offsets`; truth in
+  `tfs_sim_binding_offsets.csv`). All off by default, so existing configs
+  simulate as before. Study: `planning/studies/joint-fit-sim/`, joint-fit
+  plan step 5.
+
 - **`tfs-extract-params` writes linear growth's warp.** With `m_warp` on,
   `{out_prefix}_warp_log_a.csv` and `{out_prefix}_warp_x0.csv` hold each
   warped condition's steepness and threshold (the extraction context now

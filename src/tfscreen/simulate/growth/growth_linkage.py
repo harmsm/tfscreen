@@ -19,11 +19,29 @@ arguments to predict().
 import numpy as np
 
 
+def warp_theta(theta, a, x0):
+    """
+    The monotone warp of linear growth's ``m_warp`` (numpy):
+    f(theta) = (s(theta) - s(0)) / (s(1) - s(0)), s(t) = 1 / (1 + exp(-a (t - x0))),
+    so f(0) = 0 and f(1) = 1; steepness a > 0, threshold x0. Matches
+    ``generative/components/growth/linear.warp_theta``.
+    """
+    theta = np.asarray(theta, dtype=float)
+
+    def s(t):
+        return 1.0 / (1.0 + np.exp(-a * (t - x0)))
+
+    return (s(theta) - s(0.0)) / (s(1.0) - s(0.0))
+
+
 class LinearGrowth:
     """
-    k = b + activity * m * theta
+    k = b + activity * m * f(theta)
 
-    Matches the 'linear' inference component.
+    Matches the 'linear' inference component. f is the identity, or with
+    ``warp_a`` the monotone warp of the component's ``m_warp`` (steepness
+    ``warp_a``, the fit's exp(warp_log_a), and threshold ``warp_x0``), for
+    a marker whose growth is a switch-like or graded function of occupancy.
 
     Parameters
     ----------
@@ -33,9 +51,18 @@ class LinearGrowth:
         Slope: change in growth rate per unit theta.
     activity : float or array-like, default 1.0
         Per-genotype TF activity scaling factor.
+    warp_a : float, optional
+        Warp steepness (> 0). None: no warp.
+    warp_x0 : float, default 0.5
+        Warp threshold.
     """
-    def predict(self, theta, b, m, activity=1.0):
-        return b + np.asarray(activity) * m * np.asarray(theta)
+    def predict(self, theta, b, m, activity=1.0, warp_a=None, warp_x0=0.5):
+        theta = np.asarray(theta)
+        if warp_a is not None:
+            if not float(warp_a) > 0:
+                raise ValueError(f"warp_a must be > 0, got {warp_a}")
+            theta = warp_theta(theta, float(warp_a), float(warp_x0))
+        return b + np.asarray(activity) * m * theta
 
 
 class PowerGrowth:

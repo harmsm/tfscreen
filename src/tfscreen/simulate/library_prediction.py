@@ -164,6 +164,20 @@ def _measured_params_override(params_file, cf, sim_data, library_df, rng,
     return gc_over, p_over, measured_binding_df.to_dict("records")
 
 
+def growth_titrant_scale_from(cf):
+    """
+    The config's ``growth_titrant_scale`` (s, default 1): growth sees each
+    genotype's curve at s times the nominal titrant, binding at the nominal.
+    """
+    s = cf.get("growth_titrant_scale")
+    if s is None:
+        return 1.0
+    s = float(s)
+    if not np.isfinite(s) or s <= 0:
+        raise ValueError(f"growth_titrant_scale must be a positive number, got {s}")
+    return s
+
+
 def _spiked_keeps_own_theta(theta_component):
     """Whether spiked stratified/random binding genotypes keep their own theta.
 
@@ -376,6 +390,21 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
         theta_component=cf.get('theta_component'),
     )
 
+    # In vivo titrant: growth sees each curve at s times the nominal
+    # concentration, binding at the nominal one (the fit's
+    # theta_growth_log_conc_shift = log s, hill_geno). Every growth-side
+    # theta evaluation reads sim_data's concentrations, so scaling them here
+    # covers the prior draw, the wt reference and the overrides; binding
+    # theta is evaluated at the binding concentrations themselves.
+    growth_titrant_scale = growth_titrant_scale_from(cf)
+    growth_sample_df = sample_df
+    if growth_titrant_scale != 1.0:
+        from tfscreen.simulate.sim_data_class import with_titrant_conc
+        nominal = np.sort(sample_df["titrant_conc"].unique()).astype(float)
+        sim_data = with_titrant_conc(sim_data, nominal * growth_titrant_scale)
+        growth_sample_df = sample_df.assign(
+            titrant_conc=sample_df["titrant_conc"] * growth_titrant_scale)
+
     # Derive both RNG objects from the single seed.  They are independent
     # objects with independent state; using the same integer for both introduces
     # no correlation between the two streams.
@@ -472,7 +501,7 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
                 num = sb.get("num")
                 sel = spiked_names if num is None else spiked_names[:int(num)]
                 s_over, s_rows = _spiked_stratified_binding(
-                    sel, cf, sample_df, binding_sample_df, theta_rng_key,
+                    sel, cf, growth_sample_df, binding_sample_df, theta_rng_key,
                     conc_to_col, binding_concs, titrant_name,
                     select_mode=choose_by)
                 theta_gc_override.update(s_over)

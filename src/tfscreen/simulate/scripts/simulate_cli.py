@@ -5,7 +5,8 @@ import pandas as pd
 
 import tfscreen
 from tfscreen.simulate import library_prediction, selection_experiment
-from tfscreen.simulate.binding_data import generate_binding_df
+from tfscreen.simulate.binding_data import generate_binding_df, apply_genotype_offsets
+from tfscreen.simulate.library_prediction import growth_titrant_scale_from
 from tfscreen.simulate.library_binding_data import generate_library_binding_df
 from tfscreen.simulate.presplit_data import generate_presplit_df
 from tfscreen.simulate.base_growth_data import generate_base_growth_df, generate_k_ref_df
@@ -154,6 +155,10 @@ def run_simulation_from_config(
         output_names.append("binding")
         if cf["binding_data"].get("library_binding") is not None:
             output_names.append("library_binding")
+        if cf["binding_data"].get("genotype_offset_sd"):
+            output_names.append("binding_offsets")
+    if cf.get("growth_titrant_scale") is not None:
+        output_names.append("growth_titrant_scale")
     if "presplit_data" in cf:
         output_names.append("presplit")
     if "base_growth_data" in cf:
@@ -409,8 +414,20 @@ def run_simulation_from_config(
             binding_df = pd.concat([binding_df, lib_binding_df], ignore_index=True)
             lib_manifest.to_csv(out_path("library_binding"), index=False)
             print(f"Wrote: {out_path('library_binding')}")
+        binding_df, offset_truth = apply_genotype_offsets(
+            binding_df, binding_cfg.get("genotype_offset_sd", 0.0), rng)
+        if offset_truth is not None:
+            offset_truth.to_csv(out_path("binding_offsets"), index=False)
+            print(f"Wrote: {out_path('binding_offsets')}")
         binding_df.to_csv(out_path("binding"), index=False)
         print(f"Wrote: {out_path('binding')}")
+
+    if cf.get("growth_titrant_scale") is not None:
+        s = growth_titrant_scale_from(cf)
+        pd.DataFrame({"parameter": ["growth_log_conc_shift"],
+                      "ref": [float(np.log(s))]}).to_csv(
+            out_path("growth_titrant_scale"), index=False)
+        print(f"Wrote: {out_path('growth_titrant_scale')}")
 
     if "base_growth_data" in cf:
         base_growth_df = generate_base_growth_df(cf["base_growth_data"], parameters_df, rng)

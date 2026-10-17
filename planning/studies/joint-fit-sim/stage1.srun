@@ -1,0 +1,32 @@
+#!/bin/bash -l
+#SBATCH --account=harmslab
+#SBATCH --job-name=jfsim_fit
+#SBATCH --partition=gpulong
+#SBATCH --time=02-00:00:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --gpus=1
+#SBATCH --mem=0
+#SBATCH --ntasks-per-node=1
+
+# Joint stage 1 on one simulation (planning/studies/joint-fit-sim). Run from
+# the study's cluster directory after simulate.srun:
+#
+#   sbatch --export=ALL,SIM=sim_joint_s1,MODEL=full --output=fit_joint_full.out stage1.srun
+#
+#   SIM    simulation directory (from simulate.srun)
+#   MODEL  full | plain
+#   SEED   fit seed (default 1)
+#
+# Writes fit_${SIM#sim_}_${MODEL}/; a rerun resumes.
+
+module load cuda/12.4.1
+set -e
+SIM="${SIM:?set SIM}"
+MODEL="${MODEL:?set MODEL}"
+SEED="${SEED:-1}"
+STUDY=/gpfs/home/harms/tfscreen/planning/studies/joint-fit-sim
+OUT="fit_${SIM#sim_}_${MODEL}"
+echo ">>> stage 1 ${SIM} ${MODEL} $(date)"
+python "${STUDY}/stage1.py" "${SIM}" "${OUT}" --model "${MODEL}" --seed "${SEED}"
+echo ">>> done $(date)"

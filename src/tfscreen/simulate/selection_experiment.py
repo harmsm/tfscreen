@@ -63,6 +63,7 @@ SIMULATE_KNOWN_KEYS = frozenset({
     "theta_priors",
     "theta_rescale",
     "theta_sim_priors",
+    "growth_titrant_scale",
     # Empirical phenotype source (resample from a fitted PopulationModel)
     "phenotype_source", "empirical",
     # Conditions and growth

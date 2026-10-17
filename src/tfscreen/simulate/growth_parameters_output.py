@@ -22,6 +22,7 @@ sides' formulas must stay in sync by hand (compare
 is the single place that mapping is recorded.
 """
 
+import numpy as np
 import pandas as pd
 
 
@@ -79,6 +80,10 @@ def generate_growth_parameters_df(growth_cfg):
                     f"is missing required parameter '{src_key}'."
                 )
             row[dst_key] = float(params[src_key])
+        # linear's optional occupancy warp, in the fit's extract names
+        if model_name == "linear" and params.get("warp_a") is not None:
+            row["warp_log_a"] = float(np.log(float(params["warp_a"])))
+            row["warp_x0"] = float(params.get("warp_x0", 0.5))
         rows.append(row)
 
     return pd.DataFrame(rows)

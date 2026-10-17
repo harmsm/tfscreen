@@ -94,3 +94,41 @@ def generate_binding_df(binding_cfg, rng, binding_theta_df):
             })
 
     return pd.DataFrame(rows)
+
+
+def apply_genotype_offsets(binding_df, offset_sd, rng):
+    """
+    Add one offset per genotype to every one of its theta_obs.
+
+    The simulated counterpart of the fit's ``theta_binding_noise:
+    genotype_offset``: a genotype's binding differs from its in vivo
+    occupancy (or carries its day's normalization error) by a shift shared
+    across its whole curve, offset_g ~ Normal(0, offset_sd).
+
+    Parameters
+    ----------
+    binding_df : pandas.DataFrame
+        Must have ``genotype`` and ``theta_obs``.
+    offset_sd : float
+        SD of the offsets (theta units); 0 returns the table unchanged and
+        draws nothing.
+    rng : numpy.random.Generator
+
+    Returns
+    -------
+    binding_df : pandas.DataFrame
+    truth : pandas.DataFrame or None
+        ``genotype``, ``offset`` (None when offset_sd is 0).
+    """
+    offset_sd = float(offset_sd)
+    if not np.isfinite(offset_sd) or offset_sd < 0:
+        raise ValueError(f"genotype_offset_sd must be >= 0, got {offset_sd}")
+    if offset_sd == 0 or len(binding_df) == 0:
+        return binding_df, None
+    genotypes = list(pd.unique(binding_df["genotype"].astype(str)))
+    offsets = rng.normal(0.0, offset_sd, size=len(genotypes))
+    lookup = dict(zip(genotypes, offsets))
+    out = binding_df.copy()
+    out["theta_obs"] = (out["theta_obs"].astype(float)
+                        + out["genotype"].astype(str).map(lookup))
+    return out, pd.DataFrame({"genotype": genotypes, "offset": offsets})

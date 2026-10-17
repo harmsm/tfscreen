@@ -1,0 +1,98 @@
+# Joint stage 1 on a simulation
+
+**Question.** With binding back at weight 1 and the joint model's pieces
+(absolute theta from `hill_geno`, a per-marker warp of occupancy, the
+binding-to-growth titrant scale s, one binding offset per binding
+genotype), does stage 1 (wt, spikes and singles, with the congression
+mixture) recover m, the maps, s and theta on a simulation where we know
+them? Does binding at weight 1 leave growth undistorted, and does the full
+model return the null when there is nothing to find?
+
+**Decision it feeds.** `planning/joint-fit-return.md` step 5: whether to
+run step 6 (the real stage 1) with this model, and which pieces it needs.
+
+## Simulations (`make_sim.py`)
+
+Both start from the full-size realistic configuration
+(`planning/studies/full-size-sim/make_sim_config.py`; on the cluster
+`full-sized-sims-3/sim_realistic_s2`), seed 1, so the library, the
+phenotypes and the spikes' curves are the same. Every spike gets binding
+at the lab's 2 uM IPTG grid (16 concentrations, 0 to 5 mM) with noise 0.04,
+the scatter within one real curve. Its curve comes from `spike_hill.csv`:
+wt at the simulator's reference, the other eight drawn by the script.
+
+| arm | kanR+kan | pheS+4CP | s | binding offsets |
+|---|---|---|---|---|
+| `joint` | switch-like, warp a = 8, x0 = 0.5 | graded, a = 1.5, x0 = 0.4 | 0.5 | SD 0.1 per spike |
+| `null` | linear in theta | linear | 1 | none |
+
+New simulator keys (2026-10-16): a linear growth condition's `warp_a` and
+`warp_x0`, the top-level `growth_titrant_scale` and
+`binding_data.genotype_offset_sd`. Their truths are in
+`tfs_sim_growth_parameters.csv` (`warp_log_a`, `warp_x0`),
+`tfs_sim_growth_titrant_scale.csv` (log s) and
+`tfs_sim_binding_offsets.csv`.
+
+## Fits (`stage1.py`)
+
+Stage 1 of the two-stage fit, joint: wt, spikes and singles; `hill_geno`;
+the mixture with the homodimer rule (lambda prior 0.357 +- 0.15); binding
+at weight 1; counts with level tube offsets (SD 0.17); log(n) population
+SD 0.5; one k and m per condition with loose priors. MAP (staged), Laplace
+with 500 draws, extraction, theta predictions.
+
+- `full`: plus the warp on both selection conditions, s (log s ~
+  Normal(0, 1)) and the binding offsets (`genotype_offset`).
+- `plain`: none of those.
+
+| run | simulation | model | asks |
+|---|---|---|---|
+| `fit_joint_s1_full` | joint | full | recovery of m, warps, s, offsets, theta |
+| `fit_joint_s1_plain` | joint | plain | what the pieces buy (the misspecified model) |
+| `fit_null_s1_full` | null | full | the null comes back (a small, s near 1, tau near 0) without costing theta |
+
+**Pass.** On `fit_joint_s1_full`: m within its 95% interval and within
+about 10% of the truth in both selection conditions; warp log a and x0
+covered; log s covered; the offsets covered and tau's interval holding
+0.1; theta coverage near 0.95 for wt, spikes and singles. On
+`fit_null_s1_full`: kanR's and pheS's warps compatible with near-linear,
+log s covering 0, tau's interval reaching toward 0, and theta no worse than
+`fit_joint_s1_full`'s. `fit_joint_s1_plain` should miss somewhere; where
+it does says which piece matters.
+
+## How to run
+
+On the cluster, after pulling the commit that adds this study:
+
+```bash
+mkdir -p /gpfs/projects/harmslab/harms/studies/joint-fit-sim && cd /gpfs/projects/harmslab/harms/studies/joint-fit-sim
+```
+
+```bash
+for a in joint null; do sbatch --export=ALL,ARM=$a,SEED=1 --output=sim_$a.out /gpfs/home/harms/tfscreen/planning/studies/joint-fit-sim/simulate.srun; done
+```
+
+Once both finish (about 90 minutes each; check `ls sim_*_s1/tfs_sim_binding.csv`):
+
+```bash
+for r in joint_s1:full joint_s1:plain null_s1:full; do sbatch --export=ALL,SIM=sim_${r%%:*},MODEL=${r##*:} --output=fit_${r%%:*}_${r##*:}.out /gpfs/home/harms/tfscreen/planning/studies/joint-fit-sim/stage1.srun; done
+```
+
+Then, locally after downloading the fits' outputs and each simulation's
+truth files (`simulate_config.yaml`, `tfs_sim_parameters.csv`,
+`tfs_sim_growth_parameters.csv`, `tfs_sim_growth_titrant_scale.csv`,
+`tfs_sim_binding_offsets.csv`):
+
+```bash
+python analyze.py runs/fit_joint_s1_full:runs/sim_joint_s1 runs/fit_joint_s1_plain:runs/sim_joint_s1 runs/fit_null_s1_full:runs/sim_null_s1 --out out
+```
+
+`analyze.py` writes `out/params.csv` (each fitted parameter against its
+truth, with its 95% interval) and `out/theta.csv` (theta RMSE, bias and
+95% coverage by group: wt, spikes, singles). Theta is compared in binding
+units, the fitted curve against the truth curve at the growth
+concentrations.
+
+## Results
+
+Not run yet.

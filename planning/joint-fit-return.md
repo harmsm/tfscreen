@@ -195,6 +195,12 @@ anchored by binding (the k-shift refits failed and are not reused).
    warp), simulate kanR switch-like and pheS graded with binding for the
    spikes at known s and deviations, and check stage 1 recovers m, the
    maps, s and theta, and that binding at weight 1 does not distort growth.
+   - [x] Simulator keys (2026-10-16): `warp_a`/`warp_x0` on a linear
+     growth entry, `growth_titrant_scale`, `binding_data.genotype_offset_sd`,
+     with truth files.
+   - [ ] The study (`planning/studies/joint-fit-sim/`): joint and null
+     simulations from the full-size realistic config, fitted with the full
+     and plain joint stage 1 (three runs).
 6. [ ] **Real stage 1.** wt, spikes and singles with binding at 2 uM, the
    swapped row corrected; report m against the within-tube values, the
    maps, s, the deviations (M42I), and binding residuals per genotype;
