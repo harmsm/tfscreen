@@ -153,8 +153,10 @@ def jax_model(data: DataClass,
                                   data.growth,
                                   priors.growth.activity)
 
-    # theta (the genotype's own, before congression)
-    theta_growth = calc_theta(theta,data.growth)
+    # theta (the genotype's own, before congression), at the titrant the
+    # growth sees (s times nominal, if the theta component has a shift)
+    growth_theta_data = growth_titrant(theta, data.growth)
+    theta_growth = calc_theta(theta, growth_theta_data)
     pyro.deterministic(f"theta_growth_pred",theta_growth)
 
     # Transformation parameters (lambda for the mixture; none for single)
@@ -234,7 +236,7 @@ def jax_model(data: DataClass,
         # transformation/mixture.py.
         population = None
         if transformation_needs_population:
-            population = _population(data.growth, theta, calc_theta,
+            population = _population(growth_theta_data, theta, calc_theta,
                                      dk_population, activity_population)
         classes = cell_classes((noisy_theta_growth, activity, dk_geno),
                                population, trans_params, data.growth)
@@ -281,6 +283,21 @@ def jax_model(data: DataClass,
                         priors=priors.growth.growth_obs)
         if has_binding:
             binding_observer("binding", data.binding, binding_pred)
+
+
+def growth_titrant(theta, growth):
+    """
+    The growth data as the theta component should see it: concentrations
+    multiplied by s when the component's parameters carry a growth titrant
+    shift log s (``growth_log_conc_shift``, hill_geno), else unchanged.
+    Binding data are never shifted, so the curve is in binding units.
+    A zero concentration stays zero (its log is a large negative sentinel).
+    """
+    shift = getattr(theta, "growth_log_conc_shift", None)
+    if shift is None:
+        return growth
+    return growth.replace(log_titrant_conc=growth.log_titrant_conc + shift,
+                          titrant_conc=growth.titrant_conc * jnp.exp(shift))
 
 
 def _population(growth, theta, calc_theta, dk_population, activity_population):

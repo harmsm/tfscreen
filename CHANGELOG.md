@@ -86,6 +86,21 @@ fall into two kinds:
 
 ### Added
 
+- **A titrant scale between binding and growth (`hill_geno`).** With
+  `theta_growth_log_conc_shift_scale` > 0 (a priors row, e.g.
+  `tfs-configure-model --set_priors theta_growth_log_conc_shift_scale=1`),
+  one global site `theta_growth_log_conc_shift` (log s) ~ Normal(loc,
+  scale) is sampled and growth sees each genotype's curve at s times the
+  nominal titrant concentration, while binding sees the nominal one: the
+  in vivo IPTG need not equal the nominal, and the curve is in binding
+  units. Applied in `generative/model.py` (`growth_titrant`) to the growth
+  data the theta component sees, including the congression mixture's
+  population and `tfs-predict-growth`'s; extracted as
+  `{out_prefix}_growth_log_conc_shift.csv`. Off by default (scale 0, no
+  site), so existing models trace unchanged. `tfs-predict-theta` still
+  reports the curve at the concentrations asked for, in binding units.
+  Joint-fit plan step 4(a) (`planning/joint-fit-return.md`).
+
 - **`tfs-process-binding`: a lab binding table to a `binding_df`.** One
   row per measurement (genotype, protein and titrant concentrations in
   molar by default, theta, replicate and date) becomes one row per

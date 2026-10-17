@@ -9,6 +9,7 @@ from tfscreen.tfmodel.inference.model_params import (
     sample_keys,
 )
 from tfscreen.tfmodel.tensors.batch import get_batch as _get_batch
+from tfscreen.tfmodel.generative.model import growth_titrant
 from tfscreen.tfmodel.inference.initialization import structure_trace
 import jax
 from jax import numpy as jnp
@@ -435,7 +436,8 @@ def _population_theta(orchestrator, param_posteriors, pred_growth,
                           titrant_conc=pred_growth.titrant_conc,
                           log_titrant_conc=pred_growth.log_titrant_conc,
                           num_titrant_conc=pred_growth.num_titrant_conc)
-    return calc_theta(theta_param, view)
+    # the titrant the growth sees (s times nominal), as in the model
+    return calc_theta(theta_param, growth_titrant(theta_param, view))
 
 
 def _build_population_references(orchestrator, param_posteriors, pred_growth,

@@ -17,6 +17,7 @@ class ExtractionContext:
     mut_labels: List[str]
     pair_labels: List[str]
     growth_shares_replicates: bool
+    theta_priors: Any = None
 
 
 def _extract_param_est(input_df,
@@ -159,6 +160,7 @@ def extract_parameters(orchestrator, posteriors, q_to_get=None):
         mut_labels=orchestrator.mut_labels,
         pair_labels=orchestrator.pair_labels,
         growth_shares_replicates=orchestrator._growth_shares_replicates,
+        theta_priors=getattr(getattr(orchestrator, "priors", None), "theta", None),
     )
 
     component_selections = [
