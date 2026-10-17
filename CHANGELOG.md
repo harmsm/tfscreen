@@ -86,6 +86,15 @@ fall into two kinds:
 
 ### Added
 
+- **`tfs-extract-params` writes linear growth's warp.** With `m_warp` on,
+  `{out_prefix}_warp_log_a.csv` and `{out_prefix}_warp_x0.csv` hold each
+  warped condition's steepness and threshold (the extraction context now
+  carries the condition_growth priors, so only warped conditions get rows).
+  The warp runs with `hill_geno`'s absolute theta and the congression
+  mixture's partition-function rules, acting on each cell class's theta;
+  tested with the titrant shift and the binding offsets together. Joint-fit
+  plan step 4(c) (`planning/joint-fit-return.md`).
+
 - **`theta_binding_noise: genotype_offset`.** Each binding genotype's
   binding theta is its curve plus one offset of its own, the same at every
   titrant concentration, delta_g = tau * z_g with z_g ~ Normal(0, 1) and

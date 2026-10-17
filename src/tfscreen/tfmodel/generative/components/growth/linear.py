@@ -674,10 +674,29 @@ def get_extract_specs(ctx):
         return []
     cond_rep_cols = (["condition_rep"] if ctx.growth_shares_replicates
                      else ["replicate", "condition_rep"])
-    return [dict(
-        input_df=ctx.growth_tm.map_groups["condition_rep"],
+    cond_df = ctx.growth_tm.map_groups["condition_rep"]
+    specs = [dict(
+        input_df=cond_df,
         params_to_get=["growth_m", "growth_k"],
         map_column="map_condition_rep",
         get_columns=cond_rep_cols,
         in_run_prefix="condition_",
     )]
+
+    # The warp's steepness and threshold, one per warped condition, in the
+    # order of the {name}_warp_conditions plate (map_condition_rep order).
+    flags = getattr(getattr(ctx, "condition_growth_priors", None), "m_warp", False)
+    if isinstance(flags, (bool, np.bool_, tuple)) and np.any(flags):
+        cond_df = cond_df.sort_values("map_condition_rep")
+        mask = _pin_mask(flags, len(cond_df))
+        if mask.any():
+            warped = cond_df[mask].copy()
+            warped["map_warp"] = np.arange(len(warped))
+            specs.append(dict(
+                input_df=warped,
+                params_to_get=["warp_log_a", "warp_x0"],
+                map_column="map_warp",
+                get_columns=cond_rep_cols,
+                in_run_prefix="condition_growth_",
+            ))
+    return specs

@@ -20,6 +20,8 @@ class ExtractionContext:
     theta_priors: Any = None
     # Binding genotypes in binding-tensor order (None without binding data).
     binding_genotypes: Any = None
+    # The condition_growth component's priors (static flags such as m_warp).
+    condition_growth_priors: Any = None
 
 
 def _binding_genotypes(orchestrator):
@@ -175,6 +177,9 @@ def extract_parameters(orchestrator, posteriors, q_to_get=None):
         growth_shares_replicates=orchestrator._growth_shares_replicates,
         theta_priors=getattr(getattr(orchestrator, "priors", None), "theta", None),
         binding_genotypes=_binding_genotypes(orchestrator),
+        condition_growth_priors=getattr(getattr(getattr(orchestrator, "priors", None),
+                                                "growth", None),
+                                        "condition_growth", None),
     )
 
     component_selections = [

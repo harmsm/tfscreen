@@ -181,8 +181,15 @@ anchored by binding (the k-shift refits failed and are not reused).
      tau * z_g with a learned tau. Additive in theta because a curve's
      day-normalization error and M42I's disagreement are level shifts; a
      log K deviation can follow if step 6's residuals show midpoint shifts.
-   - (c) [ ] Let `m_warp` and the mixture's partition-function rules run
-     with `hill_geno` (check the orchestrator's refusals).
+   - (c) [x] `m_warp` and the mixture's partition-function rules with
+     `hill_geno` (2026-10-16): nothing refused them; the warp acts on each
+     cell class's theta after the mixture combines plasmids.
+     `tests/tfscreen/tfmodel/generative/test_joint_warp.py` traces every
+     piece together and checks a near-linear warp reproduces the unwarped
+     model through the mixture; `tfs-extract-params` now writes
+     `warp_log_a`/`warp_x0` per warped condition. End to end on the smoke
+     data (`--growth_priors` with an `m_warp` column, homodimer mixture,
+     s, offsets): MAP, Laplace, extraction, chunked prediction.
 5. [ ] **Simulation first.** Add a per-condition occupancy warp to the
    simulator's growth linkage (it has linear, power and saturation, no
    warp), simulate kanR switch-like and pheS graded with binding for the
