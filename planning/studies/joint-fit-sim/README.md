@@ -207,3 +207,22 @@ Starting the full model from the plain one is the recipe.
      the median error is small: the MAP plus Laplace leaves the shared
      parameters' error (m above all) out of each genotype's interval.
 
+### Run 4 (set up 2026-10-17): the loss at the true k and m
+
+The null simulation fitted with the plain (true) model, k and m pinned at
+their truth (`stage1.py --pin_km_truth`, `stage1.srun` `PIN=1`): once from
+scratch (staged MAP, like `fit_null_s1_plain`) and once started from
+`fit_null_s1_plain`'s MAP, in case the free fit's basin matters. Compare
+their MAP losses with the free fit's 783,286 (pinning drops only the loose
+k/m prior terms, a few nats). Much worse at the truth: stage 1 prefers
+the steep m, and something in it is misspecified. Within a few tens of
+nats: m drifts along a flat direction, and the fix belongs with the
+intervals.
+
+The jobs now ask for 6 hours on `gpu` (each fit has taken 20-35 minutes,
+each simulation about 40).
+
+```bash
+cd /gpfs/projects/harmslab/harms/studies/joint-fit-sim && sbatch --export=ALL,SIM=sim_null_s1,MODEL=plain,PIN=1 --output=fit_null_s1_plain_pinkm.out /gpfs/home/harms/tfscreen/planning/studies/joint-fit-sim/stage1.srun && sbatch --export=ALL,SIM=sim_null_s1,MODEL=plain,PIN=1,INIT=fit_null_s1_plain --output=fit_null_s1_plain_from_plain_pinkm.out /gpfs/home/harms/tfscreen/planning/studies/joint-fit-sim/stage1.srun
+```
+

@@ -1,8 +1,8 @@
 #!/bin/bash -l
 #SBATCH --account=harmslab
 #SBATCH --job-name=jfsim_fit
-#SBATCH --partition=gpulong
-#SBATCH --time=02-00:00:00
+#SBATCH --partition=gpu
+#SBATCH --time=06:00:00
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
 #SBATCH --gpus=1
@@ -19,6 +19,8 @@
 #   SEED   fit seed (default 1)
 #   INIT   optional: start at this fit's MAP (e.g. fit_null_s1_plain); the
 #          output is then fit_${SIM#sim_}_${MODEL}_from_${INIT#fit_*_s1_}
+#   PIN    optional: 1 pins k and m at the simulation's truth (stage1.py
+#          --pin_km_truth); output suffix _pinkm
 #
 # Writes fit_${SIM#sim_}_${MODEL}/; a rerun resumes.
 
@@ -33,6 +35,10 @@ EXTRA=()
 if [[ -n "${INIT:-}" ]]; then
     OUT="${OUT}_from_${INIT#fit_*_s1_}"
     EXTRA=(--init_from "${INIT}/tfs_fit_model_params.npz")
+fi
+if [[ "${PIN:-0}" == 1 ]]; then
+    OUT="${OUT}_pinkm"
+    EXTRA+=(--pin_km_truth)
 fi
 echo ">>> stage 1 ${SIM} ${MODEL} -> ${OUT} $(date)"
 python "${STUDY}/stage1.py" "${SIM}" "${OUT}" --model "${MODEL}" --seed "${SEED}" "${EXTRA[@]}"

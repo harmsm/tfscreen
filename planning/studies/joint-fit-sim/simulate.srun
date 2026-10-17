@@ -1,8 +1,8 @@
 #!/bin/bash -l
 #SBATCH --account=harmslab
 #SBATCH --job-name=jfsim_sim
-#SBATCH --partition=gpulong
-#SBATCH --time=01-00:00:00
+#SBATCH --partition=gpu
+#SBATCH --time=06:00:00
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
 #SBATCH --gpus=1
