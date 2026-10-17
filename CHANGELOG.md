@@ -74,6 +74,21 @@ fall into two kinds:
 
 ### Added
 
+- **`tfs-process-binding`: a lab binding table to a `binding_df`.** One
+  row per measurement (genotype, protein and titrant concentrations in
+  molar by default, theta, replicate and date) becomes one row per
+  genotype and IPTG concentration at a chosen protein concentration (2 uM
+  by default), with the titrant in mM. Concentrations are rounded to six
+  significant digits before grouping, since the lab's values carry
+  floating-point residue that differs between days and would otherwise
+  split replicates of one point. Measurements within a replicate are
+  averaged first; `theta_std` is the standard error of the replicate mean
+  from one replicate SD pooled over every replicated point at that protein
+  concentration (most points have one replicate), or from `--theta_std`.
+  Writes `{out_prefix}.csv` for `tfs-configure-model --binding_df` and a
+  summary with replicate counts (`process_raw/binding.py`; joint-fit plan
+  step 2, `planning/joint-fit-return.md`).
+
 - **`tfs-check-tubes`: flag tubes whose composition disagrees with their
   titrant label.** A routine QC of the growth table from
   `tfs-process-counts`, for any titrant. Within each library x condition

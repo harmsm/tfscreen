@@ -2126,3 +2126,72 @@ tfs-fit-two-stage
      --no_consistency      Turn off (on by default): Run the consistency step with 'all'
                            (default True; --no_consistency skips it, as does consistency:
                            false in the YAML).
+
+tfs-process-binding
+-------------------
+
+.. code-block:: text
+
+   usage: tfs-process-binding [-h] [--protein_conc PROTEIN_CONC]
+                              [--protein_conc_units PROTEIN_CONC_UNITS]
+                              [--genotype_col GENOTYPE_COL] [--protein_col PROTEIN_COL]
+                              [--titrant_col TITRANT_COL] [--theta_col THETA_COL]
+                              [--conc_units CONC_UNITS] [--replicate_cols REPLICATE_COLS]
+                              [--titrant_name TITRANT_NAME] [--theta_std THETA_STD]
+                              [--sig_digits SIG_DIGITS] [--out_prefix OUT_PREFIX]
+                              binding_file
+
+   Average a lab binding table into a binding_df at one protein
+   concentration.
+
+   The table has one row per measurement (genotype, protein and titrant
+   concentrations, theta, and the columns naming its replicate). Rows
+   without theta are dropped; concentrations are rounded to sig_digits
+   significant digits so replicates from different days line up;
+   measurements within a replicate are averaged, then replicates per
+   genotype and titrant concentration (theta_obs). theta_std is the
+   standard error of that mean from one replicate SD pooled over every
+   replicated point at this protein concentration, or from --theta_std.
+   The titrant is written in mM.
+
+   Writes {out_prefix}.csv (genotype, titrant_name, titrant_conc,
+   theta_obs, theta_std; for tfs-configure-model --binding_df) and
+   {out_prefix}_summary.csv (replicate and measurement counts and each
+   point's own replicate SD).
+
+   positional arguments:
+     binding_file          The lab's binding table (CSV, TSV or Excel).
+
+   options:
+     -h, --help            show this help message and exit
+     --protein_conc PROTEIN_CONC
+                           Protein concentration to keep, in protein_conc_units.
+                           (default: 2.0)
+     --protein_conc_units PROTEIN_CONC_UNITS
+                           Unit of protein_conc: M, mM, uM or nM. (default: 'uM')
+     --genotype_col GENOTYPE_COL
+                           Genotype column. (default: 'genotype')
+     --protein_col PROTEIN_COL
+                           Protein concentration column. (default:
+                           'protein_dimer_conc_molar')
+     --titrant_col TITRANT_COL
+                           Titrant concentration column. (default: 'iptg_conc_molar')
+     --theta_col THETA_COL
+                           Measured theta column. (default: 'theta')
+     --conc_units CONC_UNITS
+                           Unit of the protein and titrant columns: M, mM, uM or nM.
+                           (default: 'M')
+     --replicate_cols REPLICATE_COLS
+                           Comma-separated columns that identify one replicate; empty for
+                           one replicate per row. (default: 'biorep,date')
+     --titrant_name TITRANT_NAME
+                           titrant_name for every row; must match the growth table's.
+                           (default: 'iptg')
+     --theta_std THETA_STD
+                           Fixed per-replicate SD instead of the pooled one. (default:
+                           None)
+     --sig_digits SIG_DIGITS
+                           Significant digits the concentrations are rounded to.
+                           (default: 6)
+     --out_prefix OUT_PREFIX
+                           Output prefix. (default: 'tfs_binding')

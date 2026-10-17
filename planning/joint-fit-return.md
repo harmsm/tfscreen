@@ -1,11 +1,10 @@
 ---
 title: Return to a joint fit of growth and binding, with per-marker maps
-status: idea
+status: active
 filed: 2026-10-16
 area: tfmodel
 revisit_when: >-
-  Drafted 2026-10-16 for the user's review; becomes the active plan once
-  agreed. Supersedes the open steps of planning/relative-m.md and is roadmap
+  Agreed 2026-10-16. Supersedes the open steps of planning/relative-m.md and is roadmap
   step 9 (planning/analysis-roadmap.md) with step 8's map measured.
 related:
   - planning/growth-only-relative-fit.md
@@ -152,11 +151,18 @@ anchored by binding (the k-shift refits failed and are not reused).
 
 ## Steps
 
-1. [ ] **Agree this plan** (user).
-2. [ ] **Binding input.** A converter from the lab's well-level binding
-   table to `binding_df` (genotype, titrant_name, titrant_conc, theta_obs,
-   theta_std) at a chosen protein concentration, means and SEs over wells
-   and replicates; the lab's data stay out of the repository. Default 2 uM.
+1. [x] **Agree this plan** (user, 2026-10-16).
+2. [x] **Binding input.** `tfs-process-binding` (2026-10-16): the lab's
+   table to `binding_df` at one protein concentration (default 2 uM),
+   replicate means, `theta_std` from a pooled replicate SD. On the
+   2026-10-15 table, 2 uM gives 110 points over 7 genotypes (D88A and
+   V95N were measured only at 20 uM). Only wt is replicated there (five
+   days), so the pooled SD (0.13, 31 dof) is wt's day-to-day scatter, about
+   three times the point-to-point scatter within one curve. A day effect
+   is shared by a whole curve, so treating the points as independent
+   overstates how well a curve's level is known; step 4(b)'s per-genotype
+   deviation is where that shared error should go. At 20 uM the pooled SD
+   is 0.059 (150 dof).
 3. [ ] **Weight 1.** Change the orchestrator's default `binding_weight` to
    1 (keeping the option), with a CHANGELOG entry and tests; check old
    configs that relied on the auto weight.
