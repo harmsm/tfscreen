@@ -207,22 +207,56 @@ Starting the full model from the plain one is the recipe.
      the median error is small: the MAP plus Laplace leaves the shared
      parameters' error (m above all) out of each genotype's interval.
 
-### Run 4 (set up 2026-10-17): the loss at the true k and m
+### Run 4 (2026-10-17): the loss at the true k and m
 
-The null simulation fitted with the plain (true) model, k and m pinned at
-their truth (`stage1.py --pin_km_truth`, `stage1.srun` `PIN=1`): once from
-scratch (staged MAP, like `fit_null_s1_plain`) and once started from
-`fit_null_s1_plain`'s MAP, in case the free fit's basin matters. Compare
-their MAP losses with the free fit's 783,286 (pinning drops only the loose
-k/m prior terms, a few nats). Much worse at the truth: stage 1 prefers
-the steep m, and something in it is misspecified. Within a few tens of
-nats: m drifts along a flat direction, and the fix belongs with the
-intervals.
+The null simulation, plain (true) model, k and m pinned at their truth:
+from `fit_null_s1_plain`'s MAP, converged at 784,031; from scratch,
+784,068 (still descending at step 1e-5). The free fit is 783,286, so the
+truth costs about 745 nats: stage 1 prefers the steep m, by far more
+than four parameters' noise. At the truth, theta is much better
+(singles RMSE 0.020 against 0.056, coverage 0.70 against 0.10; spikes
+0.012, wt 0.011): the steep m is most of stage 1's theta error.
 
-The jobs now ask for 6 hours on `gpu` (each fit has taken 20-35 minutes,
-each simulation about 40).
+Attribution (`attribute.py`, pinned minus free at each MAP; total -720):
+
+| | nats |
+|---|---|
+| growth, pheS+4CP | -396 |
+| growth, pheS-4CP | -106 |
+| growth, kanR+kan / kanR-kan | -64 / -31 |
+| log prior (theta population scales and offsets, mostly) | -161 |
+| binding | +37 |
+
+- pheS+4CP's loss is in the deep singles (> 1e5 reads), at 0.1 and 1 mM
+  IPTG (-261 together), growing with selection time, and in rows whose
+  true theta is below 0.1 (-366 of -396): the cells that grow slowest
+  under 4CP, whose counts their co-transformed partners come to
+  dominate. Fitted lambda is 0.335 free and 0.301 pinned, against the
+  simulated 0.357.
+- The prior's share: at the true m the singles' curves must spread wider,
+  which the theta population scales charge for; shrinkage of the theta
+  range is part of what a steeper m buys.
+- Binding agrees with the truth better (+37).
+
+So the steep m most likely compensates for how the fit's congression
+mixture (fixed co-resident sets, `congression_sets` [12, 3, 1]) describes
+slow growers, plus some shrinkage. The simulator and the fit share the
+congression rules (homodimer, dilution); what differs is that the fit
+approximates each cell's co-residents by a few fixed draws.
+
+### Run 5 (set up 2026-10-17): without congression
+
+The control: the null simulation without congression
+(`make_sim.py --arm nocong`, `transformation_poisson_lambda` 0, same seed
+and library), fitted with the plain model without the mixture
+(`stage1.py --no_mixture`, `NOMIX=1`), free and with k and m pinned at the
+truth. If m comes back unbiased and the truth costs a few nats, the
+mixture's approximation is the cause.
 
 ```bash
-cd /gpfs/projects/harmslab/harms/studies/joint-fit-sim && sbatch --export=ALL,SIM=sim_null_s1,MODEL=plain,PIN=1 --output=fit_null_s1_plain_pinkm.out /gpfs/home/harms/tfscreen/planning/studies/joint-fit-sim/stage1.srun && sbatch --export=ALL,SIM=sim_null_s1,MODEL=plain,PIN=1,INIT=fit_null_s1_plain --output=fit_null_s1_plain_from_plain_pinkm.out /gpfs/home/harms/tfscreen/planning/studies/joint-fit-sim/stage1.srun
+cd /gpfs/projects/harmslab/harms/studies/joint-fit-sim && sim=$(sbatch --parsable --export=ALL,ARM=nocong,SEED=1 --output=sim_nocong.out /gpfs/home/harms/tfscreen/planning/studies/joint-fit-sim/simulate.srun) && echo "sim $sim"
 ```
 
+```bash
+sbatch --dependency=afterok:$sim --export=ALL,SIM=sim_nocong_s1,MODEL=plain,NOMIX=1 --output=fit_nocong_s1_plain_single.out /gpfs/home/harms/tfscreen/planning/studies/joint-fit-sim/stage1.srun && sbatch --dependency=afterok:$sim --export=ALL,SIM=sim_nocong_s1,MODEL=plain,NOMIX=1,PIN=1 --output=fit_nocong_s1_plain_single_pinkm.out /gpfs/home/harms/tfscreen/planning/studies/joint-fit-sim/stage1.srun
+```

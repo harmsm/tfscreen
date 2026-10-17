@@ -4,7 +4,7 @@ binding together.
 
     python stage1.py SIM_DIR OUT_DIR --model full|plain [--seed 1] [--max_num_epochs N]
                      [--init_from OTHER_FIT/tfs_fit_model_params.npz]
-                     [--pin_km_truth]
+                     [--pin_km_truth] [--no_mixture]
 
 SIM_DIR holds a tfs-simulate run of make_sim.py's config (simulate_config.yaml,
 tfs_sim_growth.csv, tfs_sim_binding.csv). Each step is skipped when its
@@ -32,6 +32,9 @@ from the plain one, its extra sites (warps, s, offsets) at their guesses.
 fits put m 15-25% steep even with the true model, and the loss at the
 true k and m against the free fit's says whether stage 1 prefers that m
 or only drifts along a flat direction.
+
+--no_mixture fits without the congression mixture (transformation
+single), for a simulation without congression (make_sim.py --arm nocong).
 """
 
 import argparse
@@ -85,6 +88,7 @@ def main():
     ap.add_argument("--max_num_epochs", type=int, default=None)
     ap.add_argument("--init_from", default=None)
     ap.add_argument("--pin_km_truth", action="store_true")
+    ap.add_argument("--no_mixture", action="store_true")
     args = ap.parse_args()
     sim = os.path.abspath(args.sim_dir)
     init_from = None if args.init_from is None else os.path.abspath(args.init_from)
@@ -109,14 +113,16 @@ def main():
         set_priors = ["sigma_fixed=0.17", "theta_log_hill_n_hyper_scale_fixed=0.5"]
         if full:
             set_priors.append("theta_growth_log_conc_shift_scale=1.0")
+        mixture = ({} if args.no_mixture else
+                   dict(transformation_model="mixture",
+                        transformation_lambda=[0.357, 0.15],
+                        congression_theta_rule="homodimer"))
         configure_model(
             binding_df=os.path.join(sim, "tfs_sim_binding.csv"),
             growth_df=os.path.abspath("tfs_growth.csv"),
             library_config=library_config,
             theta_model="hill_geno",
-            transformation_model="mixture",
-            transformation_lambda=[0.357, 0.15],
-            congression_theta_rule="homodimer",
+            **mixture,
             theta_binding_noise_model="genotype_offset" if full else "zero",
             growth_shares_replicates=True,
             batch_size=4096,

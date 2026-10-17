@@ -1,7 +1,7 @@
 """
 Simulate configs for the joint-fit simulation test (README).
 
-    python make_sim.py BASE_CONFIG OUT_DIR --arm joint|null [--seed 1]
+    python make_sim.py BASE_CONFIG OUT_DIR --arm joint|null|nocong [--seed 1]
 
 BASE_CONFIG is a full-size realistic simulate config
 (planning/studies/full-size-sim/make_sim_config.py; on the cluster
@@ -16,7 +16,10 @@ with its relative paths made absolute, plus
   (warp a = 8, x0 = 0.5), pheS+4CP's graded (a = 1.5, x0 = 0.4), growth
   seeing IPTG at s = 0.5 times nominal, and one binding offset per spike
   (SD 0.1);
-- arm null: none of those (linear growth, s = 1, no offsets).
+- arm null: none of those (linear growth, s = 1, no offsets);
+- arm nocong: null without congression (transformation_poisson_lambda 0),
+  the control for run 4's attribution, which put the steep m in pheS+4CP's
+  slow-growing, congression-dominated rows.
 
 The spikes' curves come from a params file so that their Hill truth is
 the curve simulated (the stratified path pastes pool curves over the
@@ -41,6 +44,8 @@ ARMS = {
     "joint": dict(warp={"kanR+kan": (8.0, 0.5), "pheS+4CP": (1.5, 0.4)},
                   growth_titrant_scale=0.5, genotype_offset_sd=0.1),
     "null": dict(warp={}, growth_titrant_scale=None, genotype_offset_sd=0.0),
+    "nocong": dict(warp={}, growth_titrant_scale=None, genotype_offset_sd=0.0,
+                   transformation_poisson_lambda=0.0),
 }
 
 # The simulator's hill_geno wt reference (get_sim_hyperparameters).
@@ -100,6 +105,8 @@ def main():
             raise ValueError(f"{cond} is not a growth condition of the base config")
         cf["growth"][cond]["warp_a"] = a
         cf["growth"][cond]["warp_x0"] = x0
+    if "transformation_poisson_lambda" in arm:
+        cf["transformation_poisson_lambda"] = arm["transformation_poisson_lambda"]
     if arm["growth_titrant_scale"] is not None:
         cf["growth_titrant_scale"] = arm["growth_titrant_scale"]
     cf["binding_data"] = {

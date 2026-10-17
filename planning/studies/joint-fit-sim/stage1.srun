@@ -21,6 +21,8 @@
 #          output is then fit_${SIM#sim_}_${MODEL}_from_${INIT#fit_*_s1_}
 #   PIN    optional: 1 pins k and m at the simulation's truth (stage1.py
 #          --pin_km_truth); output suffix _pinkm
+#   NOMIX  optional: 1 fits without the congression mixture (stage1.py
+#          --no_mixture); output suffix _single
 #
 # Writes fit_${SIM#sim_}_${MODEL}/; a rerun resumes.
 
@@ -35,6 +37,10 @@ EXTRA=()
 if [[ -n "${INIT:-}" ]]; then
     OUT="${OUT}_from_${INIT#fit_*_s1_}"
     EXTRA=(--init_from "${INIT}/tfs_fit_model_params.npz")
+fi
+if [[ "${NOMIX:-0}" == 1 ]]; then
+    OUT="${OUT}_single"
+    EXTRA+=(--no_mixture)
 fi
 if [[ "${PIN:-0}" == 1 ]]; then
     OUT="${OUT}_pinkm"
