@@ -385,7 +385,10 @@ def configure_model(binding_df=None,
         'logit_normal'.
     theta_binding_noise_model : str, optional
         Model to use for stochastic experimental noise in theta measured by
-        binding. Allowed values are 'zero' (default) or 'beta'.
+        binding. Allowed values are 'zero' (default), 'beta' or
+        'genotype_offset' (one offset per binding genotype, the same at every
+        titrant concentration, with a learned scale: an in vivo/in vitro
+        difference or a curve's day-normalization error).
     growth_noise_model : str, optional
         Model for additive growth-rate noise. 'zero' (default) adds no noise;
         'normal_kt' learns a global sigma_k that inflates the observation scale

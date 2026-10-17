@@ -218,6 +218,13 @@ class BindingData:
     struct_contact_pair_idx: Any = field(pytree_node=False, default=None)
     struct_contact_distances: Any = field(pytree_node=False, default=None)
 
+    # Each batch position's ordinal among the binding genotypes (their order
+    # on the binding tensors' genotype axis), for latents that exist only
+    # for binding genotypes (noise/genotype_offset). Joint models:
+    # arange(num_binding), since the binding tensors are never sliced and
+    # batch_idx holds library indices. Binding-only: the batch's indices.
+    binding_ordinal: Any = None
+
 
 @dataclass(frozen=True)
 class PreSplitData:

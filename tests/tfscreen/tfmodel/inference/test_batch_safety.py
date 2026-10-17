@@ -168,6 +168,7 @@ _SAFE_VARIANTS = [
     ("theta_growth_noise", "logit_normal"),
     ("theta_binding_noise", "zero"),
     ("theta_binding_noise", "beta"),
+    ("theta_binding_noise", "genotype_offset"),
     ("growth_noise", "zero"),
     ("growth_noise", "normal_kt"),
     ("sample_offset", "zero"),
@@ -350,11 +351,14 @@ def test_epistasis_predictions_follow_batch_order(theta, activity):
     assert find_orchestrator_batch_order_mismatches(orchestrator) == {}
 
 
-@pytest.mark.parametrize("theta", ["hill_geno", "categorical_geno"])
-def test_binding_only_predictions_follow_batch_order(theta):
+@pytest.mark.parametrize("theta,noise", [("hill_geno", "zero"),
+                                         ("categorical_geno", "zero"),
+                                         ("hill_geno", "genotype_offset")])
+def test_binding_only_predictions_follow_batch_order(theta, noise):
     orchestrator = ModelOrchestrator(None, _BINDING_CSV,
                                      binding_only=True,
-                                     theta=theta)
+                                     theta=theta,
+                                     theta_binding_noise=noise)
     assert find_orchestrator_batch_order_mismatches(orchestrator) == {}
 
 

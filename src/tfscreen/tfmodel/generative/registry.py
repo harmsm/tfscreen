@@ -47,6 +47,7 @@ from .components.theta_rescale import logit as theta_rescale_logit
 
 from .components.noise import zero as no_noise
 from .components.noise import beta as beta_noise
+from .components.noise import genotype_offset as genotype_offset_noise
 from .components.noise import logit_normal as logit_normal_noise
 
 from .components.growth_noise import zero as growth_noise_zero
@@ -119,6 +120,7 @@ model_registry = {
     "theta_binding_noise":{
         "zero":no_noise,
         "beta":beta_noise,
+        "genotype_offset":genotype_offset_noise,
     },
     "growth_noise":{
         "zero":growth_noise_zero,

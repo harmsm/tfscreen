@@ -18,6 +18,19 @@ class ExtractionContext:
     pair_labels: List[str]
     growth_shares_replicates: bool
     theta_priors: Any = None
+    # Binding genotypes in binding-tensor order (None without binding data).
+    binding_genotypes: Any = None
+
+
+def _binding_genotypes(orchestrator):
+    """Binding genotype labels in binding-tensor order, or None."""
+    tm = getattr(orchestrator, "binding_tm", None)
+    if tm is None:
+        return None
+    names = list(tm.tensor_dim_names)
+    if "genotype" not in names:
+        return None
+    return [str(g) for g in tm.tensor_dim_labels[names.index("genotype")]]
 
 
 def _extract_param_est(input_df,
@@ -161,6 +174,7 @@ def extract_parameters(orchestrator, posteriors, q_to_get=None):
         pair_labels=orchestrator.pair_labels,
         growth_shares_replicates=orchestrator._growth_shares_replicates,
         theta_priors=getattr(getattr(orchestrator, "priors", None), "theta", None),
+        binding_genotypes=_binding_genotypes(orchestrator),
     )
 
     component_selections = [
@@ -173,6 +187,9 @@ def extract_parameters(orchestrator, posteriors, q_to_get=None):
         ("transformation", orchestrator._transformation),
         ("sample_offset", getattr(orchestrator, "_sample_offset", "zero")),
     ]
+    if getattr(orchestrator, "_has_binding", False):
+        component_selections.append(
+            ("theta_binding_noise", orchestrator._theta_binding_noise))
 
     extract = []
     for category, selection in component_selections:

@@ -403,6 +403,15 @@ def _posterior_median(param_posteriors, site, max_samples):
     return np.median(np.asarray(values[:n_use]), axis=0)
 
 
+def _binding_labels(orchestrator):
+    """Binding genotypes in binding-tensor order ([] without binding)."""
+    tm = getattr(orchestrator, "binding_tm", None)
+    if tm is None:
+        return []
+    names = list(tm.tensor_dim_names)
+    return [str(g) for g in tm.tensor_dim_labels[names.index("genotype")]]
+
+
 def _population_theta(orchestrator, param_posteriors, pred_growth,
                       max_samples, model_params=None):
     """
@@ -713,6 +722,25 @@ def predict(orchestrator,
                         )
                     val = jnp.take(val, jnp.array(indices), axis=frame.dim)
 
+                continue
+
+            # Latents that exist only for binding genotypes (noise/
+            # genotype_offset's "*_binding_plate") follow the binding
+            # genotypes by label: a subset's binding table holds only the
+            # binding genotypes that are in its growth table.
+            if plate_name.endswith("_binding_plate"):
+                old_b = _binding_labels(orchestrator)
+                new_b = _binding_labels(new_orchestrator)
+                if old_b != new_b:
+                    try:
+                        indices = [old_b.index(g) for g in new_b]
+                    except ValueError:
+                        raise ValueError(
+                            f"Site '{site_name}' is plated on the binding "
+                            f"genotypes and has no value for "
+                            f"{sorted(set(new_b) - set(old_b))}.")
+                    val = jnp.take(val, jnp.array(indices, dtype=int),
+                                   axis=frame.dim)
                 continue
 
             # Find the corresponding dimension in the TensorManager

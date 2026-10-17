@@ -167,16 +167,22 @@ anchored by binding (the k-shift refits failed and are not reused).
    an explicit weight is kept. Stored configs carry their resolved weight,
    so none change; the count-likelihood, congression-calibration,
    svi-overconfidence and real-data-fit studies already passed 1.
-4. [ ] **Model pieces.** (a) [x] The global IPTG scale s between binding
-   and growth concentrations (2026-10-16: `hill_geno`'s
-   `theta_growth_log_conc_shift_scale` > 0 samples log s; growth sees the
-   curve at s times nominal IPTG, binding at nominal; tested on the smoke
-   data through MAP, Laplace, extraction and growth prediction, single and
-   mixture. `tfs-predict-theta` reports the curve in binding units; an
-   in vivo option can follow if step 6 wants it). (b) The per-genotype in vivo/in vitro deviation
-   for binding genotypes. (c) Let `m_warp` and the mixture's
-   partition-function rules run with `hill_geno` (check the orchestrator's
-   refusals). Each with tests.
+4. [ ] **Model pieces**, each with tests.
+   - (a) [x] The global IPTG scale s between binding and growth
+     concentrations (2026-10-16): `hill_geno`'s
+     `theta_growth_log_conc_shift_scale` > 0 samples log s; growth sees the
+     curve at s times nominal IPTG, binding at nominal. Tested on the smoke
+     data through MAP, Laplace, extraction and growth prediction, single
+     and mixture. `tfs-predict-theta` reports the curve in binding units;
+     an in vivo option can follow if step 6 wants it.
+   - (b) [x] The per-genotype in vivo/in vitro deviation for binding
+     genotypes (2026-10-16): `theta_binding_noise: genotype_offset`, one
+     additive theta offset per binding genotype, constant over IPTG,
+     tau * z_g with a learned tau. Additive in theta because a curve's
+     day-normalization error and M42I's disagreement are level shifts; a
+     log K deviation can follow if step 6's residuals show midpoint shifts.
+   - (c) [ ] Let `m_warp` and the mixture's partition-function rules run
+     with `hill_geno` (check the orchestrator's refusals).
 5. [ ] **Simulation first.** Add a per-condition occupancy warp to the
    simulator's growth linkage (it has linear, power and saturation, no
    warp), simulate kanR switch-like and pheS graded with binding for the

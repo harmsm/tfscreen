@@ -358,8 +358,11 @@ tfs-configure-model
                            (default), 'beta', or 'logit_normal'.
      --theta_binding_noise_model THETA_BINDING_NOISE_MODEL
                            Model to use for stochastic experimental noise in theta
-                           measured by binding. Allowed values are 'zero' (default) or
-                           'beta'.
+                           measured by binding. Allowed values are 'zero' (default),
+                           'beta' or 'genotype_offset' (one offset per binding genotype,
+                           the same at every titrant concentration, with a learned scale:
+                           an in vivo/in vitro difference or a curve's day-normalization
+                           error).
      --growth_noise_model GROWTH_NOISE_MODEL
                            Model for additive growth-rate noise. 'zero' (default) adds no
                            noise; 'normal_kt' learns a global sigma_k that inflates the

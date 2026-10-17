@@ -68,6 +68,7 @@ def get_batch(full_data: DataClass, idx: jnp.ndarray) -> DataClass:
             batch_idx=idx,
             scale_vector=full_data.binding.scale_vector[idx],
             geno_theta_idx=jnp.arange(batch_size, dtype=jnp.int32),
+            binding_ordinal=idx,
             theta_obs=full_data.binding.theta_obs[..., idx],
             theta_std=full_data.binding.theta_std[..., idx],
             good_mask=full_data.binding.good_mask[..., idx],

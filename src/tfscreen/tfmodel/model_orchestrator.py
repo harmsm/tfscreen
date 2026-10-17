@@ -1625,6 +1625,7 @@ class ModelOrchestrator:
             binding_batch_data["batch_size"] = binding_num_binding
             binding_batch_data["scale_vector"] = full_batch_data["scale_vector"][:binding_num_binding]
             binding_batch_data["geno_theta_idx"] = np.arange(binding_num_binding,dtype=int)
+            binding_batch_data["binding_ordinal"] = np.arange(binding_num_binding,dtype=int)
 
             # Apply binding weight. None -> 1: each binding observation
             # counts once, as in the full-batch log density (binding
@@ -1860,6 +1861,7 @@ class ModelOrchestrator:
             "batch_size":     actual_batch_size,   # static mini-batch target
             "scale_vector":   scale_vector,        # full N; get_batch slices
             "geno_theta_idx": batch_idx,           # full N; get_batch slices
+            "binding_ordinal": batch_idx,          # full N; get_batch slices
         })
 
         binding_dataclass = populate_dataclass(BindingData, sources=binding_data_sources)

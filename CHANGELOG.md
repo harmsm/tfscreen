@@ -86,6 +86,24 @@ fall into two kinds:
 
 ### Added
 
+- **`theta_binding_noise: genotype_offset`.** Each binding genotype's
+  binding theta is its curve plus one offset of its own, the same at every
+  titrant concentration, delta_g = tau * z_g with z_g ~ Normal(0, 1) and
+  tau ~ HalfNormal(0.2), learned unless `offset_scale_fixed` > 0 holds it.
+  Growth never sees it, so the shared curve is the in vivo one; a genotype
+  whose in vitro binding differs from its in vivo occupancy (M42I), or
+  whose curve carries its day's normalization error, disagrees alone
+  instead of pulling the growth parameters. The offsets live in a plate
+  over the binding genotypes only, indexed by a new
+  `BindingData.binding_ordinal` (binding-tensor order; the batch's indices
+  in binding-only mode), so a full library carries no prior-only offsets.
+  Subset and chunked predictions remap the plate by binding genotype label
+  (`analysis/prediction.py`); `tfs-extract-params` writes
+  `{out_prefix}_offset.csv` (per binding genotype) and
+  `{out_prefix}_offset_scale.csv`, and now runs the binding noise
+  component's extraction specs. Joint-fit plan step 4(b)
+  (`planning/joint-fit-return.md`).
+
 - **A titrant scale between binding and growth (`hill_geno`).** With
   `theta_growth_log_conc_shift_scale` > 0 (a priors row, e.g.
   `tfs-configure-model --set_priors theta_growth_log_conc_shift_scale=1`),

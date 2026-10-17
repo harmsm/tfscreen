@@ -99,7 +99,7 @@ growth and binding model.
      - ``zero``, ``beta``, ``logit_normal``
    * - ``--theta_binding_noise_model``
      - ``zero``
-     - ``zero``, ``beta``
+     - ``zero``, ``beta``, ``genotype_offset``
    * - ``--growth_noise_model``
      - ``zero``
      - ``zero``, ``normal_kt``
@@ -364,6 +364,14 @@ Noise
    *θ* is drawn from a beta distribution around the predicted value.
 ``logit_normal``
    Normal noise with a learned SD is added to logit(*θ*). Growth only.
+``genotype_offset``
+   Binding only. Each binding genotype's binding *θ* is its curve plus one
+   offset of its own, the same at every titrant concentration:
+   *δ_g = τ z_g*, *z_g ~ Normal(0, 1)*, *τ ~ HalfNormal(0.2)* (learned, or
+   held with ``offset_scale_fixed``). It absorbs an in vivo/in vitro
+   difference or a curve's day-normalization error for one genotype
+   without moving the growth side; *τ* says how far binding and growth
+   disagree across genotypes.
 
 ``--growth_noise_model`` adds noise to growth itself.
 
