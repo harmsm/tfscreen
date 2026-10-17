@@ -1,0 +1,197 @@
+---
+title: Return to a joint fit of growth and binding, with per-marker maps
+status: idea
+filed: 2026-10-16
+area: tfmodel
+revisit_when: >-
+  Drafted 2026-10-16 for the user's review; becomes the active plan once
+  agreed. Supersedes the open steps of planning/relative-m.md and is roadmap
+  step 9 (planning/analysis-roadmap.md) with step 8's map measured.
+related:
+  - planning/growth-only-relative-fit.md
+  - planning/analysis-roadmap.md
+  - planning/analysis-roadmap-summary.md
+  - planning/deep-coverage.md
+  - planning/two-stage-fit.md
+  - planning/relative-m.md
+  - planning/studies/real-data-fit/README.md
+  - planning/studies/m-bias-factorial/README.md
+  - planning/studies/two-stage-validation/README.md
+  - planning/studies/x-vs-binding/README.md
+  - planning/studies/within-tube-m/README.md
+  - planning/studies/relative-m/README.md
+  - src/tfscreen/tfmodel/generative/components/growth/linear.py
+  - src/tfscreen/tfmodel/generative/components/theta/hill_geno.py
+  - src/tfscreen/tfmodel/model_orchestrator.py
+---
+
+## Why
+
+We split binding from growth on 2026-09-26 because the joint fit asserted
+more than the data could support, and step 8 of the roadmap then found "no
+map" between growth and binding. Three weeks of work since have removed
+most of the reasons for that verdict and found the pieces the original plan
+said would be needed. Absolute occupancy is also what the congression
+correction (the partition-function rules) and the long-term goal (learning
+thermodynamic ensembles from these data) need. This plan brings binding
+back, at its proper weight, with the map we have now measured.
+
+## The arc
+
+**1. The split (2026-09-26).** The joint fit asserted that in vitro binding
+equals in vivo occupancy and that growth is linear in it, and its default
+binding weight (`N_growth_rows / N_binding_rows`) made binding count as much
+as the whole growth dataset, so any mismatch distorted growth
+(`planning/growth-only-relative-fit.md`). The plan: fit a wt-relative X from
+growth alone (3f628bf7 the idea, 98fb6db0 growth-only models, 5820c19f
+`hill_relative`), then measure the map from X to binding (roadmap step 8:
+identity, affine, monotone f, with a global IPTG scale s; spikes and bulk
+apart), then rejoin (step 9: learnable f and s, binding at weight 1). It
+kept one X shared by both markers (decision D5) and named the test: "across
+conditions it is testable (kan and 4CP responses should be affine in each
+other per genotype)".
+
+**2. "No map" (to 2026-10-05).** The first real relative fits
+(`planning/studies/real-data-fit/`, c5de9f24) found growth curves broader
+than binding (n 0.6-1.2 against 1.6-2.5), M42I's K on the wrong side of
+wt's, a common mutant floor near X -0.5, and no shared protein
+concentration or monotone map carrying binding onto growth. Step 8 was
+recorded as "no map". The tube-offset mode (27109e26) and the full-size
+simulation (bf4a1821: X undercovers at depth, |m| 20-40% too large, k off
+along the k/dk_geno slide) followed.
+
+**3. The m bias (2026-10-09 to 10-12).** Anchoring k and m on the wt
+monoculture failed (34b8143a): the fit preferred an m about 40% too steep.
+The m-bias study (7fcef80c) found the cause: each double pulls m a little
+and the pulls add, so the full-library MAP compresses X about 1.47-fold.
+The fix is the two-stage fit: k and m from wt, spikes and singles (with the
+congression mixture), pinned for the full library (58b83b28, b8be0d2b; the
+real X stretches a uniform 1.47). So the "no map" fits had a compressed X.
+
+**4. The two-stage command and its validation (2026-10-13 to 10-15).**
+`tfs-fit-two-stage` (3ce04cc5) reproduced the study, but its k-shift
+refits failed: they leave the MAP and slide along the dk_geno population
+(7d01721a). The marker-consistency flag fired on 10.6% of deep real
+genotypes against 1.9% on simulations, and pheS alone compressed X against
+kanR, even with wt's curve held (b6655671).
+
+**5. Binding again (2026-10-15).** With the new binding data (nine
+genotypes, 2 and 20 uM repressor dimer, normalized to day-of controls) and
+the two-stage X: **kanR-alone X matched 2 uM binding with no correction**
+(rms 0.12 against 0.30 on 2026-10-01), pheS did not
+(`planning/studies/x-vs-binding/`).
+
+**6. Why pheS disagreed (2026-10-15 to 10-16).** In order
+(`planning/studies/within-tube-m/`, `planning/studies/relative-m/`):
+- within-tube contrasts (tube totals cancel) disagreed with stage 1's m in
+  both markers, but freeing the totals did not move m (e5501aba): not OD600;
+- a log-linear IPTG term shared by every genotype helped kanR a little;
+  a free one was unidentified (aea7f6f4, d8060513);
+- the markers read occupancy through differently shaped maps: kanR
+  switch-like (n at 4), pheS graded (n about 1), wt alike (6aa9ae4b). This
+  is D5's test, and it fails: one shared linear X blends a steep readout
+  with a broad one, which alone can make "growth broader than binding";
+- one row of pheS tubes was swapped (3d5fbc43; the lab agrees it is
+  probable; `tfs-check-tubes` 76ce30d3, `tfs-correct-tubes` f15f5b4c);
+- a logistic warp of kanR's growth in occupancy lowers the loss by 8,000
+  nats and is nearly linear on a simulation (d540edfc, a1670702);
+- relative information alone cannot fix the scale of X: each estimate of m
+  rests on a different anchor (tube totals, priors and Hill shape, or weak
+  binders being flat), and they differ 2.5x in kanR (ba1752ba, 9a0a2f80,
+  b86c0ecb). Binding at 2 uM supports the larger kanR m.
+
+## What we know now
+
+- kanR growth is close to linear in 2 uM binding theta for the spikes,
+  once X is not compressed.
+- pheS growth is a graded, differently shaped function of the same
+  occupancy; one shared linear map cannot serve both markers.
+- The scale of the growth variable needs an external anchor; binding is
+  the natural one.
+- Still open: M42I grows 0.3-0.4 below its 2 uM binding at low IPTG; wt's
+  IPTG midpoint matches 20 uM binding while the mutants' levels match 2 uM
+  (an in vivo IPTG scale s, or an effective protein concentration).
+
+## Carry over
+
+- The count likelihood and the staged MAP.
+- The two-stage fit for the doubles' m bias (stage 1: wt, spikes and
+  singles; stage 2: full library with stage 1's growth parameters pinned).
+- Per-marker maps from occupancy to growth instead of one shared linear X
+  (`linear`'s `m_warp`).
+- The corrected tube table (`tfs-correct-tubes`) and the tube QC
+  (`tfs-check-tubes`).
+- Binding at weight 1: each binding observation counts as one observation.
+  The default `N_growth_rows / N_binding_rows` goes.
+
+## Design
+
+**theta.** Absolute occupancy per genotype from a Hill curve in IPTG
+(`hill_geno`), shared by both markers and observed by binding.
+
+**Growth.** g = k_c + dk_g + m_c f_c(theta) per condition, with f_c the
+per-marker map: start from `m_warp`'s logistic warp (f(0) = 0, f(1) = 1),
+for both selection markers, now identifiable because binding fixes theta.
+Whether kanR needs a warp at all is a result, not an assumption.
+
+**Binding.** theta_obs at 2 uM against the genotype's theta at an IPTG
+scaled by a global s (in vivo IPTG = s x nominal), weight 1. A per-genotype
+deviation between in vivo and in vitro (a hierarchical offset on the
+binding genotypes' logit theta or log K, with a learned scale) lets a
+genotype like M42I disagree without moving the rest. Binding sets the
+scale of theta and the maps; the 200,000 growth genotypes set their own
+curves.
+
+**Congression.** With absolute theta, the partition-function rules
+(`homodimer`, the physical default) return to stage 1's mixture.
+
+**Two stages.** Stage 1 (wt, spikes, singles, binding) fits k, m, the
+maps, s and the deviation scale; stage 2 (full library) pins them. The
+k/dk_geno slide and the intervals for k and m are revisited once m is
+anchored by binding (the k-shift refits failed and are not reused).
+
+## Steps
+
+1. [ ] **Agree this plan** (user).
+2. [ ] **Binding input.** A converter from the lab's well-level binding
+   table to `binding_df` (genotype, titrant_name, titrant_conc, theta_obs,
+   theta_std) at a chosen protein concentration, means and SEs over wells
+   and replicates; the lab's data stay out of the repository. Default 2 uM.
+3. [ ] **Weight 1.** Change the orchestrator's default `binding_weight` to
+   1 (keeping the option), with a CHANGELOG entry and tests; check old
+   configs that relied on the auto weight.
+4. [ ] **Model pieces.** (a) The global IPTG scale s between binding and
+   growth concentrations. (b) The per-genotype in vivo/in vitro deviation
+   for binding genotypes. (c) Let `m_warp` and the mixture's
+   partition-function rules run with `hill_geno` (check the orchestrator's
+   refusals). Each with tests.
+5. [ ] **Simulation first.** Add a per-condition occupancy warp to the
+   simulator's growth linkage (it has linear, power and saturation, no
+   warp), simulate kanR switch-like and pheS graded with binding for the
+   spikes at known s and deviations, and check stage 1 recovers m, the
+   maps, s and theta, and that binding at weight 1 does not distort growth.
+6. [ ] **Real stage 1.** wt, spikes and singles with binding at 2 uM, the
+   swapped row corrected; report m against the within-tube values, the
+   maps, s, the deviations (M42I), and binding residuals per genotype;
+   compare likelihoods with and without each piece.
+7. [ ] **Real stage 2 and intervals.** Full library pinned; theta
+   intervals; the marker-consistency flag rate against the simulations'.
+8. [ ] **Into `tfs-fit-two-stage`.** A joint mode replacing the relative
+   one's k shift; docs.
+
+## Open questions
+
+- Binding at 2 uM only, or both concentrations through a binding model in
+  protein concentration (which the thermodynamic-ensemble goal will want)?
+  Start with 2 uM.
+- s alone, or s plus an effective protein concentration? Start with s.
+- The binding data are still being replicated; when do they freeze for
+  step 6?
+- Bulk-only binding genotypes (G65H, V95N) carry congression; fit them
+  through the mixture like any bulk genotype.
+
+## Out of scope
+
+- The selection-onset transient (`planning/offset-mode-growth-transition.md`).
+- Thermodynamic ensembles (long term; this plan supplies the absolute
+  theta they need).
