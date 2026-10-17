@@ -1200,11 +1200,11 @@ def _make_model_for_binding_weight(mocker, n_growth, n_binding, binding_weight=N
     return ModelOrchestrator("g.csv", "b.csv", binding_weight=binding_weight)
 
 
-def test_binding_weight_auto_computed(mocker):
-    """binding_weight=None should be resolved to N_growth / N_binding after init."""
-    n_growth, n_binding = 1000, 10
-    model = _make_model_for_binding_weight(mocker, n_growth, n_binding)
-    assert model._binding_weight == pytest.approx(n_growth / n_binding)
+def test_binding_weight_default_is_one(mocker):
+    """binding_weight=None resolves to 1 (each binding row counts once),
+    not N_growth / N_binding (the default until 2026-10-16)."""
+    model = _make_model_for_binding_weight(mocker, 1000, 10)
+    assert model._binding_weight == 1.0
 
 
 def test_binding_weight_explicit_preserved(mocker):
@@ -1238,7 +1238,7 @@ def test_binding_weight_explicit_in_settings(mocker):
 
 
 def test_binding_weight_auto_in_settings(mocker):
-    """Auto-computed weight (not None) should appear in settings after init."""
+    """The resolved default weight (1, not None) appears in settings."""
     n_growth, n_binding = 500, 25
     model = _make_model_for_binding_weight(mocker, n_growth, n_binding)
     model._binding_only = False
@@ -1258,7 +1258,7 @@ def test_binding_weight_auto_in_settings(mocker):
     model._thermo_data = None
     model._batch_size = None
     s = ModelOrchestrator.settings.fget(model)
-    assert s["binding_weight"] == pytest.approx(n_growth / n_binding)
+    assert s["binding_weight"] == 1.0
 
 
 def test_binding_weight_applied_to_scale_vector(mocker):

@@ -288,12 +288,12 @@ def test_configure_run_binding_weight_smoke(tmpdir, library_smoke_yaml):
     Smoke test for the binding_weight feature end-to-end.
 
     Verifies that:
-    1. binding_weight=None auto-computes N_growth / N_binding and saves it as
-       a concrete float in the YAML (not None).
+    1. binding_weight=None resolves to 1.0 and is saved as a concrete float
+       in the YAML (not None).
     2. An explicit binding_weight is stored exactly in the YAML.
     3. A run configured with the auto-weight completes without error.
     """
-    # Growth data: 20 rows  |  Binding data: 4 rows  →  expected auto-weight = 5.0
+    # Growth data: 20 rows  |  Binding data: 4 rows  →  default weight 1.0, not 5.0
     growth_df = pd.DataFrame({
         "library":       ["lib"] * 20,
         "replicate":     ["R1"] * 20,
@@ -350,8 +350,8 @@ def test_configure_run_binding_weight_smoke(tmpdir, library_smoke_yaml):
     auto_weight = cfg_auto["components"]["binding_weight"]
     assert auto_weight is not None, "Auto binding_weight must not be None in the YAML"
     assert isinstance(auto_weight, float), "Auto binding_weight should be a float"
-    # 20 growth rows / 4 binding rows = 5.0
-    assert auto_weight == pytest.approx(20.0 / 4.0)
+    # 1, not 20 growth rows / 4 binding rows (the default until 2026-10-16)
+    assert auto_weight == pytest.approx(1.0)
 
     # ── 3. A fit using the auto-weight config runs to completion ─────────────
     out_fit = os.path.join(tmpdir, "tfs_fit")

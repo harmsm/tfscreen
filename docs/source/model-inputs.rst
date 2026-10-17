@@ -129,9 +129,10 @@ titrant concentration. Because they measure *θ* without going through
 growth, they fix its absolute scale and shape and separate effects growth
 alone cannot, such as *θ* against activity *A*. Useful fits rely on dozens
 of curves, a handful of genotypes each measured at 5 to 10 concentrations.
-Growth rows outnumber binding rows by orders of magnitude, so the binding
-log-likelihood is weighted by ``--binding_weight``. By default that is the
-number of growth rows over the number of binding rows.
+Growth rows outnumber binding rows by orders of magnitude. The binding
+log-likelihood is weighted by ``--binding_weight``, 1 by default, so each
+binding observation counts once. ``tfs-process-binding`` makes this table
+from a lab table of single measurements.
 
 .. list-table::
    :header-rows: 1

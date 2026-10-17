@@ -63,6 +63,18 @@ fall into two kinds:
 
 ### Changed
 
+- **`binding_weight` defaults to 1.** Each binding observation now counts
+  once, the likelihood of the data as measured. The old default,
+  `N_growth_rows / N_binding_rows`, made the binding data weigh as much as
+  the whole growth dataset, so any
+  mismatch between binding and growth distorted the growth fit; it was one
+  reason binding was split from growth on 2026-09-26. A config stores its
+  resolved weight, so one written before this change keeps it; pass the
+  ratio as `--binding_weight` to reproduce the old default in a new one.
+  The count-likelihood, congression-calibration, svi-overconfidence and
+  real-data-fit studies already set 1. Joint-fit plan step 3
+  (`planning/joint-fit-return.md`).
+
 - CI runs the tests in parallel (`pytest-xdist`, `-n auto`) and the coverage
   job measures through `pytest-cov`; `pytest-xdist` and `pytest-cov` joined
   the `test` extra. The Ubuntu / Python 3.12 matrix job is gone, since the

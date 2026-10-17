@@ -425,9 +425,10 @@ Other observations
 ------------------
 
 Binding data, from ``--binding_df``, observe *θ* with a normal likelihood.
-Because growth rows usually outnumber binding rows by orders of magnitude,
-the binding likelihood is scaled by ``--binding_weight``, by default the
-ratio of growth rows to binding rows. A model without binding data has no
+Each binding observation counts once: ``--binding_weight`` scales the
+binding likelihood and defaults to 1. Until 2026-10-16 the default was the
+ratio of growth rows to binding rows, which made the binding data weigh as
+much as the whole growth dataset. A model without binding data has no
 binding sites at all.
 
 Pre-split data, from ``--presplit_df``, observe ``ln_cfu`` at the start of

@@ -163,9 +163,10 @@ anchored by binding (the k-shift refits failed and are not reused).
    overstates how well a curve's level is known; step 4(b)'s per-genotype
    deviation is where that shared error should go. At 20 uM the pooled SD
    is 0.059 (150 dof).
-3. [ ] **Weight 1.** Change the orchestrator's default `binding_weight` to
-   1 (keeping the option), with a CHANGELOG entry and tests; check old
-   configs that relied on the auto weight.
+3. [x] **Weight 1** (2026-10-16). `binding_weight` None now resolves to 1;
+   an explicit weight is kept. Stored configs carry their resolved weight,
+   so none change; the count-likelihood, congression-calibration,
+   svi-overconfidence and real-data-fit studies already passed 1.
 4. [ ] **Model pieces.** (a) The global IPTG scale s between binding and
    growth concentrations. (b) The per-genotype in vivo/in vitro deviation
    for binding genotypes. (c) Let `m_warp` and the mixture's

@@ -1626,13 +1626,16 @@ class ModelOrchestrator:
             binding_batch_data["scale_vector"] = full_batch_data["scale_vector"][:binding_num_binding]
             binding_batch_data["geno_theta_idx"] = np.arange(binding_num_binding,dtype=int)
 
-            # Apply binding weight: upscale the binding likelihood to compete
-            # with the (typically much larger) growth dataset.  None →
-            # auto-compute as N_growth_rows / N_binding_rows so each binding
-            # observation contributes the same weight as the average growth
-            # observation.
+            # Apply binding weight. None -> 1: each binding observation
+            # counts once, as in the full-batch log density (binding
+            # genotypes ride in every batch at scale 1). Until 2026-10-16
+            # None meant N_growth_rows / N_binding_rows, which made the
+            # binding data count as much as the whole growth dataset, so any
+            # growth/binding mismatch distorted growth
+            # (planning/joint-fit-return.md). A config written before then
+            # stores its resolved weight and keeps it.
             if self._binding_weight is None:
-                self._binding_weight = len(self.growth_tm.df) / max(len(self.binding_tm.df), 1)
+                self._binding_weight = 1.0
             binding_batch_data["scale_vector"] = binding_batch_data["scale_vector"] * self._binding_weight
             binding_data_sources.append(binding_batch_data)
 

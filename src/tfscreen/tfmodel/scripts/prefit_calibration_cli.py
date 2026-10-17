@@ -352,9 +352,10 @@ def _build_calibration_model(orchestrator_prod, growth_df_cal, binding_df_cal):
     # it has to be dropped alongside spiked_genotypes.
     settings["library_file"] = None
     # Equal weighting: the calibration MAP must learn the binding→growth
-    # linkage from both data sources together.  The production binding_weight
-    # (N_growth_prod / N_binding_prod, often >> 1) would drown the binding
-    # signal, so we reset to 1.0 here.
+    # linkage from both data sources together.  A production config may
+    # store a large binding_weight (N_growth_prod / N_binding_prod, the
+    # default before 2026-10-16), which would drown the growth signal, so
+    # we reset to 1.0 here.
     settings["binding_weight"] = 1.0
 
     # dk_geno: the calibration MAP must not *learn* dk_geno from

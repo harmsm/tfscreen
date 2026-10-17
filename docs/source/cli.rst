@@ -449,17 +449,14 @@ tfs-configure-model
                            Mini-batch size for SVI. Defaults to 1024. Set to None to use
                            the full dataset as a single batch.
      --binding_weight BINDING_WEIGHT
-                           Multiplicative scale applied to the binding log-likelihood at
-                           every SVI step. Because growth data typically outnumber
-                           binding observations by several orders of magnitude, the
-                           binding likelihood contributes a negligible gradient signal
-                           unless it is upweighted. When None (default), the weight is
-                           auto-computed as N_growth_rows / N_binding_rows so that each
-                           binding observation contributes the same total weight as the
-                           average growth observation. Pass an explicit positive float to
-                           override this heuristic. The resolved value (never None) is
-                           saved in the YAML so that tfs-fit-model applies the same
-                           weight without recomputing it.
+                           Multiplicative scale applied to the binding log-likelihood.
+                           None (default) is 1: each binding observation counts once, the
+                           likelihood of the data as measured. Until 2026-10-16 the
+                           default was N_growth_rows / N_binding_rows, which made the
+                           binding data count as much as the whole growth dataset; pass
+                           that ratio to reproduce an older configuration. The resolved
+                           value (never None) is saved in the YAML, so a config written
+                           before the change keeps its weight.
      --set_priors SET_PRIORS [SET_PRIORS ...]
                            name=value pairs that set scalar priors in
                            {out_prefix}_priors.csv, so the file is never edited by hand.
