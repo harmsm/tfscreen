@@ -174,3 +174,36 @@ or below.
 for s in null joint; do sbatch --export=ALL,SIM=sim_${s}_s1,MODEL=full,INIT=fit_${s}_s1_plain --output=fit_${s}_s1_full_from_plain.out /gpfs/home/harms/tfscreen/planning/studies/joint-fit-sim/stage1.srun; done
 ```
 
+### Run 3 (2026-10-17): the full model started from the plain fit
+
+Both converged below the fits they had to beat: null 783,021 (plain
+783,286; run 1's full 784,304), joint 780,782 (run 1's full 780,800).
+Starting the full model from the plain one is the recipe.
+
+| | truth | null, full from plain | truth | joint, full from plain |
+|---|---|---|---|---|
+| m kanR+kan | -0.0141 | -0.0176 | -0.0141 | -0.0144 |
+| m pheS+4CP | +0.0144 | +0.0180 | +0.0144 | +0.0166 |
+| kanR warp a / x0 | linear | 2.6 / 0.59 | 8 / 0.50 | 9.0 [8.7, 9.5] / 0.53 [0.50, 0.56] |
+| pheS warp a / x0 | linear | 1.7 / 0.57 | 1.5 / 0.40 | 0.9 [0.2, 4.3] / 0.59 [-0.24, 1.32] |
+| log s | 0 | -0.05 [-0.22, 0.11] | -0.69 | -0.80 [-0.94, -0.66] |
+| offsets covered | 0 | 9 of 9 | | 8 of 9 |
+| tau | 0 | 0.17 [0.05, 0.52] | 0.10 | 0.22 [0.09, 0.50] |
+| singles theta RMSE (95% cov.) | | 0.077 (0.14) | | 0.070 (0.17) |
+| spikes theta RMSE (95% cov.) | | 0.056 (0.64) | | 0.039 (0.48) |
+
+- **The null comes back.** The warps sit at about the prior's median
+  steepness (a about 2.7, close to linear on [0, 1]), s covers 1, every
+  offset covers 0. The extra freedom costs theta a little against the
+  plain fit (singles 0.077 against 0.056).
+- **The joint truth comes back.** kanR's switch, s and the offsets are
+  recovered; pheS's graded warp is weakly identified (wide, covers).
+- **Still open, both independent of the warp:**
+  1. m is steep: 22-25% in both markers on the null simulation, with the
+     plain (true) model as well; pheS 15% on the joint one (kanR right).
+     The simulator and the fit use the same congression rules (homodimer,
+     dilution). k is high by 0.002-0.005, the k/dk_geno slide.
+  2. Theta intervals undercover badly (singles 14-17%, wt 13-25%) while
+     the median error is small: the MAP plus Laplace leaves the shared
+     parameters' error (m above all) out of each genotype's interval.
+

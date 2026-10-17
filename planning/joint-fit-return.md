@@ -208,6 +208,11 @@ anchored by binding (the k-shift refits failed and are not reused).
      0.3). A warp shared by both markers is pinned only by the binding
      genotypes, which the offsets loosen. Next: is that a trap or a
      degeneracy (null fitted with the plain model; compare losses).
+     Runs 2-3 (2026-10-17): it was a trap; the full model started from
+     the plain fit's MAP recovers the null (near-linear warps, s covering
+     1, offsets covering 0) and the joint truth (kanR's switch, s, the
+     offsets). Open before step 6: m 15-25% steep even with the true model,
+     and theta intervals covering 14-17%.
 6. [ ] **Real stage 1.** wt, spikes and singles with binding at 2 uM, the
    swapped row corrected; report m against the within-tube values, the
    maps, s, the deviations (M42I), and binding residuals per genotype;
