@@ -17,6 +17,8 @@
 #   SIM    simulation directory (from simulate.srun)
 #   MODEL  full | plain
 #   SEED   fit seed (default 1)
+#   INIT   optional: start at this fit's MAP (e.g. fit_null_s1_plain); the
+#          output is then fit_${SIM#sim_}_${MODEL}_from_${INIT#fit_*_s1_}
 #
 # Writes fit_${SIM#sim_}_${MODEL}/; a rerun resumes.
 
@@ -27,6 +29,11 @@ MODEL="${MODEL:?set MODEL}"
 SEED="${SEED:-1}"
 STUDY=/gpfs/home/harms/tfscreen/planning/studies/joint-fit-sim
 OUT="fit_${SIM#sim_}_${MODEL}"
-echo ">>> stage 1 ${SIM} ${MODEL} $(date)"
-python "${STUDY}/stage1.py" "${SIM}" "${OUT}" --model "${MODEL}" --seed "${SEED}"
+EXTRA=()
+if [[ -n "${INIT:-}" ]]; then
+    OUT="${OUT}_from_${INIT#fit_*_s1_}"
+    EXTRA=(--init_from "${INIT}/tfs_fit_model_params.npz")
+fi
+echo ">>> stage 1 ${SIM} ${MODEL} -> ${OUT} $(date)"
+python "${STUDY}/stage1.py" "${SIM}" "${OUT}" --model "${MODEL}" --seed "${SEED}" "${EXTRA[@]}"
 echo ">>> done $(date)"

@@ -3,6 +3,7 @@ Joint stage 1 on a simulation (README): wt, spikes and singles, growth and
 binding together.
 
     python stage1.py SIM_DIR OUT_DIR --model full|plain [--seed 1] [--max_num_epochs N]
+                     [--init_from OTHER_FIT/tfs_fit_model_params.npz]
 
 SIM_DIR holds a tfs-simulate run of make_sim.py's config (simulate_config.yaml,
 tfs_sim_growth.csv, tfs_sim_binding.csv). Each step is skipped when its
@@ -19,6 +20,11 @@ k/m priors (growth_priors_loose.csv's values).
   per binding genotype (genotype_offset).
 - plain: none of those (linear growth in theta, s = 1, binding as
   measured).
+
+--init_from starts the MAP at another fit's MAP (tfs-fit-model --init_from;
+not staged): run 1's full fit on the null simulation stopped in a wrong
+mode about 1,000 nats above the plain fit, so the full model is started
+from the plain one, its extra sites (warps, s, offsets) at their guesses.
 """
 
 import argparse
@@ -58,8 +64,10 @@ def main():
     ap.add_argument("--model", choices=["full", "plain"], required=True)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--max_num_epochs", type=int, default=None)
+    ap.add_argument("--init_from", default=None)
     args = ap.parse_args()
     sim = os.path.abspath(args.sim_dir)
+    init_from = None if args.init_from is None else os.path.abspath(args.init_from)
     full = args.model == "full"
     os.makedirs(args.out_dir, exist_ok=True)
     os.chdir(args.out_dir)
@@ -97,6 +105,8 @@ def main():
             out_prefix="tfs_configure")
 
     fit_kw = {} if args.max_num_epochs is None else {"max_num_epochs": args.max_num_epochs}
+    if init_from is not None:
+        fit_kw["init_from"] = init_from
     if not os.path.exists("tfs_fit_model_params.npz"):
         fit_model(CONFIG, seed=args.seed, analysis_method="map", **fit_kw)
     if not os.path.exists("tfs_posterior.h5"):

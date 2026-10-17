@@ -147,3 +147,30 @@ What it says:
   genotype, as before.
 - k sits high in every condition, the k/dk_geno slide, as in every stage
   1 so far.
+
+### Run 2 (2026-10-17): trap or degeneracy?
+
+`fit_null_s1_plain` (the null simulation's own model) converged at a MAP
+loss of 783,286, about 1,000 nats below `fit_null_s1_full` (784,304, still
+descending at step 1e-5 when it hit the epoch cap). The full model nests
+the plain one at a cost of tens of nats in prior terms, so run 1's null
+fit was trapped, not unidentified: the data do separate the linear truth
+from the steep shared warp. It reached the steep warps early, while the
+step size was large.
+
+The plain fit's theta is good (singles RMSE 0.056, bias -0.002; spikes
+0.036) but its intervals still undercover (singles 0.10), and m is about
+20% steep in both markers with the true model (kanR -0.0173 against
+-0.0141, pheS +0.0173 against +0.0144) while k sits 0.005 high: an open
+question for stage 1 itself, separate from the warp.
+
+Next (run 3): the full model started from the plain fit's MAP
+(`stage1.py --init_from`, `stage1.srun` `INIT=`), on both simulations. Pass:
+the null fit returns to the plain fit's loss or below with near-linear
+warps, s near 1 and small offsets; the joint fit reaches run 1's 780,800
+or below.
+
+```bash
+for s in null joint; do sbatch --export=ALL,SIM=sim_${s}_s1,MODEL=full,INIT=fit_${s}_s1_plain --output=fit_${s}_s1_full_from_plain.out /gpfs/home/harms/tfscreen/planning/studies/joint-fit-sim/stage1.srun; done
+```
+
