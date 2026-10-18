@@ -286,3 +286,41 @@ So the bias has two parts of about equal size:
 2. **The congression mixture's approximation** adds the rest (run 4's
    pheS slow growers).
 
+Correction to the reading above (checked before run 6): the MAP's
+population SDs are not small. Free, logit theta_low's is 6.8, logit
+delta's 8.4 and log K's 1.22, against the truth's spread among singles
+(SD 2.6, 3.9 and 0.50; robust SD 0.56, 0.63, 0.49: a bulk with outliers,
+the simulator's stuck-bound, never-binds and inverted genotypes); pinned
+at the true k and m they are larger still (9.5, 10.8, 1.38). What
+compresses theta is the population location: the free fit's logit
+theta_low location is 2.04, the default hyperprior's location (2.0 +- 2),
+so its typical single runs from theta 0.88 to 0.085 where the truth runs
+from 0.99 to 0.01, about 20% compression. Growth alone cannot tell those
+ranges apart while m is free, and eight binding genotypes set the scale,
+so the location rides its prior; the SDs' tight HalfNormal priors (log
+K's at 0.1) add their cost at the truth.
+
+### Run 6 (set up 2026-10-17): held SDs, moved locations
+
+`hill_geno` now holds any population SD (`theta_*_hyper_scale_fixed`).
+The no-congression simulation, plain model without the mixture, free k
+and m, three arms (`stage1.py --set_priors`, `stage1.srun` `PRIORS`/`TAG`):
+
+| arm | priors |
+|---|---|
+| `heldsd` | SDs held at the truth's spread: logit low 2.6, logit delta 3.9, log K 0.5, log n 0.3 |
+| `loc` | location priors at the truth's medians: logit low loc 4.5, logit delta loc -9.0 (scales 2 as before) |
+| `both` | both |
+
+Pass: m within a few percent of the truth and theta near run 5's pinned
+fit (singles RMSE 0.010). Compare each arm's MAP loss with run 5's free
+fit (776,488).
+
+```bash
+cd /gpfs/projects/harmslab/harms/studies/joint-fit-sim
+```
+
+```bash
+SD=theta_logit_low_hyper_scale_fixed=2.6:theta_logit_delta_hyper_scale_fixed=3.9:theta_log_hill_K_hyper_scale_fixed=0.5:theta_log_hill_n_hyper_scale_fixed=0.3; LOC=theta_logit_low_hyper_loc_loc=4.5:theta_logit_delta_hyper_loc_loc=-9.0; for a in heldsd:$SD loc:$LOC both:$SD:$LOC; do sbatch --export=ALL,SIM=sim_nocong_s1,MODEL=plain,NOMIX=1,TAG=${a%%:*},PRIORS=${a#*:} --output=fit_nocong_s1_plain_single_${a%%:*}.out /gpfs/home/harms/tfscreen/planning/studies/joint-fit-sim/stage1.srun; done
+```
+

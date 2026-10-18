@@ -86,6 +86,16 @@ fall into two kinds:
 
 ### Added
 
+- **`hill_geno` holds any population SD.** `theta_logit_low_hyper_scale_fixed`,
+  `theta_logit_delta_hyper_scale_fixed` and `theta_log_hill_K_hyper_scale_fixed`
+  join `theta_log_hill_n_hyper_scale_fixed`: > 0 makes that SD a
+  deterministic site at the held value with no guide parameters, as in
+  `hill_relative`. Set with `tfs-configure-model --set_priors`. On the
+  joint-fit simulation's stage 1, the learned SDs (tight HalfNormal priors,
+  log K's at 0.1) and the population locations' priors compressed the
+  singles' theta range and steepened m by 14%
+  (`planning/studies/joint-fit-sim/`, run 5).
+
 - **Simulator pieces for the joint fit.** A linear growth condition takes
   `warp_a` and `warp_x0` (`growth_linkage.warp_theta`, the fit's `m_warp`
   in numpy; truth `warp_log_a`, `warp_x0` in

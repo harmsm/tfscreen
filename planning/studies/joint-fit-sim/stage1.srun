@@ -23,6 +23,9 @@
 #          --pin_km_truth); output suffix _pinkm
 #   NOMIX  optional: 1 fits without the congression mixture (stage1.py
 #          --no_mixture); output suffix _single
+#   PRIORS optional: extra --set_priors items, separated by ':' (sbatch
+#          --export splits on commas); give TAG with it
+#   TAG    optional: output suffix _${TAG}
 #
 # Writes fit_${SIM#sim_}_${MODEL}/; a rerun resumes.
 
@@ -41,6 +44,13 @@ fi
 if [[ "${NOMIX:-0}" == 1 ]]; then
     OUT="${OUT}_single"
     EXTRA+=(--no_mixture)
+fi
+if [[ -n "${PRIORS:-}" ]]; then
+    IFS=':' read -r -a ITEMS <<< "${PRIORS}"
+    EXTRA+=(--set_priors "${ITEMS[@]}")
+fi
+if [[ -n "${TAG:-}" ]]; then
+    OUT="${OUT}_${TAG}"
 fi
 if [[ "${PIN:-0}" == 1 ]]; then
     OUT="${OUT}_pinkm"
