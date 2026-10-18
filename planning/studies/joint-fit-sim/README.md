@@ -558,7 +558,7 @@ narrow. With congression the intervals stay about 1.8 times too narrow
 even at the true k and m: the mixture's approximation also adds
 per-genotype error the model does not carry.
 
-### Run 10 (set up 2026-10-18): how theta scales with binding singles
+### Run 10 (2026-10-18): how theta scales with binding singles
 
 `analyze.py` now also reports each group's median 95% width, SD of z and
 slope on the truth; `stage1.srun` takes `BSEED` (which random singles).
@@ -574,4 +574,37 @@ cd /gpfs/projects/harmslab/harms/studies/joint-fit-sim && R=/gpfs/home/harms/tfs
 ```bash
 for n in 2 5 10 20; do for b in 1 2 3; do if [[ ($n == 2 || $n == 20) && $b == 1 ]]; then continue; fi; sbatch --export=ALL,SIM=sim_nocong_s1,MODEL=plain,NOMIX=1,ADDB=$n,BSEED=$b,TAG=lib${n}_b${b} --output=fit_nocong_s1_plain_single_lib${n}_b${b}.out $R; done; done; for n in 5 10; do sbatch --export=ALL,SIM=sim_null_s1,MODEL=plain,ADDB=$n,TAG=lib$n --output=fit_null_s1_plain_lib$n.out $R; done
 ```
+
+Results (`binding_scaling.py runs --out out`: `out/binding_scaling.csv`
+and `out/YYYY-MM-DD_binding-scaling.pdf`). Growth-only singles; mean over
+the three random choices (range in brackets), one choice on the
+congression simulation:
+
+| simulation | binding singles | m steep | theta RMSE | slope | 95% coverage | SD of z |
+|---|---|---|---|---|---|---|
+| no congression | 0 | 14% | 0.046 | 0.90 | 0.11 | 4.3 |
+| | 2 | 11% | 0.036 [0.036, 0.037] | 0.92 | 0.15 | 4.1 |
+| | 5 | 9% | 0.030 [0.029, 0.032] | 0.94 | 0.20 | 3.7 |
+| | 10 | 8% | 0.027 [0.025, 0.029] | 0.95 | 0.23 | 3.6 |
+| | 20 | 6% | 0.021 [0.021, 0.022] | 0.96 | 0.34 | 2.9 |
+| | 50 | 5% | 0.017 | 0.97 | 0.51 | 2.2 |
+| | true k and m | 0 | 0.010 | 1.00 | 0.91 | 0.9 |
+| congression | 0 | 21% | 0.056 | 0.89 | 0.10 | 6.4 |
+| | 5 | 17% | 0.046 | 0.91 | 0.18 | 5.4 |
+| | 10 | 17% | 0.046 | 0.92 | 0.20 | 5.2 |
+| | 20 | 12% | 0.037 | 0.94 | 0.31 | 4.3 |
+| | true k and m | 0 | 0.020 | 0.98 | 0.70 | 1.8 |
+
+- **Which singles are chosen barely matters** (RMSE within 0.003 across
+  choices at every count).
+- **The error falls as one over the square root:** without congression,
+  theta RMSE = 0.010 + 0.053 / sqrt(n + 2) fits every count from 0 to 50
+  (the 0.010 is the fit at the true k and m; the "+2" is what wt and the
+  eight spikes are worth in binding singles). The binding curves average
+  down the shared scale error. Halving the excess at 20 would take about
+  90 binding singles.
+- **Coverage climbs slowly** (0.11 to 0.51 at 50) and SD of z falls only
+  to 2.2: binding alone does not give honest intervals at any realistic
+  count. With congression everything is worse and the intervals stay about
+  1.8 times too narrow even at the true k and m.
 
