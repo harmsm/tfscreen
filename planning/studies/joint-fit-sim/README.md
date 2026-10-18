@@ -300,7 +300,7 @@ ranges apart while m is free, and eight binding genotypes set the scale,
 so the location rides its prior; the SDs' tight HalfNormal priors (log
 K's at 0.1) add their cost at the truth.
 
-### Run 6 (set up 2026-10-17): held SDs, moved locations
+### Run 6 (2026-10-17): held SDs, moved locations
 
 `hill_geno` now holds any population SD (`theta_*_hyper_scale_fixed`).
 The no-congression simulation, plain model without the mixture, free k
@@ -323,4 +323,37 @@ cd /gpfs/projects/harmslab/harms/studies/joint-fit-sim
 ```bash
 SD=theta_logit_low_hyper_scale_fixed=2.6:theta_logit_delta_hyper_scale_fixed=3.9:theta_log_hill_K_hyper_scale_fixed=0.5:theta_log_hill_n_hyper_scale_fixed=0.3; LOC=theta_logit_low_hyper_loc_loc=4.5:theta_logit_delta_hyper_loc_loc=-9.0; for a in heldsd:$SD loc:$LOC both:$SD:$LOC; do sbatch --export=ALL,SIM=sim_nocong_s1,MODEL=plain,NOMIX=1,TAG=${a%%:*},PRIORS=${a#*:} --output=fit_nocong_s1_plain_single_${a%%:*}.out /gpfs/home/harms/tfscreen/planning/studies/joint-fit-sim/stage1.srun; done
 ```
+
+Results (priors checked in each `tfs_configure_priors.csv`; `heldsd` hit
+the epoch cap still descending at step 1e-5, the others converged; MAP
+losses are not comparable across arms, whose priors differ):
+
+| arm | m kanR (truth -0.0141) | m pheS (truth +0.0144) | singles theta RMSE (cov.) |
+|---|---|---|---|
+| free (run 5) | -0.0161 | +0.0164 | 0.046 (0.11) |
+| `loc` | -0.0160 | +0.0164 | 0.046 (0.11) |
+| `heldsd` | -0.0184 | +0.0187 | 0.085 (0.04) |
+| `both` | -0.0184 | +0.0188 | 0.088 (0.04) |
+
+Neither fixes it; holding the SDs at the truth's spread makes it worse.
+What the free fit does, by regression on the truth: the singles' theta is
+0.048 + 0.90 theta_true (the fit pinned at the true k and m: 0.000 +
+0.997), and m is stretched by about 1/0.90; dk_geno is right in both
+(slope 0.99). For a single without binding this is close to a symmetry of
+the growth model: an affine squeeze of a Hill curve is a Hill curve, k
+absorbs the constant, m the slope. Only the binding genotypes (wt and
+eight spikes) resist it. What pushes along it is the theta population
+prior in logit space: plateaus near 0.99 and 0.01 (logit +-4.6, outliers
+further) cost prior density, a squeezed curve less. That is why holding
+the SDs at 2.6 / 3.9 / 0.5 (smaller than the free fit's 6.8 / 8.4 / 1.2)
+squeezes harder, and why moving the location does nothing at SDs near 7.
+The congression mixture's approximation (run 4) adds to the same
+direction.
+
+So the remedies are along that direction, not at the priors' values:
+pooling weak enough not to penalize saturated plateaus (held SDs larger
+than the free fit's), more genotypes whose binding pins theta's scale
+(in-library binding genotypes, like the real data's G65H and V95N), or a
+parameterization whose population prior does not prefer the middle of
+[0, 1].
 
