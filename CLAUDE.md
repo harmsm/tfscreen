@@ -491,7 +491,11 @@ manifest file (one path per line) *unless* it ends in `.csv`.
 ## Planning (`planning/`)
 
 Ideas, active plans and studies live in `planning/` (called `future/` before
-2026-09-23); `planning/README.md` has the conventions. Ideas and plans are one
+2026-09-23); `planning/README.md` has the conventions. **Read
+`planning/findings-ledger.md` before proposing a plan or study on the
+growth/binding model, lambda, the k/dk_geno slide or m:** it lists what is
+established, refuted and open, with sources (2026-10-18: a week of
+joint-fit work had re-found July and early-October results). Ideas and plans are one
 Markdown file each with a YAML header whose `status` (`idea`/`active`/
 `promoted`/`dropped`/`done`) tells them apart. An active plan keeps its step
 list current. Studies live in `planning/studies/<slug>/` (a `README.md` with

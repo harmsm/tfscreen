@@ -24,6 +24,26 @@ related:
   - src/tfscreen/tfmodel/model_orchestrator.py
 ---
 
+## Review, 2026-10-18
+
+Step 6's first run and a review of the planning files and git log
+(`planning/findings-ledger.md`) changed the footing of this plan:
+
+- The 2 uM agreement in "The arc" item 5 was in a gauge built from wt's own
+  binding endpoints, which absorbs any affine level and scale difference
+  between binding and growth. In the absolute model the difference
+  reappears (step 6, run 1: every binding offset negative).
+- The arc starts on 2026-09-26 and misses July's work: about 20 in-library
+  binding anchors already pinned m then, and lambda already ran away under
+  a model conflict.
+- The binding-to-growth link has failed three times (the 2026-09 joint fit,
+  the 2026-10-01 "no map" with M42I's inverted K, and step 6 run 1), so
+  binding cannot yet set theta's absolute scale.
+
+Steps 6-8 are paused until the link is decided (the ledger's Open item 1).
+The simulation results (step 5) stand as a test of the model under its own
+assumptions.
+
 ## Why
 
 We split binding from growth on 2026-09-26 because the joint fit asserted
@@ -240,6 +260,12 @@ anchored by binding (the k-shift refits failed and are not reused).
    genotypes), the swapped row dropped. Expect m 17-21% steep and theta
    intervals too narrow (joint-fit-sim runs 8-10); rerun when the updated
    binding (and any binding singles) arrive.
+   Run 1 (2026-10-18): the 2 uM binding sits below growth's theta for every
+   genotype (offsets -0.07 to -0.28, all negative) and wt's binding
+   midpoint is about 10x lower in IPTG than growth's; s (0.53) does not
+   absorb it, lambda runs to 0.8-2.1, and m and the warps are not
+   interpretable. The binding-to-growth link at 2 uM needs more than s and
+   per-genotype offsets.
 7. [ ] **Real stage 2 and intervals.** Full library pinned; theta
    intervals; the marker-consistency flag rate against the simulations'.
 8. [ ] **Into `tfs-fit-two-stage`.** A joint mode replacing the relative

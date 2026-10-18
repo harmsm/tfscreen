@@ -90,4 +90,39 @@ python report.py runs/plain runs/full --binding ../../dev-data/binding/processed
 
 ## Results
 
-Not run yet.
+### Run 1 (2026-10-18): 2 uM binding
+
+Both fits stopped at the epoch cap still descending slowly (about 20 nats
+over the last five windows at step 1e-5); the Laplace ran (chunk 8).
+Final MAP losses: plain 813,484, full 804,973.
+
+| | plain | full |
+|---|---|---|
+| m kanR+kan (within-tube -0.0046) | -0.0280 | -0.063 [-0.089, -0.035] |
+| m pheS+4CP (within-tube +0.0125) | +0.0171 | +0.0156 |
+| kanR warp a / x0 | - | 8.9 / 0.81 |
+| pheS warp a / x0 | - | 6.6 / 0.52 |
+| s | (1) | 0.53 [0.23, 1.26] |
+| lambda (prior 0.38 +- 0.15) | 2.10 | 0.82 |
+| offset scale tau | - | 0.34 |
+
+Binding offsets (full): G65H -0.18, H74A -0.23, H74A/K84L -0.27, K84L
+-0.28, M42I -0.07, M42I/H74A -0.20, wt -0.17: every one negative, and in
+the plain fit every genotype's binding sits below its fitted curve (mean
+residual -0.03 to -0.26).
+
+wt shows why. Its 2 uM binding falls from 0.75 at 0 IPTG to about 0 by
+0.01 mM (midpoint near 0.003 mM); the curve growth wants has its midpoint
+near 0.03 mM and a floor of 0.15-0.24. An IPTG scale of about 0.1 would
+reconcile the two for wt; the fit keeps s near 0.5 and leaves wt's binding
+misfit (RMS residual 2.9-4.0 measurement SDs), since growth's rows
+outweigh eighteen binding points. The offsets then absorb a common level
+difference (a hierarchical offset with mean zero is the wrong shape for
+it), and lambda runs to 0.8-2.1 against the measured 0.36 to absorb the
+rest. So m, the warps and lambda here are not results.
+
+The 2 uM binding and growth disagree by more than s plus per-genotype
+offsets can express. This matches the open question of
+planning/joint-fit-return.md (wt's IPTG midpoint matched 20 uM binding,
+the mutants' levels 2 uM): the in vivo occupancy may correspond to more
+than 2 uM of repressor.
