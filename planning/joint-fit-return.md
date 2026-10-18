@@ -235,6 +235,11 @@ anchored by binding (the k-shift refits failed and are not reused).
    swapped row corrected; report m against the within-tube values, the
    maps, s, the deviations (M42I), and binding residuals per genotype;
    compare likelihoods with and without each piece.
+   Set up 2026-10-18 (`planning/studies/joint-fit-real/`): plain, then
+   full from plain, 75 co-resident sets, the current 2 uM binding (seven
+   genotypes), the swapped row dropped. Expect m 17-21% steep and theta
+   intervals too narrow (joint-fit-sim runs 8-10); rerun when the updated
+   binding (and any binding singles) arrive.
 7. [ ] **Real stage 2 and intervals.** Full library pinned; theta
    intervals; the marker-consistency flag rate against the simulations'.
 8. [ ] **Into `tfs-fit-two-stage`.** A joint mode replacing the relative
