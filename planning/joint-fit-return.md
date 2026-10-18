@@ -213,6 +213,14 @@ anchored by binding (the k-shift refits failed and are not reused).
      1, offsets covering 0) and the joint truth (kanR's switch, s, the
      offsets). Open before step 6: m 15-25% steep even with the true model,
      and theta intervals covering 14-17%.
+     Runs 4-7 (2026-10-17): the m bias is an affine squeeze of the
+     singles' theta (k absorbs the constant, m the slope) that only binding
+     genotypes resist, pushed by the logit population prior and by the
+     congression mixture's approximation. Twenty binding singles cut it from
+     14% to 6% on the no-congression simulation (weak pooling, 14% to 11%;
+     both, 5%). Experimental implication: binding on about twenty singles
+     spanning theta. Still open: the remaining 5%, the congression part
+     with binding singles, and theta coverage (0.38).
 6. [ ] **Real stage 1.** wt, spikes and singles with binding at 2 uM, the
    swapped row corrected; report m against the within-tube values, the
    maps, s, the deviations (M42I), and binding residuals per genotype;

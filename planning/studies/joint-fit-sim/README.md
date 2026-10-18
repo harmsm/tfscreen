@@ -357,7 +357,7 @@ than the free fit's), more genotypes whose binding pins theta's scale
 parameterization whose population prior does not prefer the middle of
 [0, 1].
 
-### Run 7 (set up 2026-10-17): weaker pooling, more binding
+### Run 7 (2026-10-17): weaker pooling, more binding
 
 The no-congression simulation, plain model without the mixture, free k
 and m, against run 5's free fit:
@@ -384,4 +384,34 @@ cd /gpfs/projects/harmslab/harms/studies/joint-fit-sim
 ```bash
 W=theta_logit_low_hyper_scale_fixed=10:theta_logit_delta_hyper_scale_fixed=10:theta_log_hill_K_hyper_scale_fixed=2; for a in weakpool:$W:0 lib2::2 lib20::20 weakpool_lib20:$W:20; do t=${a%%:*}; r=${a#*:}; n=${r##*:}; p=${r%:*}; sbatch --export=ALL,SIM=sim_nocong_s1,MODEL=plain,NOMIX=1,TAG=$t,PRIORS=$p,ADDB=$([ "$n" = 0 ] || echo $n) --output=fit_nocong_s1_plain_single_$t.out /gpfs/home/harms/tfscreen/planning/studies/joint-fit-sim/stage1.srun; done
 ```
+
+Results (all converged; settings checked in each fit's priors and binding
+table):
+
+| arm | m steep, kanR / pheS | singles' theta slope on truth | singles theta RMSE (95% cov.) | spikes | wt |
+|---|---|---|---|---|---|
+| free (run 5) | 14% / 14% | 0.900 | 0.046 (0.11) | 0.023 | 0.041 |
+| `weakpool` | 11% / 11% | 0.914 | 0.039 (0.13) | 0.020 | 0.035 |
+| `lib2` | 11% / 10% | 0.924 | 0.036 (0.15) | 0.018 | 0.031 |
+| `lib20` | 6% / 6% | 0.961 | 0.021 (0.36) | 0.012 | 0.014 |
+| `weakpool_lib20` | 5% / 5% | 0.964 | 0.019 (0.38) | 0.011 | 0.013 |
+| pinned at truth (run 5) | 0 | 0.997 | 0.010 (0.91) | 0.006 | 0.002 |
+
+- **Binding genotypes are the lever.** Twenty binding singles (spanning
+  the library's theta range at random) cut the m bias from 14% to 6% and
+  halve the singles' theta error; two do about as much as weak pooling.
+  Each binding curve pins one genotype's theta on an absolute scale, and
+  the squeeze of run 6 has to fight all of them.
+- **Weak pooling helps a little** (14% to 11% alone, 6% to 5% with 20
+  binding singles): the logit population prior is part of the push, not
+  most of it.
+- **Not yet enough:** 5% left and theta coverage 0.36-0.38, against 0.91
+  at the true k and m. The remaining m error is shared by every genotype
+  and missing from their intervals (the Laplace at the MAP), as in every
+  run so far.
+
+For the real data, this argues for measuring binding on more singles,
+about twenty spread over the theta range, beyond the nine spikes and the
+two in-library genotypes. The congression part (run 4) is untested with
+binding singles.
 
