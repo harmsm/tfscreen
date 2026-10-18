@@ -1,0 +1,17 @@
+run,parameter,key,truth,q0_5,lo,hi,covered
+fit_nocong_s1_plain_single,growth_k,kanR+kan,0.015042,0.013801275,0.012038811,0.015553157,True
+fit_nocong_s1_plain_single,growth_k,kanR-kan,0.023923,0.01879035,0.016206073,0.021419218,False
+fit_nocong_s1_plain_single,growth_k,pheS+4CP,0.003107,0.0015561959,-0.0005445291,0.0034262936,True
+fit_nocong_s1_plain_single,growth_k,pheS-4CP,0.022042,0.020876065,0.017976936,0.023448763,True
+fit_nocong_s1_plain_single,growth_m,kanR+kan,-0.014122,-0.016061418,-0.016527396,-0.015459808,False
+fit_nocong_s1_plain_single,growth_m,kanR-kan,0.0,-4.444495e-07,-3.4166256e-05,3.535745e-05,True
+fit_nocong_s1_plain_single,growth_m,pheS+4CP,0.014379,0.016373929,0.01574738,0.016852725,False
+fit_nocong_s1_plain_single,growth_m,pheS-4CP,0.0,-1.2868813e-06,-2.9207054e-05,2.2709995e-05,True
+fit_nocong_s1_plain_single_pinkm,growth_k,kanR+kan,0.015042,0.015042,0.015042,0.015042,True
+fit_nocong_s1_plain_single_pinkm,growth_k,kanR-kan,0.023923,0.023923,0.023923,0.023923,True
+fit_nocong_s1_plain_single_pinkm,growth_k,pheS+4CP,0.003107,0.003107,0.003107,0.003107,True
+fit_nocong_s1_plain_single_pinkm,growth_k,pheS-4CP,0.022042,0.022042,0.022042,0.022042,True
+fit_nocong_s1_plain_single_pinkm,growth_m,kanR+kan,-0.014122,-0.014122,-0.014122,-0.014122,True
+fit_nocong_s1_plain_single_pinkm,growth_m,kanR-kan,0.0,0.0,0.0,0.0,True
+fit_nocong_s1_plain_single_pinkm,growth_m,pheS+4CP,0.014379,0.014379,0.014379,0.014379,True
+fit_nocong_s1_plain_single_pinkm,growth_m,pheS-4CP,0.0,0.0,0.0,0.0,True

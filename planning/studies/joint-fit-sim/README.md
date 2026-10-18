@@ -244,7 +244,7 @@ slow growers, plus some shrinkage. The simulator and the fit share the
 congression rules (homodimer, dilution); what differs is that the fit
 approximates each cell's co-residents by a few fixed draws.
 
-### Run 5 (set up 2026-10-17): without congression
+### Run 5 (2026-10-17): without congression
 
 The control: the null simulation without congression
 (`make_sim.py --arm nocong`, `transformation_poisson_lambda` 0, same seed
@@ -260,3 +260,29 @@ cd /gpfs/projects/harmslab/harms/studies/joint-fit-sim && sim=$(sbatch --parsabl
 ```bash
 sbatch --dependency=afterok:$sim --export=ALL,SIM=sim_nocong_s1,MODEL=plain,NOMIX=1 --output=fit_nocong_s1_plain_single.out /gpfs/home/harms/tfscreen/planning/studies/joint-fit-sim/stage1.srun && sbatch --dependency=afterok:$sim --export=ALL,SIM=sim_nocong_s1,MODEL=plain,NOMIX=1,PIN=1 --output=fit_nocong_s1_plain_single_pinkm.out /gpfs/home/harms/tfscreen/planning/studies/joint-fit-sim/stage1.srun
 ```
+
+Results. Free 776,488, pinned at the truth 776,871 (both converged): the
+truth still costs 383 nats, half of run 4's 745. m is 14% steep in both
+markers (kanR -0.0161, pheS +0.0164), against 22-25% with congression. At
+the truth theta is nearly exact (singles RMSE 0.010, 95% coverage 0.91;
+spikes 0.006, wt 0.002); free, singles 0.046 (coverage 0.11).
+
+Attribution (pinned minus free, total -357): growth -235, spread over all
+four conditions and the deep singles with no hot spot; log prior -144, of
+which the theta population scales and offsets take about -130 (logit low,
+logit delta and log K, about -21 to -23 each for scale and offsets);
+binding +22.
+
+So the bias has two parts of about equal size:
+
+1. **The MAP over-shrinks the theta population** (no congression needed).
+   The population scales of the singles' Hill parameters run small, which
+   compresses their theta range, and a steeper m restores the growth swing;
+   at the true m the curves need their real spread, which the population
+   prior charges for. The doubles' pull on m (the m-bias study) works the
+   same way. A hierarchical MAP has no reason to get those scales right
+   (the funnel); `hill_relative` holds them for the same reason
+   (`theta_*_hyper_scale_fixed`), `hill_geno` only holds log(n)'s.
+2. **The congression mixture's approximation** adds the rest (run 4's
+   pheS slow growers).
+
