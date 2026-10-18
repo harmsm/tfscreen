@@ -221,6 +221,11 @@ anchored by binding (the k-shift refits failed and are not reused).
      both, 5%). Experimental implication: binding on about twenty singles
      spanning theta. Still open: the remaining 5%, the congression part
      with binding singles, and theta coverage (0.38).
+     Run 8: with congression, twenty binding singles halve the bias (21% to
+     12%), leaving the mixture's approximation as the largest piece; fifty
+     singles take the no-congression bias only to 5%; the full recipe on
+     the joint truth with twenty gets kanR's m within 1%, pheS's within 7%,
+     s covered. Next: the mixture's co-resident draws (`congression_sets`).
 6. [ ] **Real stage 1.** wt, spikes and singles with binding at 2 uM, the
    swapped row corrected; report m against the within-tube values, the
    maps, s, the deviations (M42I), and binding residuals per genotype;

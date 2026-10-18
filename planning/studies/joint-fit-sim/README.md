@@ -415,7 +415,7 @@ about twenty spread over the theta range, beyond the nine spikes and the
 two in-library genotypes. The congression part (run 4) is untested with
 binding singles.
 
-### Run 8 (set up 2026-10-17): binding singles with congression, more of them, and the whole recipe
+### Run 8 (2026-10-17): binding singles with congression, more of them, and the whole recipe
 
 No separate interval study: at the true k and m the singles' intervals
 cover 0.91 (run 5), so the per-genotype uncertainty is right and the
@@ -440,4 +440,40 @@ cd /gpfs/projects/harmslab/harms/studies/joint-fit-sim && R=/gpfs/home/harms/tfs
 ```bash
 sbatch --export=ALL,SIM=sim_null_s1,MODEL=plain,TAG=lib20,ADDB=20 --output=fit_null_s1_plain_lib20.out $R && sbatch --export=ALL,SIM=sim_null_s1,MODEL=plain,TAG=weakpool_lib20,PRIORS=$W,ADDB=20 --output=fit_null_s1_plain_weakpool_lib20.out $R && sbatch --export=ALL,SIM=sim_nocong_s1,MODEL=plain,NOMIX=1,TAG=lib50,ADDB=50 --output=fit_nocong_s1_plain_single_lib50.out $R && j=$(sbatch --parsable --export=ALL,SIM=sim_joint_s1,MODEL=plain,TAG=lib20,ADDB=20 --output=fit_joint_s1_plain_lib20.out $R) && sbatch --dependency=afterok:$j --export=ALL,SIM=sim_joint_s1,MODEL=full,INIT=fit_joint_s1_plain_lib20,ADDB=20 --output=fit_joint_s1_full_from_plain_lib20.out $R
 ```
+
+Results (all converged except `fit_joint_s1_full_from_plain_lib20`, at the
+floor step size 1e-6 when it hit the epoch cap, still creeping):
+
+| run | m steep, kanR / pheS | singles theta RMSE (95% cov.) | wt |
+|---|---|---|---|
+| null, plain (run 2) | 23% / 20% | 0.056 (0.10) | 0.040 |
+| null, plain, 20 binding singles | 13% / 11% | 0.037 (0.31) | 0.018 |
+| null, plain, weak pooling, 20 binding singles | 13% / 11% | 0.036 (0.33) | 0.017 |
+| no congression, 20 binding singles (run 7) | 6% / 6% | 0.021 (0.35) | 0.014 |
+| no congression, 50 binding singles | 5% / 5% | 0.017 (0.51) | 0.010 |
+| joint, full from plain (run 3) | 2% / 15% | 0.070 (0.17) | 0.057 |
+| joint, plain, 20 binding singles | 19% / -3% | 0.123 (0.13) | 0.129 |
+| joint, full from plain, 20 binding singles | 1% / 7% | 0.048 (0.37) | 0.029 |
+
+On the joint truth with 20 binding singles: log s -0.74 [-0.78, -0.69]
+against -0.69 (covered, much tighter than without); kanR's warp a 8.3
+[8.2, 8.4] against 8 and x0 0.535 [0.52, 0.55] against 0.50 (tight, near,
+not covered); pheS's graded warp flips to log a -0.83 [-1.8, 0.05]
+against 0.41 (not covered; it was wide and covered without); tau 0.23
+against 0.10.
+
+- **With congression, binding singles halve the bias** (21% to 12%) but
+  leave about twice the no-congression bias: the congression mixture's
+  approximation is now the largest piece. Weak pooling adds nothing here.
+- **More binding has diminishing returns:** 50 singles take the
+  no-congression bias from 6% to 5%, a floor of about 5% from the
+  population prior and the squeeze.
+- **The recipe on the joint truth works best with binding singles:**
+  kanR's m within 1%, s covered, theta error down a third; pheS's m still
+  7% steep and its weak warp the least identified piece.
+- Coverage rises with binding (0.10 to 0.37, 0.51 with 50) but stays far
+  from 0.95, as the bias it tracks.
+
+Next: the congression mixture's approximation (`congression_sets`, the
+fixed co-resident draws), on the null simulation with 20 binding singles.
 
