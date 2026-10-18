@@ -477,7 +477,7 @@ against 0.10.
 Next: the congression mixture's approximation (`congression_sets`, the
 fixed co-resident draws), on the null simulation with 20 binding singles.
 
-### Run 9 (set up 2026-10-18): more co-resident draws
+### Run 9 (2026-10-18): more co-resident draws
 
 `tfs-configure-model --congression_sets` (new) sets the mixture's fixed
 co-resident draws; `stage1.py --congression_sets`, `stage1.srun`
@@ -507,4 +507,29 @@ To check each arm's sets once it has configured:
 ```bash
 for t in cs75 cs140 cs430; do echo "$t: $(python -c "import yaml; print(yaml.safe_load(open('fit_null_s1_plain_$t/tfs_configure_config.yaml'))['components']['congression_sets'])")"; done
 ```
+
+Results. All three MAPs finished (75 and 140 sets at the epoch cap, still
+creeping; 430 converged), and all three then ran the GPU out of memory in
+the Laplace Hessian (`tfs-sample-posterior`, `_chunked_hessian`: every
+cell class is evaluated per Hessian probe), so there are no posteriors or
+theta predictions; m comes from each MAP (`two_stage.km_from_map`).
+
+| sets | total | m steep, kanR / pheS |
+|---|---|---|
+| 12 3 1 (run 8, `fit_null_s1_plain_lib20`) | 16 | 13.4% / 11.0% |
+| 50 20 5 | 75 | 9.7% / 8.8% |
+| 100 30 10 | 140 | 9.5% / 8.8% |
+| 300 100 30 | 430 | 8.8% / 8.4% |
+| no congression, same 20 binding singles (run 7) | - | 5.7% / 5.9% |
+
+- **The number of draws is about a third of the congression excess,** and
+  nearly all of that third comes by 75 sets.
+- **The rest (about 3 points) does not shrink with more draws:** it is in
+  the mixture's form, not its sample size. Candidates: the simulator's
+  cells carry their co-residents' real abundances, while the fit's sets
+  are drawn from the pool composition and weighted by the design; the
+  homodimer rule's equal plasmid shares; the classes beyond three
+  co-residents the fit leaves out.
+- **Memory:** many sets need the Laplace Hessian chunked smaller (or a
+  posterior that does not take one) before they can be the default.
 

@@ -226,6 +226,11 @@ anchored by binding (the k-shift refits failed and are not reused).
      singles take the no-congression bias only to 5%; the full recipe on
      the joint truth with twenty gets kanR's m within 1%, pheS's within 7%,
      s covered. Next: the mixture's co-resident draws (`congression_sets`).
+     Run 9: 75 co-resident sets instead of 16 take the congression null's
+     bias from 12% to 9% with twenty binding singles; 430 sets only to 8.6%,
+     against 6% without congression. The remaining 3 points are the
+     mixture's form, not its draws. Many sets run the Laplace Hessian out of
+     GPU memory.
 6. [ ] **Real stage 1.** wt, spikes and singles with binding at 2 uM, the
    swapped row corrected; report m against the within-tube values, the
    maps, s, the deviations (M42I), and binding residuals per genotype;
