@@ -26,6 +26,8 @@
 #   PRIORS optional: extra --set_priors items, separated by ':' (sbatch
 #          --export splits on commas); give TAG with it
 #   TAG    optional: output suffix _${TAG}
+#   CSETS  optional: the mixture's co-resident sets, ':'-separated (e.g.
+#          50:20:5; stage1.py --congression_sets); name the arm with TAG
 #   ADDB   optional: N extra binding singles (stage1.py
 #          --add_binding_singles); name the arm with TAG
 #
@@ -53,6 +55,10 @@ if [[ -n "${PRIORS:-}" ]]; then
 fi
 if [[ -n "${ADDB:-}" ]]; then
     EXTRA+=(--add_binding_singles "${ADDB}")
+fi
+if [[ -n "${CSETS:-}" ]]; then
+    IFS=':' read -r -a SETS <<< "${CSETS}"
+    EXTRA+=(--congression_sets "${SETS[@]}")
 fi
 if [[ -n "${TAG:-}" ]]; then
     OUT="${OUT}_${TAG}"

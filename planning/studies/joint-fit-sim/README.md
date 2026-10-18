@@ -477,3 +477,34 @@ against 0.10.
 Next: the congression mixture's approximation (`congression_sets`, the
 fixed co-resident draws), on the null simulation with 20 binding singles.
 
+### Run 9 (set up 2026-10-18): more co-resident draws
+
+`tfs-configure-model --congression_sets` (new) sets the mixture's fixed
+co-resident draws; `stage1.py --congression_sets`, `stage1.srun`
+`CSETS=` (':'-separated). The congression null simulation, plain model
+with the mixture and 20 binding singles, against
+`fit_null_s1_plain_lib20` (default 12 3 1, 16 sets: m 13% / 11% steep):
+
+| arm | sets (1, 2, 3 co-residents) | total |
+|---|---|---|
+| `cs75` | 50 20 5 | 75 |
+| `cs140` | 100 30 10 | 140 |
+| `cs430` | 300 100 30 | 430 |
+
+On a subsampled stage 1, 140 sets took 2.1x the default's wall time
+(fixed overheads included); the default fits took 20-35 minutes here.
+Pass: the bias falls toward the no-congression fit's 6% with 20 binding
+singles (run 7). If it does not move, the error is in the mixture's form
+(the fixed-set quadrature, the homodimer rule's equal shares), not in the
+number of draws.
+
+```bash
+cd /gpfs/projects/harmslab/harms/studies/joint-fit-sim && R=/gpfs/home/harms/tfscreen/planning/studies/joint-fit-sim/stage1.srun && for a in cs75:50:20:5 cs140:100:30:10 cs430:300:100:30; do sbatch --export=ALL,SIM=sim_null_s1,MODEL=plain,ADDB=20,TAG=${a%%:*},CSETS=${a#*:} --output=fit_null_s1_plain_${a%%:*}.out $R; done
+```
+
+To check each arm's sets once it has configured:
+
+```bash
+for t in cs75 cs140 cs430; do echo "$t: $(python -c "import yaml; print(yaml.safe_load(open('fit_null_s1_plain_$t/tfs_configure_config.yaml'))['components']['congression_sets'])")"; done
+```
+

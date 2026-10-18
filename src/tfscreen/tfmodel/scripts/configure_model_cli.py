@@ -242,6 +242,7 @@ def configure_model(binding_df=None,
                     congression_theta_rule="homodimer",
                     congression_dk_rule="dilution",
                     congression_dk_alpha=None,
+                    congression_sets=None,
                     theta_rescale_model="passthrough",
                     theta_growth_noise_model="zero",
                     theta_binding_noise_model="zero",
@@ -375,6 +376,14 @@ def configure_model(binding_df=None,
         alpha for congression_dk_rule 'softmin' (> 0, in units of 1/dk):
         ``dk_cell = -(1/alpha) log sum_g x_g exp(-alpha dk_g)``. Required by
         'softmin', refused by the other rules.
+    congression_sets : list of int, optional
+        With the 'mixture' transformation, the number of fixed co-resident
+        sets drawn per genotype, by co-resident count: entry n-1 is the
+        number of sets with n co-resident plasmids (the mixture's
+        quadrature over a congressed cell's partners). None keeps the
+        orchestrator's default, 12 3 1 (16 sets). Each set is one cell class
+        grown through the whole model, so the cost of a fit grows with the
+        total. Written to the config.
     theta_rescale_model : str, optional
         Rescaling applied to theta before it enters the growth model. Allowed
         values are 'passthrough' (default, identity) or 'logit' (maps theta to
@@ -541,6 +550,10 @@ def configure_model(binding_df=None,
     if not binding_only:
         check_component_compatibility(condition_growth_model, theta_rescale_model)
 
+    if congression_sets is not None and transformation_model == "single":
+        raise ValueError("congression_sets sets the congression mixture's "
+                         "co-resident draws; it needs transformation_model "
+                         "'mixture'.")
     if transformation_model != "single" and transformation_lambda is None:
         raise ValueError(
             f"transformation_model='{transformation_model}' requires "
@@ -624,6 +637,8 @@ def configure_model(binding_df=None,
                      congression_theta_rule=congression_theta_rule,
                      congression_dk_rule=congression_dk_rule,
                      congression_dk_alpha=congression_dk_alpha,
+                     **({} if congression_sets is None
+                        else {"congression_sets": [int(v) for v in congression_sets]}),
                      theta_rescale=theta_rescale_model,
                      theta_growth_noise=theta_growth_noise_model,
                      theta_binding_noise=theta_binding_noise_model,
@@ -687,9 +702,11 @@ def main():
                                               "binding_weight":float,
                                               "set_priors":str,
                                               "transformation_lambda":float,
+                                              "congression_sets":int,
                                               "theta_gauge_conc":float},
                             manual_arg_nargs={"set_priors":"+",
                                               "transformation_lambda":2,
+                                              "congression_sets":"+",
                                               "theta_gauge_conc":2})
 
 if __name__ == "__main__":

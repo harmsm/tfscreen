@@ -207,6 +207,7 @@ tfs-configure-model
                               [--congression_theta_rule CONGRESSION_THETA_RULE]
                               [--congression_dk_rule CONGRESSION_DK_RULE]
                               [--congression_dk_alpha CONGRESSION_DK_ALPHA]
+                              [--congression_sets CONGRESSION_SETS [CONGRESSION_SETS ...]]
                               [--theta_rescale_model THETA_RESCALE_MODEL]
                               [--theta_growth_noise_model THETA_GROWTH_NOISE_MODEL]
                               [--theta_binding_noise_model THETA_BINDING_NOISE_MODEL]
@@ -347,6 +348,14 @@ tfs-configure-model
                            1/dk): dk_cell = -(1/alpha) log sum_g x_g exp(-alpha dk_g).
                            Required by 'softmin', refused by the other rules. (default:
                            None)
+     --congression_sets CONGRESSION_SETS [CONGRESSION_SETS ...]
+                           With the 'mixture' transformation, the number of fixed co-
+                           resident sets drawn per genotype, by co-resident count: entry
+                           n-1 is the number of sets with n co-resident plasmids (the
+                           mixture's quadrature over a congressed cell's partners). None
+                           keeps the orchestrator's default, 12 3 1 (16 sets). Each set
+                           is one cell class grown through the whole model, so the cost
+                           of a fit grows with the total. Written to the config.
      --theta_rescale_model THETA_RESCALE_MODEL
                            Rescaling applied to theta before it enters the growth model.
                            Allowed values are 'passthrough' (default, identity) or

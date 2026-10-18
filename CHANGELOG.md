@@ -86,6 +86,16 @@ fall into two kinds:
 
 ### Added
 
+- **`tfs-configure-model --congression_sets`.** The congression mixture's
+  fixed co-resident draws (entry n-1 = number of sets with n co-residents;
+  default 12 3 1) were an orchestrator setting with no flag; now settable
+  and written to the config, refused without `transformation_model
+  mixture`. Each set is a cell class grown through the whole model, so
+  cost grows with the total (140 sets took about twice the default's wall
+  time on a small stage 1). On the joint-fit simulation the mixture's
+  approximation is the largest remaining source of stage 1's m bias
+  (`planning/studies/joint-fit-sim/`, run 8).
+
 - **`hill_geno` holds any population SD.** `theta_logit_low_hyper_scale_fixed`,
   `theta_logit_delta_hyper_scale_fixed` and `theta_log_hill_K_hyper_scale_fixed`
   join `theta_log_hill_n_hyper_scale_fixed`: > 0 makes that SD a

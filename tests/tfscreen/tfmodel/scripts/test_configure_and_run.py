@@ -179,6 +179,27 @@ def test_configure_model_forwards_transformation_lambda_to_orchestrator(mock_orc
     assert mock_orchestrator_class.call_args.kwargs["transformation"] == "mixture"
 
 
+def test_configure_model_forwards_congression_sets(mock_orchestrator, tmpdir):
+    """--congression_sets reaches the orchestrator as a list of ints; left
+    unset, the orchestrator keeps its own default."""
+    mock_orchestrator_class, _ = mock_orchestrator
+    kw = dict(growth_df="g.csv", library_config="lib.yaml",
+              transformation_model="mixture", transformation_lambda=(0.36, 0.1),
+              skip_model_stats=True)
+    configure_model("b.csv", out_prefix=os.path.join(tmpdir, "a"),
+                    congression_sets=[50, 20, 5], **kw)
+    assert mock_orchestrator_class.call_args.kwargs["congression_sets"] == [50, 20, 5]
+    configure_model("b.csv", out_prefix=os.path.join(tmpdir, "b"), **kw)
+    assert "congression_sets" not in mock_orchestrator_class.call_args.kwargs
+
+
+def test_configure_model_refuses_congression_sets_without_mixture(mock_orchestrator, tmpdir):
+    with pytest.raises(ValueError, match="congression_sets"):
+        configure_model("b.csv", growth_df="g.csv", library_config="lib.yaml",
+                        congression_sets=[50, 20, 5],
+                        out_prefix=os.path.join(tmpdir, "c"), skip_model_stats=True)
+
+
 def test_configure_model_omits_base_growth_when_not_given(mock_orchestrator, tmpdir):
     """Without base_growth_df, no 'base_growth' key is written under data."""
     mock_orchestrator_class, mock_orchestrator_inst = mock_orchestrator

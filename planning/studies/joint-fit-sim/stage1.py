@@ -6,6 +6,7 @@ binding together.
                      [--init_from OTHER_FIT/tfs_fit_model_params.npz]
                      [--pin_km_truth] [--no_mixture] [--set_priors NAME=VALUE ...]
                      [--add_binding_singles N] [--binding_seed 1]
+                     [--congression_sets N1 N2 N3]
 
 SIM_DIR holds a tfs-simulate run of make_sim.py's config (simulate_config.yaml,
 tfs_sim_growth.csv, tfs_sim_binding.csv). Each step is skipped when its
@@ -47,6 +48,10 @@ noise (make_sim.BINDING_IPTG, BINDING_NOISE), appended to the simulated
 binding table in OUT_DIR/binding.csv (run 7: run 6 found the singles'
 theta squeezed along a near-symmetry of the growth model that only the
 binding genotypes resist).
+
+--congression_sets sets the mixture's co-resident draws (tfs-configure-model
+--congression_sets; default 12 3 1): run 8 left the congression simulation's
+m bias at twice the no-congression one with binding singles.
 """
 
 import argparse
@@ -131,6 +136,7 @@ def main():
     ap.add_argument("--set_priors", nargs="*", default=[])
     ap.add_argument("--add_binding_singles", type=int, default=0)
     ap.add_argument("--binding_seed", type=int, default=1)
+    ap.add_argument("--congression_sets", type=int, nargs="+", default=None)
     args = ap.parse_args()
     sim = os.path.abspath(args.sim_dir)
     init_from = None if args.init_from is None else os.path.abspath(args.init_from)
@@ -174,6 +180,10 @@ def main():
                    dict(transformation_model="mixture",
                         transformation_lambda=[0.357, 0.15],
                         congression_theta_rule="homodimer"))
+        if args.congression_sets is not None:
+            if args.no_mixture:
+                raise ValueError("--congression_sets needs the mixture")
+            mixture["congression_sets"] = list(args.congression_sets)
         configure_model(
             binding_df=binding_csv,
             growth_df=os.path.abspath("tfs_growth.csv"),
