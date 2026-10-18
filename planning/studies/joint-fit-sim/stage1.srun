@@ -26,6 +26,8 @@
 #   PRIORS optional: extra --set_priors items, separated by ':' (sbatch
 #          --export splits on commas); give TAG with it
 #   TAG    optional: output suffix _${TAG}
+#   ADDB   optional: N extra binding singles (stage1.py
+#          --add_binding_singles); name the arm with TAG
 #
 # Writes fit_${SIM#sim_}_${MODEL}/; a rerun resumes.
 
@@ -48,6 +50,9 @@ fi
 if [[ -n "${PRIORS:-}" ]]; then
     IFS=':' read -r -a ITEMS <<< "${PRIORS}"
     EXTRA+=(--set_priors "${ITEMS[@]}")
+fi
+if [[ -n "${ADDB:-}" ]]; then
+    EXTRA+=(--add_binding_singles "${ADDB}")
 fi
 if [[ -n "${TAG:-}" ]]; then
     OUT="${OUT}_${TAG}"

@@ -5,6 +5,7 @@ binding together.
     python stage1.py SIM_DIR OUT_DIR --model full|plain [--seed 1] [--max_num_epochs N]
                      [--init_from OTHER_FIT/tfs_fit_model_params.npz]
                      [--pin_km_truth] [--no_mixture] [--set_priors NAME=VALUE ...]
+                     [--add_binding_singles N] [--binding_seed 1]
 
 SIM_DIR holds a tfs-simulate run of make_sim.py's config (simulate_config.yaml,
 tfs_sim_growth.csv, tfs_sim_binding.csv). Each step is skipped when its
@@ -39,14 +40,23 @@ single), for a simulation without congression (make_sim.py --arm nocong).
 --set_priors adds tfs-configure-model --set_priors items to the study's
 own (run 6: the theta population SDs held, or their locations' priors
 moved).
+
+--add_binding_singles N measures N random singles with growth data as
+well, on the lab's 2 uM grid from their true Hill curves with the spikes'
+noise (make_sim.BINDING_IPTG, BINDING_NOISE), appended to the simulated
+binding table in OUT_DIR/binding.csv (run 7: run 6 found the singles'
+theta squeezed along a near-symmetry of the growth model that only the
+binding genotypes resist).
 """
 
 import argparse
 import os
 
+import numpy as np
 import pandas as pd
 
 from tfscreen.genetics.library_design import library_composition_table
+from make_sim import BINDING_IPTG, BINDING_NOISE
 from tfscreen.tfmodel import two_stage as ts
 from tfscreen.tfmodel.scripts.configure_model_cli import configure_model
 from tfscreen.tfmodel.scripts.extract_params_cli import extract_params
@@ -83,6 +93,31 @@ def growth_priors(growth_csv, warp, truth=None):
     return t
 
 
+def binding_singles(sim, genotypes, num, seed):
+    """Binding rows for num random singles, from their true Hill curves."""
+    truth = pd.read_csv(os.path.join(sim, "tfs_sim_parameters.csv"))
+    truth = truth.assign(genotype=truth["genotype"].astype(str)).set_index("genotype")
+    spiked = pd.read_csv(os.path.join(sim, "tfs_sim_binding.csv"))["genotype"]
+    pool = sorted(g for g in genotypes
+                  if ts.is_single(g) and g in truth.index and g not in set(spiked))
+    if num > len(pool):
+        raise ValueError(f"only {len(pool)} singles to choose from")
+    rng = np.random.default_rng([seed, 7])
+    chosen = rng.choice(pool, size=num, replace=False)
+    c = np.asarray(BINDING_IPTG, dtype=float)
+    lc = np.log(np.where(c == 0, 1e-20, c))
+    rows = []
+    for g in chosen:
+        r = truth.loc[g]
+        th = r["theta_low"] + (r["theta_high"] - r["theta_low"]) / (
+            1 + np.exp(-r["hill_n"] * (lc - r["log_hill_K"])))
+        obs = th + rng.normal(0.0, BINDING_NOISE, size=len(c))
+        rows.extend(dict(genotype=g, titrant_name="iptg", titrant_conc=float(ci),
+                         theta_obs=float(o), theta_std=BINDING_NOISE)
+                    for ci, o in zip(c, obs))
+    return pd.DataFrame(rows)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("sim_dir")
@@ -94,6 +129,8 @@ def main():
     ap.add_argument("--pin_km_truth", action="store_true")
     ap.add_argument("--no_mixture", action="store_true")
     ap.add_argument("--set_priors", nargs="*", default=[])
+    ap.add_argument("--add_binding_singles", type=int, default=0)
+    ap.add_argument("--binding_seed", type=int, default=1)
     args = ap.parse_args()
     sim = os.path.abspath(args.sim_dir)
     init_from = None if args.init_from is None else os.path.abspath(args.init_from)
@@ -109,6 +146,18 @@ def main():
         ts.filter_growth_csv(src, "tfs_growth.csv.partial", genotypes=keep)
         os.replace("tfs_growth.csv.partial", "tfs_growth.csv")
         print(f"stage 1: {len(keep)} genotypes (wt, spikes, singles)", flush=True)
+
+    binding_csv = os.path.join(sim, "tfs_sim_binding.csv")
+    if args.add_binding_singles > 0:
+        binding_csv = os.path.abspath("binding.csv")
+        if not os.path.exists(binding_csv):
+            extra = binding_singles(sim, ts.growth_genotypes("tfs_growth.csv"),
+                                    args.add_binding_singles, args.binding_seed)
+            base = pd.read_csv(os.path.join(sim, "tfs_sim_binding.csv"))
+            pd.concat([base, extra[base.columns]], ignore_index=True).to_csv(
+                binding_csv, index=False)
+            print(f"binding: {base['genotype'].nunique()} spikes plus "
+                  f"{extra['genotype'].nunique()} singles", flush=True)
 
     if not os.path.exists(CONFIG):
         truth = (pd.read_csv(os.path.join(sim, "tfs_sim_growth_parameters.csv"))
@@ -126,7 +175,7 @@ def main():
                         transformation_lambda=[0.357, 0.15],
                         congression_theta_rule="homodimer"))
         configure_model(
-            binding_df=os.path.join(sim, "tfs_sim_binding.csv"),
+            binding_df=binding_csv,
             growth_df=os.path.abspath("tfs_growth.csv"),
             library_config=library_config,
             theta_model="hill_geno",

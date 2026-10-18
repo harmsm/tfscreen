@@ -357,3 +357,31 @@ than the free fit's), more genotypes whose binding pins theta's scale
 parameterization whose population prior does not prefer the middle of
 [0, 1].
 
+### Run 7 (set up 2026-10-17): weaker pooling, more binding
+
+The no-congression simulation, plain model without the mixture, free k
+and m, against run 5's free fit:
+
+| arm | change |
+|---|---|
+| `weakpool` | theta population SDs held large: logit low 10, logit delta 10, log K 2 (log n 0.5, as before) |
+| `lib2` | 2 extra binding singles (the real data have two in-library binding genotypes, G65H and V95N) |
+| `lib20` | 20 extra binding singles |
+| `weakpool_lib20` | both |
+
+The extra binding singles are random singles with growth data, measured on
+the lab's 2 uM grid from their true Hill curves with the spikes' noise
+(`stage1.py --add_binding_singles`, `stage1.srun` `ADDB=`; the table is
+`binding.csv` in the fit's folder, and `analyze.py` scores them as their
+own group). The growth data are run 5's, so the comparison is clean.
+Pass: m within a few percent of the truth and the singles' theta slope on
+the truth near 1 (run 5 free: 0.90).
+
+```bash
+cd /gpfs/projects/harmslab/harms/studies/joint-fit-sim
+```
+
+```bash
+W=theta_logit_low_hyper_scale_fixed=10:theta_logit_delta_hyper_scale_fixed=10:theta_log_hill_K_hyper_scale_fixed=2; for a in weakpool:$W:0 lib2::2 lib20::20 weakpool_lib20:$W:20; do t=${a%%:*}; r=${a#*:}; n=${r##*:}; p=${r%:*}; sbatch --export=ALL,SIM=sim_nocong_s1,MODEL=plain,NOMIX=1,TAG=$t,PRIORS=$p,ADDB=$([ "$n" = 0 ] || echo $n) --output=fit_nocong_s1_plain_single_$t.out /gpfs/home/harms/tfscreen/planning/studies/joint-fit-sim/stage1.srun; done
+```
+

@@ -81,10 +81,15 @@ def theta_rows(run, sim, name):
                          pred["titrant_conc"].to_numpy()).to_numpy()
     lib = pd.read_csv(os.path.join(run, "tfs_configure_library.csv"))
     spiked = set(lib.loc[lib["in_spiked_origin"].astype(bool), "genotype"].astype(str))
+    bfile = os.path.join(run, "binding.csv")
+    bound = (set(pd.read_csv(bfile)["genotype"].astype(str)) - spiked
+             if os.path.exists(bfile) else set())
     pred["group"] = np.where(pred["genotype"] == "wt", "wt",
                              np.where(pred["genotype"].isin(spiked), "spike",
-                                      np.where(pred["genotype"].map(ts.is_single),
-                                               "single", "other")))
+                                      np.where(pred["genotype"].isin(bound),
+                                               "single, binding",
+                                               np.where(pred["genotype"].map(ts.is_single),
+                                                        "single", "other"))))
     pred["err"] = pred[Q_MID] - pred["truth"]
     pred["covered"] = (pred[Q_LO] <= pred["truth"]) & (pred["truth"] <= pred[Q_HI])
     out = (pred.groupby("group")
