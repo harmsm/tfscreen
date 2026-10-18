@@ -415,3 +415,29 @@ about twenty spread over the theta range, beyond the nine spikes and the
 two in-library genotypes. The congression part (run 4) is untested with
 binding singles.
 
+### Run 8 (set up 2026-10-17): binding singles with congression, more of them, and the whole recipe
+
+No separate interval study: at the true k and m the singles' intervals
+cover 0.91 (run 5), so the per-genotype uncertainty is right and the
+undercoverage is the shared parameters' bias (the truth sits hundreds of
+nats from the MAP, outside any honest posterior). Fixing the bias is the
+interval fix. Config-only runs on the existing simulations:
+
+| run | asks |
+|---|---|
+| `fit_null_s1_plain_lib20` | 20 binding singles with congression (null; plain model with the mixture; run 4's bias 22-25%) |
+| `fit_null_s1_plain_weakpool_lib20` | the same with weak pooling |
+| `fit_nocong_s1_plain_single_lib50` | 50 binding singles: does more binding keep closing the last 5%? |
+| `fit_joint_s1_plain_lib20` then `fit_joint_s1_full_from_plain_lib20` | the recipe on the joint truth (warps, s, offsets) with 20 binding singles |
+
+The chained full fit builds its own `binding.csv` with the same seed from
+the same stage-1 genotypes, so it measures the same twenty singles.
+
+```bash
+cd /gpfs/projects/harmslab/harms/studies/joint-fit-sim && R=/gpfs/home/harms/tfscreen/planning/studies/joint-fit-sim/stage1.srun && W=theta_logit_low_hyper_scale_fixed=10:theta_logit_delta_hyper_scale_fixed=10:theta_log_hill_K_hyper_scale_fixed=2
+```
+
+```bash
+sbatch --export=ALL,SIM=sim_null_s1,MODEL=plain,TAG=lib20,ADDB=20 --output=fit_null_s1_plain_lib20.out $R && sbatch --export=ALL,SIM=sim_null_s1,MODEL=plain,TAG=weakpool_lib20,PRIORS=$W,ADDB=20 --output=fit_null_s1_plain_weakpool_lib20.out $R && sbatch --export=ALL,SIM=sim_nocong_s1,MODEL=plain,NOMIX=1,TAG=lib50,ADDB=50 --output=fit_nocong_s1_plain_single_lib50.out $R && j=$(sbatch --parsable --export=ALL,SIM=sim_joint_s1,MODEL=plain,TAG=lib20,ADDB=20 --output=fit_joint_s1_plain_lib20.out $R) && sbatch --dependency=afterok:$j --export=ALL,SIM=sim_joint_s1,MODEL=full,INIT=fit_joint_s1_plain_lib20,ADDB=20 --output=fit_joint_s1_full_from_plain_lib20.out $R
+```
+
