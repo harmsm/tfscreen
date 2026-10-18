@@ -533,3 +533,45 @@ theta predictions; m comes from each MAP (`two_stage.km_from_map`).
 - **Memory:** many sets need the Laplace Hessian chunked smaller (or a
   posterior that does not take one) before they can be the default.
 
+### Theta so far (2026-10-18)
+
+Growth-only singles (no binding of their own), from the fits with
+predictions; SD of z is the SD of (error / posterior SD), 1 for honest
+intervals:
+
+| simulation | binding singles | theta RMSE | slope on truth | 95% coverage | median 95% width | SD of z |
+|---|---|---|---|---|---|---|
+| no congression | 0 | 0.046 | 0.90 | 0.11 | 0.039 | 4.3 |
+| | 2 | 0.036 | 0.92 | 0.15 | 0.033 | 4.2 |
+| | 20 | 0.021 | 0.96 | 0.36 | 0.031 | 2.7 |
+| | 50 | 0.017 | 0.97 | 0.51 | 0.032 | 2.2 |
+| | 0, true k and m | 0.010 | 1.00 | 0.91 | 0.047 | 0.9 |
+| congression (null) | 0 | 0.056 | 0.89 | 0.10 | 0.033 | 6.4 |
+| | 20 | 0.037 | 0.94 | 0.31 | 0.032 | 4.3 |
+| | 0, true k and m | 0.020 | 0.98 | 0.70 | 0.042 | 1.8 |
+| joint truth | 0 | 0.070 | 0.85 | 0.17 | 0.053 | 5.2 |
+| | 20 | 0.048 | 0.92 | 0.37 | 0.044 | 3.8 |
+
+Theta's median is good to a few hundredths and its error is mostly the
+shared affine squeeze (slope below 1); its intervals are 2-6 times too
+narrow. With congression the intervals stay about 1.8 times too narrow
+even at the true k and m: the mixture's approximation also adds
+per-genotype error the model does not carry.
+
+### Run 10 (set up 2026-10-18): how theta scales with binding singles
+
+`analyze.py` now also reports each group's median 95% width, SD of z and
+slope on the truth; `stage1.srun` takes `BSEED` (which random singles).
+Arms: the no-congression simulation with 2, 5, 10 and 20 binding singles,
+three random choices each (`lib2` and `lib20` from run 7 are choice 1),
+and the congression null with 5 and 10 (choice 1; 20 is run 8's). Twelve
+fits of about 30 minutes.
+
+```bash
+cd /gpfs/projects/harmslab/harms/studies/joint-fit-sim && R=/gpfs/home/harms/tfscreen/planning/studies/joint-fit-sim/stage1.srun
+```
+
+```bash
+for n in 2 5 10 20; do for b in 1 2 3; do if [[ ($n == 2 || $n == 20) && $b == 1 ]]; then continue; fi; sbatch --export=ALL,SIM=sim_nocong_s1,MODEL=plain,NOMIX=1,ADDB=$n,BSEED=$b,TAG=lib${n}_b${b} --output=fit_nocong_s1_plain_single_lib${n}_b${b}.out $R; done; done; for n in 5 10; do sbatch --export=ALL,SIM=sim_null_s1,MODEL=plain,ADDB=$n,TAG=lib$n --output=fit_null_s1_plain_lib$n.out $R; done
+```
+

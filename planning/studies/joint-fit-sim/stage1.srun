@@ -30,6 +30,8 @@
 #          50:20:5; stage1.py --congression_sets); name the arm with TAG
 #   ADDB   optional: N extra binding singles (stage1.py
 #          --add_binding_singles); name the arm with TAG
+#   BSEED  optional: which random singles (stage1.py --binding_seed,
+#          default 1)
 #
 # Writes fit_${SIM#sim_}_${MODEL}/; a rerun resumes.
 
@@ -54,7 +56,7 @@ if [[ -n "${PRIORS:-}" ]]; then
     EXTRA+=(--set_priors "${ITEMS[@]}")
 fi
 if [[ -n "${ADDB:-}" ]]; then
-    EXTRA+=(--add_binding_singles "${ADDB}")
+    EXTRA+=(--add_binding_singles "${ADDB}" --binding_seed "${BSEED:-1}")
 fi
 if [[ -n "${CSETS:-}" ]]; then
     IFS=':' read -r -a SETS <<< "${CSETS}"

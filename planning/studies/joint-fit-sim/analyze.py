@@ -92,12 +92,22 @@ def theta_rows(run, sim, name):
                                                         "single", "other"))))
     pred["err"] = pred[Q_MID] - pred["truth"]
     pred["covered"] = (pred[Q_LO] <= pred["truth"]) & (pred["truth"] <= pred[Q_HI])
+    pred["width95"] = pred[Q_HI] - pred[Q_LO]
+    pred["z"] = pred["err"] / ((pred["q0.841"] - pred["q0.159"]) / 2)
+
+    def slope(d):
+        return float(np.polyfit(d["truth"], d[Q_MID], 1)[0]) if len(d) > 2 else np.nan
+
     out = (pred.groupby("group")
            .agg(n_genotypes=("genotype", "nunique"),
                 rmse=("err", lambda e: float(np.sqrt(np.mean(e ** 2)))),
                 bias=("err", "mean"),
-                coverage95=("covered", "mean"))
+                coverage95=("covered", "mean"),
+                median_width95=("width95", "median"),
+                sd_z=("z", "std"))
            .reset_index())
+    out["slope"] = out["group"].map(
+        {g: slope(d) for g, d in pred.groupby("group")})
     out.insert(0, "run", name)
     return out
 
