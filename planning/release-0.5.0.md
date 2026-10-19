@@ -103,13 +103,25 @@ of the release.
    the validated stage 2), and a k-unchanged control refit with
    `kshift/drift.csv`. Validation round 2 (item 12) is set up in
    `planning/studies/two-stage-validation/`, run 2.
-7. [ ] The dev data's corrections file: exclude pheS+4CP replicate 2,
+7. [x] The dev data's corrections file: exclude pheS+4CP replicate 2,
    t_sel 82 (decision 3). Document
    `tfs-correct-tubes` -> `tfs-process-counts` as the route, since the
    two-stage fit reads the processed growth table.
-8. [ ] Refuse or warn on the experimental joint-fit pieces in a two-stage
+   Done 2026-10-19: `planning/dev-data/tube_corrections.yaml` (gitignored,
+   C10) excludes the row's six pheS+4CP tubes (the pheS-4CP control tubes
+   of that replicate and time stay), checked with `tfs-correct-tubes` (118
+   tubes to 112). `planning/studies/real-data-fit/fit/run_recipe.srun` runs
+   `tfs-correct-tubes` before `tfs-process-counts` (`CORRECTIONS`, default
+   `../../tube_corrections.yaml`). The recipe page (item 15) documents the
+   route.
+8. [x] Refuse or warn on the experimental joint-fit pieces in a two-stage
    config: `theta_growth_log_conc_shift_scale`, `genotype_offset` and a
    binding table. Mark them experimental in their docstrings.
+   Done 2026-10-19: `read_two_stage_config` refuses `binding_df`, theta
+   noise other than `zero`, the joint-fit and warp priors in `set_priors`,
+   and an `m_warp` column with any 1 in `growth_priors` (stage 1 would fit
+   the warp and stage 2's pins drop it). `genotype_offset`, hill_geno's
+   titrant shift and linear's `m_warp` say they are experimental.
 9. [ ] Make the outputs easy to read: one top-level table per genotype
    and concentration with X quantiles, read depth, `in_training_data` and
    the consistency flag, so users never open the step directories.

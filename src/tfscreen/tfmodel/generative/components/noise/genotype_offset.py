@@ -2,6 +2,11 @@
 Per-genotype binding offset: binding sees each binding genotype's theta
 shifted by one offset of its own.
 
+Experimental: part of the joint growth/binding fit
+(planning/joint-fit-return.md), paused 2026-10-18 while the link between
+binding and in vivo occupancy is open (planning/findings-ledger.md). Not
+part of the two-stage route, which refuses it.
+
     theta_binding = theta_calc + delta_g,    delta_g = tau * z_g,
     z_g ~ Normal(0, 1),    tau ~ HalfNormal(offset_scale_scale)
 

@@ -78,6 +78,14 @@ fall into two kinds:
 
 ### Changed
 
+- **`tfs-fit-two-stage` refuses the experimental joint-fit pieces and the
+  marker warp.** `read_two_stage_config` now fails on `binding_df`, a
+  theta growth or binding noise model other than `zero` (such as
+  `genotype_offset`), the titrant-shift, binding-offset and warp priors in
+  `set_priors`, and a `growth_priors` table whose `m_warp` column turns the
+  warp on. A warp was fitted in stage 1 and silently dropped in stage 2,
+  whose pins carry only k and m. Those components' docstrings now say they
+  are experimental.
 - **`binding_weight` defaults to 1.** Each binding observation now counts
   once, the likelihood of the data as measured. The old default,
   `N_growth_rows / N_binding_rows`, made the binding data weigh as much as

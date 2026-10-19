@@ -80,6 +80,12 @@ def test_read_config_resolves_paths_and_defaults(tmp_path):
     ({"growth_df": "missing.csv"}, "does not exist"),
     ({"two_stage": {"fit": {"seed": 3}}}, "cannot be set"),
     ({"two_stage": {"jackknife_subsamples": 1}}, "at least 2"),
+    ({"binding_df": "growth.csv"}, "growth-only"),
+    ({"theta_binding_noise_model": "genotype_offset"}, "experimental"),
+    ({"theta_growth_noise_model": "beta"}, "experimental"),
+    ({"set_priors": ["theta_growth_log_conc_shift_scale=1"]}, "experimental"),
+    ({"set_priors": ["offset_scale_fixed=0.1"]}, "experimental"),
+    ({"set_priors": ["warp_log_a_scale=1"]}, "experimental"),
 ])
 def test_read_config_refuses(tmp_path, over, match):
     with pytest.raises(ValueError, match=match):
@@ -316,3 +322,14 @@ def test_kshift_settings(tmp_path, rec):
     assert set(pd.read_csv(out / "kshift" / "drift.csv")["refit"]) == {"plus", "minus"}
     with pytest.raises(ValueError, match="kshift_step_size"):
         cli.read_two_stage_config(_write_yaml(tmp_path, two_stage={"kshift_step_size": 0}))
+
+
+def test_read_config_refuses_a_warp_in_growth_priors(tmp_path):
+    pd.DataFrame({"condition_rep": CONDS, "k_loc": 0.01, "m_warp": [1, 0, 0, 0]}
+                 ).to_csv(tmp_path / "gp.csv", index=False)
+    with pytest.raises(ValueError, match="m_warp"):
+        cli.read_two_stage_config(_write_yaml(tmp_path, growth_priors="gp.csv"))
+    pd.DataFrame({"condition_rep": CONDS, "k_loc": 0.01, "m_warp": 0}
+                 ).to_csv(tmp_path / "gp.csv", index=False)
+    cfg, _ = cli.read_two_stage_config(_write_yaml(tmp_path, growth_priors="gp.csv"))
+    assert cfg["growth_priors"] == str(tmp_path / "gp.csv")

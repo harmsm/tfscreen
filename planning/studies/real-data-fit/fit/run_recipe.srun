@@ -19,7 +19,9 @@
 #
 # The lab-specific step stays a script: processing/prep_dev_data.py, run in
 # planning/dev-data, writes processed/ (tube table, OD600 table, calibration,
-# count files, library config). Then, from a new directory in
+# count files, library config), and planning/dev-data/tube_corrections.yaml
+# holds the tube corrections (tfs-correct-tubes; since 2026-10-19 the
+# pheS+4CP replicate 2, t_sel 82 row is excluded). Then, from a new directory in
 # planning/dev-data/real_fit:
 #
 #   mkdir recipe && cd recipe && sbatch ../run_recipe.srun
@@ -37,10 +39,15 @@ module load cuda/12.4.1
 set -e
 
 PROCESSED="${PROCESSED:-../../processed}"
+CORRECTIONS="${CORRECTIONS:-../../tube_corrections.yaml}"
 SEED="${SEED:-20260930}"
 
+echo ">>> Correct tubes $(date)"
+tfs-correct-tubes "${PROCESSED}/tube_table.csv" "${CORRECTIONS}" \
+    --out_prefix tfs_tubes_corrected
+
 echo ">>> Process counts $(date)"
-tfs-process-counts "${PROCESSED}/tube_table.csv" "${PROCESSED}/counts" \
+tfs-process-counts tfs_tubes_corrected.csv "${PROCESSED}/counts" \
     --od600_file "${PROCESSED}/tube_od600.csv" \
     --od600_calibration_file "${PROCESSED}/od600_calibration.yaml" \
     --tube_volume_mL 5 \

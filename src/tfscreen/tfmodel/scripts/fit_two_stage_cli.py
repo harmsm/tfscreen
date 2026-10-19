@@ -30,6 +30,12 @@ PATH_KEYS = ("growth_df", "library_config", "growth_priors",
              "growth_priors_wt_rates", "base_growth_df", "presplit_df",
              "thermo_data", "binding_df")
 
+# The joint-fit pieces (planning/joint-fit-return.md, paused 2026-10-18)
+# and the marker warp are experimental and not part of the two-stage route:
+# the fit is growth-only, and stage 2's pins carry k and m but not a warp.
+EXPERIMENTAL_PRIORS = ("growth_log_conc_shift", "offset_scale_fixed",
+                       "offset_scale_scale", "warp_log_a", "warp_x0")
+
 # Set by the two-stage fit itself, so not allowed at the top level.
 RESERVED_KEYS = ("out_prefix", "transformation_model", "transformation_lambda",
                  "congression_theta_rule")
@@ -90,7 +96,9 @@ def read_two_stage_config(config_file):
     ------
     ValueError
         On an unknown or reserved key, a missing input, a model the
-        two-stage fit does not support, or a missing lambda prior.
+        two-stage fit does not support (including binding data, theta
+        noise, the joint-fit priors and an m_warp column in
+        growth_priors), or a missing lambda prior.
     """
     with open(config_file) as fh:
         raw = yaml.safe_load(fh) or {}
@@ -140,6 +148,11 @@ def read_two_stage_config(config_file):
         if name.endswith("_pinned"):
             raise ValueError(f"set_priors {item!r}: stage 2 pins k and m per "
                              "condition itself.")
+        if any(x in name for x in EXPERIMENTAL_PRIORS):
+            raise ValueError(f"set_priors {item!r} sets an experimental "
+                             "joint-fit or warp prior, which the two-stage "
+                             "fit does not support.")
+    _check_not_experimental(cfg)
 
     lam = settings["transformation_lambda"]
     if lam is None or len(lam) != 2:
@@ -160,6 +173,28 @@ def read_two_stage_config(config_file):
             raise ValueError(f"two_stage.{name}: {bad} cannot be set here.")
         settings[name] = dict(extra)
     return cfg, settings
+
+
+def _check_not_experimental(cfg):
+    """Refuse the experimental joint-fit pieces and the marker warp."""
+    if cfg.get("binding_df"):
+        raise ValueError("The two-stage fit is growth-only: leave out "
+                         "binding_df and compare X with binding after the "
+                         "fit.")
+    for key in ("theta_growth_noise_model", "theta_binding_noise_model"):
+        if cfg.get(key, "zero") != "zero":
+            raise ValueError(f"{key} {cfg[key]!r}: the two-stage fit needs "
+                             "'zero' (the joint-fit noise models, such as "
+                             "genotype_offset, are experimental).")
+    path = cfg.get("growth_priors")
+    if path:
+        table = pd.read_csv(path)
+        if "m_warp" in table.columns and (table["m_warp"].fillna(0) != 0).any():
+            raise ValueError(f"growth_priors {path}: an m_warp column turns "
+                             "on the marker warp, which stage 2's pins do "
+                             "not carry, so stage 1 would fit it and stage 2 "
+                             "drop it. The warp is not part of the two-stage "
+                             "fit in this release.")
 
 
 # ---------------------------------------------------------------------------

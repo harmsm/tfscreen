@@ -52,6 +52,8 @@ class ModelPriors:
         effective in vivo titrant to the nominal. Equivalent to log K - log s
         on the growth side only. Identified only with binding data. Default
         scale 0: no site, s = 1 (planning/joint-fit-return.md step 4a).
+        Experimental: the joint fit is paused (2026-10-18) while the link
+        between binding and in vivo occupancy is open.
     """
 
     theta_logit_low_hyper_loc_loc: float

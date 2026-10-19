@@ -101,6 +101,9 @@ class ModelPriors:
         that read occupancy through differently shaped maps
         (``planning/studies/relative-m/``: kanR switch-like, pheS graded).
         Default False. ``--growth_priors`` takes a 0/1 ``m_warp`` column.
+        Experimental: tested on the relative stage 1 only, and not carried
+        through ``tfs-fit-two-stage``, which refuses it
+        (planning/release-0.5.0.md, decision 2).
     warp_log_a_loc, warp_log_a_scale, warp_x0_loc, warp_x0_scale : float
         Priors of the warp's log steepness and threshold.
     k_titrant_loglinear_scale : float
