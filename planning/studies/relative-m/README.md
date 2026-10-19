@@ -333,3 +333,34 @@ the pure weak-binder spikes' X constant), or neither for now (report
 kanR's scale as uncertain over that range). Knowing whether weak binders'
 kanR growth can respond to IPTG at flat occupancy would settle it.
 
+
+### Run 7: can the data order the replicate 2, t_sel 82 tubes? (2026-10-19)
+
+The lab found no mechanism for a three-way swap; the one candidate is a
+rack turned around. `row_order.py` scores each tube's IPTG signature (793
+genotypes with > 2e5 pheS reads, projection on the other rows' mean 1 mM
+direction, relative to the row's 0 tube) and fits all 720 assignments of
+the row's six labels to its six tubes against the other rows' profile
+(fraction of the 1 mM shift: 0, 0, 0.02, 0.21, 0.49, 1.00 at 0, 0.1, 1,
+10, 30 uM and 1 mM).
+
+| tube labeled | 0 | 0.1 uM | 1 uM | 10 uM | 30 uM | 1 mM |
+|---|---|---|---|---|---|---|
+| observed (other rows' 1 mM at t 94-127: 7.7-11.5) | 0 | 6.12 | 3.37 | 0.04 | -0.55 | -0.14 |
+| reversed, 0 in place: true concentration | 0 | 1 mM | 30 uM | 10 uM | 1 uM | 0.1 uM |
+
+- As labeled: rank 188 of 720 (residual SS 25.8, negative scale).
+- The five IPTG tubes reversed with the 0 tube in place: rank 10 (SS
+  1.48, scale 6.6, in line with the 1 mM shift at the other rows' times).
+  The best assignment (SS 1.30) differs only among the low tubes, which
+  the data cannot tell apart (0, 0.1 and 1 uM all sit near 0).
+- Reversing all six, the 0 tube included: rank 478.
+
+So the data do support a reversal of the IPTG tubes: the tube labeled
+0.1 uM is a 1 mM tube and the one labeled 1 uM a 30 uM tube, beyond
+doubt. Two things keep it short of a relabel: the 10 uM slot reads like
+a low tube (0.04 against 1.4 expected), and the low tubes' order is not
+identifiable. Natalie rules out a flip of the IPTG tubes with the 0
+tube in place, so the fit's support for it is a coincidence of the
+signature or an unknown mix-up. Decision (user, 2026-10-19): drop the row; record it as an
+exclusion in a corrections file with this as the evidence.
