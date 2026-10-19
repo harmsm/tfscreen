@@ -108,17 +108,18 @@ Facts, each found more than once:
 - **wt is not fully induced in vivo:** about 70% at 1 mM where binding says
   93% (2026-10-01; roadmap summary), a floor of 0.15-0.24 in run 1.
 - **Growth curves are broader than binding curves:** spike growth n
-  0.6-1.2 against binding n 1.6-2.5 (2026-10-01). Measured on X shared by
-  both markers, so partly the marker blending above; not rechecked on
-  kanR alone.
+  0.6-1.2 against binding n 1.6-2.5 (2026-10-01). Rechecked on the
+  kanR-only two-stage X: n 0.7-0.95 for most genotypes against 1.9-3.2 at
+  20 uM (x-vs-binding run 2).
 - **M42I's order inverts:** binding K about 10x wt's at both 2 and 20 uM;
   growth K about half of wt's (6.4 against 12 uM IPTG). Protein
   concentration does not move that ratio, so no single concentration
   removes it; per genotype, wt prefers about 12 uM protein and M42I about
-  1.9 (dev-data real_fit 2026-10-01, `scan_protein.py`). Measured on X
-  compressed 1.47x by the doubles; not rechecked on the two-stage X.
-  x-vs-binding (2026-10-15) found M42I growing 0.3-0.4 below its 2 uM
-  binding at 0-1 uM IPTG.
+  1.9 (dev-data real_fit 2026-10-01, `scan_protein.py`). Rechecked on
+  the two-stage, kanR-only X (x-vs-binding run 2, 2026-10-18): M42I's K is
+  0.18x wt's in growth against 3.6x (2 uM) and 5.3x (20 uM) in binding, a
+  factor of 20-30; M42I/H74A keeps the order but sits 10x lower in growth;
+  D88A and V95N agree within 2x.
 - **No single protein concentration or shared monotone map carries binding
   onto growth** (best shared concentration 4.5 uM, rms 0.285; isotonic
   0.21-0.25; departures 0.3-1.0 against interval widths 0.15-0.35;
@@ -161,8 +162,11 @@ interpolation, joint-fit-real run 1) has met these facts.
    assays. The bench tests on record: monoculture growth of the spikes
    across the titration (`planning/absolute-abundance-measurements.md`);
    binding on more singles helps only once the link holds.
-2. **Whether M42I's inversion and the broad growth curves survive** on the
-   two-stage, kanR-only X (both were measured on compressed, shared X).
+2. ~~Whether M42I's inversion and the broad growth curves survive on the
+   two-stage, kanR-only X.~~ Both survive (x-vs-binding run 2, 2026-10-18).
+   Both genotypes carrying M42I respond at lower IPTG in vivo than in vitro
+   relative to wt; a genotype-specific in vivo factor (repressor level?)
+   is a hypothesis, testable with expression data.
 3. **lambda's prior:** fixing it from the measurement was proposed
    (2026-09-26, congression-physics-plan step 3.5) and never done; later
    decisions loosened it ("a readout, not a measurement", 2026-10-02;

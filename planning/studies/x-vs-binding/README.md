@@ -119,3 +119,45 @@ the library, but at about one SE per IPTG level.
 **Next.** Find why wt does better in 4CP than the mutants at the same or
 lower occupancy (see the two-stage validation README). Repeat with the
 replicated binding data.
+
+### Run 2 (2026-10-18): does M42I's inverted order survive the two-stage X?
+
+The 2026-10-01 "no map" found M42I's growth K about half of wt's while its
+binding K is about 10x wt's, and growth curves broader than binding, both
+on X compressed 1.47x by the doubles and shared by both markers
+(`planning/findings-ledger.md`, Open item 2). `hill_compare.py` fits a
+four-parameter Hill curve to each genotype's predicted X (median, eight
+IPTG concentrations) from this study's two-stage run (stage 2, both
+libraries; `consistency/`, kanR alone) and to its mean binding theta at 2
+and 20 uM. The pheS-alone fit is left out: it is degenerate at wt (run 1).
+K is trusted only for curves with amplitude >= 0.35 in every source: wt,
+M42I, M42I/H74A, D88A, V95N (G65H, H74A, K84L and H74A/K84L are nearly flat
+in growth or binding).
+
+K over wt's K:
+
+| genotype | X, kanR alone | X, both | binding 2 uM | binding 20 uM |
+|---|---|---|---|---|
+| wt (K) | 21 uM | 23 uM | 2.6 uM | 21 uM |
+| M42I | 0.18 | 0.22 | 3.6 | 5.3 |
+| M42I/H74A | 0.056 | 0.056 | 0.52 | 0.55 |
+| D88A | 4.3 | 4.7 | - | 9.2 |
+| V95N | 2.2 | 2.0 | - | 3.2 |
+
+- **M42I's inversion survives and is larger:** in growth it responds at
+  about a fifth of wt's IPTG, in binding at 4-5 times wt's (a factor of
+  20-30 apart; 2026-10-01 had about 20).
+- **M42I/H74A** keeps the binding order but sits 10x lower in growth.
+  D88A and V95N keep it within 2x.
+- **wt's growth midpoint equals its 20 uM binding midpoint** (21 uM); its
+  2 uM binding midpoint is 8x lower.
+- **Growth curves stay broader:** n 0.7-0.95 on the kanR-only X for most
+  genotypes (V95N 1.9, M42I/H74A 1.2), against 1.9-3.2 in binding at 20 uM
+  and 1.2-1.9 at 2 uM.
+
+So the two facts the "no map" rested on are not artifacts of the
+compressed, shared X. Both genotypes carrying M42I respond at lower IPTG in
+vivo than in vitro, relative to wt. One reading (a hypothesis, not tested):
+a genotype-specific in vivo factor such as repressor level, since binding K
+rises with protein (wt 2.6 to 21 uM from 2 to 20 uM protein).
+
