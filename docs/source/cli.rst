@@ -2102,7 +2102,9 @@ tfs-fit-two-stage
    direction); stage2 (the full library with every condition's k and m
    pinned at stage 1; MAP, Laplace, X); kshift (two stage 2 refits at k
    plus and minus one jackknife SD along its main direction, from stage
-   2's MAP: X's shift per SD, kshift/shift.csv); predict (stage 2's X, and
+   2's MAP at two_stage.kshift_step_size with the dk_geno population held
+   there: X's shift per SD, kshift/shift.csv; with two_stage.kshift_control
+   a third refit at stage 1's k, and kshift/drift.csv); predict (stage 2's X, and
    with two_stage.predict_epistasis its epistasis, with the shift added as
    one shared multiple per posterior draw, predict/); consistency (stage 2
    on one library's tubes alone against the full stage 2, per genotype
@@ -2119,8 +2121,10 @@ tfs-fit-two-stage
                            jackknife_subsamples (30), jackknife_drop_frac (0.2),
                            num_posterior_samples (500), consistency (true),
                            consistency_library (default the first library
-                           alphabetically), predict_epistasis (false), fit (extra tfs-
-                           fit-model arguments) and posterior (extra tfs-sample-posterior
+                           alphabetically), predict_epistasis (false), kshift_step_size
+                           (1e-5, the k-shift refits' starting step size), kshift_control
+                           (true, the k-unchanged control refit), fit (extra tfs-fit-
+                           model arguments) and posterior (extra tfs-sample-posterior
                            arguments).
 
    options:

@@ -231,3 +231,48 @@ def test_km_from_map_pinned_free_and_partial(tmp_path):
     np.savez(npz, other=np.zeros(1))
     with pytest.raises(ValueError, match="no k"):
         ts.km_from_map(str(npz), str(pri))
+
+
+# --- the k-shift refits ---
+
+def test_dk_geno_hypers_and_pins(tmp_path):
+    npz = tmp_path / "p.npz"
+    np.savez(npz, dk_geno_hyper_loc_auto_loc=np.array([-2.0]),
+             dk_geno_hyper_scale_auto_loc=np.array(1.5),
+             dk_geno_hyper_shift_auto_loc=np.array(0.07),
+             other_auto_loc=np.zeros(3))
+    held = ts.dk_geno_hypers(str(npz))
+    assert held == pytest.approx({"hyper_loc": -2.0, "hyper_scale": 1.5,
+                                  "hyper_shift": 0.07})
+    pri = tmp_path / "priors.csv"
+    pd.DataFrame({"parameter": ["growth.dk_geno.hyper_loc_loc",
+                                "growth.dk_geno.pinned.hyper_loc"],
+                  "value": ["-3.5", "9"]}).to_csv(pri, index=False)
+    ts.pin_dk_geno_hypers(str(pri), held)
+    ts.pin_dk_geno_hypers(str(pri), held)        # idempotent
+    df = pd.read_csv(pri)
+    assert len(df) == 4
+    rows = dict(zip(df["parameter"], df["value"]))
+    assert rows["growth.dk_geno.pinned.hyper_loc"] == pytest.approx(-2.0)
+    assert rows["growth.dk_geno.hyper_loc_loc"] == pytest.approx(-3.5)
+
+
+def test_dk_geno_hypers_absent(tmp_path):
+    npz = tmp_path / "p.npz"
+    np.savez(npz, other_auto_loc=np.zeros(3))
+    assert ts.dk_geno_hypers(str(npz)) == {}
+    pri = tmp_path / "priors.csv"
+    pd.DataFrame({"parameter": ["a"], "value": [1]}).to_csv(pri, index=False)
+    ts.pin_dk_geno_hypers(str(pri), {})
+    assert len(pd.read_csv(pri)) == 1
+
+
+def test_refit_drift():
+    def pred(x):
+        return pd.DataFrame({"genotype": ["wt", "A1B", "C2D"],
+                             "titrant_name": "iptg", "titrant_conc": 0.0,
+                             "q0.5": [1.0, x, x + 0.1]})
+    out = ts.refit_drift(pred(0.5), {"plus": pred(0.45), "zero": pred(0.5)})
+    out = out.set_index("refit")
+    assert out.loc["plus", "median_change"] == pytest.approx(-0.05)
+    assert out.loc["zero", "median_change"] == pytest.approx(0.0)

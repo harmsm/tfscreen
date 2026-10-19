@@ -31,6 +31,21 @@ fall into two kinds:
 
 ### Fixed
 
+- **`tfs-fit-two-stage`'s k-shift refits stay at stage 2's MAP.** They
+  restarted at Adam's default step size (1e-3), fell about 6.7e5 nats off
+  stage 2's MAP and re-descended along the dk_geno population against wt,
+  so on the real data X moved +0.32 even with k unchanged and the shift
+  measured where the optimizer stopped
+  (`planning/studies/two-stage-validation/`, run 1). The refits now start
+  at `two_stage.kshift_step_size` (default 1e-5) with the dk_geno
+  population hyperparameters held at stage 2's MAP
+  (`two_stage.dk_geno_hypers`, `pin_dk_geno_hypers`), and a third refit
+  with k unchanged (`two_stage.kshift_control`, on by default) checks the
+  procedure: `kshift/drift.csv` gives each refit's change in X from stage
+  2's MAP, and the command warns when the control moves more than a
+  quarter of the shift. Existing `kshift/` directories are reused as
+  they are; delete them (and `predict/`) to rerun.
+
 - **`tfs-fit-two-stage` with a pinned k or m in stage 1.** A pinned k or
   m is a deterministic site, which a MAP checkpoint does not hold, so
   `tfs-extract-params` skipped both and stage 1 failed writing `km.csv`.

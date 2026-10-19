@@ -91,18 +91,25 @@ def test_read_config_refuses(tmp_path, over, match):
 class Recorder:
     """Stand-ins for the chained CLI functions; each writes its outputs."""
 
-    def __init__(self, km=None):
+    def __init__(self, km=None, x=None):
         self.calls = []
+        # X by refit directory; anything else (stage 2, consistency) 0.43
+        self.x = x or {"plus": 0.4, "minus": 0.46}
         self.km = km or {c: (0.01 * (i + 1), (-1) ** i * 0.014)
                          for i, c in enumerate(CONDS)}
 
     def configure_model(self, out_prefix, **kw):
         self.calls.append(("configure", os.getcwd(), kw))
         open(f"{out_prefix}_config.yaml", "w").write("x: 1\n")
+        pd.DataFrame({"parameter": ["growth.dk_geno.hyper_loc_loc"],
+                      "value": [-3.5]}).to_csv(f"{out_prefix}_priors.csv",
+                                               index=False)
 
     def fit_model(self, config_file, **kw):
         self.calls.append(("fit", os.getcwd(), kw))
-        open(cli.PARAMS, "w").write("x")
+        np.savez(cli.PARAMS, dk_geno_hyper_loc_auto_loc=np.array(-2.17),
+                 dk_geno_hyper_scale_auto_loc=np.array(1.53),
+                 dk_geno_hyper_shift_auto_loc=np.array(0.076))
         open(cli.CHECKPOINT, "w").write("x")
 
     def extract_params(self, config_file, param_file, out_prefix):
@@ -122,7 +129,7 @@ class Recorder:
     def predict_theta(self, config_file, param_file, out_prefix, **kw):
         self.calls.append(("predict", os.getcwd(), param_file, kw))
         here = os.path.basename(os.getcwd())
-        x = {"plus": 0.4, "minus": 0.46}.get(here, 0.43)
+        x = self.x.get(here, 0.43)
         rows = [{"genotype": g, "titrant_name": "iptg", "titrant_conc": c,
                  "q0.025": x - 0.05, "q0.5": x if g != "wt" else 1 - c,
                  "q0.975": x + 0.05}
@@ -184,16 +191,32 @@ def test_full_run_layout_and_arguments(tmp_path, rec):
     info = json.load(open(out / "jackknife" / "jk_02" / "subsample.json"))
     assert info["d"] > 0 and info["n"] == s1["sample"].nunique()
 
-    # kshift: both refits start from stage 2's MAP, k moved, m kept
-    for v in ("plus", "minus"):
+    # kshift: three refits from stage 2's MAP at the small step size, the
+    # dk_geno population held at stage 2's MAP; k moved, m kept
+    for v in ("plus", "minus", "zero"):
         fit = _calls(rec, "fit", f"kshift/{v}")[0][2]
         assert fit["init_from"] == str(out / "stage2" / cli.PARAMS)
+        assert fit["adam_step_size"] == 1e-5
+        assert fit["adam_final_step_size"] == 1e-6
+        pri = pd.read_csv(out / "kshift" / v / "tfs_configure_priors.csv")
+        held = dict(zip(pri["parameter"], pri["value"].astype(float)))
+        assert held["growth.dk_geno.pinned.hyper_loc"] == pytest.approx(-2.17)
+        assert held["growth.dk_geno.pinned.hyper_scale"] == pytest.approx(1.53)
+        assert held["growth.dk_geno.pinned.hyper_shift"] == pytest.approx(0.076)
     p = pd.read_csv(out / "kshift" / "plus" / "growth_priors_pinned.csv")
     m = pd.read_csv(out / "kshift" / "minus" / "growth_priors_pinned.csv")
+    z = pd.read_csv(out / "kshift" / "zero" / "growth_priors_pinned.csv")
+    s2 = pd.read_csv(out / "stage2" / "growth_priors_pinned.csv")
     assert (p["k_loc"] != m["k_loc"]).all()
     assert np.allclose(p["m_loc"], m["m_loc"])
+    assert np.allclose(z["k_loc"], s2["k_loc"])
+    assert (out / "stage2" / cli.PRED_MAP).exists()
     shift = pd.read_csv(out / "kshift" / "shift.csv")
     assert np.allclose(shift.loc[shift.genotype != "wt", "shift"], -0.03)
+    drift = pd.read_csv(out / "kshift" / "drift.csv").set_index("refit")
+    assert drift.loc["plus", "median_change"] == pytest.approx(-0.03)
+    assert drift.loc["minus", "median_change"] == pytest.approx(0.03)
+    assert drift.loc["zero", "median_change"] == pytest.approx(0.0)
 
     # predict: stage 2's posterior with the shared shift
     pred = [c for c in _calls(rec, "predict") if "predict" in c[3].get("out_prefix", "")
@@ -260,3 +283,36 @@ def test_consistency_with_another_library_and_name(tmp_path, rec):
     assert set(cons["condition_rep"]) == {"pheS+4CP", "pheS-4CP"}
     # the default run's kanR check is untouched
     assert set(pd.read_csv(out / "consistency" / "tfs_growth.csv")["library"]) == {"kanR"}
+
+
+def test_kshift_warns_when_the_control_moves(tmp_path, capsys):
+    r = Recorder(x={"plus": 0.4, "minus": 0.46, "zero": 0.5})
+    lib = pd.DataFrame({"genotype": ["wt", "A1B", "C2D", "A1B/C2D"],
+                        "in_spiked_origin": [True, False, False, False]})
+    with patch.object(cli, "configure_model", r.configure_model), \
+         patch.object(cli, "fit_model", r.fit_model), \
+         patch.object(cli, "extract_params", r.extract_params), \
+         patch.object(cli, "sample_posterior", r.sample_posterior), \
+         patch.object(cli, "predict_theta", r.predict_theta), \
+         patch.object(cli, "library_composition_table", return_value=lib):
+        y = _write_yaml(tmp_path)
+        out = tmp_path / "run"
+        for step in ("stage1", "jackknife", "stage2", "kshift"):
+            cli.fit_two_stage(y, out_dir=str(out), step=step)
+    assert "warning: the control refit" in capsys.readouterr().out
+
+
+def test_kshift_settings(tmp_path, rec):
+    y = _write_yaml(tmp_path, two_stage={"kshift_step_size": 1e-4,
+                                         "kshift_control": False,
+                                         "fit": {"adam_step_size": 1e-3}})
+    out = tmp_path / "run"
+    for step in ("stage1", "jackknife", "stage2", "kshift"):
+        cli.fit_two_stage(y, out_dir=str(out), step=step)
+    assert not (out / "kshift" / "zero").exists()
+    fit = _calls(rec, "fit", "kshift/plus")[0][2]
+    assert fit["adam_step_size"] == 1e-4          # the refit's own wins
+    assert _calls(rec, "fit", "stage2")[0][2]["adam_step_size"] == 1e-3
+    assert set(pd.read_csv(out / "kshift" / "drift.csv")["refit"]) == {"plus", "minus"}
+    with pytest.raises(ValueError, match="kshift_step_size"):
+        cli.read_two_stage_config(_write_yaml(tmp_path, two_stage={"kshift_step_size": 0}))

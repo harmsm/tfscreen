@@ -333,6 +333,101 @@ def k_shift_priors(km, k_step, scale=0.002):
 
 
 # ---------------------------------------------------------------------------
+# The k-shift refits: dk_geno's population held at stage 2's MAP
+# ---------------------------------------------------------------------------
+
+DK_GENO_HYPERS = ("hyper_loc", "hyper_scale", "hyper_shift")
+
+
+def dk_geno_hypers(params_npz, name="dk_geno"):
+    """
+    The dk_geno population hyperparameters at a MAP.
+
+    Run 1 of ``planning/studies/two-stage-validation/`` found the k-shift
+    refits sliding every non-wt genotype's dk_geno together against wt
+    through these (stage 2's Laplace held them as its one negative
+    direction), so the refits hold them at stage 2's values.
+
+    Parameters
+    ----------
+    params_npz : str
+        A MAP ``*_params.npz`` (constrained values).
+    name : str
+        The dk_geno component's site prefix.
+
+    Returns
+    -------
+    dict
+        Suffix (``hyper_loc``, ``hyper_scale``, ``hyper_shift``) to value,
+        for those the MAP has; empty for a dk_geno without a learned
+        population (``fixed``, ``pinned``).
+    """
+    out = {}
+    with np.load(params_npz) as z:
+        for h in DK_GENO_HYPERS:
+            key = f"{name}_{h}_auto_loc"
+            if key in z.files:
+                out[h] = float(np.asarray(z[key]).ravel()[0])
+    return out
+
+
+def pin_dk_geno_hypers(priors_csv, values, component="growth.dk_geno"):
+    """
+    Hold dk_geno's population hyperparameters in a priors CSV.
+
+    Writes one ``{component}.pinned.{suffix}`` row per value (replacing any
+    already there), which the dk_geno component reads as a pinned
+    (deterministic) hyperparameter.
+
+    Parameters
+    ----------
+    priors_csv : str
+        The ``tfs-configure-model`` priors CSV, rewritten in place.
+    values : dict
+        Suffix to value (``dk_geno_hypers``).
+    component : str
+        The dk_geno component's row prefix in the priors CSV.
+    """
+    if not values:
+        return
+    df = pd.read_csv(priors_csv, dtype={"value": object})
+    names = [f"{component}.pinned.{h}" for h in values]
+    df = df[~df["parameter"].isin(names)]
+    add = pd.DataFrame({"parameter": names, "value": list(values.values())})
+    pd.concat([df, add], ignore_index=True).to_csv(priors_csv, index=False)
+
+
+def refit_drift(reference_pred, refit_preds):
+    """
+    How far each k-shift refit moved X from stage 2's MAP.
+
+    Parameters
+    ----------
+    reference_pred : pandas.DataFrame
+        Stage 2's X at its MAP (``tfs-predict-theta`` output).
+    refit_preds : dict
+        Refit name (``plus``, ``minus``, ``zero``) to its X at its MAP.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per refit: ``median_change`` and ``q10_change`` /
+        ``q90_change`` of (X_refit - X_stage2) over non-wt rows. A refit
+        with k unchanged (``zero``) should not move; the plus and minus
+        refits should move by about the same amount in opposite directions.
+    """
+    ref = reference_pred[PRED_KEY + ["q0.5"]].rename(columns={"q0.5": "x_ref"})
+    rows = []
+    for name, pred in refit_preds.items():
+        df = ref.merge(pred[PRED_KEY + ["q0.5"]], on=PRED_KEY, how="inner")
+        d = (df["q0.5"] - df["x_ref"])[df["genotype"].astype(str) != "wt"]
+        rows.append({"refit": name, "median_change": float(d.median()),
+                     "q10_change": float(d.quantile(0.1)),
+                     "q90_change": float(d.quantile(0.9))})
+    return pd.DataFrame(rows)
+
+
+# ---------------------------------------------------------------------------
 # The shared X shift
 # ---------------------------------------------------------------------------
 

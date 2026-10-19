@@ -216,3 +216,64 @@ supports stage 2's X level over the refits' (+0.3).
   probably cannot be held: stage 1 (singles) gave 0.53, stage 2 1.53.
 - Find why wt does better in 4CP, derepressed, than mutants at the same
   or lower occupancy (`planning/studies/x-vs-binding/`).
+
+### Run 2 setup: the k-shift repair (2026-10-19)
+
+Decided (user, 2026-10-19; `planning/release-0.5.0.md` decision 1):
+repair the shift, and if one round fails, ship without it.
+`tfs-fit-two-stage`'s kshift step now:
+
+- starts each refit from stage 2's MAP at `two_stage.kshift_step_size`
+  (default 1e-5, final 1e-6), not Adam's 1e-3, which knocked run 1's
+  refits about 6.7e5 nats off the MAP in the first window;
+- holds the dk_geno population (`hyper_loc`, `hyper_scale`,
+  `hyper_shift`) at stage 2's MAP in every refit, the direction stage 2's
+  Laplace held and run 1's refits slid along. Holding it at stage 1's
+  values, as first proposed, would change stage 2 itself (stage 1's
+  singles give a scale of 0.53 against stage 2's 1.53) and need stage 2
+  revalidated;
+- runs a third refit with k unchanged (`kshift/zero/`, on unless
+  `kshift_control: false`) and writes `kshift/drift.csv`: each refit's
+  median change in X from stage 2's MAP (`stage2/tfs_pred_theta_map.csv`)
+  over non-wt rows, with q10 and q90. It warns when the control moves
+  more than a quarter of the median |shift|.
+
+A risk that remains: the data preferred run 1's slid state by about
+1.5e4 nats, and with the population held, every genotype can still move
+its own dk_geno offset together, at a prior cost of a few hundred nats.
+The step size slows that slide but does not forbid it; the control
+refit is there to show whether it happens.
+
+Stage 1, the jackknife and stage 2 are unchanged, so only kshift and
+predict rerun. On the cluster, after pulling, in
+`/gpfs/projects/harmslab/harms/studies/two-stage-validation`, set run 1's
+outputs aside:
+
+```bash
+for c in seed1 seed2 real; do mv run_${c}/kshift run_${c}/kshift_run1; mv run_${c}/predict run_${c}/predict_run1; done
+```
+
+```bash
+ls -d run_*/kshift_run1 run_*/predict_run1
+```
+
+Then one job per run:
+
+```bash
+for c in seed1 seed2 real; do sbatch --job-name=ts_kshift_${c} --output=run_${c}/logs/kshift2_%j.out --error=run_${c}/logs/kshift2_%j.err --export=ALL,CFG=/gpfs/home/harms/tfscreen/planning/studies/two-stage-validation/two_stage_${c}.yaml,OUT=$PWD/run_${c},STEP=kshift_predict /gpfs/home/harms/tfscreen/planning/studies/two-stage-validation/run_step.srun; done
+```
+
+Three refits per run, each probably 1-3
+hours at the small step size (run 1's took 188,000-540,000 steps at
+1e-3); `run_step.srun` asks for `gpulong`, two days.
+
+Pass:
+
+- `kshift/drift.csv`: the control (`zero`) moves X by less than a quarter
+  of the median |shift|, and plus and minus move by about the same
+  amount in opposite directions;
+- seed 1: the shift within about 15% of the study's k-band SD
+  (`jk_seed1/x_kband.csv`; run 1 was 25% low), and deep X coverage with
+  the shift near the study's 0.94 / 0.91 (`validate.py`, as run 1);
+- seed 2: coverage with the shift above run 1's 0.921 / 0.867;
+- real: the control near 0 (run 1: +0.32).

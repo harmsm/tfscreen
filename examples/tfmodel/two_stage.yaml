@@ -37,5 +37,7 @@ two_stage:
   consistency: true            # stage 2 on one library alone; --no_consistency skips
   consistency_library: kanR    # default: the first library alphabetically
   predict_epistasis: false
+  kshift_step_size: 1.0e-5     # the k-shift refits' starting step size
+  kshift_control: true         # a third refit with k unchanged; kshift/drift.csv
   fit: {}                      # extra tfs-fit-model arguments
   posterior: {}                # extra tfs-sample-posterior arguments

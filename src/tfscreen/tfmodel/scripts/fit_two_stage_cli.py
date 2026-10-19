@@ -43,6 +43,8 @@ TWO_STAGE_DEFAULTS = {
     "consistency": True,
     "consistency_library": None,
     "predict_epistasis": False,
+    "kshift_step_size": 1e-5,
+    "kshift_control": True,
     "fit": {},
     "posterior": {},
 }
@@ -63,6 +65,7 @@ CHECKPOINT = "tfs_fit_model_checkpoint.pkl"
 PARAMS = "tfs_fit_model_params.npz"
 POSTERIOR = "tfs_posterior.h5"
 PRED = "tfs_pred_theta.csv"
+PRED_MAP = "tfs_pred_theta_map.csv"
 
 
 # ---------------------------------------------------------------------------
@@ -146,6 +149,9 @@ def read_two_stage_config(config_file):
     settings["transformation_lambda"] = [float(x) for x in lam]
     if int(settings["jackknife_subsamples"]) < 2:
         raise ValueError("two_stage.jackknife_subsamples must be at least 2")
+    settings["kshift_step_size"] = float(settings["kshift_step_size"])
+    if not settings["kshift_step_size"] > 0:
+        raise ValueError("two_stage.kshift_step_size must be positive")
     for name, res, sig in (("fit", FIT_RESERVED, FIT_ARGS),
                            ("posterior", POSTERIOR_RESERVED, POSTERIOR_ARGS)):
         extra = settings[name] or {}
@@ -195,11 +201,12 @@ def _configure(kwargs, growth_df, growth_priors=None, drop_wt_rates=False):
     configure_model(out_prefix="tfs_configure", **kw)
 
 
-def _fit(settings, init_from=None):
+def _fit(settings, init_from=None, **override):
     if os.path.exists(PARAMS):
         return
+    kw = {**settings["fit"], **override}
     fit_model(CONFIG, seed=int(settings["seed"]), analysis_method="map",
-              init_from=init_from, **settings["fit"])
+              init_from=init_from, **kw)
 
 
 def _km(path="km.csv"):
@@ -338,37 +345,75 @@ def run_stage2(out_dir, cfg, settings):
 
 
 def run_kshift(out_dir, cfg, settings):
-    """Two stage 2 refits at k plus and minus one jackknife SD; the shift."""
+    """
+    Two stage 2 refits at k plus and minus one jackknife SD; the shift.
+
+    Each refit starts from stage 2's MAP at two_stage.kshift_step_size,
+    with the dk_geno population held at stage 2's MAP: at the default
+    step size (1e-3) and with it free, the refits of
+    planning/studies/two-stage-validation/ run 1 left the MAP and slid
+    every genotype's dk_geno against wt, so the shift measured where the
+    optimizer stopped. With two_stage.kshift_control a third refit keeps
+    k at stage 1's values; kshift/drift.csv says how far each refit moved
+    X from stage 2's MAP, and a warning is printed when the control moved
+    more than a quarter of the shift.
+    """
     d = os.path.join(out_dir, "kshift")
     if os.path.exists(os.path.join(d, "shift.csv")):
         _say("kshift: done, skipped")
         return
     summarize_jackknife(out_dir, settings)
-    init = os.path.abspath(os.path.join(out_dir, "stage2", PARAMS))
+    s2 = os.path.abspath(os.path.join(out_dir, "stage2"))
+    init = os.path.join(s2, PARAMS)
     if not os.path.exists(init):
         raise RuntimeError("the k-shift refits start from stage 2's MAP; run "
                            "--step stage2")
     _say("kshift")
+    with _in_dir(s2):
+        if not os.path.exists(PRED_MAP):
+            predict_theta(CONFIG, CHECKPOINT, out_prefix=PRED_MAP[:-4])
+        ref = pd.read_csv(PRED_MAP)
     km = pd.read_csv(os.path.join(out_dir, "stage1", "km.csv"),
                      index_col="condition_rep")
     step = pd.read_csv(os.path.join(out_dir, "jackknife", "k_step.csv"),
                        index_col="condition_rep")["k_step"]
     plus, minus = ts.k_shift_priors(km, step)
+    refits = [("plus", plus), ("minus", minus)]
+    if settings["kshift_control"]:
+        refits.append(("zero", ts.pinned_growth_priors(km)))
+    held = ts.dk_geno_hypers(init)
+    step_size = settings["kshift_step_size"]
+    final = min(float(settings["fit"].get("adam_final_step_size", 1e-6)),
+                step_size)
     preds = {}
-    for name, table in (("plus", plus), ("minus", minus)):
+    for name, table in refits:
         with _in_dir(os.path.join(d, name)):
             table.to_csv("growth_priors_pinned.csv", index=False)
             _configure(cfg, cfg["growth_df"], "growth_priors_pinned.csv",
                        drop_wt_rates=True)
-            _fit(settings, init_from=init)
+            ts.pin_dk_geno_hypers("tfs_configure_priors.csv", held)
+            _fit(settings, init_from=init, adam_step_size=step_size,
+                 adam_final_step_size=final)
             if not os.path.exists(PRED):
                 predict_theta(CONFIG, CHECKPOINT, out_prefix="tfs_pred_theta")
             preds[name] = pd.read_csv(PRED)
     shift = ts.shift_table(preds["plus"], preds["minus"])
+    drift = ts.refit_drift(ref, preds)
+    drift.to_csv(os.path.join(d, "drift.csv"), index=False)
     shift.to_csv(os.path.join(d, "shift.csv"), index=False)
     nw = shift["genotype"] != "wt"
-    print(f"kshift: median |shift| {shift.loc[nw, 'shift'].abs().median():.4f}",
-          flush=True)
+    size = float(shift.loc[nw, "shift"].abs().median())
+    print(f"kshift: median |shift| {size:.4f}", flush=True)
+    for _, r in drift.iterrows():
+        print(f"kshift: {r['refit']} moved X by {r['median_change']:+.4f} "
+              f"(q10 {r['q10_change']:+.4f}, q90 {r['q90_change']:+.4f})",
+              flush=True)
+    if settings["kshift_control"]:
+        zero = abs(float(drift.set_index("refit").loc["zero", "median_change"]))
+        if zero > 0.25 * size:
+            print(f"kshift: warning: the control refit (k unchanged) moved X "
+                  f"by {zero:.4f}, more than a quarter of the shift; the "
+                  "shift measures the optimizer, not k", flush=True)
 
 
 def run_predict(out_dir, cfg, settings):
@@ -475,7 +520,9 @@ def fit_two_stage(config_file,
     direction); stage2 (the full library with every condition's k and m
     pinned at stage 1; MAP, Laplace, X); kshift (two stage 2 refits at k
     plus and minus one jackknife SD along its main direction, from stage
-    2's MAP: X's shift per SD, kshift/shift.csv); predict (stage 2's X, and
+    2's MAP at two_stage.kshift_step_size with the dk_geno population held
+    there: X's shift per SD, kshift/shift.csv; with two_stage.kshift_control
+    a third refit at stage 1's k, and kshift/drift.csv); predict (stage 2's X, and
     with two_stage.predict_epistasis its epistasis, with the shift added as
     one shared multiple per posterior draw, predict/); consistency (stage 2
     on one library's tubes alone against the full stage 2, per genotype
@@ -493,8 +540,10 @@ def fit_two_stage(config_file,
         seed (1), jackknife_subsamples (30), jackknife_drop_frac (0.2),
         num_posterior_samples (500), consistency (true),
         consistency_library (default the first library alphabetically),
-        predict_epistasis (false), fit (extra tfs-fit-model arguments) and
-        posterior (extra tfs-sample-posterior arguments).
+        predict_epistasis (false), kshift_step_size (1e-5, the k-shift
+        refits' starting step size), kshift_control (true, the k-unchanged
+        control refit), fit (extra tfs-fit-model arguments) and posterior
+        (extra tfs-sample-posterior arguments).
     out_dir : str, optional
         Directory for every step's outputs. Default 'two_stage'.
     step : str, optional

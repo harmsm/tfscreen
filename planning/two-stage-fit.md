@@ -171,6 +171,13 @@ simulation. Intervals matter for the final analysis.
    jackknife covariance as a prior, uncertainty from the Laplace, with
    the dk_geno population location held at stage 1. Open until that is
    built and validated.
+   Decided 2026-10-19 (`planning/release-0.5.0.md` decision 1): repair
+   the shift first, and if one validation round fails, ship without it.
+   Built 2026-10-19: the refits start at `kshift_step_size` (1e-5) with
+   the dk_geno population held at stage 2's MAP (not stage 1's, which
+   would change the validated stage 2), plus a k-unchanged control refit
+   and `kshift/drift.csv`. Run 2 of the validation study reruns kshift
+   and predict on the three runs.
 5. [ ] **Scoring for simulations.** X against the truth by read depth
    (`score_x.py`) as a `tfs-summarize-fit` option or its own CLI, so the
    students score design sweeps without study scripts.

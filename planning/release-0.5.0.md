@@ -97,7 +97,12 @@ of the release.
 
 ## Code
 
-6. [ ] Implement decision 1 in `tfs-fit-two-stage` and its tests.
+6. [x] Implement decision 1 in `tfs-fit-two-stage` and its tests.
+   Done 2026-10-19: `kshift_step_size` (1e-5), the dk_geno population
+   held at stage 2's MAP (not stage 1's: holding stage 1's would change
+   the validated stage 2), and a k-unchanged control refit with
+   `kshift/drift.csv`. Validation round 2 (item 12) is set up in
+   `planning/studies/two-stage-validation/`, run 2.
 7. [ ] The dev data's corrections file: exclude pheS+4CP replicate 2,
    t_sel 82 (decision 3). Document
    `tfs-correct-tubes` -> `tfs-process-counts` as the route, since the
