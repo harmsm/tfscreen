@@ -152,9 +152,12 @@ of the release.
 
 ## Release mechanics
 
-20. [ ] Change CHANGELOG `[Unreleased]` to `[0.5.0]` with the date, plus
-    an upgrade note: the removed commands and the configs that no longer
-    load.
+20. [ ] CHANGELOG: fold `[Unreleased]` into the existing `[0.5.0]`
+    section and change its date (2026-10-03) to the release date. 0.5.0
+    was never tagged or shared in the lab (user, 2026-10-19): the bump
+    came before the two-stage work, so the release stays 0.5.0 and
+    `__version__` is already right. Add an upgrade note: the removed
+    commands and the configs that no longer load.
 21. [ ] Full test suite, with `--runslow` and the smoke tests. Run lint.
 22. [ ] Tag v0.5.0 and write GitHub release notes. Install that tag on
     the cluster.
