@@ -5,7 +5,8 @@
 #   bash submit.sh two_stage.yaml run_dir
 #
 # stage1; then the jackknife array and stage2 in parallel; then kshift +
-# predict (after both) and consistency (after stage2) in parallel. Logs go
+# predict (after both) and consistency (after stage2) in parallel; then the
+# summary table (after both). Logs go
 # to run_dir/logs/. Each step skips finished work, so resubmitting the
 # whole chain resumes it.
 set -e
@@ -27,4 +28,5 @@ b=$(sub jackknife "${a}" --array=1-${N}%10)
 c=$(sub stage2 "${a}")
 d=$(sub kshift_predict "${b}:${c}")
 e=$(sub consistency "${c}")
-echo "stage1 ${a}; jackknife ${b} (1-${N}); stage2 ${c}; kshift_predict ${d}; consistency ${e}"
+f=$(sub summary "${d}:${e}")
+echo "stage1 ${a}; jackknife ${b} (1-${N}); stage2 ${c}; kshift_predict ${d}; consistency ${e}; summary ${f}"

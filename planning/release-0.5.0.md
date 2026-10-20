@@ -122,9 +122,13 @@ of the release.
    and an `m_warp` column with any 1 in `growth_priors` (stage 1 would fit
    the warp and stage 2's pins drop it). `genotype_offset`, hill_geno's
    titrant shift and linear's `m_warp` say they are experimental.
-9. [ ] Make the outputs easy to read: one top-level table per genotype
+9. [x] Make the outputs easy to read: one top-level table per genotype
    and concentration with X quantiles, read depth, `in_training_data` and
    the consistency flag, so users never open the step directories.
+   Done 2026-10-19: the `summary` step writes `{out_dir}/tfs_x.csv`
+   (also `k_shift`, `num_mutations` and reads per library). On run 1's
+   real outputs: 217,945 genotypes, 1.7 M rows, about 40 s to count the
+   reads. A depth flag waits on decision 5's threshold.
 10. [ ] Turn epistasis on X on in the recipe (`predict_epistasis`), or
     document how to run `tfs-predict-epistasis --shared_shift` afterward.
     Natalie's paper needs it.

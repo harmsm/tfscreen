@@ -174,7 +174,8 @@ def test_full_run_layout_and_arguments(tmp_path, rec):
               "jackknife/jackknife.json", "stage2/tfs_pred_theta.csv",
               "kshift/shift.csv", "predict/tfs_pred_theta.csv",
               "consistency/consistency.csv", "two_stage_config.yaml",
-              "two_stage_provenance.json"):
+              "two_stage_provenance.json", "tfs_x.csv",
+              "genotype_reads.csv"):
         assert (out / f).exists(), f
 
     # stage 1: only wt and singles, the congression mixture with max
@@ -333,3 +334,35 @@ def test_read_config_refuses_a_warp_in_growth_priors(tmp_path):
                  ).to_csv(tmp_path / "gp.csv", index=False)
     cfg, _ = cli.read_two_stage_config(_write_yaml(tmp_path, growth_priors="gp.csv"))
     assert cfg["growth_priors"] == str(tmp_path / "gp.csv")
+
+
+def test_summary_table(tmp_path, rec):
+    out = tmp_path / "run"
+    cli.fit_two_stage(_write_yaml(tmp_path), out_dir=str(out))
+    x = pd.read_csv(out / "tfs_x.csv")
+    assert list(x.columns[:4]) == ["genotype", "num_mutations", "titrant_name",
+                                   "titrant_conc"]
+    assert len(x) == 8                          # 4 genotypes x 2 concentrations
+    g = x.drop_duplicates("genotype").set_index("genotype")
+    # _growth: 100 reads per genotype in each of 48 tubes, 24 per library
+    assert g.loc["A1B", "reads"] == 4800
+    assert g.loc["A1B", "reads_kanR"] == 2400 and g.loc["A1B", "reads_pheS"] == 2400
+    assert g.loc["A1B/C2D", "num_mutations"] == 2 and g.loc["wt", "num_mutations"] == 0
+    assert np.allclose(x.loc[x.genotype != "wt", "k_shift"], -0.03)
+    assert x.loc[x.genotype == "wt", "k_shift"].eq(0).all()
+    assert x.loc[x.genotype == "wt", "inconsistent"].isna().all()
+    assert x.loc[x.genotype == "A1B", "consistency_z"].notna().all()
+
+
+def test_summary_before_consistency_and_without_predict(tmp_path, rec):
+    y = _write_yaml(tmp_path)
+    out = tmp_path / "run"
+    with pytest.raises(RuntimeError, match="predict"):
+        cli.fit_two_stage(y, out_dir=str(out), step="summary")
+    for step in ("stage1", "jackknife", "stage2", "kshift", "predict", "summary"):
+        cli.fit_two_stage(y, out_dir=str(out), step=step)
+    assert pd.read_csv(out / "tfs_x.csv")["inconsistent"].isna().all()
+    cli.fit_two_stage(y, out_dir=str(out), step="consistency")
+    cli.fit_two_stage(y, out_dir=str(out), step="summary")   # rewritten
+    x = pd.read_csv(out / "tfs_x.csv")
+    assert x.loc[x.genotype != "wt", "inconsistent"].notna().all()

@@ -276,3 +276,39 @@ def test_refit_drift():
     out = out.set_index("refit")
     assert out.loc["plus", "median_change"] == pytest.approx(-0.05)
     assert out.loc["zero", "median_change"] == pytest.approx(0.0)
+
+
+# --- the summary table ---
+
+def test_genotype_reads_in_chunks(tmp_path):
+    g = pd.DataFrame({"genotype": ["wt", "A1B", "wt", "A1B", "C2D"],
+                      "library": ["kanR", "kanR", "pheS", "pheS", "kanR"],
+                      "counts": [10, 3, 5, 2, 7]})
+    g.to_csv(tmp_path / "g.csv", index=False)
+    r = ts.genotype_reads(str(tmp_path / "g.csv"), chunksize=2)
+    assert r.loc["wt"].tolist() == [15, 10, 5]
+    assert list(r.columns) == ["reads", "reads_kanR", "reads_pheS"]
+    assert r.loc["C2D", "reads_pheS"] == 0
+
+
+def test_num_mutations():
+    assert [ts.num_mutations(g) for g in ("wt", "A1B", "A1B/C2D/E3F")] == [0, 1, 3]
+
+
+def test_x_summary_joins():
+    pred = pd.DataFrame({"genotype": ["wt", "A1B", "A1B"], "titrant_name": "iptg",
+                         "titrant_conc": [0.0, 0.0, 1.0], "q0.025": 0.1,
+                         "q0.5": 0.5, "q0.975": 0.9, "in_training_data": 1,
+                         "theta_scale": "X"})
+    reads = pd.DataFrame({"reads": [9], "reads_kanR": [9]},
+                         index=pd.Index(["A1B"], name="genotype"))
+    cons = pd.DataFrame({"z": [2.5], "inconsistent": [True]},
+                        index=pd.Index(["A1B"], name="genotype"))
+    shift = pred[["genotype", "titrant_name", "titrant_conc"]].assign(shift=[0, -0.03, -0.02])
+    x = ts.x_summary(pred, reads, cons, shift)
+    assert x["reads"].tolist() == [0, 9, 9]
+    assert x["k_shift"].tolist() == [0, -0.03, -0.02]
+    assert x["inconsistent"].iloc[1] == True and pd.isna(x["inconsistent"].iloc[0])
+    assert x.columns[-2:].tolist() == ["consistency_z", "inconsistent"]
+    bare = ts.x_summary(pred, reads)
+    assert bare["k_shift"].isna().all() and bare["consistency_z"].isna().all()

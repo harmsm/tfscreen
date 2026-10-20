@@ -2108,9 +2108,13 @@ tfs-fit-two-stage
    with two_stage.predict_epistasis its epistasis, with the shift added as
    one shared multiple per posterior draw, predict/); consistency (stage 2
    on one library's tubes alone against the full stage 2, per genotype
-   z-scores, consistency/consistency.csv). Each step skips work whose
-   outputs exist, so a run resumes and a step reruns by deleting its
-   directory.
+   z-scores, consistency/consistency.csv); summary (out_dir/tfs_x.csv:
+   per genotype and concentration, X's quantiles with the shift, the
+   shift itself, the genotype's reads in total and per library, its
+   number of mutations, in_training_data and the consistency z and flag;
+   the table to read results from). Every step but summary skips work
+   whose outputs exist, so a run resumes and a step reruns by deleting its
+   directory; summary is rewritten each time.
 
    positional arguments:
      config_file           YAML whose top-level keys are tfs-configure-model's arguments
@@ -2131,7 +2135,7 @@ tfs-fit-two-stage
      -h, --help            show this help message and exit
      --out_dir OUT_DIR     Directory for every step's outputs. Default 'two_stage'.
      --step STEP           'all' (default) or one of stage1, jackknife, stage2, kshift,
-                           predict, consistency.
+                           predict, consistency, summary.
      --jackknife_task JACKKNIFE_TASK
                            Run only this jackknife subsample (1 to jackknife_subsamples),
                            for a cluster array; needs stage 1 done. The kshift step

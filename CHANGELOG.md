@@ -109,6 +109,15 @@ fall into two kinds:
 
 ### Added
 
+- **`tfs-fit-two-stage` writes one results table, `{out_dir}/tfs_x.csv`.**
+  A new last step, `summary`: one row per genotype and concentration with
+  X's quantiles (with the shared k shift), the shift itself (`k_shift`),
+  the genotype's number of mutations, its reads in total and per library
+  (counted once into `{out_dir}/genotype_reads.csv`), `in_training_data`,
+  and the marker-consistency `consistency_z` and `inconsistent` (NaN when
+  the check did not run). It is rewritten on every run, so it picks up a
+  consistency step run later (`two_stage.genotype_reads`, `num_mutations`,
+  `x_summary`).
 - **`tfs-configure-model --congression_sets`.** The congression mixture's
   fixed co-resident draws (entry n-1 = number of sets with n co-residents;
   default 12 3 1) were an orchestrator setting with no flag; now settable

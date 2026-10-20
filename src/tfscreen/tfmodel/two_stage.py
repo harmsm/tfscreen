@@ -576,3 +576,100 @@ def marker_consistency(both_pred, one_pred, z_flag=2.0):
     out["inconsistent"] = out["z"].abs() > z_flag
     out.attrs["affine"] = (float(intercept), float(slope))
     return out
+
+
+# ---------------------------------------------------------------------------
+# The summary table
+# ---------------------------------------------------------------------------
+
+def genotype_reads(path, chunksize=CHUNK):
+    """
+    Each genotype's reads, in total and per library, from a growth table.
+
+    Parameters
+    ----------
+    path : str
+        A ``tfs-process-counts`` growth table (``genotype``, ``library``,
+        ``counts``), read in chunks.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Index ``genotype``; ``reads`` and one ``reads_{library}`` column per
+        library (0 where a genotype has no rows in a library).
+    """
+    parts = []
+    for c in pd.read_csv(path, usecols=["genotype", "library", "counts"],
+                         chunksize=chunksize):
+        c["genotype"] = c["genotype"].astype(str)
+        c["library"] = c["library"].astype(str)
+        parts.append(c.groupby(["genotype", "library"])["counts"].sum())
+    by = pd.concat(parts).groupby(level=[0, 1]).sum().unstack(fill_value=0)
+    by.columns = [f"reads_{lib}" for lib in by.columns]
+    by.insert(0, "reads", by.sum(axis=1))
+    by.index.name = "genotype"
+    return by.astype("int64")
+
+
+def num_mutations(genotype):
+    """0 for wt, else the number of mutations in a '/'-joined genotype."""
+    genotype = str(genotype)
+    return 0 if genotype == "wt" else genotype.count("/") + 1
+
+
+def x_summary(pred, reads, consistency=None, shift=None):
+    """
+    One table per genotype and concentration for the two-stage fit's users.
+
+    Parameters
+    ----------
+    pred : pandas.DataFrame
+        X with the shared k shift (``predict/tfs_pred_theta.csv``): the
+        prediction key, the ``q<level>`` ladder, ``in_training_data`` and
+        ``theta_scale``.
+    reads : pandas.DataFrame
+        ``genotype_reads`` output.
+    consistency : pandas.DataFrame or None
+        ``marker_consistency`` output (index ``genotype``), or None when the
+        consistency step did not run.
+    shift : pandas.DataFrame or None
+        ``shift_table`` output: X's change per SD of k, the shared part of
+        each interval.
+
+    Returns
+    -------
+    pandas.DataFrame
+        ``genotype``, ``num_mutations``, ``titrant_name``, ``titrant_conc``,
+        the quantiles, ``k_shift``, ``in_training_data``, ``theta_scale``,
+        ``reads`` and ``reads_{library}``, and ``consistency_z`` and
+        ``inconsistent`` (NaN for wt, for genotypes the check did not
+        cover and when it did not run), in the prediction's row order.
+    """
+    out = pred.copy()
+    out["genotype"] = out["genotype"].astype(str)
+    out.insert(1, "num_mutations", out["genotype"].map(num_mutations))
+    if shift is not None:
+        sh = shift[PRED_KEY + ["shift"]].rename(columns={"shift": "k_shift"})
+        sh = sh.assign(genotype=sh["genotype"].astype(str))
+        out = out.merge(sh, on=PRED_KEY, how="left")
+    else:
+        out["k_shift"] = np.nan
+    r = reads.reset_index()
+    r["genotype"] = r["genotype"].astype(str)
+    out = out.merge(r, on="genotype", how="left")
+    read_cols = [c for c in r.columns if c != "genotype"]
+    out[read_cols] = out[read_cols].fillna(0).astype("int64")
+    if consistency is not None:
+        c = consistency[["z", "inconsistent"]].rename(
+            columns={"z": "consistency_z"}).reset_index()
+        c["genotype"] = c["genotype"].astype(str)
+        out = out.merge(c, on="genotype", how="left")
+    else:
+        out["consistency_z"] = np.nan
+        out["inconsistent"] = np.nan
+    qs = [c for c in pred.columns if c.startswith("q")]
+    tail = [c for c in ("in_training_data", "theta_scale") if c in out.columns]
+    order = (["genotype", "num_mutations", "titrant_name", "titrant_conc"]
+             + qs + ["k_shift"] + tail + read_cols
+             + ["consistency_z", "inconsistent"])
+    return out[order]

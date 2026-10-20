@@ -267,6 +267,14 @@ Three refits per run, each probably 1-3
 hours at the small step size (run 1's took 188,000-540,000 steps at
 1e-3); `run_step.srun` asks for `gpulong`, two days.
 
+Once a run's kshift job is done, after pulling the commit that adds the
+summary step, its results table (`run_*/tfs_x.csv`, a few minutes on
+CPU; the GPU partition is not needed but `run_step.srun` asks for it):
+
+```bash
+for c in seed1 seed2 real; do sbatch --job-name=ts_summary_${c} --output=run_${c}/logs/summary_%j.out --error=run_${c}/logs/summary_%j.err --export=ALL,CFG=/gpfs/home/harms/tfscreen/planning/studies/two-stage-validation/two_stage_${c}.yaml,OUT=$PWD/run_${c},STEP=summary /gpfs/home/harms/tfscreen/planning/studies/two-stage-validation/run_step.srun; done
+```
+
 Pass:
 
 - `kshift/drift.csv`: the control (`zero`) moves X by less than a quarter

@@ -22,7 +22,8 @@ from tfscreen.tfmodel.scripts.sample_posterior_cli import sample_posterior
 from tfscreen.util.cli.generalized_main import generalized_main
 from tfscreen.util.provenance import get_provenance
 
-STEPS = ("stage1", "jackknife", "stage2", "kshift", "predict", "consistency")
+STEPS = ("stage1", "jackknife", "stage2", "kshift", "predict", "consistency",
+         "summary")
 
 # tfs-configure-model arguments that name files (resolved against the YAML's
 # directory).
@@ -72,6 +73,8 @@ PARAMS = "tfs_fit_model_params.npz"
 POSTERIOR = "tfs_posterior.h5"
 PRED = "tfs_pred_theta.csv"
 PRED_MAP = "tfs_pred_theta_map.csv"
+SUMMARY = "tfs_x.csv"
+READS = "genotype_reads.csv"
 
 
 # ---------------------------------------------------------------------------
@@ -525,9 +528,42 @@ def run_consistency(out_dir, cfg, settings, name="consistency"):
           flush=True)
 
 
+def run_summary(out_dir, cfg, settings):
+    """
+    The users' table, out_dir/tfs_x.csv: X with the shift, read depth and
+    the consistency flag per genotype and concentration.
+
+    Rewritten every time (it is cheap once the reads are counted, which
+    are kept in out_dir/genotype_reads.csv), so it picks up a consistency
+    step run after it.
+    """
+    pred_path = os.path.join(out_dir, "predict", PRED)
+    if not os.path.exists(pred_path):
+        raise RuntimeError("the summary needs predict/tfs_pred_theta.csv; "
+                           "run --step predict")
+    _say("summary")
+    reads_path = os.path.join(out_dir, READS)
+    if not os.path.exists(reads_path):
+        ts.genotype_reads(cfg["growth_df"]).to_csv(reads_path)
+    reads = pd.read_csv(reads_path, index_col="genotype")
+    cons_path = os.path.join(out_dir, "consistency", "consistency.csv")
+    cons = (pd.read_csv(cons_path, index_col="genotype")
+            if os.path.exists(cons_path) else None)
+    shift_path = os.path.join(out_dir, "kshift", "shift.csv")
+    shift = pd.read_csv(shift_path) if os.path.exists(shift_path) else None
+    out = ts.x_summary(pd.read_csv(pred_path), reads, cons, shift)
+    out.to_csv(os.path.join(out_dir, SUMMARY), index=False)
+    n = out["genotype"].nunique()
+    flagged = (int(cons["inconsistent"].sum()) if cons is not None
+               else "no consistency check")
+    print(f"summary: {n} genotypes in {SUMMARY}; inconsistent: {flagged}",
+          flush=True)
+
+
 RUNNERS = {"stage1": run_stage1, "jackknife": run_jackknife,
            "stage2": run_stage2, "kshift": run_kshift,
-           "predict": run_predict, "consistency": run_consistency}
+           "predict": run_predict, "consistency": run_consistency,
+           "summary": run_summary}
 
 
 # ---------------------------------------------------------------------------
@@ -561,9 +597,13 @@ def fit_two_stage(config_file,
     with two_stage.predict_epistasis its epistasis, with the shift added as
     one shared multiple per posterior draw, predict/); consistency (stage 2
     on one library's tubes alone against the full stage 2, per genotype
-    z-scores, consistency/consistency.csv). Each step skips work whose
-    outputs exist, so a run resumes and a step reruns by deleting its
-    directory.
+    z-scores, consistency/consistency.csv); summary (out_dir/tfs_x.csv:
+    per genotype and concentration, X's quantiles with the shift, the
+    shift itself, the genotype's reads in total and per library, its
+    number of mutations, in_training_data and the consistency z and flag;
+    the table to read results from). Every step but summary skips work
+    whose outputs exist, so a run resumes and a step reruns by deleting its
+    directory; summary is rewritten each time.
 
     Parameters
     ----------
@@ -583,7 +623,7 @@ def fit_two_stage(config_file,
         Directory for every step's outputs. Default 'two_stage'.
     step : str, optional
         'all' (default) or one of stage1, jackknife, stage2, kshift,
-        predict, consistency.
+        predict, consistency, summary.
     jackknife_task : int or None, optional
         Run only this jackknife subsample (1 to jackknife_subsamples), for
         a cluster array; needs stage 1 done. The kshift step collects them.
