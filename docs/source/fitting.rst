@@ -19,11 +19,20 @@ posterior file is in :doc:`downstream`.
 Recommended routes
 ==================
 
-There are two routes in current use. Both are described in detail in the
-sections that follow.
+**For a screen, use the two-stage fit,** ``tfs-fit-two-stage``, described
+in :doc:`screen-analysis`. It chains the commands on this page in the
+order and with the settings that gave calibrated intervals on simulations
+of the 2026 screen. The single fits below are its building blocks, and the
+place to look for what each setting does.
 
 Joint growth and binding model
 ------------------------------
+
+*Experimental.* Binding and growth have not been reconciled on real data:
+no single protein concentration or monotone map carries the binding
+curves onto growth for every genotype, so binding cannot yet set the
+absolute scale of occupancy. Use this model for simulations and for
+method development, not for a screen's reported curves.
 
 With binding data for some genotypes, *θ* is an absolute occupancy. The
 configuration defaults are the current recommendations: the count likelihood,
@@ -41,6 +50,11 @@ pre-growth condition and genotype.
 
 Growth-only relative-X model
 ----------------------------
+
+This is the model the two-stage fit uses. Fitted once on a full library,
+as below, its MAP makes the growth slope too steep and compresses *X*
+about 1.45-fold; the two-stage fit avoids that by taking the slope from
+wt, the spikes and the singles.
 
 Without binding data, growth fixes occupancy only up to an affine map. The
 ``hill_relative`` occupancy component fits a wt-relative variable *X*

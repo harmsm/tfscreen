@@ -1,0 +1,5 @@
+condition_rep,k_loc,k_scale,m_loc,m_scale
+kanR+kan,0.015,0.01,0.0,0.01
+kanR-kan,0.015,0.01,0.0,0.01
+pheS+4CP,0.015,0.01,0.0,0.01
+pheS-4CP,0.015,0.01,0.0,0.01

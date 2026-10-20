@@ -257,22 +257,25 @@ for c in seed1 seed2 real; do mv run_${c}/kshift run_${c}/kshift_run1; mv run_${
 ls -d run_*/kshift_run1 run_*/predict_run1
 ```
 
-Then one job per run:
+Then one job per run. Every path is absolute: an earlier form built `OUT`
+from `$PWD`, and jobs submitted from another directory made empty run
+directories there and failed (2026-10-19). The partition and time on the
+command line override the script's `#SBATCH` lines:
 
 ```bash
-for c in seed1 seed2 real; do sbatch --job-name=ts_kshift_${c} --output=run_${c}/logs/kshift2_%j.out --error=run_${c}/logs/kshift2_%j.err --export=ALL,CFG=/gpfs/home/harms/tfscreen/planning/studies/two-stage-validation/two_stage_${c}.yaml,OUT=$PWD/run_${c},STEP=kshift_predict /gpfs/home/harms/tfscreen/planning/studies/two-stage-validation/run_step.srun; done
+D=/gpfs/projects/harmslab/harms/studies/two-stage-validation; S=/gpfs/home/harms/tfscreen/planning/studies/two-stage-validation; for c in seed1 seed2 real; do sbatch --partition=gpu --time=00-06:00:00 --job-name=ts_kshift_${c} --output=${D}/run_${c}/logs/kshift2_%j.out --error=${D}/run_${c}/logs/kshift2_%j.err --export=ALL,CFG=${S}/two_stage_${c}.yaml,OUT=${D}/run_${c},STEP=kshift_predict ${S}/run_step.srun; done
 ```
 
 Three refits per run, each probably 1-3
 hours at the small step size (run 1's took 188,000-540,000 steps at
-1e-3); `run_step.srun` asks for `gpulong`, two days.
+1e-3); these ask for `gpu`, 6 hours (`gpulong` is congested).
 
 Once a run's kshift job is done, after pulling the commit that adds the
 summary step, its results table (`run_*/tfs_x.csv`, a few minutes on
 CPU; the GPU partition is not needed but `run_step.srun` asks for it):
 
 ```bash
-for c in seed1 seed2 real; do sbatch --job-name=ts_summary_${c} --output=run_${c}/logs/summary_%j.out --error=run_${c}/logs/summary_%j.err --export=ALL,CFG=/gpfs/home/harms/tfscreen/planning/studies/two-stage-validation/two_stage_${c}.yaml,OUT=$PWD/run_${c},STEP=summary /gpfs/home/harms/tfscreen/planning/studies/two-stage-validation/run_step.srun; done
+D=/gpfs/projects/harmslab/harms/studies/two-stage-validation; S=/gpfs/home/harms/tfscreen/planning/studies/two-stage-validation; for c in seed1 seed2 real; do sbatch --time=00-01:00:00 --job-name=ts_summary_${c} --output=${D}/run_${c}/logs/summary_%j.out --error=${D}/run_${c}/logs/summary_%j.err --export=ALL,CFG=${S}/two_stage_${c}.yaml,OUT=${D}/run_${c},STEP=summary ${S}/run_step.srun; done
 ```
 
 Pass:

@@ -119,6 +119,15 @@ fall into two kinds:
 
 ### Added
 
+- **"Analyzing a screen" docs page** (`docs/source/screen-analysis.rst`):
+  the real-screen route from per-tube counts to `tfs_x.csv`, with tube
+  checks and corrections, the two-stage YAML, what each step does, cost,
+  the results table's columns, what *X* is and what its intervals carry
+  and leave out. The index, quickstart, README and `fitting.rst` point to
+  it; `fitting.rst` marks the joint growth/binding model experimental.
+  `examples/tfmodel/` gains `growth_priors_loose.csv` (named by
+  `two_stage.yaml`, which until now pointed at a file that was not there)
+  and a SLURM chain, `two_stage_submit.sh` with `two_stage_step.srun`.
 - **`tfs-fit-two-stage` writes one results table, `{out_dir}/tfs_x.csv`.**
   A new last step, `summary`: one row per genotype and concentration with
   X's quantiles (with the shared k shift), the shift itself (`k_shift`),

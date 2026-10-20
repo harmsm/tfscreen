@@ -147,11 +147,11 @@ of the release.
 
 ## Docs
 
-15. [ ] A real-data recipe page: counts, `tfs-process-counts`,
+15. [~] A real-data recipe page: counts, `tfs-process-counts`,
     `tfs-check-tubes` and `tfs-correct-tubes`, `tfs-configure-model`'s
     inputs, `tfs-fit-two-stage`, the outputs. Include cost and wall time,
     and an example SLURM script with the jackknife as an array.
-16. [ ] An interpretation section:
+16. [~] An interpretation section:
     - what X is, and why it is not binding (the affine map; the M42I
       case);
     - what the intervals include: k's shift, if decision 1 lands;
@@ -159,11 +159,21 @@ of the release.
       congression error per genotype, and kanR's m scale (decision 6);
     - that shallow genotypes are prior-dominated;
     - what the consistency flag means.
-17. [ ] `fitting.rst`: make the two-stage route the default for
+17. [x] `fitting.rst`: make the two-stage route the default for
     growth-only screens. Mark the single-MAP `hill_relative` fit, the
     joint absolute fit and the thermodynamic components as advanced or
     experimental.
-18. [ ] `README.rst` and `quickstart.rst`: point to the recipe page.
+18. [x] `README.rst` and `quickstart.rst`: point to the recipe page.
+   Drafted 2026-10-19: `docs/source/screen-analysis.rst` ("Analyzing a
+   screen") covers 15 and 16, with `examples/tfmodel/two_stage_submit.sh`,
+   `two_stage_step.srun` and `growth_priors_loose.csv`; `fitting.rst`
+   points to it and marks the joint model experimental (17); the index,
+   quickstart and README point to it (18). Two numbers wait on validation
+   round 2, marked `[pending validation round 2]` in the page: the
+   read-depth threshold and the deep genotypes' coverage. The k-shift
+   paragraphs also depend on round 2 passing; if it fails, they change
+   with decision 1's fallback.
+
 19. [ ] Regenerate `cli.rst`, and update CLAUDE.md.
 
 ## Release mechanics

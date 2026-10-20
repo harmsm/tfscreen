@@ -606,6 +606,8 @@ Both grid CLIs import from `tfscreen.util.grid_utils` for run-name generation, J
 | `tfmodel/grid.yaml` | Example tfmodel grid for `tfs-setup-grid` |
 | `tfmodel/run.srun` | Jinja2 SLURM template rendered into each tfmodel grid run subdir |
 | `tfmodel/two_stage.yaml` | Example `tfs-fit-two-stage` configuration (tfs-configure-model's arguments plus the `two_stage` block) |
+| `tfmodel/growth_priors_loose.csv` | The loose per-condition k/m priors `two_stage.yaml` names (the 2026 screen's) |
+| `tfmodel/two_stage_submit.sh`, `tfmodel/two_stage_step.srun` | Submit `tfs-fit-two-stage` as chained SLURM jobs (jackknife as an array, absolute paths); edit the account/partition in the `.srun`. Documented in `docs/source/screen-analysis.rst`, the real-screen recipe |
 | `process_raw/library_config.yaml` | Minimal library config for `tfs-process-fastq` and `tfs-configure-model --library_config` (genetics keys + `library_mixture`) |
 | `process_raw/` (`make_example_data.py`, `tube_table.csv`, `od600.csv`, `counts/`) | Synthetic tube table, OD600 table and per-tube count files in the formats `tfs-process-counts` reads; run with `../od600/od600_calibration.yaml` |
 | `process_raw/corrections.yaml` | Example `tfs-correct-tubes` corrections file (one swap, one relabel, one exclusion) for `tube_table.csv` |

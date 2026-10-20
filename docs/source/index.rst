@@ -9,6 +9,7 @@ tfscreen
    :caption: Contents:
 
    quickstart
+   screen-analysis
    pipeline
    process-raw
    model-inputs
@@ -40,9 +41,12 @@ The model in ``tfscreen.tfmodel`` is designed to jointly capture high-throughput
 Using tfscreen
 --------------
 
-:doc:`quickstart` runs the bundled simulate-and-fit example. :doc:`pipeline`
-walks through every step from sequencing reads to a posterior, with the
-command for each. The pages after it cover each part in detail:
+:doc:`quickstart` runs the bundled simulate-and-fit example.
+:doc:`screen-analysis` is the route for analyzing a real screen, from read
+counts to per-genotype curves with intervals; start there with lab data.
+:doc:`pipeline` walks through every step from sequencing reads to a
+posterior, with the command for each. The pages after it cover each part
+in detail:
 
 - :doc:`process-raw`: reads to counts, OD600 to tube totals, counts to the
   growth table.

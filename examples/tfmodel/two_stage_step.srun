@@ -1,0 +1,37 @@
+#!/bin/bash -l
+#SBATCH --account=YOUR_ACCOUNT
+#SBATCH --partition=gpu
+#SBATCH --time=00-06:00:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --gpus=1
+#SBATCH --mem=0
+#SBATCH --ntasks-per-node=1
+
+# One step of tfs-fit-two-stage, submitted by two_stage_submit.sh, which
+# sets the job name, log files, dependencies and (for the jackknife) the
+# array. Edit the account, partition and time above for your cluster, and
+# the module line below for its CUDA.
+#
+#   CFG   the two-stage YAML (absolute path)
+#   OUT   the output directory (absolute path)
+#   STEP  stage1 | jackknife | stage2 | kshift_predict | consistency | summary
+#         (jackknife runs task SLURM_ARRAY_TASK_ID)
+
+module load cuda/12.4.1
+set -e
+CFG="${CFG:?set CFG}"
+OUT="${OUT:?set OUT}"
+STEP="${STEP:?set STEP}"
+echo ">>> ${STEP} ${SLURM_ARRAY_TASK_ID:-} $(date)"
+case "${STEP}" in
+    jackknife)
+        tfs-fit-two-stage "${CFG}" --out_dir "${OUT}" \
+            --jackknife_task "${SLURM_ARRAY_TASK_ID:?run as an array}" ;;
+    kshift_predict)
+        tfs-fit-two-stage "${CFG}" --out_dir "${OUT}" --step kshift
+        tfs-fit-two-stage "${CFG}" --out_dir "${OUT}" --step predict ;;
+    *)
+        tfs-fit-two-stage "${CFG}" --out_dir "${OUT}" --step "${STEP}" ;;
+esac
+echo ">>> Done ${STEP} ${SLURM_ARRAY_TASK_ID:-} $(date)"

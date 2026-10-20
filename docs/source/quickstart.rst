@@ -15,6 +15,8 @@ It is grown under kanR and pheS selection at eight IPTG concentrations in
 two replicates. The fit is the slow step. Expect tens of minutes on a
 laptop CPU and a few minutes on a GPU.
 
+To analyze a real screen, follow :doc:`screen-analysis` instead.
+
 Prerequisites
 -------------
 

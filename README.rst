@@ -29,8 +29,10 @@ and growth rate along the way.
 Documentation
 -------------
 
-Full documentation is available at https://tfscreen.readthedocs.io. The pipeline page walks
-from sequencing reads to a posterior, and the CLI reference lists every ``tfs-*`` command and flag.
+Full documentation is available at https://tfscreen.readthedocs.io. To analyze a screen, start
+with the "Analyzing a screen" page: per-tube read counts to per-genotype response curves with
+intervals, through one command, ``tfs-fit-two-stage``. The pipeline page walks from sequencing
+reads to a posterior, and the CLI reference lists every ``tfs-*`` command and flag.
 
 Installation
 ------------
