@@ -16,8 +16,6 @@ name = "tfscreen"
 dynamic = ["version"]
 # Floors: the oldest versions the test suite has passed with (the
 # maintainer's environment, 2026-10-20); CI tests the newest releases.
-# constraints/tfscreen-0.5.0.txt pins the set the 0.5.0 release was tested
-# with.
 dependencies = [
   "numpy>=2.3",
   "pandas>=2.3",
@@ -41,7 +39,7 @@ dependencies = [
   "jinja2>=3.1.4",
 ]
 
-requires-python = ">=3.11"
+requires-python = ">=3.12"  # jax 0.11 and newer need 3.12
 authors = [{ name = "Mike Harms", email = "harms@uoregon.edu" }]
 maintainers = [{ name = "Mike Harms", email = "harms@uoregon.edu" }]
 description = "Simulate or analyze a high-throughput screen of a transcription factor library"
@@ -58,6 +56,9 @@ keywords = [
 classifiers = [
   "Development Status :: 5 - Production/Stable",
   "Programming Language :: Python",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
 ]
 
 [project.urls]

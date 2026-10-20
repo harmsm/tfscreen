@@ -44,6 +44,5 @@ Clone the repository and install in editable mode::
     pip install -e .
 
 On a Linux machine with a CUDA 12 GPU, use ``pip install -e ".[cuda12]"``
-(plain ``jax`` from pip runs on the CPU only). Add
-``-c constraints/tfscreen-0.5.0.txt`` to get the versions the 0.5.0 release
-was tested with (Python 3.12 or newer).
+(plain ``jax`` from pip runs on the CPU only). tfscreen needs Python 3.12 or
+newer.

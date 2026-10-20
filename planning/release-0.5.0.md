@@ -140,16 +140,17 @@ of the release.
 10. [ ] Turn epistasis on X on in the recipe (`predict_epistasis`), or
     document how to run `tfs-predict-epistasis --shared_shift` afterward.
     Natalie's paper needs it.
-11. [~] Pin or floor the dependency versions that broke CI (pandas 3).
+11. [x] Pin or floor the dependency versions that broke CI (pandas 3).
     Check a fresh install on the cluster.
     Done locally 2026-10-20 (`planning/studies/fresh-install/`): floors in
     `pyproject.toml` at the maintainer's passing environment (no caps; CI
-    tests the newest), a `cuda12` extra for GPU jax on Linux, and
-    `constraints/tfscreen-0.5.0.txt` from a fresh venv whose full suite
-    passed on the newest releases (pandas 3.0.6, numpy 2.5.4, jax 0.12.0).
-    It resolves for Linux GPU on Python 3.12 but not 3.11. Install docs
-    (README, quickstart, screen page) updated. Left: the cluster job
-    (`fresh_install.srun`), after the push.
+    tests the newest) and a `cuda12` extra for GPU jax on Linux; a fresh
+    venv on the newest releases (pandas 3.0.6, numpy 2.5.4, jax 0.12.0)
+    passed the full suite. Install docs (README, quickstart, screen page)
+    updated. The cluster install works (user, by hand, 2026-10-20). No
+    constraints file in the repo (user): the manuscript records its own
+    versions (item 23). CI's 3.11 jobs then failed (jax 0.11 has no 3.11
+    wheel), so tfscreen needs Python 3.12+ and CI tests 3.12-3.14.
 
 ## Validation
 
@@ -208,7 +209,7 @@ of the release.
 22. [ ] Tag v0.5.0 and write GitHub release notes. Install that tag on
     the cluster.
 23. [ ] Record the commit and version Natalie's analysis uses in her
-    manuscript folder.
+    manuscript folder, with the environment's `pip freeze`.
 
 ## Out of scope (after 0.5.0)
 

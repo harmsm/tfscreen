@@ -12,7 +12,7 @@
 # A fresh install of tfscreen as a new lab member would make it, on a GPU
 # node (planning/release-0.5.0.md item 11; README.md here). Clones the
 # repository at REF into OUT, makes a new virtual environment there,
-# installs with the GPU extra and the release's constraints, checks that
+# installs with the GPU extra, checks that
 # jax sees the GPU, runs the unit tests and the quickstart example.
 #
 #   sbatch --export=ALL,OUT=/path/to/empty/dir fresh_install.srun
@@ -20,7 +20,7 @@
 #   OUT   an empty directory (required; absolute)
 #   REPO  repository URL (default https://github.com/harmsm/tfscreen)
 #   REF   branch, tag or commit (default main)
-#   PY    the Python that makes the environment (default python3; >= 3.11)
+#   PY    the Python that makes the environment (default python3; >= 3.12)
 
 module load cuda/12.4.1
 set -e
@@ -39,11 +39,11 @@ git -C tfscreen log --oneline -1
 
 echo ">>> Environment $(date)"
 PY="${PY:-python3}"
-"${PY}" -c "import sys; print(sys.version); assert sys.version_info >= (3, 11), 'tfscreen needs Python 3.11 or newer; set PY'"
+"${PY}" -c "import sys; print(sys.version); assert sys.version_info >= (3, 12), 'tfscreen needs Python 3.12 or newer; set PY'"
 "${PY}" -m venv venv
 source venv/bin/activate
 pip install -q --upgrade pip
-pip install -q -e "tfscreen[cuda12,test]" -c tfscreen/constraints/tfscreen-0.5.0.txt
+pip install -q -e "tfscreen[cuda12,test]"
 pip freeze --exclude-editable > installed.txt
 python -c "import jax; d = jax.devices(); print('jax', jax.__version__, d); assert d[0].platform == 'gpu', 'jax does not see the GPU'"
 

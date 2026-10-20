@@ -31,7 +31,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Dependencies
 
-`pyproject.toml` floors every dependency at the oldest versions the suite has passed with (no caps: CI installs the newest). `constraints/tfscreen-<version>.txt` is the `pip freeze` of a fresh install whose full suite passed, for reproducing a release's environment (`pip install -e ".[cuda12]" -c constraints/tfscreen-0.5.0.txt`; Python 3.12+). The `cuda12` extra is GPU jax on Linux, where pip's plain jax is CPU-only. `planning/studies/fresh-install/fresh_install.srun` checks a clean install on a cluster GPU node.
+`pyproject.toml` floors every dependency at the oldest versions the suite has passed with (no caps: CI installs the newest). No lock or constraints file lives in the repo (user, 2026-10-20: not at the top level beside `src`, `docs`, `tests`); an analysis records its own `pip freeze`. tfscreen needs Python 3.12+ (jax 0.11 dropped 3.11); CI tests 3.12, 3.13 and 3.14. The `cuda12` extra is GPU jax on Linux, where pip's plain jax is CPU-only. `planning/studies/fresh-install/fresh_install.srun` checks a clean install on a cluster GPU node.
 
 ### Linting
 ```bash

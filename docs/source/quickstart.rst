@@ -38,10 +38,7 @@ JAX and Numpyro are installed as dependencies. On Linux, pip's plain
     pip install -e ".[cuda12]"
     python -c "import jax; print(jax.devices())"
 
-To reproduce the environment a release was tested with, add its
-constraints file, for example
-``pip install -e ".[cuda12]" -c constraints/tfscreen-0.5.0.txt``
-(Python 3.12 or newer).
+tfscreen needs Python 3.12 or newer.
 
 Getting the example
 -------------------

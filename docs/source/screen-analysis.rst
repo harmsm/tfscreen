@@ -38,12 +38,12 @@ What you need
   magnitude; ``examples/tfmodel/growth_priors_loose.csv`` is the file used
   for the 2026 screen.
 - **A GPU**, for the fits, and tfscreen installed with GPU JAX: on a
-  Linux cluster, ``pip install -e ".[cuda12]" -c
-  constraints/tfscreen-0.5.0.txt`` in a fresh environment with Python
-  3.12 or newer, then check that ``python -c "import jax;
-  print(jax.devices())"`` lists a GPU (see :doc:`quickstart`). The
-  constraints file pins the versions 0.5.0 was tested with. The whole
-  analysis takes about half a day of GPU time (see `Cost`_).
+  Linux cluster, ``pip install -e ".[cuda12]"`` in a fresh environment
+  with Python 3.12 or newer, then check that ``python -c "import jax;
+  print(jax.devices())"`` lists a GPU (see :doc:`quickstart`). Save the
+  environment's ``pip freeze`` with the analysis, so its versions are on
+  record. The whole analysis takes about half a day of GPU time (see
+  `Cost`_).
 
 Correct the tube table
 ======================

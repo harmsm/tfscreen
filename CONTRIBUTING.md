@@ -50,7 +50,7 @@ directly to `main`.
 
 ## Development setup
 
-tfscreen needs Python 3.11 or later. Install it in editable mode with the test
+tfscreen needs Python 3.12 or later. Install it in editable mode with the test
 dependencies:
 
 ```bash
@@ -106,7 +106,7 @@ every per-genotype latent is mini-batch safe and that guides follow the
 `{site}_loc` / `{site}_scale` naming convention. If one of these fails for a
 new component, fix the component rather than the test.
 
-CI runs the unit tests on Linux and macOS for Python 3.11, 3.12 and 3.13, plus
+CI runs the unit tests on Linux and macOS for Python 3.12, 3.13 and 3.14, plus
 a lint check for fatal errors. A separate coverage job runs the tests with
 `--runslow` and fails if either check misses:
 
