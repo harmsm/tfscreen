@@ -31,12 +31,16 @@ two_stage:
   # about 0.38 +- 0.15 as a mean and SD.
   transformation_lambda: [0.38, 0.15]
   seed: 1
-  jackknife_subsamples: 30     # stage 1 refits for k's uncertainty
-  jackknife_drop_frac: 0.2     # share of tubes dropped per refit
   num_posterior_samples: 500
   consistency: true            # stage 2 on one library alone; --no_consistency skips
   consistency_library: kanR    # default: the first library alphabetically
   predict_epistasis: false
+  # Experimental: k's uncertainty in X (jackknife + k-shift refits). Off:
+  # on simulations the shift came out a third or less of the true one
+  # (planning/studies/two-stage-validation/, run 2).
+  kshift: false
+  jackknife_subsamples: 30     # stage 1 refits for k's uncertainty
+  jackknife_drop_frac: 0.2     # share of tubes dropped per refit
   kshift_step_size: 1.0e-5     # the k-shift refits' starting step size
   kshift_control: true         # a third refit with k unchanged; kshift/drift.csv
   fit: {}                      # extra tfs-fit-model arguments

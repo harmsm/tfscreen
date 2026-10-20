@@ -169,7 +169,8 @@ def _calls(rec, kind, where=None):
 
 def test_full_run_layout_and_arguments(tmp_path, rec):
     out = tmp_path / "run"
-    cli.fit_two_stage(_write_yaml(tmp_path), out_dir=str(out))
+    cli.fit_two_stage(_write_yaml(tmp_path, two_stage={"kshift": True}),
+                      out_dir=str(out))
     for f in ("stage1/km.csv", "jackknife/jk_01/km.csv", "jackknife/k_step.csv",
               "jackknife/jackknife.json", "stage2/tfs_pred_theta.csv",
               "kshift/shift.csv", "predict/tfs_pred_theta.csv",
@@ -248,7 +249,8 @@ def test_rerun_skips_finished_steps(tmp_path, rec):
 
 def test_no_consistency_and_epistasis(tmp_path, rec):
     out = tmp_path / "run"
-    cli.fit_two_stage(_write_yaml(tmp_path, two_stage={"predict_epistasis": True}),
+    cli.fit_two_stage(_write_yaml(tmp_path, two_stage={"predict_epistasis": True,
+                                                       "kshift": True}),
                       out_dir=str(out), consistency=False)
     assert not (out / "consistency").exists()
     epi = _calls(rec, "epistasis")
@@ -338,7 +340,8 @@ def test_read_config_refuses_a_warp_in_growth_priors(tmp_path):
 
 def test_summary_table(tmp_path, rec):
     out = tmp_path / "run"
-    cli.fit_two_stage(_write_yaml(tmp_path), out_dir=str(out))
+    cli.fit_two_stage(_write_yaml(tmp_path, two_stage={"kshift": True}),
+                      out_dir=str(out))
     x = pd.read_csv(out / "tfs_x.csv")
     assert list(x.columns[:4]) == ["genotype", "num_mutations", "titrant_name",
                                    "titrant_conc"]
@@ -366,3 +369,24 @@ def test_summary_before_consistency_and_without_predict(tmp_path, rec):
     cli.fit_two_stage(y, out_dir=str(out), step="summary")   # rewritten
     x = pd.read_csv(out / "tfs_x.csv")
     assert x.loc[x.genotype != "wt", "inconsistent"].notna().all()
+
+
+def test_default_run_has_no_k_shift(tmp_path, rec):
+    """Validation run 2: the shift is off by default, and so is the
+    jackknife that only feeds it."""
+    out = tmp_path / "run"
+    y = _write_yaml(tmp_path, two_stage={"predict_epistasis": True})
+    cli.fit_two_stage(y, out_dir=str(out))
+    assert not (out / "jackknife").exists() and not (out / "kshift").exists()
+    pred = [c for c in _calls(rec, "predict") if "shift_seed" in c[3]]
+    assert pred and pred[0][3]["shared_shift"] is None
+    assert _calls(rec, "epistasis")[0][3]["shared_shift"] is None
+    x = pd.read_csv(out / "tfs_x.csv")
+    assert x["k_shift"].isna().all()
+    assert x.loc[x.genotype != "wt", "inconsistent"].notna().all()
+    # a stale shift table is ignored while kshift is off
+    for step in ("jackknife", "kshift"):
+        cli.fit_two_stage(y, out_dir=str(out), step=step)
+    assert (out / "kshift" / "shift.csv").exists()
+    cli.fit_two_stage(y, out_dir=str(out), step="summary")
+    assert pd.read_csv(out / "tfs_x.csv")["k_shift"].isna().all()

@@ -72,6 +72,11 @@ of the release.
    that fails, ship without the shift and report the no-shift coverage
    (0.90 / 0.76-0.81). Replacing it with k and m free under the jackknife
    covariance is out of scope.
+   Outcome (2026-10-20): the repair failed validation round 2 (the shift a
+   third or less of the true one on simulations;
+   `planning/studies/two-stage-validation/`, run 2), so the release ships
+   without it (user: 0.76-0.90 coverage is fine for now).
+   `two_stage.kshift` defaults to false and skips the jackknife too.
 2. [x] **The kanR warp is out of 0.5.0.** Its gain (about 8,000 nats on
    the real stage 1) is recorded for 0.6. Stage 2's X stays validated
    without it.
@@ -88,6 +93,9 @@ of the release.
 5. [x] **Usable genotypes.** The docs state one default read-depth
    threshold and one policy for the consistency flag. Set both from
    validation round 2's coverage by depth and the flag's no-signal rate.
+   Set 2026-10-20: 1,000 reads (seed 1: slope 0.88 and RMSE 0.17 at
+   1e3-1e4 reads, against 0.39 and 0.54 below); flagged genotypes are
+   reported separately, not dropped.
 6. [x] **kanR's m scale** (`planning/studies/relative-m/`, run 6: the
    absolute m against the within-tube m, about 2.5x apart). The two-stage
    fit takes m from the tube totals, which binding at 2 uM supports and
@@ -137,21 +145,22 @@ of the release.
 
 ## Validation
 
-12. [ ] Validation round 2 with decision 1 in: seed 1, seed 2 and the
-    real data through the command. Record the coverage table in the
-    two-stage-validation README. Pass: deep coverage of at least the
-    no-shift values and near the study's 0.94 / 0.91.
+12. [x] Validation round 2 with decision 1 in: seed 1, seed 2 and the
+    real data through the command. Done 2026-10-20: the repair failed
+    (shift too small on the simulations), so decision 1's fallback
+    applies; seed 1's coverage by depth without the shift is recorded in
+    `planning/studies/two-stage-validation/`, run 2.
 13. [ ] A dry run by Natalie on the dev data from a clean install,
     following only the docs. Every question she asks becomes a docs fix.
 14. [ ] `two-stage-fit.md` step 4 marked done, and the plan's status set.
 
 ## Docs
 
-15. [~] A real-data recipe page: counts, `tfs-process-counts`,
+15. [x] A real-data recipe page: counts, `tfs-process-counts`,
     `tfs-check-tubes` and `tfs-correct-tubes`, `tfs-configure-model`'s
     inputs, `tfs-fit-two-stage`, the outputs. Include cost and wall time,
     and an example SLURM script with the jackknife as an array.
-16. [~] An interpretation section:
+16. [x] An interpretation section:
     - what X is, and why it is not binding (the affine map; the M42I
       case);
     - what the intervals include: k's shift, if decision 1 lands;
@@ -168,11 +177,9 @@ of the release.
    screen") covers 15 and 16, with `examples/tfmodel/two_stage_submit.sh`,
    `two_stage_step.srun` and `growth_priors_loose.csv`; `fitting.rst`
    points to it and marks the joint model experimental (17); the index,
-   quickstart and README point to it (18). Two numbers wait on validation
-   round 2, marked `[pending validation round 2]` in the page: the
-   read-depth threshold and the deep genotypes' coverage. The k-shift
-   paragraphs also depend on round 2 passing; if it fails, they change
-   with decision 1's fallback.
+   quickstart and README point to it (18). Updated 2026-10-20 for the
+   fallback: no k shift, the 1,000-read threshold, the coverage-by-depth
+   table, and k's uncertainty listed among what the intervals leave out.
 
 19. [x] Regenerate `cli.rst`, and update CLAUDE.md.
     Done 2026-10-19: `cli.rst` was current (its test passes). CLAUDE.md:

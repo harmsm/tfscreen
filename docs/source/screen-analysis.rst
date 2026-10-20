@@ -106,8 +106,6 @@ the YAML. Start from ``examples/tfmodel/two_stage.yaml``:
    two_stage:
      transformation_lambda: [0.38, 0.15]   # the measured lambda, required
      seed: 1
-     jackknife_subsamples: 30
-     jackknife_drop_frac: 0.2
      num_posterior_samples: 500
      consistency: true
      consistency_library: kanR
@@ -137,21 +135,19 @@ when its outputs exist, so a stopped run resumes where it stopped.
    The full library cannot be used for this: each double mutant pulls *m*
    a little steeper, and over 200,000 doubles the pulls compress *X* about
    1.45-fold.
-2. **jackknife**: 30 refits of stage 1, each with 20% of the tubes left
-   out. Their spread gives *k*'s uncertainty, which stage 1's own Laplace
-   understates about fivefold.
-3. **stage2**: the full library with every condition's *k* and *m* pinned
+2. **stage2**: the full library with every condition's *k* and *m* pinned
    at stage 1's values, then the Laplace approximation of the posterior.
-4. **kshift**: two refits of stage 2 with *k* one jackknife SD up and
-   down, and a control refit with *k* unchanged. Half the difference
-   between the two is *X*'s shift per SD of *k*. ``kshift/drift.csv``
-   says how far each refit moved; the command warns if the control moved
-   more than a quarter of the shift.
-5. **predict**: stage 2's *X*, with the shift added to every posterior
-   draw as one shared random multiple (see `What the intervals carry`_).
-6. **consistency**: stage 2 refitted on the kanR tubes alone, compared
+3. **predict**: stage 2's *X* from the posterior draws, and its epistasis
+   with ``predict_epistasis: true``.
+4. **consistency**: stage 2 refitted on the kanR tubes alone, compared
    genotype by genotype with the fit on both markers.
-7. **summary**: the results table, ``tfs_x.csv``.
+5. **summary**: the results table, ``tfs_x.csv``.
+
+Two more steps, **jackknife** and **kshift**, try to add *k*'s
+uncertainty to the intervals. They are experimental and off by default
+(``kshift: false``): on simulations the shift they measured was a third
+or less of the true one (``planning/studies/two-stage-validation/``,
+run 2).
 
 Run it
 ======
@@ -162,10 +158,10 @@ On one machine with a GPU, everything in order:
 
    tfs-fit-two-stage two_stage.yaml --out_dir two_stage
 
-On a SLURM cluster, run the jackknife as an array. ``--step NAME`` runs
-one step and ``--jackknife_task i`` one jackknife refit.
-``examples/tfmodel/two_stage_submit.sh`` submits the whole chain with
-dependencies, using ``examples/tfmodel/two_stage_step.srun`` for each job:
+On a SLURM cluster, submit each step as its own job. ``--step NAME``
+runs one step. ``examples/tfmodel/two_stage_submit.sh`` submits the whole
+chain with dependencies, using ``examples/tfmodel/two_stage_step.srun``
+for each job:
 
 .. code-block:: bash
 
@@ -179,10 +175,9 @@ Cost
 ----
 
 On one GPU, for a library of about 200,000 genotypes: stage 1 takes 15-30
-minutes; each of the 30 jackknife refits about as long (about an hour as
-an array of 10); stage 2 two to five hours with its Laplace; the three
-k-shift refits one to two hours each; the consistency refit about five
-hours. About a day if run in order, less with the array.
+minutes, stage 2 two to five hours with its Laplace, and the consistency
+refit, which runs beside prediction, about five hours. About half a day
+in all.
 
 Read the results
 ================
@@ -193,10 +188,10 @@ Read the results
    The row.
 ``q0.001`` ... ``q0.999``
    Quantiles of *X* (``q0.5`` the median, ``q0.025`` and ``q0.975`` the
-   95% interval), with *k*'s uncertainty included.
+   95% interval).
 ``k_shift``
-   *X*'s shift per SD of *k* at this row: the part of the interval every
-   genotype shares (0 for wt).
+   Blank unless the experimental ``kshift`` is on: then *X*'s shift per
+   SD of *k* at this row, already included in the quantiles.
 ``in_training_data``
    1 if the genotype was measured at this concentration.
 ``theta_scale``
@@ -211,9 +206,26 @@ Read the results
 Which genotypes to use
 ----------------------
 
-Use genotypes with at least [pending validation round 2] reads. Below
-that, *X* is mostly set by the population prior: the intervals still
-cover, but the points carry little information about the genotype.
+Use genotypes with at least 1,000 reads. Below that, *X* is mostly set by
+the population prior: the intervals still cover the truth, but the point
+estimates carry little information about the genotype. On a simulation
+of the 2026 screen, the double mutants' *X* against the truth, by read
+depth:
+
+=========== =========== ====== ====== ============ ============
+reads       genotypes   slope  RMSE   95% coverage median width
+=========== =========== ====== ====== ============ ============
+<= 100      37,707      0.04   2.60   0.98         5.9
+100-1e3     89,022      0.39   0.54   0.90         1.18
+1e3-1e4     64,362      0.88   0.17   0.88         0.48
+1e4-1e5     15,283      1.02   0.07   0.90         0.20
+> 1e5       1,225       1.02   0.05   0.76         0.07
+=========== =========== ====== ====== ============ ============
+
+The slope is the truth regressed on the fit; 1 means the fitted *X* is on
+the true scale. The 2026 screen has about 77,000 double mutants above
+1,000 reads.
+
 Report genotypes flagged ``inconsistent`` separately rather than dropping
 them silently. On the 2026 screen about 10% of deep genotypes are flagged,
 against about 2% on simulations with no marker problem, so most flags are
@@ -249,17 +261,21 @@ What the intervals carry
 ========================
 
 Each genotype's interval comes from the Laplace approximation of stage 2,
-plus *k*'s uncertainty from the jackknife. The *k* part is shared: in any
-one posterior draw, every non-wt genotype moves by the same multiple of
-its ``k_shift``. Differences between genotypes, rankings and epistasis
-therefore carry almost none of it, while each genotype's own interval
-carries all of it. Do not add ``k_shift`` to the intervals again.
+with every condition's *k* and *m* held at stage 1's values. On
+simulations of this design, the deep genotypes' 95% intervals covered the
+truth 0.88-0.91 of the time up to 1e5 reads, and 0.76-0.81 above 1e5
+(table above; the second simulation seed gave 0.91 and 0.81). Treat them
+as somewhat narrow, most of all for the deepest genotypes.
 
-On simulations of this design, the deep genotypes' 95% intervals covered
-the truth [pending validation round 2] of the time.
+What they leave out:
 
-The intervals leave out:
-
+- **k's uncertainty.** Stage 1 estimates each condition's growth
+  baseline with an error that shifts every non-wt genotype's *X* by about
+  the same amount (one SD of *k* moved *X* by 0.03-0.04 on simulations).
+  It matters most where the per-genotype interval is narrowest, which is
+  why the deepest genotypes undercover. It cancels from differences
+  between genotypes, rankings and epistasis, which are better calibrated
+  than single curves.
 - **Stage 1's small bias in m**, 2-6% steep on simulations. It stretches
   *X* by about the same factor. Resampling cannot cover a bias.
 - **The pheS gap.** In the pool, pheS selection is about half as strong

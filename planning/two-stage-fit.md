@@ -178,6 +178,11 @@ simulation. Intervals matter for the final analysis.
    would change the validated stage 2), plus a k-unchanged control refit
    and `kshift/drift.csv`. Run 2 of the validation study reruns kshift
    and predict on the three runs.
+   Run 2 (2026-10-20): the drift is mostly gone but the shift is a third
+   or less of the true one on simulations and the control still moves
+   too much, so the fallback applies (user): `two_stage.kshift` off by
+   default, with the jackknife; intervals without k's uncertainty cover
+   0.88-0.91 up to 1e5 reads and 0.76-0.81 above.
 5. [ ] **Scoring for simulations.** X against the truth by read depth
    (`score_x.py`) as a `tfs-summarize-fit` option or its own CLI, so the
    students score design sweeps without study scripts.

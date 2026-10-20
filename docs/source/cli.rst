@@ -2087,8 +2087,7 @@ tfs-fit-two-stage
                             [--jackknife_task JACKKNIFE_TASK] [--no_consistency]
                             config_file
 
-   Fit a growth-only relative model in two stages, with X intervals that
-   carry stage 1's k uncertainty.
+   Fit a growth-only relative model in two stages.
 
    The full-library MAP makes the growth slope m too steep (each double
    mutant pulls it a little and the pulls add), and congression flattens a
@@ -2096,25 +2095,34 @@ tfs-fit-two-stage
    (planning/studies/m-bias-factorial/). This command runs, in out_dir:
    stage1 (wt, spikes and singles with the congression mixture, max rule,
    lambda fitted with two_stage.transformation_lambda as its prior: every
-   condition's k and m); jackknife (two_stage.jackknife_subsamples refits
-   of stage 1, each dropping two_stage.jackknife_drop_frac of the tubes,
-   stratified by condition and IPTG: k and m standard errors and k's main
-   direction); stage2 (the full library with every condition's k and m
-   pinned at stage 1; MAP, Laplace, X); kshift (two stage 2 refits at k
-   plus and minus one jackknife SD along its main direction, from stage
-   2's MAP at two_stage.kshift_step_size with the dk_geno population held
-   there: X's shift per SD, kshift/shift.csv; with two_stage.kshift_control
-   a third refit at stage 1's k, and kshift/drift.csv); predict (stage 2's X, and
-   with two_stage.predict_epistasis its epistasis, with the shift added as
-   one shared multiple per posterior draw, predict/); consistency (stage 2
-   on one library's tubes alone against the full stage 2, per genotype
-   z-scores, consistency/consistency.csv); summary (out_dir/tfs_x.csv:
-   per genotype and concentration, X's quantiles with the shift, the
-   shift itself, the genotype's reads in total and per library, its
-   number of mutations, in_training_data and the consistency z and flag;
-   the table to read results from). Every step but summary skips work
-   whose outputs exist, so a run resumes and a step reruns by deleting its
-   directory; summary is rewritten each time.
+   condition's k and m); stage2 (the full library with every condition's
+   k and m pinned at stage 1; MAP, Laplace, X); predict (stage 2's X, and
+   with two_stage.predict_epistasis its epistasis, predict/); consistency
+   (stage 2 on one library's tubes alone against the full stage 2, per
+   genotype z-scores, consistency/consistency.csv); summary
+   (out_dir/tfs_x.csv: per genotype and concentration, X's quantiles, the
+   genotype's reads in total and per library, its number of mutations,
+   in_training_data and the consistency z and flag; the table to read
+   results from).
+
+   X's intervals leave out k's uncertainty, shared by every genotype; on
+   simulations the deep genotypes' 95% intervals covered 0.88-0.90 up to
+   1e5 reads and 0.76 above (planning/studies/two-stage-validation/).
+   two_stage.kshift (experimental, off by default) adds it: jackknife
+   (two_stage.jackknife_subsamples refits of stage 1, each dropping
+   two_stage.jackknife_drop_frac of the tubes, stratified by condition and
+   IPTG: k's SE and main direction), then kshift (two stage 2 refits at k
+   plus and minus one jackknife SD, from stage 2's MAP at
+   two_stage.kshift_step_size with the dk_geno population held there:
+   kshift/shift.csv, added to predict's draws as one shared multiple; with
+   two_stage.kshift_control a k-unchanged control refit and
+   kshift/drift.csv). Validation run 2 found that shift a third or less of
+   the true one on simulations.
+
+   Every step but summary skips work whose outputs exist, so a run resumes
+   and a step reruns by deleting its directory; summary is rewritten each
+   time. --step runs one step, the k-shift steps included whatever
+   two_stage.kshift says.
 
    positional arguments:
      config_file           YAML whose top-level keys are tfs-configure-model's arguments
@@ -2122,13 +2130,14 @@ tfs-fit-two-stage
                            hill_relative, growth_shares_replicates true; file paths
                            relative to the YAML), plus a two_stage block:
                            transformation_lambda (mean, std; required), seed (1),
-                           jackknife_subsamples (30), jackknife_drop_frac (0.2),
                            num_posterior_samples (500), consistency (true),
                            consistency_library (default the first library
-                           alphabetically), predict_epistasis (false), kshift_step_size
-                           (1e-5, the k-shift refits' starting step size), kshift_control
-                           (true, the k-unchanged control refit), fit (extra tfs-fit-
-                           model arguments) and posterior (extra tfs-sample-posterior
+                           alphabetically), predict_epistasis (false), kshift (false;
+                           experimental, see above), jackknife_subsamples (30),
+                           jackknife_drop_frac (0.2), kshift_step_size (1e-5, the k-shift
+                           refits' starting step size), kshift_control (true, the
+                           k-unchanged control refit), fit (extra tfs-fit-model
+                           arguments) and posterior (extra tfs-sample-posterior
                            arguments).
 
    options:

@@ -50,6 +50,7 @@ TWO_STAGE_DEFAULTS = {
     "consistency": True,
     "consistency_library": None,
     "predict_epistasis": False,
+    "kshift": False,
     "kshift_step_size": 1e-5,
     "kshift_control": True,
     "fit": {},
@@ -455,12 +456,15 @@ def run_kshift(out_dir, cfg, settings):
 
 
 def run_predict(out_dir, cfg, settings):
-    """Stage 2's X (and epistasis) with the shared k shift."""
+    """Stage 2's X (and epistasis), with the shared k shift if two_stage.kshift."""
     d = os.path.abspath(os.path.join(out_dir, "predict"))
     os.makedirs(d, exist_ok=True)
-    shift = os.path.abspath(os.path.join(out_dir, "kshift", "shift.csv"))
-    if not os.path.exists(shift):
-        raise RuntimeError("prediction needs kshift/shift.csv; run --step kshift")
+    shift = None
+    if settings["kshift"]:
+        shift = os.path.abspath(os.path.join(out_dir, "kshift", "shift.csv"))
+        if not os.path.exists(shift):
+            raise RuntimeError("prediction with two_stage.kshift needs "
+                               "kshift/shift.csv; run --step kshift")
     epi_done = (not settings["predict_epistasis"]
                 or os.path.exists(os.path.join(d, "tfs_pred_epistasis.csv")))
     if os.path.exists(os.path.join(d, PRED)) and epi_done:
@@ -550,7 +554,8 @@ def run_summary(out_dir, cfg, settings):
     cons = (pd.read_csv(cons_path, index_col="genotype")
             if os.path.exists(cons_path) else None)
     shift_path = os.path.join(out_dir, "kshift", "shift.csv")
-    shift = pd.read_csv(shift_path) if os.path.exists(shift_path) else None
+    shift = (pd.read_csv(shift_path)
+             if settings["kshift"] and os.path.exists(shift_path) else None)
     out = ts.x_summary(pd.read_csv(pred_path), reads, cons, shift)
     out.to_csv(os.path.join(out_dir, SUMMARY), index=False)
     n = out["genotype"].nunique()
@@ -559,6 +564,11 @@ def run_summary(out_dir, cfg, settings):
     print(f"summary: {n} genotypes in {SUMMARY}; inconsistent: {flagged}",
           flush=True)
 
+
+# The jackknife only feeds the k shift, which validation run 2 found too
+# small on simulations (planning/studies/two-stage-validation/), so both
+# are off by default.
+KSHIFT_STEPS = ("jackknife", "kshift")
 
 RUNNERS = {"stage1": run_stage1, "jackknife": run_jackknife,
            "stage2": run_stage2, "kshift": run_kshift,
@@ -576,8 +586,7 @@ def fit_two_stage(config_file,
                   jackknife_task=None,
                   consistency=True):
     """
-    Fit a growth-only relative model in two stages, with X intervals that
-    carry stage 1's k uncertainty.
+    Fit a growth-only relative model in two stages.
 
     The full-library MAP makes the growth slope m too steep (each double
     mutant pulls it a little and the pulls add), and congression flattens a
@@ -585,25 +594,34 @@ def fit_two_stage(config_file,
     (planning/studies/m-bias-factorial/). This command runs, in out_dir:
     stage1 (wt, spikes and singles with the congression mixture, max rule,
     lambda fitted with two_stage.transformation_lambda as its prior: every
-    condition's k and m); jackknife (two_stage.jackknife_subsamples refits
-    of stage 1, each dropping two_stage.jackknife_drop_frac of the tubes,
-    stratified by condition and IPTG: k and m standard errors and k's main
-    direction); stage2 (the full library with every condition's k and m
-    pinned at stage 1; MAP, Laplace, X); kshift (two stage 2 refits at k
-    plus and minus one jackknife SD along its main direction, from stage
-    2's MAP at two_stage.kshift_step_size with the dk_geno population held
-    there: X's shift per SD, kshift/shift.csv; with two_stage.kshift_control
-    a third refit at stage 1's k, and kshift/drift.csv); predict (stage 2's X, and
-    with two_stage.predict_epistasis its epistasis, with the shift added as
-    one shared multiple per posterior draw, predict/); consistency (stage 2
-    on one library's tubes alone against the full stage 2, per genotype
-    z-scores, consistency/consistency.csv); summary (out_dir/tfs_x.csv:
-    per genotype and concentration, X's quantiles with the shift, the
-    shift itself, the genotype's reads in total and per library, its
-    number of mutations, in_training_data and the consistency z and flag;
-    the table to read results from). Every step but summary skips work
-    whose outputs exist, so a run resumes and a step reruns by deleting its
-    directory; summary is rewritten each time.
+    condition's k and m); stage2 (the full library with every condition's
+    k and m pinned at stage 1; MAP, Laplace, X); predict (stage 2's X, and
+    with two_stage.predict_epistasis its epistasis, predict/); consistency
+    (stage 2 on one library's tubes alone against the full stage 2, per
+    genotype z-scores, consistency/consistency.csv); summary
+    (out_dir/tfs_x.csv: per genotype and concentration, X's quantiles, the
+    genotype's reads in total and per library, its number of mutations,
+    in_training_data and the consistency z and flag; the table to read
+    results from).
+
+    X's intervals leave out k's uncertainty, shared by every genotype; on
+    simulations the deep genotypes' 95% intervals covered 0.88-0.90 up to
+    1e5 reads and 0.76 above (planning/studies/two-stage-validation/).
+    two_stage.kshift (experimental, off by default) adds it: jackknife
+    (two_stage.jackknife_subsamples refits of stage 1, each dropping
+    two_stage.jackknife_drop_frac of the tubes, stratified by condition and
+    IPTG: k's SE and main direction), then kshift (two stage 2 refits at k
+    plus and minus one jackknife SD, from stage 2's MAP at
+    two_stage.kshift_step_size with the dk_geno population held there:
+    kshift/shift.csv, added to predict's draws as one shared multiple; with
+    two_stage.kshift_control a k-unchanged control refit and
+    kshift/drift.csv). Validation run 2 found that shift a third or less of
+    the true one on simulations.
+
+    Every step but summary skips work whose outputs exist, so a run resumes
+    and a step reruns by deleting its directory; summary is rewritten each
+    time. --step runs one step, the k-shift steps included whatever
+    two_stage.kshift says.
 
     Parameters
     ----------
@@ -612,13 +630,14 @@ def fit_two_stage(config_file,
         (growth_df and library_config required; theta_model hill_relative,
         growth_shares_replicates true; file paths relative to the YAML),
         plus a two_stage block: transformation_lambda (mean, std; required),
-        seed (1), jackknife_subsamples (30), jackknife_drop_frac (0.2),
-        num_posterior_samples (500), consistency (true),
+        seed (1), num_posterior_samples (500), consistency (true),
         consistency_library (default the first library alphabetically),
-        predict_epistasis (false), kshift_step_size (1e-5, the k-shift
-        refits' starting step size), kshift_control (true, the k-unchanged
-        control refit), fit (extra tfs-fit-model arguments) and posterior
-        (extra tfs-sample-posterior arguments).
+        predict_epistasis (false), kshift (false; experimental, see above),
+        jackknife_subsamples (30), jackknife_drop_frac (0.2),
+        kshift_step_size (1e-5, the k-shift refits' starting step size),
+        kshift_control (true, the k-unchanged control refit), fit (extra
+        tfs-fit-model arguments) and posterior (extra tfs-sample-posterior
+        arguments).
     out_dir : str, optional
         Directory for every step's outputs. Default 'two_stage'.
     step : str, optional
@@ -655,6 +674,9 @@ def fit_two_stage(config_file,
     for name in todo:
         if name == "consistency" and step == "all" and not settings["consistency"]:
             _say("consistency: off")
+            continue
+        if name in KSHIFT_STEPS and step == "all" and not settings["kshift"]:
+            _say(f"{name}: off (two_stage.kshift is false)")
             continue
         RUNNERS[name](out_dir, cfg, settings)
     _say("done")

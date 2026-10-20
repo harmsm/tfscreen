@@ -177,7 +177,13 @@ interpolation, joint-fit-real run 1) has met these facts.
    value is proposed, not run.
 5. **Honest theta intervals:** the shared-scale error (carry its uncertainty
    into each genotype, as `--shared_shift` does for k) and congression's
-   per-genotype error (the mixture's form).
+   per-genotype error (the mixture's form). The k shift from stage 2
+   refits fails both ways tried: at step size 1e-3 the refits slide along
+   the dk_geno population (real X +0.32 with k unchanged; two-stage
+   validation run 1), and with that population held they under-respond
+   (a third or less of the true shift on simulations; run 2). The 0.5.0
+   release ships without it: deep coverage 0.88-0.91 up to 1e5 reads,
+   0.76-0.81 above (2026-10-20).
 6. **The theta_low/dk_geno ridge at 0 IPTG** (July): proposed fixes (drop 0
    IPTG from epistasis inputs; base_growth on genotypes other than the
    binding ones) never tested.

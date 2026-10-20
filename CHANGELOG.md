@@ -88,6 +88,16 @@ fall into two kinds:
 
 ### Changed
 
+- **`tfs-fit-two-stage` no longer adds k's uncertainty by default.** A new
+  `two_stage.kshift` setting (default false) skips the jackknife and the
+  k-shift refits, and predict runs without `--shared_shift`; `tfs_x.csv`'s
+  `k_shift` is then blank. Validation run 2 found the repaired shift a
+  third or less of the true one on simulations
+  (`planning/studies/two-stage-validation/`). Without it, the deep
+  genotypes' 95% intervals covered 0.88-0.91 up to 1e5 reads and
+  0.76-0.81 above. The whole fit now takes about half a day. Set
+  `kshift: true` for the old behavior, which `--step jackknife` and
+  `--step kshift` still run. The example SLURM chain follows the setting.
 - **`tfs-fit-two-stage` refuses the experimental joint-fit pieces and the
   marker warp.** `read_two_stage_config` now fails on `binding_df`, a
   theta growth or binding noise model other than `zero` (such as

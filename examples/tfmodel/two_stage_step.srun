@@ -15,7 +15,8 @@
 #
 #   CFG   the two-stage YAML (absolute path)
 #   OUT   the output directory (absolute path)
-#   STEP  stage1 | jackknife | stage2 | kshift_predict | consistency | summary
+#   STEP  stage1 | stage2 | predict | consistency | summary, and with
+#         two_stage.kshift jackknife | kshift_predict
 #         (jackknife runs task SLURM_ARRAY_TASK_ID)
 
 module load cuda/12.4.1

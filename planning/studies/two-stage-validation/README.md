@@ -288,3 +288,53 @@ Pass:
   the shift near the study's 0.94 / 0.91 (`validate.py`, as run 1);
 - seed 2: coverage with the shift above run 1's 0.921 / 0.867;
 - real: the control near 0 (run 1: +0.32).
+
+### Run 2 results (2026-10-20)
+
+All three ran on commit ccd5544c (after a first submission from the
+wrong directory and one on code before the repair; both set aside as
+`kshift_oldcode/`, `predict_oldcode/` on seed 1). Every refit converged
+at 1e-6. `kshift/drift.csv`, median change in X from stage 2's MAP over
+non-wt rows:
+
+| run | plus | minus | control (k unchanged) | median shift | a quarter of it |
+|---|---|---|---|---|---|
+| seed 1 | +0.002 | -0.024 | -0.004 | 0.013 | 0.003 |
+| seed 2 | -0.007 | +0.000 | -0.001 | 0.004 | 0.001 |
+| real | +0.022 | -0.026 | -0.008 | 0.024 | 0.006 |
+
+The drift is mostly gone (the real control moved -0.008, against +0.32
+in run 1), but the repair fails its pass criteria:
+
+- On the simulations the shift is a third (seed 1) and a tenth (seed 2)
+  of the study's k-band SD (one SD of k moved X by 0.032-0.038), and the
+  plus and minus refits are lopsided.
+- The control moved more than a quarter of the shift on seed 1 and the
+  real data, and as much on seed 2.
+
+Reading: holding the dk_geno population blocks the slide but also part
+of X's real response to k, in which the population moves with k. The
+real data's symmetric refits cannot be checked against a truth.
+
+Seed 1, `validate.py` (the doubles' X against the truth by read depth;
+the shift column for the record):
+
+| reads | genotypes | slope | RMSE | 95% coverage, no shift | with run 2's shift | median width |
+|---|---|---|---|---|---|---|
+| <= 1e2 | 37,707 | 0.04 | 2.60 | 0.977 | 0.977 | 5.87 |
+| 1e2-1e3 | 89,022 | 0.39 | 0.54 | 0.896 | 0.896 | 1.18 |
+| 1e3-1e4 | 64,362 | 0.88 | 0.17 | 0.883 | 0.885 | 0.48 |
+| 1e4-1e5 | 15,283 | 1.02 | 0.07 | 0.899 | 0.906 | 0.20 |
+| > 1e5 | 1,225 | 1.02 | 0.05 | 0.759 | 0.830 | 0.07 |
+
+Run as `python validate.py run_seed1 --depth $F/depth.csv --truth
+$F/summary/tfs_summarize_theta_corr_test.csv` with
+`F=/gpfs/projects/harmslab/harms/studies/full-sized-sims-3/sim_realistic_s2`
+(seed 2's simulation has no summary to take the truth from).
+
+**Decision (user, 2026-10-20):** ship without the shift (decision 1's
+fallback in `planning/release-0.5.0.md`); undercoverage of 0.76-0.90 is
+acceptable for now. `tfs-fit-two-stage` now has `two_stage.kshift`
+(default false): the jackknife and kshift steps are skipped and predict
+runs without `--shared_shift`. The usable-genotype threshold is 1,000
+reads (decision 5), where the slope reaches 0.88.
