@@ -29,8 +29,19 @@ Install ``tfscreen`` and check that the commands are on your PATH:
     pip install -e .
     tfs-simulate --help
 
-JAX and Numpyro are installed as dependencies. On a Linux machine with a
-GPU, install the ``jaxlib`` wheel for your CUDA version.
+JAX and Numpyro are installed as dependencies. On Linux, pip's plain
+``jax`` runs on the CPU only; for a GPU with CUDA 12, install the
+``cuda12`` extra instead and check that JAX sees the GPU:
+
+.. code-block:: bash
+
+    pip install -e ".[cuda12]"
+    python -c "import jax; print(jax.devices())"
+
+To reproduce the environment a release was tested with, add its
+constraints file, for example
+``pip install -e ".[cuda12]" -c constraints/tfscreen-0.5.0.txt``
+(Python 3.12 or newer).
 
 Getting the example
 -------------------

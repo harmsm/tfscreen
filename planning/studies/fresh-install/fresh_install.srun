@@ -1,0 +1,62 @@
+#!/bin/bash -l
+#SBATCH --account=harmslab
+#SBATCH --job-name=tfs_fresh
+#SBATCH --partition=gpu
+#SBATCH --time=00-06:00:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --gpus=1
+#SBATCH --mem=64G
+#SBATCH --ntasks-per-node=1
+
+# A fresh install of tfscreen as a new lab member would make it, on a GPU
+# node (planning/release-0.5.0.md item 11; README.md here). Clones the
+# repository at REF into OUT, makes a new virtual environment there,
+# installs with the GPU extra and the release's constraints, checks that
+# jax sees the GPU, runs the unit tests and the quickstart example.
+#
+#   sbatch --export=ALL,OUT=/path/to/empty/dir fresh_install.srun
+#
+#   OUT   an empty directory (required; absolute)
+#   REPO  repository URL (default https://github.com/harmsm/tfscreen)
+#   REF   branch, tag or commit (default main)
+#   PY    the Python that makes the environment (default python3; >= 3.11)
+
+module load cuda/12.4.1
+set -e
+OUT="${OUT:?set OUT to an empty directory}"
+REPO="${REPO:-https://github.com/harmsm/tfscreen}"
+REF="${REF:-main}"
+mkdir -p "${OUT}" && cd "${OUT}"
+if [ -e tfscreen ] || [ -e venv ]; then
+    echo "OUT must not hold tfscreen/ or venv/ already" >&2; exit 1
+fi
+
+echo ">>> Clone ${REPO} ${REF} $(date)"
+git clone -q "${REPO}" tfscreen
+git -C tfscreen checkout -q "${REF}"
+git -C tfscreen log --oneline -1
+
+echo ">>> Environment $(date)"
+PY="${PY:-python3}"
+"${PY}" -c "import sys; print(sys.version); assert sys.version_info >= (3, 11), 'tfscreen needs Python 3.11 or newer; set PY'"
+"${PY}" -m venv venv
+source venv/bin/activate
+pip install -q --upgrade pip
+pip install -q -e "tfscreen[cuda12,test]" -c tfscreen/constraints/tfscreen-0.5.0.txt
+pip freeze --exclude-editable > installed.txt
+python -c "import jax; d = jax.devices(); print('jax', jax.__version__, d); assert d[0].platform == 'gpu', 'jax does not see the GPU'"
+
+echo ">>> Unit tests $(date)"
+(cd tfscreen && NUMBA_DISABLE_JIT=1 pytest -q -n 8 tests/tfscreen) > unit_tests.txt 2>&1 || true
+tail -3 unit_tests.txt
+
+echo ">>> Quickstart $(date)"
+cp -r tfscreen/examples/simulate-and-analyze quickstart
+cd quickstart
+# run.sh forces 8 virtual CPU devices for laptops; on a GPU node drop it
+sed -i 's/^export XLA_FLAGS=/#export XLA_FLAGS=/' run.sh
+bash run.sh simulate_config.yaml out 1 > run.log 2>&1
+tail -5 run.log
+ls out | head -40
+echo ">>> Done $(date)"

@@ -88,6 +88,16 @@ fall into two kinds:
 
 ### Changed
 
+- **Dependency floors, a `cuda12` extra and a tested constraints file.**
+  `pyproject.toml` gives every dependency a lower bound, the oldest
+  versions the suite has passed with (pandas 2.3, numpy 2.3, jax 0.11.2,
+  numpyro 0.22, among others); there are no upper bounds. `pip install -e
+  ".[cuda12]"` installs GPU jax on Linux, where pip's plain jax is
+  CPU-only. `constraints/tfscreen-0.5.0.txt` lists the versions a fresh
+  install passed the full suite with (pandas 3.0.6, numpy 2.5.4, jax
+  0.12.0; Python 3.12 or newer); pass it with `-c` to reproduce that
+  environment. The README, quickstart and "Analyzing a screen" page say
+  how.
 - **`tfs-fit-two-stage` no longer adds k's uncertainty by default.** A new
   `two_stage.kshift` setting (default false) skips the jackknife and the
   k-shift refits, and predict runs without `--shared_shift`; `tfs_x.csv`'s

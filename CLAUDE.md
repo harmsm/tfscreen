@@ -29,6 +29,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ~/miniconda3/bin/coverage run --branch -m pytest tests/tfscreen --runslow
 ```
 
+### Dependencies
+
+`pyproject.toml` floors every dependency at the oldest versions the suite has passed with (no caps: CI installs the newest). `constraints/tfscreen-<version>.txt` is the `pip freeze` of a fresh install whose full suite passed, for reproducing a release's environment (`pip install -e ".[cuda12]" -c constraints/tfscreen-0.5.0.txt`; Python 3.12+). The `cuda12` extra is GPU jax on Linux, where pip's plain jax is CPU-only. `planning/studies/fresh-install/fresh_install.srun` checks a clean install on a cluster GPU node.
+
 ### Linting
 ```bash
 # Fatal errors only

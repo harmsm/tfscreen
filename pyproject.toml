@@ -14,27 +14,31 @@ version = { attr = "tfscreen.__version__.__version__" }
 [project]
 name = "tfscreen"
 dynamic = ["version"]
+# Floors: the oldest versions the test suite has passed with (the
+# maintainer's environment, 2026-10-20); CI tests the newest releases.
+# constraints/tfscreen-0.5.0.txt pins the set the 0.5.0 release was tested
+# with.
 dependencies = [
-  "numpy",
-  "pandas",
-  "openpyxl",
-  "matplotlib",
-  "tqdm",
-  "statsmodels",
-  "PyYAML",
-  "corner",
-  "numba",
-"pybktree",
-  "pyfastx",
-  "optax",
-  "numpyro>=0.19.0",
-  "dill",
-  "flax",
-  "jax",
-  "jaxlib",
-  "h5py",
-  "scipy",
-  "jinja2",
+  "numpy>=2.3",
+  "pandas>=2.3",
+  "openpyxl>=3.1",
+  "matplotlib>=3.10",
+  "tqdm>=4.67",
+  "statsmodels>=0.14.6",
+  "PyYAML>=6.0",
+  "corner>=2.2",
+  "numba>=0.63",
+  "pybktree>=1.1",
+  "pyfastx>=2.2",
+  "optax>=0.2.6",
+  "numpyro>=0.22",
+  "dill>=0.4",
+  "flax>=0.12.2",
+  "jax>=0.11.2",
+  "jaxlib>=0.11.2",
+  "h5py>=3.15",
+  "scipy>=1.16",
+  "jinja2>=3.1.4",
 ]
 
 requires-python = ">=3.11"
@@ -77,6 +81,9 @@ markers = [
 test = ["coverage", "diff-cover", "flake8", "pytest", "genbadge", "pytest-mock",
         "pytest-xdist", "pytest-cov"]
 docs = ["pydata-sphinx-theme"]
+# GPU jax on Linux (pip's plain jax is CPU-only there); match the CUDA the
+# cluster's driver supports.
+cuda12 = ["jax[cuda12]>=0.11.2"]
 
 [project.scripts]
 tfs-process-fastq = "tfscreen.process_raw.scripts.process_fastq_cli:main"
