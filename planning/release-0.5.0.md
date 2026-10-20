@@ -174,7 +174,12 @@ of the release.
    paragraphs also depend on round 2 passing; if it fails, they change
    with decision 1's fallback.
 
-19. [ ] Regenerate `cli.rst`, and update CLAUDE.md.
+19. [x] Regenerate `cli.rst`, and update CLAUDE.md.
+    Done 2026-10-19: `cli.rst` was current (its test passes). CLAUDE.md:
+    the relative-X section names the two-stage fit as the route (it said
+    the choice was open), and the planning section leads with this plan.
+    `pipeline.rst` points to the screen page and to `tfs-check-tubes` /
+    `tfs-correct-tubes` (it sent tube cleanup to the lab's own script).
 
 ## Release mechanics
 

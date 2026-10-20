@@ -6,6 +6,10 @@ This page lists every step from sequencing reads to a posterior, the command
 for each and the file each one hands to the next. The pages linked from each
 step explain the choices. :doc:`cli` lists every flag.
 
+To analyze a screen, follow :doc:`screen-analysis`: it runs steps 3-6 as one
+command, ``tfs-fit-two-stage``, with the settings that gave calibrated
+intervals. This page describes the commands that one chains.
+
 Overview
 --------
 
@@ -74,9 +78,12 @@ them apart.
        --tube_volume_mL 5 \
        --out_prefix growth
 
-Lab-specific cleanup, such as swapped samples, resequenced tubes pooled
-together or failed tubes, belongs in the lab's own script, which writes the
-clean tube table. ``examples/process_raw/`` has a synthetic tube table, OD600
+Check the tube labels with ``tfs-check-tubes``, which flags tubes whose
+genotype composition is out of order with their IPTG label, and record
+swaps, relabels and exclusions in a corrections file that
+``tfs-correct-tubes`` applies to the tube table before
+``tfs-process-counts`` (see :doc:`screen-analysis`). Pooling resequenced
+files of one tube belongs in the lab's own script. ``examples/process_raw/`` has a synthetic tube table, OD600
 table and count files to run these commands on. See :doc:`process-raw`.
 
 3. Configure the model
