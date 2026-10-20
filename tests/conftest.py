@@ -6,6 +6,14 @@ import glob
 # Set before any tfscreen/numba imports happen during collection.
 os.environ.setdefault("NUMBA_DISABLE_JIT", "1")
 
+# pandas 3 (what CI installs) always copies on write, so to_numpy() can
+# return a read-only view; pandas 2 can opt in. Run the tests that way on
+# pandas 2 too, so code that writes into such a view fails locally as it
+# does on CI (shared_shift.row_shifts did, 2026-10-18).
+import pandas as pd
+if int(pd.__version__.split(".")[0]) < 3:
+    pd.options.mode.copy_on_write = True
+
 def get_files(base_dir):
     """
     Traverse base_dir and return a dictionary that keys all files and some

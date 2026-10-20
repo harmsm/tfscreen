@@ -31,6 +31,16 @@ fall into two kinds:
 
 ### Fixed
 
+- **`--shared_shift` works under pandas 3.** `shared_shift.row_shifts`
+  wrote wt's zero into the array from `Series.to_numpy()`, which pandas
+  3's copy-on-write returns as a read-only view (`ValueError: assignment
+  destination is read-only`), so `tfs-predict-theta` and
+  `tfs-predict-epistasis` with `--shared_shift` failed, and so did the
+  two-stage fit's predict step. It now takes a copy. CI (pandas 3) had
+  failed these 7 tests on every job since the shift was added; locally
+  (pandas 2) they passed. `tests/conftest.py` now turns copy-on-write on
+  under pandas 2, so the local suite behaves as CI's does.
+
 - **`tfs-fit-two-stage`'s k-shift refits stay at stage 2's MAP.** They
   restarted at Adam's default step size (1e-3), fell about 6.7e5 nats off
   stage 2's MAP and re-descended along the dk_geno population against wt,

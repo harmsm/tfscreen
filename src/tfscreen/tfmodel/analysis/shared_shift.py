@@ -97,7 +97,9 @@ def row_shifts(calc_df, shift):
             f"Shared-shift table has no shift for {len(bad)} predicted "
             f"row(s), e.g. {bad.values.tolist()[:5]}. It must cover every "
             "non-wt genotype and concentration predicted.")
-    out = merged["shift"].to_numpy(dtype=float)
+    # a copy: under pandas 3's copy-on-write to_numpy returns a read-only
+    # view, which the wt assignment below cannot write into
+    out = merged["shift"].to_numpy(dtype=float, copy=True)
     out[is_wt.to_numpy()] = 0.0
     return out
 

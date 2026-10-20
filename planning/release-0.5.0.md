@@ -188,8 +188,8 @@ of the release.
 - Experimental design: `tfs-build-sim-config` and the scoring CLI
   (`two-stage-fit.md` steps 5 and 7), and
   `planning/design-noise-sweep.md`.
-- The kanR warp (decision 2), the relative-m plan,
-  the k/m-under-jackknife-prior alternative (decision 1), the joint fit
-  (`planning/joint-fit-return.md`, paused), the X population SDs held for
-  shallow genotypes (`deep-coverage.md` step 4), and mutant monoculture
-  dk_geno data as `base_growth_df`.
+  - The kanR warp (decision 2), the relative-m plan,
+    the k/m-under-jackknife-prior alternative (decision 1), the joint fit
+    (`planning/joint-fit-return.md`, paused), the X population SDs held for
+    shallow genotypes (`deep-coverage.md` step 4), and mutant monoculture
+    dk_geno data as `base_growth_df`.
