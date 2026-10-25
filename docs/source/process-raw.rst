@@ -26,6 +26,9 @@ The raw-data half of the pipeline has four steps:
 Every flag and default is listed in :doc:`cli`. The model's side of these
 tables is described in :doc:`model-inputs`.
 
+To analyze a screen, :doc:`screen-analysis` runs steps 3 and 4 in order,
+with ``tfs-check-tubes`` to find mislabeled tubes, and then the fit.
+
 One tube per time-point
 -----------------------
 

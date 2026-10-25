@@ -4,9 +4,9 @@ status: active
 filed: 2026-10-13
 area: tfmodel
 revisit_when: >-
-  Active (decisions settled by the user, 2026-10-13). Students' design
-  simulations for the NSF preliminary data (due 2026-11-20) are the first
-  users. Keep the step list current.
+  Active (decisions settled by the user, 2026-10-13). The real-data route
+  shipped in 0.5.0 (2026-10-24); steps 5 and 7, for the students' design
+  simulations, are left. Keep the step list current.
 related:
   - planning/deep-coverage.md
   - planning/experiment-pipeline.md
@@ -153,7 +153,7 @@ simulation. Intervals matter for the final analysis.
    table (6,500 genotypes, fits cut to 40 steps) finished every step in
    4.7 minutes, stage 2's k equal to stage 1's, wt's intervals untouched,
    and a rerun skipped everything.
-4. [ ] **Validate by reproduction.** Rerun the seed-1 and seed-2
+4. [x] **Validate by reproduction.** Rerun the seed-1 and seed-2
    simulations through the command and match the study's numbers
    (stage 1 m ratios; coverage 0.94 / 0.91 on seed 1); rerun the real
    data and match `held_mix_real`. Set up 2026-10-13 as
@@ -208,9 +208,17 @@ simulation. Intervals matter for the final analysis.
    example (with this screen's values, no lab data) shows them. Validate:
    the built config reproduces `sim_realistic_s2`'s read depth (median
    double about 470 reads) and composition.
-8. [ ] **Docs.** A recipe page (what each step does and why, with the
+8. [x] **Docs.** A recipe page (what each step does and why, with the
    study's numbers), an example SLURM array script, the students'
    simulate-fit-score loop, CLAUDE.md, CHANGELOG.
+   Done for real data with 0.5.0 (`docs/source/screen-analysis.rst`,
+   `examples/tfmodel/two_stage_submit.sh`, `two_stage_step.srun`); the
+   students' simulate-fit-score loop waits on steps 5 and 7.
+
+After 0.5.0 (2026-10-24): steps 5 and 7, the students' design-sweep
+tools, belong to the experimental-design work that follows the release
+(`planning/release-0.5.0.md`, "Out of scope"); the plan stays active for
+them.
 
 ## Decisions (user, 2026-10-13)
 

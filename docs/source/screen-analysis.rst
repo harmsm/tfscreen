@@ -20,6 +20,8 @@ the numbers.
 What you need
 =============
 
+From the experiment:
+
 - **One counts file per tube**, from ``tfs-process-fastq`` (see
   :doc:`process-raw`).
 - **The tube table**: one row per sequenced tube with its library,
@@ -28,31 +30,53 @@ What you need
 - **OD600 readings** for every tube and the **OD600 calibration** for the
   instrument and strain (``tfs-calibrate-od600``), plus the culture volume.
 - **The library YAML**, the same file given to ``tfs-process-fastq``.
-- **A corrections file** for the tube table, if any tube was mislabeled,
-  swapped or failed (see `Correct the tube table`_). Start with none.
 - **The measured co-transformation rate** lambda, as a mean and SD. The
   fit requires it. For the 2026 screen it was 0.357 (likelihood-ratio 95%
   CI 0.156-0.674), entered as 0.38 +- 0.15.
+
+For the fit:
+
 - **Loose growth priors**: one row per condition with a growth baseline
   ``k`` and slope ``m``. The values only need to be the right order of
   magnitude; ``examples/tfmodel/growth_priors_loose.csv`` is the file used
   for the 2026 screen.
-- **A GPU**, for the fits, and tfscreen installed with GPU JAX: on a
-  Linux cluster, ``pip install -e ".[cuda12]"`` in a fresh environment
-  with Python 3.12 or newer, then check that ``python -c "import jax;
+- **A GPU**, and tfscreen installed with GPU JAX: on a Linux cluster,
+  ``pip install -e ".[cuda12]"`` in a fresh environment with Python 3.12
+  or newer, then check that ``python -c "import jax;
   print(jax.devices())"`` lists a GPU (see :doc:`quickstart`). Save the
   environment's ``pip freeze`` with the analysis, so its versions are on
   record. The whole analysis takes about half a day of GPU time (see
   `Cost`_).
 
-Correct the tube table
-======================
+The next section turns the counts, tube table and OD600 readings into the
+growth table the fit reads, checking the tube labels on the way. If a
+tube turns out to be mislabeled, you will also write a corrections file
+there.
 
-Check the tubes before fitting. ``tfs-check-tubes`` scores each tube's
-apparent IPTG concentration from its genotype composition and flags tubes
-that are out of order in their row of the design (a replicate at one
-time). Tube totals and read depth cancel out of the score, so it tests the
-labels, not the OD600.
+Make the growth table
+=====================
+
+The fit reads one **growth table**, ``growth.csv``: every genotype's
+reads and cell numbers in every tube, made by ``tfs-process-counts``. It
+is the ``growth_df`` in the fit's YAML (`Configure the fit`_). Before
+trusting it, check that each tube's label matches its contents.
+
+If you have already made and checked the growth table, for example
+following :doc:`process-raw`, skip to `Configure the fit`_.
+
+These commands read every tube's counts for the whole library, which is
+too much for a cluster's login node. Run them on a compute node with
+plenty of memory, for example in an interactive session:
+
+.. code-block:: bash
+
+   srun --account=YOUR_ACCOUNT --mem=32G --cpus-per-task=4 --time=02:00:00 --pty bash
+
+``tfs-process-counts`` used 4-6 GB per library and a few minutes on the
+2026 screen; ``tfs-check-tubes`` holds the whole growth table in memory,
+so ask for more than that.
+
+**1. Make a first growth table and check the tubes.**
 
 .. code-block:: bash
 
@@ -63,13 +87,26 @@ labels, not the OD600.
        --out_prefix growth_unchecked
    tfs-check-tubes growth_unchecked.csv --out_prefix tube_qc
 
-Read the whole row of any flagged tube. A single swap is common and is
+``tfs-check-tubes`` scores each tube's apparent IPTG concentration from
+its genotype composition and flags tubes that are out of order in their
+row of the design (one replicate at one time). Tube totals and read depth
+cancel out of the score, so it tests the labels, not the OD600.
+
+**2. If no tube is flagged**, the first table is the one to use: rename
+``growth_unchecked.csv`` to ``growth.csv`` and go on to
+`Configure the fit`_.
+
+**3. If tubes are flagged**, read the whole row of each flagged tube in
+``tube_qc.csv`` and decide what happened. A single swap is common and is
 fixed with a ``swap``; a row whose order cannot be recovered is left out
-with ``exclude``. Each correction records who decided it, when, why and
-the evidence, and goes in a YAML file kept with the experiment's data
-(format: :doc:`process-raw`, "Correcting the tube table:
-tfs-correct-tubes"; ``examples/process_raw/corrections.yaml``). Then
-apply it and make the growth table the fit reads:
+with ``exclude``. Write each decision into a corrections file, a YAML
+file kept with the experiment's data, recording who decided it, when,
+why and the evidence (format: :doc:`process-raw`, "Correcting the tube
+table: tfs-correct-tubes"; example:
+``examples/process_raw/corrections.yaml``).
+
+**4. Apply the corrections and make the growth table again** from the
+corrected tube table:
 
 .. code-block:: bash
 
@@ -80,8 +117,9 @@ apply it and make the growth table the fit reads:
        --tube_volume_mL 5 \
        --out_prefix growth
 
-The original tube table is never edited. ``tube_table_corrected_changes.csv``
-lists every change.
+This writes ``growth.csv``, the table the fit uses. The original tube
+table is never edited; ``tube_table_corrected_changes.csv`` lists every
+change.
 
 For the 2026 screen one row is excluded: pheS+4CP, replicate 2, t_sel 82.
 Its IPTG tubes were out of order in a way no single swap explains.
@@ -116,9 +154,12 @@ the YAML. Start from ``examples/tfmodel/two_stage.yaml``:
      consistency_library: kanR
      predict_epistasis: true
 
-Keep everything except the data paths, ``transformation_lambda`` and
-``consistency_library`` as shown. These are the settings the validation
-used. ``sigma_fixed`` holds the per-tube level offsets at an SD of 0.17
+Keep everything except the data paths and ``transformation_lambda`` as
+shown. These are the settings the validation used.
+``consistency_library`` only names which library's tubes the consistency
+check refits alone (see `What the fit does`_); it is a convention, not a
+modeling choice, and defaults to the first library alphabetically
+(``kanR`` here). ``sigma_fixed`` holds the per-tube level offsets at an SD of 0.17
 (left free, they absorbed the population's growth on real data), and the
 held log Hill-n spread keeps genotypes from hiding their response below
 the lowest IPTG concentration. Set ``predict_epistasis: true`` if you want
@@ -144,8 +185,9 @@ when its outputs exist, so a stopped run resumes where it stopped.
    at stage 1's values, then the Laplace approximation of the posterior.
 3. **predict**: stage 2's *X* from the posterior draws, and its epistasis
    with ``predict_epistasis: true``.
-4. **consistency**: stage 2 refitted on the kanR tubes alone, compared
-   genotype by genotype with the fit on both markers.
+4. **consistency**: stage 2 refitted on one library's tubes alone
+   (``consistency_library``, kanR here), compared genotype by genotype
+   with the fit on both markers.
 5. **summary**: the results table, ``tfs_x.csv``.
 
 Two more steps, **jackknife** and **kshift**, try to add *k*'s
@@ -157,24 +199,33 @@ run 2).
 Run it
 ======
 
-On one machine with a GPU, everything in order:
+Run it one of two ways, not both.
 
-.. code-block:: bash
-
-   tfs-fit-two-stage two_stage.yaml --out_dir two_stage
-
-On a SLURM cluster, submit each step as its own job. ``--step NAME``
-runs one step. ``examples/tfmodel/two_stage_submit.sh`` submits the whole
-chain with dependencies, using ``examples/tfmodel/two_stage_step.srun``
-for each job:
+**On a SLURM cluster** (the usual case), copy
+``examples/tfmodel/two_stage_submit.sh`` and
+``examples/tfmodel/two_stage_step.srun`` next to your YAML, edit the
+account, partition and time in ``two_stage_step.srun`` for your cluster,
+and run the submit script from the login node:
 
 .. code-block:: bash
 
    bash two_stage_submit.sh two_stage.yaml two_stage
 
-It prints the job ids. Edit the account, partition and time in
-``two_stage_step.srun`` for your cluster first. Every path the jobs use
-is made absolute, so the command works from any directory.
+That is the only command to run. It submits one job per step, each
+waiting on the steps it needs, and prints the job ids. Logs go to
+``two_stage/logs/``. Every path the jobs use is made absolute, so it
+works from any directory. If a job fails, fix the cause and run the
+submit script again: finished steps are skipped.
+
+**On one machine with a GPU**, run everything in order with one command:
+
+.. code-block:: bash
+
+   tfs-fit-two-stage two_stage.yaml --out_dir two_stage
+
+This is also what each cluster job calls, one step at a time
+(``tfs-fit-two-stage two_stage.yaml --out_dir two_stage --step stage2``
+and so on).
 
 Cost
 ----

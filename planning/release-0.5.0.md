@@ -137,9 +137,12 @@ of the release.
    (also `k_shift`, `num_mutations` and reads per library). On run 1's
    real outputs: 217,945 genotypes, 1.7 M rows, about 40 s to count the
    reads. A depth flag waits on decision 5's threshold.
-10. [ ] Turn epistasis on X on in the recipe (`predict_epistasis`), or
+10. [x] Turn epistasis on X on in the recipe (`predict_epistasis`), or
     document how to run `tfs-predict-epistasis --shared_shift` afterward.
     Natalie's paper needs it.
+    Done: the screen page's YAML sets `predict_epistasis: true` and says
+    when to (the command's default stays false). With the k shift off
+    there is no `--shared_shift` to document.
 11. [x] Pin or floor the dependency versions that broke CI (pandas 3).
     Check a fresh install on the cluster.
     Done locally 2026-10-20 (`planning/studies/fresh-install/`): floors in
@@ -159,9 +162,16 @@ of the release.
     (shift too small on the simulations), so decision 1's fallback
     applies; seed 1's coverage by depth without the shift is recorded in
     `planning/studies/two-stage-validation/`, run 2.
-13. [ ] A dry run by Natalie on the dev data from a clean install,
+13. [x] A dry run by Natalie on the dev data from a clean install,
     following only the docs. Every question she asks becomes a docs fix.
-14. [ ] `two-stage-fit.md` step 4 marked done, and the plan's status set.
+    Done 2026-10-22 to 2026-10-24: the user and Natalie both ran it. Docs
+    fixes: run processing on a compute node, `consistency_library` is a
+    convention, run the submit script or the command (not both), and the
+    growth-table section rewritten as numbered steps (the inputs list no
+    longer implies a corrections file already exists).
+14. [x] `two-stage-fit.md` step 4 marked done, and the plan's status set.
+    Done 2026-10-24: steps 4 and 8 done; the plan stays active for steps
+    5 and 7 (the design-sweep tools, after the release).
 
 ## Docs
 
