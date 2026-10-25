@@ -534,3 +534,64 @@ def test_binding_only_minibatch_svi_runs(tmp_path):
     assert svi_state is not None
     assert isinstance(params, dict)
     assert len(params) > 0
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# thermo_options: units, column handling, numbering checks via the orchestrator
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _ddG_frame(genotypes=_GENOTYPES):
+    muts = sorted({p for g in genotypes if g != "wt" for p in g.split("/")})
+    vals = np.arange(len(muts) * len(_MWC_STRUCTURE_NAMES), dtype=float)
+    df = pd.DataFrame(vals.reshape(len(muts), -1), columns=list(_MWC_STRUCTURE_NAMES))
+    df.insert(0, "mut", muts)
+    return df
+
+
+def test_thermo_options_default_none_in_settings(binding_only_ddG_orchestrator):
+    assert binding_only_ddG_orchestrator.settings["thermo_options"] is None
+
+
+def test_thermo_options_kcal_and_messy_columns(tmp_path):
+    """kcal/mol is divided by RT; 'Mutation', a pandas index and extra
+    columns are accepted; struct_names come back in the model's order."""
+    from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+    binding_path = _make_binding_only_csv(tmp_path)
+    df = _ddG_frame()
+    messy = df.rename(columns={"mut": "Mutation"})
+    messy["unfolded"] = 0.0
+    messy = messy[["Mutation", "unfolded"] + list(reversed(_MWC_STRUCTURE_NAMES))]
+    path = str(tmp_path / "messy.csv")
+    messy.to_csv(path)
+    opts = {"ddG_units": "kcal/mol"}
+    orch = ModelOrchestrator(None, binding_path, binding_only=True,
+                             theta="thermo.O2_C12_K5_U0_a.PddG",
+                             thermo_data=path, thermo_options=opts)
+    b = orch.data.binding
+    assert tuple(b.struct_names) == tuple(_MWC_STRUCTURE_NAMES)
+    RT = 1.987204259e-3 * 298.15
+    expected = df.set_index("mut").loc[orch.mut_labels].to_numpy() / RT
+    np.testing.assert_allclose(b.struct_features, expected, rtol=1e-6)
+    assert orch.settings["thermo_options"] == opts
+
+
+def test_thermo_options_bad_value_fails_at_construction(tmp_path):
+    from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+    binding_path = _make_binding_only_csv(tmp_path)
+    with pytest.raises(ValueError, match="ddG_units"):
+        ModelOrchestrator(None, binding_path, binding_only=True,
+                          theta="thermo.O2_C12_K5_U0_a.PddG",
+                          thermo_data=_make_ddG_prior_csv(tmp_path),
+                          thermo_options={"ddG_units": "eV"})
+
+
+def test_wt_mismatch_fails_in_orchestrator(tmp_path):
+    from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+    binding_path = _make_binding_only_csv(tmp_path)
+    df = _ddG_frame()
+    df["mut"] = df["mut"].str.replace("M42I", "L42I")
+    path = str(tmp_path / "bad.csv")
+    df.to_csv(path, index=False)
+    with pytest.raises(ValueError, match=r"M42I \(file wt L42\)"):
+        ModelOrchestrator(None, binding_path, binding_only=True,
+                          theta="thermo.O2_C12_K5_U0_a.PddG", thermo_data=path)

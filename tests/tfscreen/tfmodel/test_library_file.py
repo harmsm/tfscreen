@@ -93,7 +93,7 @@ def _masks(orchestrator):
     idx = orchestrator.growth_tm.tensor_dim_names.index("genotype")
     labels = list(orchestrator.growth_tm.tensor_dim_labels[idx])
     return (labels,
-            np.array(orchestrator.data.growth.congression_mask),
+            ~np.array(orchestrator.data.growth.ln_cfu0_spiked_mask),
             np.array(orchestrator.data.growth.ln_cfu0_spiked_mask))
 
 
@@ -158,6 +158,196 @@ class TestSpikedGenotypesAbsentFromData:
                               spiked_genotypes=["A2L"])
 
 
+def _bulk_fraction(orchestrator):
+    idx = orchestrator.growth_tm.tensor_dim_names.index("genotype")
+    labels = list(orchestrator.growth_tm.tensor_dim_labels[idx])
+    return dict(zip(labels, np.array(orchestrator.data.growth.bulk_fraction)))
+
+
+class TestBulkFraction:
+    """Congression purity (bulk_fraction) is carried separately from the
+    ln_cfu0 prior class (ln_cfu0_spiked_mask)."""
+
+    def test_from_library_table(self, library_file):
+        orchestrator = ModelOrchestrator(_growth_df(), _binding_df(),
+                                         library_file=library_file)
+        bf = _bulk_fraction(orchestrator)
+        table = orchestrator.library_df.set_index("genotype")["bulk_fraction"]
+        for g in GENOTYPES:
+            assert bf[g] == pytest.approx(table[g])
+        # wt and A2L are spiked *and* in the bulk; A2C is bulk only.
+        assert 0 < bf["wt"] < 1
+        assert 0 < bf["A2L"] < 1
+        assert bf["A2C"] == pytest.approx(1.0)
+
+    def test_ln_cfu0_class_unchanged(self, library_file):
+        """Spiked-origin genotypes keep the spiked ln_cfu0 class even though
+        they are mostly bulk."""
+        orchestrator = ModelOrchestrator(_growth_df(), _binding_df(),
+                                         library_file=library_file)
+        labels, _, spiked = _masks(orchestrator)
+        assert spiked[labels.index("wt")] and spiked[labels.index("A2L")]
+        assert not spiked[labels.index("A2C")]
+
+    def test_legacy_spiked_list_is_binary(self):
+        orchestrator = ModelOrchestrator(_growth_df(), _binding_df(),
+                                         spiked_genotypes=["wt", "A2L"])
+        assert _bulk_fraction(orchestrator) == {"wt": 0.0, "A2L": 0.0,
+                                                "A2C": 1.0}
+
+    def test_no_spike_information_is_all_bulk(self):
+        orchestrator = ModelOrchestrator(_growth_df(), _binding_df())
+        assert set(_bulk_fraction(orchestrator).values()) == {1.0}
+
+    def test_unknown_bucket_is_bulk(self, library_file):
+        growth_df = _growth_df(["wt", "A2C", "__unknown__"])
+        orchestrator = ModelOrchestrator(growth_df,
+                                         _binding_df(["wt", "A2C"]),
+                                         library_file=library_file)
+        assert _bulk_fraction(orchestrator)["__unknown__"] == 1.0
+
+    def test_genotype_missing_from_table_raises(self, library_file):
+        table = pd.read_csv(library_file)
+        table[table["genotype"] != "A2C"].to_csv(library_file, index=False)
+        with pytest.raises(ValueError, match="missing from the library"):
+            ModelOrchestrator(_growth_df(), _binding_df(),
+                              library_file=library_file)
+
+    def test_bad_value_raises(self, library_file):
+        table = pd.read_csv(library_file)
+        table.loc[table["genotype"] == "A2C", "bulk_fraction"] = 1.5
+        table.to_csv(library_file, index=False)
+        with pytest.raises(ValueError, match=r"\[0, 1\]"):
+            ModelOrchestrator(_growth_df(), _binding_df(),
+                              library_file=library_file)
+
+    def test_library_sized_under_batching(self, library_file):
+        from tfscreen.tfmodel.tensors.batch import get_batch
+        orchestrator = ModelOrchestrator(_growth_df(), _binding_df(),
+                                         library_file=library_file)
+        full = np.array(orchestrator.data.growth.bulk_fraction)
+        batch = get_batch(orchestrator.data, np.array([2, 0]))
+        np.testing.assert_array_equal(np.array(batch.growth.bulk_fraction), full)
+
+
+def _labels(orchestrator):
+    idx = orchestrator.growth_tm.tensor_dim_names.index("genotype")
+    return list(orchestrator.growth_tm.tensor_dim_labels[idx])
+
+
+class TestCoresidentSets:
+    """Fixed co-resident sets for the congression mixture (step 3.3b)."""
+
+    def test_shapes_and_strata(self, library_file):
+        orchestrator = ModelOrchestrator(_growth_df(), _binding_df(),
+                                         library_file=library_file)
+        g = orchestrator.data.growth
+        idx = np.asarray(g.coresident_idx)
+        n = np.asarray(g.coresident_n)
+
+        assert idx.shape == (g.num_genotype, 16, 3)
+        np.testing.assert_array_equal(n, [1] * 12 + [2] * 3 + [3])
+        # Set k has exactly n[k] co-residents; the rest of its slots are -1.
+        filled = (idx >= 0).sum(axis=-1)
+        np.testing.assert_array_equal(filled, np.broadcast_to(n, filled.shape))
+        assert idx.max() < g.num_genotype
+
+    def test_pool_is_bulk_share_of_genotypes_with_data(self, library_file):
+        orchestrator = ModelOrchestrator(_growth_df(), _binding_df(),
+                                         library_file=library_file)
+        mask = ~np.array(orchestrator.data.growth.ln_cfu0_spiked_mask)
+        pool = orchestrator._coresident_pool(mask)
+        table = orchestrator.library_df.set_index("genotype")
+        weights = np.array([table.loc[g, "pool_fraction"]
+                            * table.loc[g, "bulk_fraction"]
+                            for g in _labels(orchestrator)])
+        np.testing.assert_allclose(pool, weights / weights.sum())
+
+    def test_draws_follow_pool(self, library_file):
+        orchestrator = ModelOrchestrator(_growth_df(), _binding_df(),
+                                         library_file=library_file,
+                                         congression_sets=[4000])
+        mask = ~np.array(orchestrator.data.growth.ln_cfu0_spiked_mask)
+        pool = orchestrator._coresident_pool(mask)
+        idx = np.asarray(orchestrator.data.growth.coresident_idx)
+        counts = np.bincount(idx[idx >= 0], minlength=len(pool))
+        np.testing.assert_allclose(counts / counts.sum(), pool, atol=0.01)
+
+    def test_unknown_never_drawn(self, library_file):
+        growth_df = _growth_df(["wt", "A2C", "__unknown__"])
+        orchestrator = ModelOrchestrator(growth_df,
+                                         _binding_df(["wt", "A2C"]),
+                                         library_file=library_file,
+                                         congression_sets=[500])
+        unknown = _labels(orchestrator).index("__unknown__")
+        idx = np.asarray(orchestrator.data.growth.coresident_idx)
+        assert not np.any(idx == unknown)
+
+    def test_legacy_pool_uniform_over_non_spiked(self):
+        orchestrator = ModelOrchestrator(_growth_df(), _binding_df(),
+                                         spiked_genotypes=["wt"])
+        mask = ~np.array(orchestrator.data.growth.ln_cfu0_spiked_mask)
+        pool = orchestrator._coresident_pool(mask)
+        labels = _labels(orchestrator)
+        assert pool[labels.index("wt")] == 0.0
+        np.testing.assert_allclose(pool[[labels.index("A2L"),
+                                         labels.index("A2C")]], [0.5, 0.5])
+
+    def test_empty_pool_gives_empty_sets(self):
+        orchestrator = ModelOrchestrator(_growth_df(), _binding_df(),
+                                         spiked_genotypes=GENOTYPES)
+        assert np.all(np.asarray(orchestrator.data.growth.coresident_idx) == -1)
+
+    def test_mixture_refuses_empty_pool_with_bulk_genotypes(self,
+                                                            library_file):
+        """Bulk genotypes but nothing drawable: a mixture model cannot build
+        congressed cells, so it refuses; 'single' does not care."""
+        table = pd.read_csv(library_file)
+        table["pool_fraction"] = 0.0
+        table.to_csv(library_file, index=False)
+
+        with pytest.raises(ValueError, match="co-resident pool is empty"):
+            ModelOrchestrator(_growth_df(), _binding_df(),
+                              library_file=library_file,
+                              transformation="mixture")
+        ModelOrchestrator(_growth_df(), _binding_df(),
+                          library_file=library_file, transformation="single")
+
+    def test_seed_reproduces_and_changes_draws(self, library_file):
+        def draw(seed_value):
+            o = ModelOrchestrator(_growth_df(), _binding_df(),
+                                  library_file=library_file,
+                                  congression_sets=[50, 10],
+                                  congression_seed=seed_value)
+            return np.asarray(o.data.growth.coresident_idx)
+
+        np.testing.assert_array_equal(draw(3), draw(3))
+        assert not np.array_equal(draw(3), draw(4))
+
+    def test_settings_record_sets_and_seed(self, library_file):
+        orchestrator = ModelOrchestrator(_growth_df(), _binding_df(),
+                                         library_file=library_file,
+                                         congression_sets=[5, 2],
+                                         congression_seed=7)
+        assert orchestrator.settings["congression_sets"] == [5, 2]
+        assert orchestrator.settings["congression_seed"] == 7
+
+    @pytest.mark.parametrize("bad", [[], [0, 0], [-1, 2], [1.5], "abc", None])
+    def test_bad_sets_raise(self, bad):
+        with pytest.raises(ValueError, match="congression_sets"):
+            ModelOrchestrator(_growth_df(), _binding_df(),
+                              congression_sets=bad)
+
+    def test_library_sized_under_batching(self, library_file):
+        from tfscreen.tfmodel.tensors.batch import get_batch
+        orchestrator = ModelOrchestrator(_growth_df(), _binding_df(),
+                                         library_file=library_file)
+        full = np.asarray(orchestrator.data.growth.coresident_idx)
+        batch = get_batch(orchestrator.data, np.array([2, 0]))
+        np.testing.assert_array_equal(np.asarray(batch.growth.coresident_idx),
+                                      full)
+
+
 class TestMutualExclusion:
 
     def test_both_raises(self, library_file):
@@ -211,6 +401,9 @@ class TestConfigureModel:
                         library_config=library_config_file,
                         out_prefix=out_prefix,
                         skip_model_stats=True,
+                        # synthetic ln_cfu table without read counts
+                        growth_likelihood="lncfu",
+                        sample_offset_model="zero",
                         **kwargs)
         return out_prefix
 
@@ -228,6 +421,22 @@ class TestConfigureModel:
         assert config["library"]["library_mixture"]["spiked"] == 1
         # One source of truth: the derived list is not also written out.
         assert "spiked_genotypes" not in config["components"]
+
+    def test_round_trip_reproduces_coresident_sets(self, tmp_path,
+                                                   library_config_file):
+        out_prefix = self._configure(tmp_path, library_config_file)
+        with open(f"{out_prefix}_config.yaml") as f:
+            config = yaml.safe_load(f)
+        assert config["components"]["congression_sets"] == [12, 3, 1]
+        assert config["components"]["congression_seed"] == 0
+
+        orchestrator, _ = read_configuration(f"{out_prefix}_config.yaml")
+        direct = ModelOrchestrator(_growth_df(), _binding_df(),
+                                   library_file=f"{out_prefix}_library.csv")
+        assert _labels(orchestrator) == _labels(direct)
+        np.testing.assert_array_equal(
+            np.asarray(orchestrator.data.growth.coresident_idx),
+            np.asarray(direct.data.growth.coresident_idx))
 
     def test_round_trip_reproduces_masks(self, tmp_path, library_config_file):
         out_prefix = self._configure(tmp_path, library_config_file)
@@ -299,3 +508,22 @@ class TestLegacyConfig:
 
         reloaded, _ = read_configuration(f"{out_prefix}_config.yaml")
         assert reloaded.settings["spiked_genotypes"] == ["wt", "A2L"]
+
+
+class TestPredictionSubset:
+    """Genotype-subset prediction copies a library_file model's settings."""
+
+    def test_copy_orchestrator_subset_keeps_library_file(self, library_file):
+        from tfscreen.tfmodel.analysis.prediction import copy_orchestrator
+
+        orchestrator = ModelOrchestrator(_growth_df(), _binding_df(),
+                                         library_file=library_file)
+        full = copy_orchestrator(orchestrator)
+        assert sorted(_masks(full)[0]) == sorted(GENOTYPES)
+
+        subset = copy_orchestrator(orchestrator, genotypes=["A2L", "A2C"])
+        assert subset.settings["library_file"] == library_file
+        labels, _, spiked = _masks(subset)
+        # A2L is still in the spiked origin, as in the full model.
+        assert dict(zip(labels, spiked)) == {"A2L": True, "A2C": False}
+

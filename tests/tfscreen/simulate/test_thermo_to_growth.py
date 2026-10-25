@@ -7,7 +7,8 @@ from numpy.random import Generator
 from tfscreen.simulate.thermo_to_growth import (
     _assign_activity,
     _assign_dk_geno,
-    _apply_growth_params,
+    growth_rates,
+    growth_rate_one_condition,
     _sample_horseshoe_activity,
     _sample_hierarchical_activity,
     _theta_param_to_df,
@@ -166,10 +167,18 @@ def test_assign_dk_geno_fixed_value_skips_rng():
 
 
 # ----------------------------------------------------------------------------
-# test _apply_growth_params
+# test growth_rates / growth_rate_one_condition
 # ----------------------------------------------------------------------------
 
-class TestApplyGrowthParams:
+def _k(conds, theta, growth_params, activity=None, dk=None, theta_rescale="passthrough"):
+    n = len(theta)
+    activity = np.ones(n) if activity is None else activity
+    dk = np.zeros(n) if dk is None else dk
+    return growth_rates(np.asarray(conds), np.asarray(theta), activity, dk,
+                        growth_params, theta_rescale)
+
+
+class TestGrowthRates:
 
     @pytest.fixture
     def growth_params(self):
@@ -179,17 +188,15 @@ class TestApplyGrowthParams:
         }
 
     def test_single_condition_at_theta_zero(self, growth_params):
-        k = _apply_growth_params(np.array(["sel"]), np.array([0.0]), growth_params)
+        k = _k(["sel"], [0.0], growth_params)
         assert np.isclose(k[0], 0.005)
 
     def test_single_condition_at_theta_one(self, growth_params):
-        k = _apply_growth_params(np.array(["sel"]), np.array([1.0]), growth_params)
+        k = _k(["sel"], [1.0], growth_params)
         assert np.isclose(k[0], -0.01 + 0.005)
 
     def test_vector_mixed_conditions(self, growth_params):
-        conds = np.array(["sel", "pre", "sel"])
-        theta = np.array([0.5, 0.3, 0.0])
-        k = _apply_growth_params(conds, theta, growth_params)
+        k = _k(["sel", "pre", "sel"], [0.5, 0.3, 0.0], growth_params)
         expected = np.array([
             -0.01 * 0.5 + 0.005,
              0.002 * 0.3 + 0.020,
@@ -198,35 +205,43 @@ class TestApplyGrowthParams:
         np.testing.assert_allclose(k, expected)
 
     def test_returns_numpy_array(self, growth_params):
-        k = _apply_growth_params(np.array(["pre"]), np.array([0.5]), growth_params)
-        assert isinstance(k, np.ndarray)
+        assert isinstance(_k(["pre"], [0.5], growth_params), np.ndarray)
 
     def test_missing_condition_raises(self, growth_params):
         with pytest.raises(KeyError):
-            _apply_growth_params(np.array(["nonexistent"]), np.array([0.5]), growth_params)
+            _k(["nonexistent"], [0.5], growth_params)
 
     def test_activity_scales_theta_contribution(self, growth_params):
-        conds = np.array(["sel", "sel"])
-        theta = np.array([1.0, 1.0])
         activity = np.array([0.5, 2.0])
-        k = _apply_growth_params(conds, theta, growth_params, activity_array=activity)
+        k = _k(["sel", "sel"], [1.0, 1.0], growth_params, activity=activity)
         b = growth_params["sel"]["b"]
         m = growth_params["sel"]["m"]
-        np.testing.assert_allclose(k, b + activity * m * theta)
+        np.testing.assert_allclose(k, b + activity * m * 1.0)
 
-    def test_activity_none_defaults_to_one(self, growth_params):
-        conds = np.array(["sel"])
-        theta = np.array([0.5])
-        k_default = _apply_growth_params(conds, theta, growth_params, activity_array=None)
-        k_explicit = _apply_growth_params(conds, theta, growth_params,
-                                           activity_array=np.array([1.0]))
-        np.testing.assert_allclose(k_default, k_explicit)
+    def test_dk_geno_is_added(self, growth_params):
+        k = _k(["sel", "pre"], [0.5, 0.5], growth_params, dk=np.array([0.01, -0.02]))
+        np.testing.assert_allclose(k, [-0.01*0.5 + 0.005 + 0.01,
+                                       0.002*0.5 + 0.020 - 0.02])
+
+    def test_theta_rescale_applied(self, growth_params):
+        k = _k(["sel"], [0.5], growth_params, theta_rescale="logit")
+        # logit(0.5) = 0
+        assert np.isclose(k[0], 0.005)
+
+    def test_bad_theta_rescale_raises(self, growth_params):
+        with pytest.raises(ValueError, match="theta_rescale"):
+            _k(["sel"], [0.5], growth_params, theta_rescale="nope")
+
+    def test_one_condition_matches_growth_rates(self, growth_params):
+        theta = np.array([0.1, 0.4, 0.9])
+        activity = np.array([1.0, 0.5, 2.0])
+        dk = np.array([0.0, 0.01, -0.01])
+        one = growth_rate_one_condition("sel", theta, activity, dk, growth_params)
+        many = growth_rates(np.array(["sel"]*3), theta, activity, dk, growth_params)
+        np.testing.assert_allclose(one, many)
 
     def test_zero_activity_returns_baseline(self, growth_params):
-        conds = np.array(["sel"])
-        theta = np.array([0.7])
-        k = _apply_growth_params(conds, theta, growth_params,
-                                  activity_array=np.array([0.0]))
+        k = _k(["sel"], [0.7], growth_params, activity=np.array([0.0]))
         assert np.isclose(k[0], growth_params["sel"]["b"])
 
 
@@ -1570,3 +1585,50 @@ class TestThetaParamToDf:
         param = self._make_param_single_titrant(4)
         df = _theta_param_to_df(param, genotypes, sim_idx)
         assert len(df) == 4
+
+
+# ----------------------------------------------------------------------------
+# wt keeps the hill_geno reference curve
+# ----------------------------------------------------------------------------
+
+def _hill_geno_run(seed, sim_overrides=None, theta_gc_override=None):
+    import jax
+    from tfscreen.simulate.sim_data_class import build_sim_data
+    genotypes = ["wt"] + [f"A{i}G" for i in range(2, 40)]
+    sample_df = pd.DataFrame({
+        "condition_pre": ["M9"] * 4, "condition_sel": ["M9+Ab"] * 4,
+        "titrant_name": ["IPTG"] * 4, "titrant_conc": [0.0, 0.01, 0.1, 1.0]})
+    sim_data = build_sim_data(pd.DataFrame({"genotype": genotypes}), sample_df)
+    growth = {"M9": {"m": 0.001, "b": 0.02}, "M9+Ab": {"m": -0.01, "b": 0.005}}
+    # every genotype in a non-normal category: an unpinned wt would never
+    # get the reference curve
+    priors = {"p_stuck_bound": 0.0, "p_never_binds": 0.999, "p_inverted": 0.0}
+    priors.update(sim_overrides or {})
+    return thermo_to_growth(
+        genotypes, sim_data, sample_df, "hill_geno",
+        jax.random.PRNGKey(seed), growth,
+        theta_sim_priors_overrides=priors,
+        theta_gc_override=theta_gc_override,
+        rng=np.random.default_rng(seed))
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_hill_geno_wt_gets_reference_curve(seed):
+    _, theta_df, params = _hill_geno_run(seed, {"wt_log_K": -3.0})
+    wt = params[params["genotype"] == "wt"].iloc[0]
+    assert wt["theta_low"] == pytest.approx(0.99)
+    assert wt["theta_high"] == pytest.approx(0.01)
+    assert wt["log_hill_K"] == pytest.approx(-3.0)
+    assert wt["hill_n"] == pytest.approx(2.0)
+    t = theta_df[theta_df["genotype"] == "wt"].sort_values("titrant_conc")["theta"]
+    assert t.iloc[0] > 0.98 and t.iloc[-1] < 0.05
+    # the other genotypes kept their (never-binds) draws
+    others = params[params["genotype"] != "wt"]
+    assert (others["theta_low"] < 0.5).all()
+
+
+def test_hill_geno_wt_override_wins():
+    override = {"wt": np.array([0.5, 0.5, 0.5, 0.5])}
+    _, theta_df, _ = _hill_geno_run(0, theta_gc_override=override)
+    t = theta_df[theta_df["genotype"] == "wt"]["theta"]
+    np.testing.assert_allclose(t, 0.5)

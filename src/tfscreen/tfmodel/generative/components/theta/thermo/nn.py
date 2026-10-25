@@ -7,9 +7,24 @@ Bayes approach: the NN produces prior means for the ΔΔG latent variables,
 and the data update those latent variables away from the NN prediction via
 a per-structure trust scale σ_s (see ``prior.py``).
 
-Zero-initialising all weights ensures the model starts in the perturbative
-(WT) regime — all mutation effects are zero at initialization and the data
-drive them away from zero as needed.
+Initialization
+--------------
+W1 starts at small He-scaled normal values; b1, W2 and b2 start at zero.
+With W2 = 0 every NN output starts at b2 = 0, so the prior means start in
+the perturbative (WT) regime, as before.  W1 must not be zero: with ReLU
+hidden units an all-zero network has h = relu(0) = 0, so dL/dW2 = h·g = 0,
+and dL/dW1, dL/db1 carry a factor of W2 = 0.  Only b2 would ever move and
+each MLP would collapse to a constant per structure.  With random W1 the
+hidden activations are nonzero, so W2 gets a gradient at the first step and
+W1, b1 get one as soon as W2 leaves zero.
+
+The W1 draw is deterministic: its PRNG seed is a CRC32 of the ``pyro.param``
+site name, so the model and the guide register identical values, a run is
+reproducible, and a structure keeps its initial weights when the structure
+order changes.  The init value is a concrete array, as ``pyro.param``
+requires outside a seed handler.  It is used only when the param store has
+no value for the site; a restored checkpoint or explicit ``init_params``
+win.
 
 The raw scalar output for structure s is multiplied by n_chains[s] to
 account for chain stoichiometry: in a symmetric homodimer the same mutation
@@ -28,11 +43,26 @@ of extra compute for reduced peak GPU memory, which matters when a large
 dense mutation-genotype matrix is also live at the same time.
 """
 
+import zlib
+
 import jax
 import jax.numpy as jnp
+import numpy as np
 import numpyro as pyro
 
 _DEFAULT_HIDDEN_SIZE = 16
+
+
+def _he_normal_init(site_name, shape, fan_in):
+    """
+    He-scaled normal init, N(0, 2/fan_in), seeded by the site name.
+
+    Returns a concrete float32 array that is the same for a given site name
+    on every call (model, guide, every run).
+    """
+    rng = np.random.default_rng(zlib.crc32(site_name.encode("utf-8")))
+    w = rng.standard_normal(shape) * np.sqrt(2.0 / fan_in)
+    return jnp.asarray(w, dtype=jnp.float32)
 
 
 # ---------------------------------------------------------------------------
@@ -118,9 +148,13 @@ def compute_nn_predictions(name, features, struct_names, n_chains,
     # pyro.param calls are SIDE EFFECTS and must remain OUTSIDE the
     # checkpointed function.  We collect them into stacked arrays so
     # that _nn_forward can vmap over the structure dimension cleanly.
+    # W1 must start nonzero or no gradient reaches W1, b1 or W2 (see the
+    # module docstring); W2 = 0 keeps the initial output at b2 = 0.
     # ------------------------------------------------------------------
     W1_all = jnp.stack(
-        [pyro.param(f"{name}_nn_{sname}_W1", jnp.zeros((feat_dim, H)))
+        [pyro.param(f"{name}_nn_{sname}_W1",
+                    _he_normal_init(f"{name}_nn_{sname}_W1",
+                                    (feat_dim, H), feat_dim))
          for sname in struct_names], axis=0)   # (S, feat_dim, H)
     b1_all = jnp.stack(
         [pyro.param(f"{name}_nn_{sname}_b1", jnp.zeros(H))

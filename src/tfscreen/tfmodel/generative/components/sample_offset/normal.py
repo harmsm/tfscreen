@@ -43,6 +43,8 @@ from flax.struct import dataclass
 from tfscreen.tfmodel.data_class import GrowthData
 from typing import Dict, Any
 
+from ._tubes import tube_extract_spec
+
 
 @dataclass(frozen=True)
 class ModelPriors:
@@ -178,4 +180,5 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, Any]:
 
 
 def get_extract_specs(ctx) -> list:
-    return []
+    """Per-tube growth-rate offsets labeled by tube design, and their SD."""
+    return tube_extract_spec(ctx, "sample_offset", "delta_k", "sigma_env")

@@ -153,7 +153,8 @@ def _sample_hierarchical_activity(unique_genotypes,
 _ACTIVITY_COMPONENTS = {"fixed", "horseshoe_geno", "hierarchical_geno"}
 
 
-def _theta_param_to_df(theta_param, unique_genotypes, sim_indices):
+def _theta_param_to_df(theta_param, unique_genotypes, sim_indices,
+                       num_genotype_sim=None):
     """
     Extract per-genotype scalar fields from a ThetaParam pytree.
 
@@ -161,9 +162,14 @@ def _theta_param_to_df(theta_param, unique_genotypes, sim_indices):
     array has exactly two dimensions (T × G_sim) are treated as
     per-genotype parameters: columns are selected via ``sim_indices`` and
     a leading titrant dimension of size 1 is squeezed away; when T > 1 each
-    titrant gets its own column suffixed ``_T{t}``.  Fields with any other
-    dimensionality (e.g. population moments ``mu``/``sigma`` with shape
-    T × C × 1) are silently skipped.
+    titrant gets its own column suffixed ``_T{t}``.  When
+    ``num_genotype_sim`` is given, one-dimensional fields of exactly that
+    length (G_sim,) are per-genotype parameters too and get one column
+    each: the thermodynamic models' titrant-independent constants
+    (``ln_K_op``, ``ln_K_HL``, ``ln_K_U``, ``ln_K_h_l``, ``ln_K_h_o``,
+    ``ln_K_l_o``, ``ln_K_u``).  Fields with any other dimensionality (e.g.
+    population moments ``mu``/``sigma`` with shape T × C × 1, scalars such
+    as ``tf_total``) are silently skipped.
 
     If ``theta_param`` is not a standard or Flax dataclass (e.g. a mock
     during testing) the function returns a DataFrame containing only the
@@ -180,6 +186,10 @@ def _theta_param_to_df(theta_param, unique_genotypes, sim_indices):
     sim_indices : array-like of int
         For each entry in ``unique_genotypes``, its column index in the
         sim_data / ``library_df`` order stored in ``theta_param``.
+    num_genotype_sim : int or None, default None
+        Number of genotypes in sim_data (G_sim).  Required to read the
+        one-dimensional per-genotype fields; None skips them (and any 2-D
+        field whose last axis is not G_sim is skipped when it is given).
 
     Returns
     -------
@@ -201,6 +211,11 @@ def _theta_param_to_df(theta_param, unique_genotypes, sim_indices):
             val = np.array(getattr(theta_param, fname))
         except Exception:
             continue
+        if num_genotype_sim is not None and val.ndim in (1, 2):
+            if val.shape[-1] != num_genotype_sim:
+                continue
+            if val.ndim == 1:
+                val = val[None, :]   # (G,) per-genotype field → (1, G)
         if val.ndim != 2:
             continue  # skip mu, sigma (3-D) and any scalars
         selected = val[:, np.asarray(sim_indices)]   # (T, n_unique)
@@ -213,6 +228,200 @@ def _theta_param_to_df(theta_param, unique_genotypes, sim_indices):
     df = pd.DataFrame(col_data)
     df.insert(0, "genotype", list(unique_genotypes))
     return df
+
+
+
+_HILL_KEYS = ("theta_low", "theta_high", "log_hill_K", "hill_n")
+
+
+def _theta_at_concs(theta_component, theta_param, sim_data, titrant_conc,
+                    unique_genotypes, unique_sim_indices,
+                    theta_gc_override=None, theta_params_override=None):
+    """
+    Ground-truth theta of every genotype at arbitrary concentrations.
+
+    Evaluates the component's own ``run_model`` on the drawn ``theta_param``
+    with ``sim_data`` moved to ``titrant_conc``, so it works for any theta
+    component the simulator draws (Hill or thermodynamic) and at binding
+    concentrations that need not be growth concentrations.  Genotypes whose
+    growth theta was replaced through ``theta_gc_override`` follow their
+    effective Hill parameters from ``theta_params_override`` when those are
+    complete, and are NaN otherwise (their curve exists only at the growth
+    concentrations; the spiked stratified Hill path supplies their binding
+    theta separately).
+
+    Returns
+    -------
+    pandas.DataFrame
+        Long form, columns ``genotype``, ``titrant_conc``, ``theta``; rows
+        follow ``unique_genotypes`` then ascending concentration.
+    """
+    from tfscreen.tfmodel.generative.registry import model_registry
+    from tfscreen.simulate.sim_data_class import with_titrant_conc
+
+    concs = np.sort(np.unique(np.asarray(titrant_conc, dtype=float)))
+    module = model_registry["theta"][theta_component]
+    conc_data = with_titrant_conc(sim_data, concs)
+    theta_cg = np.asarray(module.run_model(theta_param, conc_data)[0],
+                          dtype=float)                        # (C, G_sim)
+    theta = theta_cg.T[np.asarray(unique_sim_indices)].copy()  # (G, C)
+
+    log_concs = np.log(np.where(concs == 0.0, 1e-20, concs))
+    gc_over = theta_gc_override or {}
+    p_over = theta_params_override or {}
+    for i, g in enumerate(unique_genotypes):
+        params = p_over.get(g)
+        if params is not None and all(k in params for k in _HILL_KEYS):
+            low, high = float(params["theta_low"]), float(params["theta_high"])
+            occ = 1.0 / (1.0 + np.exp(-float(params["hill_n"])
+                                      * (log_concs - float(params["log_hill_K"]))))
+            theta[i] = low + (high - low) * occ
+        elif g in gc_over:
+            theta[i] = np.nan
+
+    return pd.DataFrame({
+        "genotype": np.repeat(np.asarray(unique_genotypes, dtype=str), len(concs)),
+        "titrant_conc": np.tile(concs, len(unique_genotypes)),
+        "theta": theta.ravel(),
+    })
+
+
+def _site_columns(prefix, val, num_items):
+    """
+    Columns for one deterministic site whose last axis indexes items.
+
+    ``val`` of shape (N,) gives column ``prefix``; (T, N) gives ``prefix``
+    when T == 1, else ``prefix_T{t}`` per titrant (the convention of
+    ``_theta_param_to_df``).  Any other shape gives no columns.
+    """
+    val = np.asarray(val)
+    if val.ndim == 0 or val.ndim > 2 or val.shape[-1] != num_items:
+        return {}
+    if val.ndim == 1:
+        return {prefix: val}
+    if val.shape[0] == 1:
+        return {prefix: val[0]}
+    return {f"{prefix}_T{t}": val[t] for t in range(val.shape[0])}
+
+
+def _mutation_truth_tables(deterministic, genotypes, sim_data, name="theta",
+                           struct_names=None):
+    """
+    Per-mutation and per-pair ground truth from a theta draw's trace.
+
+    Mutation-decomposed components record their per-mutation deltas
+    (``{name}_d_*``), pairwise epistasis (``{name}_epi_*``) and, for the
+    structure-based thermodynamic models, per-structure ΔΔG
+    (``{name}_ddG``, shape M × S; ``sample_theta_prior`` replaces the
+    model's post-hoc ΔΔG with the per-state truth draw) as deterministic
+    sites.  ``ThetaParam`` only carries the assembled per-genotype values,
+    so this reads them from the trace returned by
+    ``sample_theta_prior(..., return_deterministic=True)``.
+
+    Column names drop the ``{name}_`` prefix, so they equal the names
+    ``tfs-extract-params`` gives the fitted values (``d_ln_K_op`` →
+    ``*_params_d_ln_K_op.csv``).  ΔΔG gets one column per structure,
+    ``ddG_{structure}``.
+
+    Parameters
+    ----------
+    deterministic : dict[str, np.ndarray]
+        Deterministic site name → value.
+    genotypes : list of str
+        Genotypes in sim_data order (the order ``sim_data`` was built from).
+    sim_data : SimData
+        Supplies ``num_mutation``, ``num_pair`` and ``struct_names``.
+    name : str, default "theta"
+        Site-name prefix used when the component was sampled.
+    struct_names : sequence of str, optional
+        Order of the ΔΔG site's structure axis (the component's
+        ``STRUCTURE_NAMES``; the PddG/PnnC models reorder the data's columns
+        into it).  Falls back to ``sim_data.struct_names``.
+
+    Returns
+    -------
+    mutation_df : pandas.DataFrame or None
+        One row per mutation (``mutation`` column first), or None when the
+        trace has no per-mutation sites.
+    pair_df : pandas.DataFrame or None
+        One row per observed mutation pair (``pair`` column first), or None
+        when the trace has no per-pair sites.
+    """
+    from tfscreen.genetics.build_mut_geno_matrix import build_mut_geno_matrix
+
+    num_mut = int(getattr(sim_data, "num_mutation", 0) or 0)
+    num_pair = int(getattr(sim_data, "num_pair", 0) or 0)
+    if not deterministic or num_mut == 0:
+        return None, None
+
+    mut_labels, pair_labels, *_ = build_mut_geno_matrix(
+        list(genotypes), skip_pairs=(num_pair == 0))
+    if len(mut_labels) != num_mut or len(pair_labels) != num_pair:
+        raise ValueError(
+            f"Mutation/pair labels ({len(mut_labels)}/{len(pair_labels)}) do "
+            f"not match sim_data ({num_mut}/{num_pair}); cannot label the "
+            f"per-mutation truth.")
+
+    d_prefix, epi_prefix = f"{name}_d_", f"{name}_epi_"
+    mut_cols, pair_cols = {}, {}
+    for site, val in deterministic.items():
+        if site.startswith(d_prefix):
+            mut_cols.update(_site_columns(site[len(name) + 1:], val, num_mut))
+        elif site.startswith(epi_prefix) and num_pair > 0:
+            pair_cols.update(_site_columns(site[len(name) + 1:], val, num_pair))
+        elif site == f"{name}_ddG":
+            val = np.asarray(val)
+            if val.ndim == 2 and val.shape[0] == num_mut:
+                structs = (struct_names if struct_names is not None
+                           else getattr(sim_data, "struct_names", None))
+                if structs is None or len(structs) != val.shape[1]:
+                    structs = [str(i) for i in range(val.shape[1])]
+                for i, struct in enumerate(structs):
+                    mut_cols[f"ddG_{struct}"] = val[:, i]
+
+    mutation_df = None
+    if mut_cols:
+        mutation_df = pd.DataFrame(mut_cols)
+        mutation_df.insert(0, "mutation", mut_labels)
+    pair_df = None
+    if pair_cols:
+        pair_df = pd.DataFrame(pair_cols)
+        pair_df.insert(0, "pair", pair_labels)
+    return mutation_df, pair_df
+
+
+def _ddG_sigma_truth_table(sites, struct_names, name="theta"):
+    """
+    The per-structure σ_s truth of a PddG/PnnC draw.
+
+    σ_s (``{name}_ddG_sigma``, shape S) is the SD of the true ΔΔG about the
+    structural prior mean; the simulator conditions it (``ddG_truth_sd``,
+    1 kT by default).  The table matches the fit's extracted ``ddG_sigma``
+    table (``thermo/prior.py``), which ``tfs-summarize-fit`` joins on
+    ``structure``.
+
+    Parameters
+    ----------
+    sites : dict[str, np.ndarray]
+        Site values from ``sample_theta_prior(..., return_deterministic=True)``.
+    struct_names : sequence of str or None
+        The component's ``STRUCTURE_NAMES`` (the order of the site).
+    name : str, default "theta"
+        Site-name prefix.
+
+    Returns
+    -------
+    pandas.DataFrame or None
+        Columns ``structure`` and ``ddG_sigma`` (kT), or None when the draw
+        has no σ_s site.
+    """
+    val = sites.get(f"{name}_ddG_sigma") if sites else None
+    if val is None:
+        return None
+    val = np.asarray(val, dtype=float).reshape(-1)
+    if struct_names is None or len(struct_names) != len(val):
+        struct_names = [str(i) for i in range(len(val))]
+    return pd.DataFrame({"structure": list(struct_names), "ddG_sigma": val})
 
 
 def _assign_dk_geno(unique_genotypes,
@@ -250,40 +459,124 @@ def _assign_dk_geno(unique_genotypes,
     return pd.Series(dk_geno)
 
 
-def _apply_growth_params(condition_array, theta_array, growth_params,
-                         activity_array=None):
+def growth_rate_one_condition(condition, theta_array, activity_array,
+                              dk_geno_array, growth_params,
+                              theta_rescale="passthrough"):
     """
-    Compute per-row growth rate k given theta and per-condition model parameters.
+    Growth rate k from its physical components, all rows in one condition.
+
+    ``k = growth_model[condition](theta_rescale(theta), activity) + dk_geno``.
+    This is the one place the simulator turns theta, activity and dk_geno
+    into a growth rate: ``thermo_to_growth`` uses it (through
+    ``growth_rates``) per genotype and ``selection_experiment`` per
+    co-transformed cell, so the two always agree.
 
     Parameters
     ----------
-    condition_array : numpy.ndarray
-        1D array of condition strings.
+    condition : str
+        Condition (key of ``growth_params``).
     theta_array : numpy.ndarray
-        1D array of fractional occupancy values (same length).
+        1D array of fractional occupancy (raw, before rescaling).
+    activity_array : numpy.ndarray
+        1D array of TF activity.
+    dk_geno_array : numpy.ndarray
+        1D array of pleiotropic growth effects.
     growth_params : dict
-        Mapping from condition string to a parameter dict.  Must contain a
-        ``'model'`` key (``'linear'``, ``'power'``, or ``'saturation'``);
-        remaining keys are forwarded to the model's ``predict()`` method.
-    activity_array : numpy.ndarray or None
-        Per-row TF activity scaling factors.  Defaults to 1.0.
+        Mapping from condition string to a parameter dict with a ``'model'``
+        key (``'linear'``, ``'power'`` or ``'saturation'``; default
+        ``'linear'``); remaining keys go to the model's ``predict()``.
+    theta_rescale : str, default "passthrough"
+        Key of ``_THETA_RESCALE``.
 
     Returns
     -------
     numpy.ndarray
         Growth rate k for each row.
     """
-    if activity_array is None:
-        activity_array = np.ones(len(theta_array), dtype=float)
+    if theta_rescale not in _THETA_RESCALE:
+        raise ValueError(
+            f"theta_rescale '{theta_rescale}' not recognized. "
+            f"It should be one of: {list(_THETA_RESCALE.keys())}"
+        )
+    growth_theta = _THETA_RESCALE[theta_rescale](np.asarray(theta_array, dtype=float))
+    params = growth_params[condition].copy()
+    model = get_growth_model(params.pop("model", "linear"))
+    k = model.predict(growth_theta,
+                      activity=np.asarray(activity_array, dtype=float),
+                      **params)
+    return k + np.asarray(dk_geno_array, dtype=float)
+
+
+def growth_rates(condition_array, theta_array, activity_array, dk_geno_array,
+                 growth_params, theta_rescale="passthrough"):
+    """
+    Growth rate k from its physical components, rows in any conditions.
+
+    Applies ``growth_rate_one_condition`` to the rows of each condition.
+
+    Parameters
+    ----------
+    condition_array : numpy.ndarray
+        1D array of condition strings (keys of ``growth_params``).
+    theta_array, activity_array, dk_geno_array : numpy.ndarray
+        1D arrays aligned with ``condition_array``.
+    growth_params : dict
+        Per-condition growth model parameters.
+    theta_rescale : str, default "passthrough"
+        Key of ``_THETA_RESCALE``.
+
+    Returns
+    -------
+    numpy.ndarray
+        Growth rate k for each row.
+    """
+    condition_array = np.asarray(condition_array)
+    theta_array = np.asarray(theta_array, dtype=float)
+    activity_array = np.asarray(activity_array, dtype=float)
+    dk_geno_array = np.asarray(dk_geno_array, dtype=float)
+
     result = np.zeros(len(theta_array), dtype=float)
     for cond in np.unique(condition_array):
         mask = condition_array == cond
-        params = growth_params[cond].copy()
-        model_name = params.pop("model", "linear")
-        model = get_growth_model(model_name)
-        result[mask] = model.predict(theta_array[mask],
-                                     activity=activity_array[mask], **params)
+        result[mask] = growth_rate_one_condition(cond, theta_array[mask],
+                                                 activity_array[mask],
+                                                 dk_geno_array[mask],
+                                                 growth_params, theta_rescale)
     return result
+
+
+def _pin_wt_reference(theta_gc, theta_param, sim_data, wt_idx,
+                      sim_priors_overrides=None):
+    """
+    Give wt the hill_geno reference curve (``wt_theta_low``, ``wt_theta_high``,
+    ``wt_log_K``, ``wt_hill_n`` of its SimPriors, with any overrides).
+
+    The sampler treats wt like every other genotype, so wt could draw a
+    perturbed curve or a special category: seed 1 of the full-size simulation
+    gave it "never binds" (theta 0.006 at every IPTG), which made the
+    relative fit's X gauge, set by wt's own change, 3,600 times too wide.
+    Only wt's row of ``theta_gc`` and its ``theta_param`` entries change.
+    """
+    from tfscreen.tfmodel.generative.components.theta import hill_geno
+
+    sp = hill_geno.get_sim_hyperparameters()
+    if sim_priors_overrides:
+        sp.update(sim_priors_overrides)
+    low, high = float(sp["wt_theta_low"]), float(sp["wt_theta_high"])
+    log_K, n = float(sp["wt_log_K"]), float(sp["wt_hill_n"])
+
+    log_conc = np.asarray(sim_data.log_titrant_conc, dtype=float)
+    occupancy = 1.0 / (1.0 + np.exp(-n * (log_conc - log_K)))
+    theta_gc = np.array(theta_gc)
+    theta_gc[wt_idx, :] = low + (high - low) * occupancy
+
+    theta_param = theta_param.replace(
+        theta_low=theta_param.theta_low.at[:, wt_idx].set(low),
+        theta_high=theta_param.theta_high.at[:, wt_idx].set(high),
+        log_hill_K=theta_param.log_hill_K.at[:, wt_idx].set(log_K),
+        hill_n=theta_param.hill_n.at[:, wt_idx].set(n),
+    )
+    return theta_gc, theta_param
 
 
 def thermo_to_growth(
@@ -309,7 +602,10 @@ def thermo_to_growth(
     theta_gc_override: Optional[dict] = None,
     theta_params_override: Optional[dict] = None,
     dk_geno_override: Optional[dict] = None,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
+    return_mutation_truth: bool = False,
+    binding_titrant_conc: Optional[Iterable[float]] = None,
+    theta_conditions: Optional[dict] = None,
+) -> tuple:
     """
     Generate phenotypes from genotypes via prior-predictive theta sampling.
 
@@ -410,6 +706,19 @@ def thermo_to_growth(
         resampled ``dk_geno`` values alongside ``theta_gc_override`` /
         ``theta_params_override``; genotypes absent from the dict keep their
         drawn (or wt-pinned) value.
+    return_mutation_truth : bool, default False
+        Also return the per-mutation and per-pair ground truth (see
+        ``_mutation_truth_tables``) as a fourth value.
+    binding_titrant_conc : array-like or None, default None
+        Binding-assay concentrations (mM).  When given, also return the
+        ground-truth theta of every genotype at these concentrations (see
+        ``_theta_at_concs``) as the last value.  Binding concentrations need
+        not match the growth concentrations: theta is evaluated from the
+        drawn parameters, not looked up.
+    theta_conditions : dict or None
+        Sample-site values fixed in the prior-predictive draw
+        (``sample_theta_prior``'s ``conditions``), e.g. ``theta_ddG_sigma``
+        from ``sample_theta.ddG_truth_conditions``.
 
     Returns
     -------
@@ -430,7 +739,18 @@ def thermo_to_growth(
         ``dk_geno``, and ``activity``.  Also contains any scalar
         per-genotype fields extracted from the ``theta_param`` pytree
         (e.g. ``theta_low``, ``theta_high``, ``log_hill_K``, ``hill_n``
-        for ``hill_geno``).
+        for ``hill_geno``; ``ln_K_op``, ``ln_K_HL``, ``ln_K_E`` for the
+        C4 thermodynamic models).
+    mutation_truth : dict
+        Only when ``return_mutation_truth`` is True: ``{"mutation":
+        DataFrame or None, "pair": DataFrame or None, "ddG_sigma":
+        DataFrame or None}``, the per-mutation, per-pair and (PddG/PnnC)
+        per-structure σ_s truth (``_ddG_sigma_truth_table``).  All are None
+        for components sampled through ``simulate`` (hill_geno, hill_mut),
+        which have no trace.
+    binding_theta_df : pandas.DataFrame
+        Only when ``binding_titrant_conc`` is given (always last): theta of
+        every genotype at those concentrations, from ``_theta_at_concs``.
     """
 
     print("Sampling theta from prior... ", end="", flush=True)
@@ -461,13 +781,26 @@ def thermo_to_growth(
     # Genotype order matches sim_data / library_df order, not unique_genotypes.
     # We need to build a mapping from unique_genotypes to the sim_data index.
 
-    theta_gc, theta_param = sample_theta_prior(
-        component_name=theta_component,
-        sim_data=sim_data,
-        rng_key=theta_rng_key,
-        priors_overrides=theta_priors_overrides,
-        sim_priors_overrides=theta_sim_priors_overrides,
-    )
+    deterministic = {}
+    if return_mutation_truth:
+        theta_gc, theta_param, deterministic = sample_theta_prior(
+            component_name=theta_component,
+            sim_data=sim_data,
+            rng_key=theta_rng_key,
+            priors_overrides=theta_priors_overrides,
+            sim_priors_overrides=theta_sim_priors_overrides,
+            return_deterministic=True,
+            conditions=theta_conditions,
+        )
+    else:
+        theta_gc, theta_param = sample_theta_prior(
+            component_name=theta_component,
+            sim_data=sim_data,
+            rng_key=theta_rng_key,
+            priors_overrides=theta_priors_overrides,
+            sim_priors_overrides=theta_sim_priors_overrides,
+            conditions=theta_conditions,
+        )
 
     print("Done.", flush=True)
 
@@ -479,6 +812,16 @@ def thermo_to_growth(
     all_genotypes = list(genotypes)   # sim_data order (may have duplicates)
     geno_to_sim_idx = {g: i for i, g in enumerate(all_genotypes)}
     unique_sim_indices = np.array([geno_to_sim_idx[g] for g in unique_genotypes])
+
+    # ── wt keeps the reference curve (hill_geno) ──────────────────────────────
+    # hill_geno's sampler draws every genotype's category and perturbation,
+    # wt included (hill_mut gives wt the reference by construction). An
+    # explicit override of wt below still wins.
+    if (theta_component == "hill_geno" and "wt" in geno_to_sim_idx
+            and "wt" not in (theta_gc_override or {})):
+        theta_gc, theta_param = _pin_wt_reference(
+            theta_gc, theta_param, sim_data, geno_to_sim_idx["wt"],
+            theta_sim_priors_overrides)
 
     # ── Inject stratified theta for calibration genotypes ─────────────────────
     if theta_gc_override:
@@ -617,15 +960,14 @@ def thermo_to_growth(
     theta = phenotype_df["theta"].to_numpy()
     activity = phenotype_df["activity"].to_numpy()
 
-    growth_theta = _THETA_RESCALE[theta_rescale](theta)
+    dk_geno = phenotype_df["dk_geno"].to_numpy()
 
-    k_pre = _apply_growth_params(phenotype_df["condition_pre"].to_numpy(),
-                                 growth_theta, growth_params, activity_array=activity)
-    phenotype_df["k_pre"] = k_pre + phenotype_df["dk_geno"].to_numpy()
-
-    k_sel = _apply_growth_params(phenotype_df["condition_sel"].to_numpy(),
-                                 growth_theta, growth_params, activity_array=activity)
-    phenotype_df["k_sel"] = k_sel + phenotype_df["dk_geno"].to_numpy()
+    phenotype_df["k_pre"] = growth_rates(phenotype_df["condition_pre"].to_numpy(),
+                                         theta, activity, dk_geno,
+                                         growth_params, theta_rescale)
+    phenotype_df["k_sel"] = growth_rates(phenotype_df["condition_sel"].to_numpy(),
+                                         theta, activity, dk_geno,
+                                         growth_params, theta_rescale)
 
     # ── Final column ordering ─────────────────────────────────────────────────
 
@@ -641,7 +983,8 @@ def thermo_to_growth(
     # phenotype_df keeps dk_geno/activity so selection_experiment still works.
 
     parameters_df = _theta_param_to_df(theta_param, unique_genotypes,
-                                        unique_sim_indices)
+                                        unique_sim_indices,
+                                        num_genotype_sim=len(all_genotypes))
     parameters_df["dk_geno"] = genotype_dk_geno_series.reindex(
         list(unique_genotypes)
     ).values
@@ -667,4 +1010,20 @@ def thermo_to_growth(
 
     print("Done.", flush=True)
 
-    return phenotype_df, genotype_theta_df, parameters_df
+    out = (phenotype_df, genotype_theta_df, parameters_df)
+    if return_mutation_truth:
+        from tfscreen.tfmodel.generative.components.theta.thermo.io import (
+            required_struct_names,
+        )
+        struct_names = required_struct_names(theta_component)
+        mutation_df, pair_df = _mutation_truth_tables(
+            deterministic, all_genotypes, sim_data, struct_names=struct_names)
+        out += ({"mutation": mutation_df, "pair": pair_df,
+                 "ddG_sigma": _ddG_sigma_truth_table(deterministic,
+                                                     struct_names)},)
+    if binding_titrant_conc is not None:
+        out += (_theta_at_concs(theta_component, theta_param, sim_data,
+                                binding_titrant_conc, unique_genotypes,
+                                unique_sim_indices, theta_gc_override,
+                                theta_params_override),)
+    return out

@@ -3,6 +3,7 @@ import pandas as pd
 from tfscreen.tfmodel.configuration_io import read_configuration
 from tfscreen.tfmodel.inference.checkpoint_io import resolve_param_file
 from tfscreen.tfmodel.inference.posteriors import load_posteriors
+from tfscreen.tfmodel.inference.model_params import sample_keys
 from tfscreen.tfmodel.analysis.prediction import predict
 from tfscreen.tfmodel.analysis.batch_sizing import estimate_genotype_batch_size
 from tfscreen.util.cli import generalized_main, read_lines
@@ -73,7 +74,7 @@ def predict_growth(config_file,
                    num_marginal_samples=None,
                    genotype_batch_size=None,
                    subset_genotypes=False,
-                   subset_seed=None):
+                   seed=None):
     """
     Predict growth signal (ln_cfu) from a fitted hierarchical model.
 
@@ -99,14 +100,14 @@ def predict_growth(config_file,
         Path to a posterior .h5 file produced by tfs-sample-posterior, or a
         MAP checkpoint .pkl file produced by tfs-fit-model.
 
-        When a .pkl file is supplied the output contains a single ``point_est``
-        column with no uncertainty information.
+        When a .pkl file is supplied the output has a single ``q0.5`` column
+        (the MAP point) and no uncertainty.
 
         To obtain uncertainty estimates from a MAP fit, first run
-        tfs-sample-posterior on the .pkl checkpoint; it will construct a
-        Laplace (Hessian-based) posterior approximation and write a .h5 file.
-        Passing that .h5 here produces the full quantile columns (median,
-        lower_95, upper_95, etc.).
+        tfs-sample-posterior on the .pkl checkpoint; it builds a Laplace
+        approximation and writes a .h5 file. Passing that .h5 here gives the
+        full ladder of bare ``q<level>`` quantile columns (``q0.025``,
+        ``q0.5``, ``q0.975``, ...).
 
         NUTS and SVI checkpoints are not supported directly; run
         tfs-sample-posterior first.
@@ -130,8 +131,8 @@ def predict_growth(config_file,
         file arguments, ignoring training-data combinations. Default False.
     num_samples : int or None, optional
         Number of joint posterior samples to include as sample_0 … sample_N-1
-        columns alongside the quantile columns. Set to None for quantiles only.
-        Default 0.
+        columns alongside the quantile columns. 0 (default) writes quantiles
+        only.
     num_marginal_samples : int or None, optional
         Number of posterior samples to run through the model when computing
         quantiles. If None, all available samples are used.
@@ -150,7 +151,7 @@ def predict_growth(config_file,
         with the remainder of the block filled by a random sample of the other
         genotypes. Intended for quickly assessing the input/output ln_cfu
         correlation without paying for a full prediction sweep. Default False.
-    subset_seed : int or None, optional
+    seed : int or None, optional
         Seed for the random draw used by subset_genotypes, making the sampled
         block reproducible. Ignored unless subset_genotypes is True. Default
         None (non-deterministic draw).
@@ -187,7 +188,7 @@ def predict_growth(config_file,
 
     if genotype_batch_size is None:
         _, resolved_posteriors = load_posteriors(param_file, q_to_get=None)
-        first_key = next(iter(resolved_posteriors.keys()))
+        first_key = sample_keys(resolved_posteriors)[0]
         total_available = resolved_posteriors[first_key].shape[0]
         n_for_quantiles = (total_available if num_marginal_samples is None
                           else min(num_marginal_samples, total_available))
@@ -200,11 +201,12 @@ def predict_growth(config_file,
               f"genotypes based on available memory.", flush=True)
 
     # Binding genotypes (those with direct theta_obs measurements) must appear
-    # in every batch so the binding TensorManager is never empty.
-    try:
-        binding_genos = [str(g) for g in orchestrator.binding_df["genotype"].unique()]
-    except Exception:
+    # in every batch so the binding TensorManager is never empty. A
+    # growth-only model has none.
+    if orchestrator.binding_df is None:
         binding_genos = []
+    else:
+        binding_genos = [str(g) for g in orchestrator.binding_df["genotype"].unique()]
     binding_set = set(binding_genos)
 
     # Subset mode: predict a single memory-fit block of genotypes rather than
@@ -228,7 +230,7 @@ def predict_growth(config_file,
 
         block = genotype_batch_size
         n_random = max(0, block - len(keep))
-        rng = np.random.default_rng(subset_seed)
+        rng = np.random.default_rng(seed)
         if n_random < len(remaining):
             idx = rng.choice(len(remaining), size=n_random, replace=False)
             sampled = [remaining[i] for i in sorted(idx)]
@@ -309,7 +311,7 @@ def main():
                                        "titrant_concs_file": str,
                                        "num_marginal_samples": int,
                                        "genotype_batch_size": int,
-                                       "subset_seed": int,
+                                       "seed": int,
                                        "only_files": bool,
                                        "subset_genotypes": bool})
 

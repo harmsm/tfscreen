@@ -4,11 +4,15 @@ Generate the ground-truth congression Poisson-rate (lambda) echo.
 ``transformation_poisson_lambda`` is a top-level simulate-config scalar
 (number of plasmids/cell during transformation, drawn from a zero-truncated
 Poisson; see ``simulate.selection_experiment``). It has a fit-side analog:
-the ``transformation`` component category's ``empirical``/``logit_norm``
-variants both sample a global congression rate (see
-``generative/components/transformation/_congression.py``) and extract it as
+the ``transformation`` component category's ``mixture`` variant samples a
+global congression rate (see
+``generative/components/transformation/mixture.py``) and extracts it as
 ``lam`` (see those modules' ``get_extract_specs``, which writes
-``*_params_lam.csv``). This mirrors ``base_growth_data.generate_k_ref_df``:
+``*_params_lam.csv``). The two are the same quantity: the fit's class
+weights are the abundance shares of zero-truncated Poisson(lambda) cells
+whose plasmids split the cell's abundance, as in the simulator
+(``selection_experiment._plasmid_shares``), so the fit's ``lam`` is compared
+to this value directly. This mirrors ``base_growth_data.generate_k_ref_df``:
 a single global scalar, not genotype- or condition-indexed, echoed to its
 own single-row ground-truth file.
 """

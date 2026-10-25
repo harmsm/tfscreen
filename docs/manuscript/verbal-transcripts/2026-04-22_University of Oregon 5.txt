@@ -1,0 +1,10 @@
+I'm now going to talk about some of the computational architecture that we used for this.
+So we implemented our model inside of a Python framework using the standard scientific computing
+stack.
+The model itself was implemented in Jack's NumPyro with all of the tools that come with
+that.
+We ran all of our calculations on NVIDIA A100 GPUs that were available in the University
+of Oregon TALAPAS computing cluster.
+I think that pretty much covers sort of the Python sort of computational architecture
+there.
+Yeah, I guess that's actually about it.

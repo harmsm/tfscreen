@@ -29,6 +29,8 @@ pytestmark = pytest.mark.filterwarnings(
 )
 
 from tfscreen.tfmodel.scripts.summarize_fit_cli import (
+    _find_fit_config,
+    _find_fit_losses,
     _find_params_or_posterior,
     _find_unique,
     _json_safe,
@@ -196,6 +198,48 @@ class TestFindUnique:
             result = _find_unique(str(tmp_path), "_config.yaml", "config")
         assert result is not None
         assert any("Multiple" in str(x.message) for x in w)
+
+
+# ---------------------------------------------------------------------------
+# _find_fit_config / _find_fit_losses (grid run dirs hold other matches)
+# ---------------------------------------------------------------------------
+
+class TestFindFitConfigAndLosses:
+
+    def test_config_ignores_simulate_configs(self, tmp_path):
+        _make_config_yaml(str(tmp_path / "tfs_configure_config.yaml"),
+                          binding_csv_path="b.csv", guesses_name="g.csv")
+        # Simulate configs, one sorting ahead of the tfmodel config.
+        for name in ("a_sim_config.yaml", "tfs_sim_config.yaml"):
+            (tmp_path / name).write_text(yaml.dump({"seed": 1, "growth": {}}))
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = _find_fit_config(str(tmp_path))
+        assert result == str(tmp_path / "tfs_configure_config.yaml")
+        assert not any("Multiple" in str(x.message) for x in w)
+
+    def test_config_none_without_tfmodel_config(self, tmp_path):
+        (tmp_path / "tfs_sim_config.yaml").write_text(yaml.dump({"seed": 1}))
+        (tmp_path / "broken_config.yaml").write_text(":\n  - [unclosed")
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = _find_fit_config(str(tmp_path))
+        assert result is None
+        assert any("No tfmodel config" in str(x.message) for x in w)
+
+    def test_losses_ignore_prefit_and_premap(self, tmp_path):
+        for name in ("tfs_prefit_losses.txt", "tfs_fit_model_premap_losses.txt",
+                     "tfs_fit_model_losses.txt"):
+            _make_losses_txt(str(tmp_path / name))
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = _find_fit_losses(str(tmp_path))
+        assert result == str(tmp_path / "tfs_fit_model_losses.txt")
+        assert not any("Multiple" in str(x.message) for x in w)
+
+    def test_losses_none_when_only_auxiliary(self, tmp_path):
+        _make_losses_txt(str(tmp_path / "tfs_prefit_losses.txt"))
+        assert _find_fit_losses(str(tmp_path)) is None
 
 
 # ---------------------------------------------------------------------------
@@ -725,6 +769,28 @@ class TestFindParamsOrPosterior:
         assert kind == "posterior"
         assert path == str(tmp_path / "run_posterior.h5")
 
+    def test_finds_sample_posterior_default_name(self, tmp_path):
+        # tfs-sample-posterior writes {out_prefix}.h5; a prior ground truth
+        # in the same directory is not a posterior
+        (tmp_path / "run1.h5").touch()
+        (tmp_path / "tfs_prior_000_ground_truth.h5").touch()
+        (tmp_path / "run_params.npz").touch()
+        kind, path = _find_params_or_posterior(str(tmp_path))
+        assert kind == "posterior"
+        assert path == str(tmp_path / "run1.h5")
+
+    def test_named_posterior_preferred_over_other_h5(self, tmp_path):
+        (tmp_path / "a.h5").touch()
+        (tmp_path / "z_posterior.h5").touch()
+        kind, path = _find_params_or_posterior(str(tmp_path))
+        assert path == str(tmp_path / "z_posterior.h5")
+
+    def test_ground_truth_only_falls_back_to_params(self, tmp_path):
+        (tmp_path / "x_ground_truth.h5").touch()
+        (tmp_path / "run_params.npz").touch()
+        kind, path = _find_params_or_posterior(str(tmp_path))
+        assert kind == "params"
+
     def test_finds_params_npz(self, tmp_path):
         (tmp_path / "run_params.npz").touch()
         kind, path = _find_params_or_posterior(str(tmp_path))
@@ -1132,9 +1198,16 @@ class TestTryPlotTrajectories:
         _, kwargs = mock_pdf.call_args
         assert set(kwargs["genotypes"]) == {"wt", "A1B", "C2D"}
 
-    def test_passes_none_genotypes_when_binding_df_is_none(self, tmp_path):
+    def test_default_subset_when_binding_df_is_none(self, tmp_path):
+        """Without binding genotypes (a growth-only model) the plots cover a
+        default subset, not every genotype in the library."""
         (tmp_path / "run_posterior.h5").touch()
-        with patch(_PATCH_READ_CONFIG, return_value=(MagicMock(), {})), \
+        orch = MagicMock()
+        orch.growth_tm.tensor_dim_names = ["replicate", "genotype"]
+        orch.growth_tm.tensor_dim_labels = [
+            ["R1"], ["wt", "S1"] + [f"A{i}B" for i in range(30)]]
+        orch.settings = {"spiked_genotypes": ["S1"]}
+        with patch(_PATCH_READ_CONFIG, return_value=(orch, {})), \
              patch(_PATCH_PREDICT_DF, return_value=_MOCK_PRED_DF) as mock_pdf, \
              patch(_PATCH_PLOT_GENO, return_value=MagicMock()):
             _try_plot_trajectories(
@@ -1145,7 +1218,10 @@ class TestTryPlotTrajectories:
                 binding_df=None,
             )
         _, kwargs = mock_pdf.call_args
-        assert kwargs["genotypes"] is None
+        genos = kwargs["genotypes"]
+        assert genos[:2] == ["wt", "S1"]
+        assert len(genos) == 2 + 10
+        assert len(set(genos)) == len(genos)
 
     # ------------------------------------------------------------------
     # CSV output: one CSV per genotype alongside each trajectory PDF
@@ -1672,6 +1748,127 @@ class TestSummarizeParams:
         assert os.path.exists(out_pdf)
         df = pd.read_csv(out_csv)
         assert "ref" in df.columns
+
+
+class TestSummarizeThermoTruth:
+    """Thermodynamic models: the scalar K's and the per-mutation / per-pair
+    truth written by tfs-simulate are scored against extracted tables."""
+
+    COMPONENT = "thermo.O2_C12_K5_U0_a.PK"
+    GENOTYPES = ["wt", "H29A", "H29C", "L62A", "H29A/L62A", "H29C/L62A"]
+    SCALAR_KS = ["ln_K_h_l", "ln_K_h_o", "ln_K_l_o"]
+
+    def _simulate(self, run_dir):
+        """Draw truth with the simulator and write it as tfs-simulate does."""
+        import jax
+        from tfscreen.simulate.sim_data_class import build_sim_data
+        from tfscreen.simulate.thermo_to_growth import thermo_to_growth
+
+        lib = pd.DataFrame({"genotype": self.GENOTYPES})
+        sample_df = pd.DataFrame({"titrant_name": "iptg",
+                                  "titrant_conc": [0.0, 0.01, 1.0],
+                                  "condition_pre": "pre",
+                                  "condition_sel": "sel"})
+        growth = {"pre": {"m": 0.0, "b": 0.01}, "sel": {"m": 0.01, "b": 0.01}}
+        sim_data = build_sim_data(lib, sample_df)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            _, _, params, truth = thermo_to_growth(
+                lib["genotype"], sim_data, sample_df, self.COMPONENT,
+                jax.random.PRNGKey(0), growth, rng=np.random.default_rng(0),
+                return_mutation_truth=True)
+        params.to_csv(os.path.join(run_dir, "tfs_sim_parameters.csv"), index=False)
+        truth["mutation"].to_csv(
+            os.path.join(run_dir, "tfs_sim_mutation_parameters.csv"), index=False)
+        truth["pair"].to_csv(
+            os.path.join(run_dir, "tfs_sim_pair_parameters.csv"), index=False)
+        return params, truth["mutation"], truth["pair"]
+
+    @staticmethod
+    def _write_extracted(path, key_df, values):
+        """An extracted table: key columns plus quantiles around ``values``."""
+        df = key_df.copy()
+        for q, shift in (("q0.025", -1.0), ("q0.5", 0.0), ("q0.975", 1.0)):
+            df[q] = np.asarray(values) + shift
+        df.to_csv(path, index=False)
+
+    def _write_fit(self, run_dir, params, mut, pair):
+        for col in self.SCALAR_KS:
+            self._write_extracted(os.path.join(run_dir, f"tfs_params_{col}.csv"),
+                                  params[["genotype"]], params[col])
+        for col in ["ln_K_h_e", "ln_K_l_e"]:
+            self._write_extracted(os.path.join(run_dir, f"tfs_params_{col}.csv"),
+                                  params[["genotype"]].assign(titrant_name="iptg"),
+                                  params[col])
+        for col in [c for c in mut.columns if c.startswith("d_")]:
+            self._write_extracted(os.path.join(run_dir, f"tfs_params_{col}.csv"),
+                                  mut[["mutation"]], mut[col])
+        for col in [c for c in pair.columns if c.startswith("epi_")]:
+            self._write_extracted(os.path.join(run_dir, f"tfs_params_{col}.csv"),
+                                  pair[["pair"]], pair[col])
+
+    def _run(self, tmp_path):
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _summarize_params(str(tmp_path), out_prefix)
+        return out_prefix, [str(x.message) for x in w]
+
+    def test_scalar_Ks_are_scored(self, tmp_path):
+        params, mut, pair = self._simulate(str(tmp_path))
+        self._write_fit(str(tmp_path), params, mut, pair)
+        out_prefix, msgs = self._run(tmp_path)
+
+        truth = params.set_index("genotype")
+        for col in self.SCALAR_KS + ["ln_K_h_e", "ln_K_l_e"]:
+            df = pd.read_csv(f"{out_prefix}_params_{col}.csv")
+            np.testing.assert_allclose(df["ref"], truth.loc[df["genotype"], col],
+                                       rtol=1e-6)
+            # median == truth by construction
+            np.testing.assert_allclose(df["ref"], df["q0.5"], rtol=1e-6)
+            assert os.path.exists(f"{out_prefix}_params_{col}_calibration_curve.csv") \
+                or os.path.exists(f"{out_prefix}_params_{col}.pdf")
+        # dk_geno / activity have no fake extract here; no thermo K is unmatched.
+        unmatched = [m for m in msgs if m.startswith("Expected")
+                     and "ln_K" in m]
+        assert unmatched == []
+
+    def test_mutation_and_pair_truth_are_scored(self, tmp_path):
+        params, mut, pair = self._simulate(str(tmp_path))
+        self._write_fit(str(tmp_path), params, mut, pair)
+        out_prefix, _ = self._run(tmp_path)
+
+        for col in [c for c in mut.columns if c.startswith("d_")]:
+            df = pd.read_csv(f"{out_prefix}_params_{col}.csv")
+            assert df["ref"].notna().all()
+            np.testing.assert_allclose(df["ref"], df["q0.5"], rtol=1e-6)
+        for col in [c for c in pair.columns if c.startswith("epi_")]:
+            df = pd.read_csv(f"{out_prefix}_params_{col}.csv")
+            assert df["ref"].notna().all()
+            np.testing.assert_allclose(df["ref"], df["q0.5"], rtol=1e-6)
+
+    def test_mutation_truth_used_without_single_mutants(self, tmp_path):
+        """The per-mutation file scores d_ tables even when a mutation's single
+        mutant is missing from the per-genotype truth (no sim[m] - sim[wt])."""
+        params, mut, pair = self._simulate(str(tmp_path))
+        self._write_fit(str(tmp_path), params, mut, pair)
+        params[params["genotype"] != "L62A"].to_csv(
+            tmp_path / "tfs_sim_parameters.csv", index=False)
+        out_prefix, _ = self._run(tmp_path)
+        df = pd.read_csv(f"{out_prefix}_params_d_ln_K_h_l.csv")
+        assert df.loc[df["mutation"] == "L62A", "ref"].notna().all()
+
+    def test_pair_labels_matched_after_standardizing(self, tmp_path):
+        params, mut, pair = self._simulate(str(tmp_path))
+        self._write_fit(str(tmp_path), params, mut, pair)
+        # A fit may write the pair in the other order.
+        flipped = pd.read_csv(tmp_path / "tfs_params_epi_ln_K_h_l.csv")
+        flipped["pair"] = ["/".join(p.split("/")[::-1]) for p in flipped["pair"]]
+        flipped.to_csv(tmp_path / "tfs_params_epi_ln_K_h_l.csv", index=False)
+        out_prefix, _ = self._run(tmp_path)
+        df = pd.read_csv(f"{out_prefix}_params_epi_ln_K_h_l.csv")
+        assert df["ref"].notna().all()
 
 
 # ---------------------------------------------------------------------------
@@ -2314,3 +2511,372 @@ class TestCalibrationIntegration:
                         if "params_activity" in c.kwargs["out_prefix"]]
         assert len(params_calls) == 1
         assert not params_calls[0].kwargs["out_prefix"].endswith(".csv")
+
+
+# ---------------------------------------------------------------------------
+# Tube offsets
+# ---------------------------------------------------------------------------
+
+def _write_offsets(run_dir, pattern):
+    rows = []
+    for cond in ("kanR+kan", "pheS+4CP"):
+        for rep in (1, 2):
+            for t in (0.0, 60.0, 120.0):
+                for i, c in enumerate([0.0, 0.01, 0.1, 1.0]):
+                    rows.append(dict(replicate=rep, library="lib",
+                                     condition_pre="pre", condition_sel=cond,
+                                     titrant_name="iptg", titrant_conc=c,
+                                     t_pre=30.0, t_sel=t,
+                                     value=(2.0 - i if pattern else 0.0)
+                                     + 0.01 * ((rep * 7 + i * 3 + int(t)) % 5)))
+    pd.DataFrame(rows).rename(columns={"value": "q0.5"}).to_csv(
+        os.path.join(run_dir, "run_params_sample_offset_offset.csv"),
+        index=False)
+
+
+class TestTubeOffsets:
+
+    def test_no_offset_file_gives_none(self, run_dir):
+        results = summarize_fit(run_dir)
+        assert results["tube_offsets"] is None
+
+    def test_held_sigma_from_priors_and_flag(self, run_dir):
+        _write_offsets(run_dir, pattern=True)
+        pd.DataFrame({"parameter": ["growth.sample_offset.sigma_fixed"],
+                      "value": [0.17]}).to_csv(
+            os.path.join(run_dir, "test_priors.csv"), index=False)
+        results = summarize_fit(run_dir)
+        s = results["tube_offsets"]
+        assert s["sigma"] == pytest.approx(0.17)
+        assert s["sigma_source"] == "sigma_fixed"
+        assert s["structured"]
+        prefix = os.path.join(run_dir, "summary", "tfs_summarize")
+        for suffix in ("_tube_offsets.csv", "_tube_offset_trends.csv",
+                       "_tube_offsets.pdf"):
+            assert os.path.exists(prefix + suffix)
+        with open(prefix + "_fit_summary.json") as fh:
+            assert json.load(fh)["tube_offsets"]["structured"] is True
+
+    def test_extracted_sigma_wins(self, run_dir):
+        _write_offsets(run_dir, pattern=False)
+        pd.DataFrame({"parameter": ["sample_offset_sigma"],
+                      "q0.5": [0.5]}).to_csv(
+            os.path.join(run_dir, "run_params_sample_offset_sigma.csv"),
+            index=False)
+        s = summarize_fit(run_dir)["tube_offsets"]
+        assert s["sigma"] == pytest.approx(0.5)
+        assert not s["structured"]
+
+
+class TestTubeOffsetHelpers:
+
+    def _priors(self, tmp_path, rows):
+        pd.DataFrame(rows, columns=["parameter", "value"]).to_csv(
+            tmp_path / "priors.csv", index=False)
+        return str(tmp_path / "cfg.yaml")
+
+    def test_held_sigma_none_without_config(self, tmp_path):
+        from tfscreen.tfmodel.scripts.summarize_fit_cli import _held_offset_sigma
+        assert _held_offset_sigma(None, "x.yaml") is None
+        assert _held_offset_sigma({"priors_file": "p.csv"}, None) is None
+
+    def test_held_sigma_none_without_priors_file_key(self, tmp_path):
+        from tfscreen.tfmodel.scripts.summarize_fit_cli import _held_offset_sigma
+        assert _held_offset_sigma({}, str(tmp_path / "cfg.yaml")) is None
+
+    def test_held_sigma_none_when_priors_missing(self, tmp_path):
+        from tfscreen.tfmodel.scripts.summarize_fit_cli import _held_offset_sigma
+        assert _held_offset_sigma({"priors_file": "absent.csv"},
+                                  str(tmp_path / "cfg.yaml")) is None
+
+    def test_held_sigma_none_without_row_or_when_zero(self, tmp_path):
+        from tfscreen.tfmodel.scripts.summarize_fit_cli import _held_offset_sigma
+        cfg = self._priors(tmp_path, [["growth.other.value", 1.0]])
+        assert _held_offset_sigma({"priors_file": "priors.csv"}, cfg) is None
+        cfg = self._priors(tmp_path, [["growth.sample_offset.sigma_fixed", 0.0]])
+        assert _held_offset_sigma({"priors_file": "priors.csv"}, cfg) is None
+        cfg = self._priors(tmp_path, [["growth.sample_offset.sigma_fixed", 0.3]])
+        assert _held_offset_sigma({"priors_file": "priors.csv"},
+                                  cfg) == pytest.approx(0.3)
+
+    def test_unwritable_outputs_warn_and_still_return_summary(self, run_dir):
+        from tfscreen.tfmodel.scripts.summarize_fit_cli import (
+            _summarize_tube_offsets)
+        _write_offsets(run_dir, pattern=True)
+        out_prefix = os.path.join(run_dir, "no_such_dir", "out")
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            summary = _summarize_tube_offsets(run_dir, out_prefix, None, None)
+        msgs = [str(x.message) for x in w]
+        assert summary["file"] == "run_params_sample_offset_offset.csv"
+        assert summary["sigma_source"] is None
+        assert any(m.startswith(f"Could not write {out_prefix}_tube_offsets.csv")
+                   for m in msgs)
+        assert any(m.startswith(f"Could not write {out_prefix}_tube_offset_trends.csv")
+                   for m in msgs)
+        assert any(m.startswith("Could not plot tube offsets") for m in msgs)
+
+    def test_plot_hides_unused_panels(self, tmp_path):
+        from tfscreen.tfmodel.scripts.summarize_fit_cli import _plot_tube_offsets
+        conds = ["a", "b", "c", "d"]
+        tubes = pd.DataFrame({
+            "condition_sel": np.repeat(conds, 2),
+            "titrant_conc": [0.0, 1.0] * 4,
+            "t_sel": [10.0, 20.0] * 4,
+            "offset": np.linspace(-1, 1, 8),
+        })
+        trends = pd.DataFrame({"condition_sel": conds,
+                               "structured": [True, False, False, False]})
+        pdf = str(tmp_path / "t.pdf")
+        import matplotlib.pyplot as plt
+        with patch.object(plt, "close") as close:
+            _plot_tube_offsets(tubes, trends, pdf)
+        fig = close.call_args[0][0]
+        axes = [a for a in fig.axes if a.get_label() != "<colorbar>"]
+        visible = [a for a in axes if a.get_visible()]
+        assert len(visible) == 4
+        assert sum(not a.get_visible() for a in axes) == 2
+        assert visible[0].get_title() == "a (trend)"
+        assert visible[0].get_ylabel() == "offset (ln)"
+        assert os.path.exists(pdf)
+        plt.close(fig)
+
+    def test_summarize_fit_warns_when_tube_offsets_fail(self, run_dir):
+        with patch("tfscreen.tfmodel.scripts.summarize_fit_cli."
+                   "_summarize_tube_offsets", side_effect=RuntimeError("boom")):
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                results = summarize_fit(run_dir)
+        assert results["tube_offsets"] is None
+        assert any("Could not summarize tube offsets: boom" in str(x.message)
+                   for x in w)
+
+
+class TestFindMultiple:
+
+    def test_multiple_tfmodel_configs_warn_and_use_first(self, tmp_path):
+        for name in ("a_config.yaml", "b_config.yaml"):
+            _make_config_yaml(str(tmp_path / name), binding_csv_path="b.csv",
+                              guesses_name="g.csv")
+        with pytest.warns(UserWarning, match="Multiple tfmodel config"):
+            result = _find_fit_config(str(tmp_path))
+        assert result == str(tmp_path / "a_config.yaml")
+
+    def test_multiple_fit_losses_warn_and_use_first(self, tmp_path):
+        for name in ("a_losses.txt", "b_losses.txt"):
+            _make_losses_txt(str(tmp_path / name))
+        with pytest.warns(UserWarning, match="Multiple fit losses"):
+            result = _find_fit_losses(str(tmp_path))
+        assert result == str(tmp_path / "a_losses.txt")
+
+
+# ---------------------------------------------------------------------------
+# Relative (X-scale) fits
+# ---------------------------------------------------------------------------
+
+_REL_CONFIG = {"components": {"theta": "hill_relative",
+                              "theta_gauge_conc": [0.0, 1000.0]}}
+
+
+def _write_wt_ref(path, concs=(0.0, 1000.0), wt=(0.9, 0.1)):
+    rows = [dict(genotype="wt", titrant_name=TITRANT_NAME, titrant_conc=c,
+                 theta_obs=v) for c, v in zip(concs, wt)]
+    rows += [dict(genotype="E4F", titrant_name=TITRANT_NAME, titrant_conc=c,
+                  theta_obs=0.5) for c in TITRANT_CONCS]
+    pd.DataFrame(rows).to_csv(path, index=False)
+
+
+class TestXGauge:
+
+    def test_not_relative_returns_none(self, tmp_path):
+        from tfscreen.tfmodel.scripts.summarize_fit_cli import _x_gauge
+        assert _x_gauge({"components": {}}, None, str(tmp_path)) is None
+
+    def test_missing_gauge_or_ref_warns(self, tmp_path):
+        from tfscreen.tfmodel.scripts.summarize_fit_cli import _x_gauge
+        cfg = {"components": {"theta": "hill_relative"}}
+        with pytest.warns(UserWarning, match="without a recorded gauge"):
+            assert _x_gauge(cfg, "ref.csv", str(tmp_path)) is None
+        with pytest.warns(UserWarning, match="without a recorded gauge"):
+            assert _x_gauge(_REL_CONFIG, None, str(tmp_path)) is None
+
+    def test_wt_missing_at_gauge_conc_warns(self, tmp_path):
+        from tfscreen.tfmodel.scripts.summarize_fit_cli import _x_gauge
+        ref = str(tmp_path / "ref.csv")
+        _write_wt_ref(ref, concs=(0.0, 10.0))
+        with pytest.warns(UserWarning, match="no wt value at the gauge "
+                                             "concentration 1000.0"):
+            assert _x_gauge(_REL_CONFIG, ref, str(tmp_path)) is None
+
+    def test_builds_gauge_with_activity(self, tmp_path):
+        from tfscreen.tfmodel.scripts.summarize_fit_cli import _x_gauge
+        ref = str(tmp_path / "ref.csv")
+        _write_wt_ref(ref)
+        pd.DataFrame({"genotype": ["wt", "E4F"], "activity": [1.0, 0.5]}).to_csv(
+            tmp_path / "run_sim_parameters.csv", index=False)
+        g = _x_gauge(_REL_CONFIG, ref, str(tmp_path))
+        assert g["gauge"] == [0.0, 1000.0]
+        assert g["wt"] == {TITRANT_NAME: (pytest.approx(0.9), pytest.approx(0.1))}
+        assert g["activity"] == {"wt": 1.0, "E4F": 0.5}
+
+
+class TestXScaleGrowthRef:
+
+    _gauge = {"wt": {TITRANT_NAME: (0.9, 0.1)}, "activity": {}}
+
+    def test_without_k_m_columns_returns_copy(self):
+        from tfscreen.tfmodel.scripts.summarize_fit_cli import _x_scale_growth_ref
+        df = pd.DataFrame({"condition_rep": ["a"], "growth_min": [0.1]})
+        out = _x_scale_growth_ref(df, self._gauge)
+        pd.testing.assert_frame_equal(out, df)
+        assert out is not df
+
+    def test_more_than_one_titrant_blanks_k_m(self):
+        from tfscreen.tfmodel.scripts.summarize_fit_cli import _x_scale_growth_ref
+        df = pd.DataFrame({"condition_rep": ["a"], "growth_k": [0.01],
+                           "growth_m": [-0.02]})
+        gauge = {"wt": {"IPTG": (0.9, 0.1), "TMG": (0.8, 0.2)}, "activity": {}}
+        with pytest.warns(UserWarning, match="more than one titrant"):
+            out = _x_scale_growth_ref(df, gauge)
+        assert out["growth_k"].isna().all() and out["growth_m"].isna().all()
+        assert df["growth_k"].iloc[0] == 0.01
+
+    def test_condition_growth_params_mapped_to_x(self, tmp_path):
+        from tfscreen.tfmodel.scripts.summarize_fit_cli import (
+            _summarize_condition_growth_params)
+        pd.DataFrame({"condition_rep": ["a"], "growth_k": [0.01],
+                      "growth_m": [-0.02]}).to_csv(
+            tmp_path / "run_sim_growth_parameters.csv", index=False)
+        for name in ("growth_k", "growth_m"):
+            pd.DataFrame({"condition_rep": ["a"], "q0.5": [0.0]}).to_csv(
+                tmp_path / f"run_params_{name}.csv", index=False)
+        out_prefix = str(tmp_path / "out")
+        _summarize_condition_growth_params(str(tmp_path), out_prefix,
+                                           x_gauge=self._gauge)
+        k = pd.read_csv(out_prefix + "_params_growth_k.csv")["ref"].iloc[0]
+        m = pd.read_csv(out_prefix + "_params_growth_m.csv")["ref"].iloc[0]
+        # k_X = k + m theta_wt(c_hi); m_X = m (theta_wt(c_lo) - theta_wt(c_hi))
+        assert k == pytest.approx(0.01 - 0.02 * 0.1)
+        assert m == pytest.approx(-0.02 * 0.8)
+
+
+class TestSummarizeFitRelative:
+
+    def _relative_run(self, run_dir):
+        cfg_path = os.path.join(run_dir, "run_config.yaml")
+        with open(cfg_path) as fh:
+            cfg = yaml.safe_load(fh)
+        cfg["components"] = dict(_REL_CONFIG["components"])
+        with open(cfg_path, "w") as fh:
+            yaml.dump(cfg, fh)
+        _make_pred_csv(os.path.join(run_dir, "run_pred_theta.csv"),
+                       n_training=3, extra_genotypes=["E4F"])
+        ref = os.path.join(run_dir, "ref.csv")
+        _write_wt_ref(ref)
+        return ref
+
+    def test_test_ref_put_on_x_scale(self, run_dir):
+        ref = self._relative_run(run_dir)
+        results = summarize_fit(run_dir, ref_theta_file=ref)
+        assert results["metadata"]["theta_scale"] == "X"
+        df = pd.read_csv(os.path.join(run_dir, "summary",
+                                      "tfs_summarize_theta_corr_test.csv"))
+        e4f = df[df["genotype"] == "E4F"]
+        assert len(e4f) == len(TITRANT_CONCS)
+        # X = (0.5 - 0.1) / (0.9 - 0.1)
+        assert np.allclose(e4f["ref"], 0.5)
+
+    def test_gauge_failure_warns_and_skips_test_stats(self, run_dir):
+        ref = self._relative_run(run_dir)
+        with patch("tfscreen.tfmodel.scripts.summarize_fit_cli._x_gauge",
+                   side_effect=RuntimeError("bad gauge")):
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                results = summarize_fit(run_dir, ref_theta_file=ref)
+        assert any("Could not build the X-scale truth: bad gauge"
+                   in str(x.message) for x in w)
+        assert results["metadata"]["n_theta_test_points"] is None
+
+
+# ---------------------------------------------------------------------------
+# Keyed (per-mutation / per-pair) truth and the ddG_sigma join: failure paths
+# ---------------------------------------------------------------------------
+
+from tfscreen.tfmodel.scripts.summarize_fit_cli import (  # noqa: E402
+    _compute_keyed_obs,
+    _read_keyed_truth,
+    _summarize_ddG_sigma,
+)
+
+
+class TestReadKeyedTruth:
+
+    def test_unreadable_file_warns_and_returns_none(self, tmp_path):
+        (tmp_path / "tfs_sim_mutation_parameters.csv").write_text("")
+        with pytest.warns(UserWarning, match="Could not load"):
+            assert _read_keyed_truth(str(tmp_path), "mutation_parameters",
+                                     "mutation") is None
+
+    def test_missing_key_column_warns_and_returns_none(self, tmp_path):
+        pd.DataFrame({"genotype": ["A1B"], "d_x": [1.0]}).to_csv(
+            tmp_path / "tfs_sim_mutation_parameters.csv", index=False)
+        with pytest.warns(UserWarning, match="has no 'mutation' column"):
+            assert _read_keyed_truth(str(tmp_path), "mutation_parameters",
+                                     "mutation") is None
+
+    def test_absent_file_returns_none_silently(self, tmp_path):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            assert _read_keyed_truth(str(tmp_path), "pair_parameters",
+                                     "pair") is None
+
+
+def test_compute_keyed_obs_without_key_column_returns_none():
+    truth = pd.DataFrame({"d_x": [1.0]}, index=pd.Index(["A1B"], name="mutation"))
+    params = pd.DataFrame({"genotype": ["A1B"], "q0.5": [0.9]})
+    assert _compute_keyed_obs(params, truth, "d_x", "mutation") is None
+    params = pd.DataFrame({"mutation": ["A1B", "C2D"], "q0.5": [0.9, 0.1]})
+    out = _compute_keyed_obs(params, truth, "d_x", "mutation")
+    assert out[0] == 1.0 and np.isnan(out[1])
+
+
+class TestSummarizeDdGSigmaFailures:
+
+    def _sim(self, run):
+        pd.DataFrame({"structure": ["H"], "ddG_sigma": [1.0]}).to_csv(
+            run / "tfs_sim_ddG_sigma.csv", index=False)
+
+    def test_warns_when_other_ddG_tables_exist_but_sigma_missing(self, tmp_path):
+        self._sim(tmp_path)
+        pd.DataFrame({"mutation": ["A1B"], "q0.5": [0.1]}).to_csv(
+            tmp_path / "tfs_params_ddG_H.csv", index=False)
+        out = tmp_path / "summary"
+        out.mkdir()
+        with pytest.warns(UserWarning,
+                          match=r"Expected \*_params_ddG_sigma.csv"):
+            _summarize_ddG_sigma(str(tmp_path), str(out / "tfs_summarize"))
+        assert not list(out.iterdir())
+
+    def test_unjoinable_truth_warns_and_writes_nothing(self, tmp_path):
+        # Truth without a 'structure' column cannot be joined.
+        pd.DataFrame({"state": ["H"], "ddG_sigma": [1.0]}).to_csv(
+            tmp_path / "tfs_sim_ddG_sigma.csv", index=False)
+        pd.DataFrame({"structure": ["H"], "q0.5": [0.9]}).to_csv(
+            tmp_path / "tfs_params_ddG_sigma.csv", index=False)
+        out = tmp_path / "summary"
+        out.mkdir()
+        with pytest.warns(UserWarning, match="Could not join ddG_sigma truth"):
+            _summarize_ddG_sigma(str(tmp_path), str(out / "tfs_summarize"))
+        assert not list(out.iterdir())
+
+    def test_unwritable_output_warns_and_skips_calibration(self, tmp_path):
+        self._sim(tmp_path)
+        pd.DataFrame({"structure": ["H"], "q0.025": [0.5], "q0.5": [0.9],
+                      "q0.975": [1.3]}).to_csv(
+            tmp_path / "tfs_params_ddG_sigma.csv", index=False)
+        out_prefix = str(tmp_path / "no_such_dir" / "tfs_summarize")
+        with patch("tfscreen.tfmodel.scripts.summarize_fit_cli._try_calibration"
+                   ) as calib:
+            with pytest.warns(UserWarning, match="Could not write"):
+                _summarize_ddG_sigma(str(tmp_path), out_prefix)
+        calib.assert_not_called()

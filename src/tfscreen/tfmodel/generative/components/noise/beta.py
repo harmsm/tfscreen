@@ -24,9 +24,10 @@ class ModelPriors:
     beta_kappa_scale: float
 
 
-def define_model(name: str, 
-                 fx_calc: jnp.ndarray, 
-                 priors: ModelPriors) -> jnp.ndarray:
+def define_model(name: str,
+                 fx_calc: jnp.ndarray,
+                 priors: ModelPriors,
+                 data: GrowthData = None) -> jnp.ndarray:
     """
     Applies Beta-distributed noise to a deterministic value.
 
@@ -51,6 +52,14 @@ def define_model(name: str,
     priors : ModelPriors
         A Pytree (Flax dataclass) containing the hyperparameters for
         the `kappa` prior.
+    data : GrowthData, optional
+        Batch data, accepted for a uniform noise-component signature and
+        unused.  The ``{name}_dist`` latent is the noisy value itself, drawn
+        per observation around the batch's ``fx_calc``, so unlike the other
+        per-genotype latents it cannot be sampled at library size: it is
+        batch-shaped and therefore not safe to fit with an autoguide
+        (including AutoDelta/MAP) under genotype mini-batching.  See
+        inference/batch_safety.py.
 
     Returns
     -------
@@ -85,9 +94,10 @@ def define_model(name: str,
     
     return fx_noisy
 
-def guide(name: str, 
-          fx_calc: jnp.ndarray, 
-          priors: ModelPriors) -> jnp.ndarray:
+def guide(name: str,
+          fx_calc: jnp.ndarray,
+          priors: ModelPriors,
+          data: GrowthData = None) -> jnp.ndarray:
     """
     Guide for the Beta noise model.
     

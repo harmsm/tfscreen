@@ -1,0 +1,11 @@
+# Grid outputs (tens of GB) and the calibration summary; see README.md.
+# Every grid is set up as congression_calibration_<name>/.
+congression_calibration*/
+calib/
+diagnosis/*.csv
+fetch.sh
+# Written by tfs-setup-sim-grid next to a grid set up here; not inputs.
+grid_summary.json
+inputs/
+# Renamed copies of old grid runs
+*.old/

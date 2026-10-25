@@ -1,0 +1,93 @@
+# ---------------------------------------------------------------------------
+# Count-likelihood validation (roadmap step 7, planning/analysis-roadmap.md)
+#
+#   tfs-setup-sim-grid grid.yaml --out_prefix count_likelihood
+#   for d in count_likelihood/run_*/; do (cd "$d" && sbatch run.srun); done
+#
+# Does fitting read counts (negative binomial, no pseudocount) beat fitting
+# ln_cfu, on data with Poisson-only counts and on data with the real data's
+# extra count noise? And at a true lambda of 0, does the congression mixture
+# still find lambda ~0.12 once the read-count floor is modeled (the open
+# question from the congression plan's step 3.5)?
+#
+# Simulated noise:
+#   poisson    the simulator's old behavior: deterministic growth, one
+#              multinomial draw of reads (count variance = Poisson).
+#   realistic  founder sampling and demographic growth with ~300 founders
+#              per genotype per tube (cfu0 150,000 over 483 genotypes, as in
+#              the real 215k-genotype library at 6.5e7 cells), one shared
+#              transformation, and a template bottleneck with PCR
+#              jackpotting (150,000 templates for ~830k reads per tube, CV
+#              0.5): count variance ~8x Poisson, the middle of the 5-18x
+#              measured on real data (study noise-anatomy).
+#
+# Fits (all with the anchored settings of the congression 3.5 baseline):
+#   lncfu  / zero   today's production fit (Student-t on ln_cfu, normal_kt)
+#   lncfu  / level  the same with a per-tube level offset
+#   counts / level  the count likelihood with a per-tube level offset
+#   counts / level / mixture (measured lambda prior): the floor question
+#
+# 2 noise x 3 seeds x 4 fits = 24 runs.
+# ---------------------------------------------------------------------------
+
+base_config: ../congression-calibration/simulate_config.yaml
+
+run_name: "{{ 'realistic' if founder_sampling else 'poisson' }}__seed{{ seed }}__{{ likelihood }}_{{ sample_offset }}_{{ fit }}"
+
+output_file: run.srun
+
+
+simulate:
+
+  - name: noise
+    variants:
+      - founder_sampling: false
+      - founder_sampling: true
+        demographic_growth: true
+        shared_transformation: true
+        cfu0: 150_000.0
+        pcr_template_molecules: 150_000
+        pcr_amplification_cv: 0.5
+
+  - name: lam
+    variants:
+      - transformation_poisson_lambda: 0.0
+
+  - name: dk
+    variants:
+      - dk_geno_hyper_loc: -3.5
+        dk_geno_hyper_scale: 0.5
+        dk_geno_hyper_shift: 0.02
+
+  - name: seed
+    variants:
+      - seed: 1
+      - seed: 2
+      - seed: 3
+
+
+template:
+
+  - name: fit
+    variants:
+      - likelihood: lncfu
+        sample_offset: zero
+        fit: single
+        lam_prior: "off"
+      - likelihood: lncfu
+        sample_offset: level
+        fit: single
+        lam_prior: "off"
+      - likelihood: counts
+        sample_offset: level
+        fit: single
+        lam_prior: "off"
+      - likelihood: counts
+        sample_offset: level
+        fit: mixture
+        lam_prior: measured
+
+  - name: anchor
+    variants:
+      - binding_weight: 1.0
+        k_scale_ceiling: 0.005

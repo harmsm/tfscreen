@@ -1,0 +1,23 @@
+# tfs-fit-two-stage validation, real (planning/studies/two-stage-validation).
+# The dev-data screen (the recipe's growth table). Its library config as written (wt mostly bulk, which the data favored); lambda prior from the lab's measurement (0.357, 95% CI 0.156-0.674).
+# Cluster paths: run from the cluster with submit.sh.
+
+growth_df: /gpfs/projects/harmslab/harms/studies/dev-data/real_fit/recipe/tfs_growth.csv
+library_config: /gpfs/projects/harmslab/harms/studies/dev-data/processed/library_config.yaml
+theta_model: hill_relative
+growth_shares_replicates: true
+batch_size: 4096
+allow_missing_spikes: true
+growth_priors: /gpfs/projects/harmslab/harms/studies/dev-data/real_fit/growth_priors_loose.csv
+set_priors: [sigma_fixed=0.17, theta_log_hill_n_hyper_scale_fixed=0.5]
+skip_model_stats: true
+
+two_stage:
+  transformation_lambda: [0.38, 0.15]
+  seed: 1
+  jackknife_subsamples: 30
+  jackknife_drop_frac: 0.2
+  num_posterior_samples: 500
+  consistency: true
+  consistency_library: kanR
+  predict_epistasis: false

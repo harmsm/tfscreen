@@ -5,22 +5,64 @@ import pandas as pd
 
 import tfscreen
 from tfscreen.simulate import library_prediction, selection_experiment
-from tfscreen.simulate.binding_data import generate_binding_df
+from tfscreen.simulate.binding_data import generate_binding_df, apply_genotype_offsets
+from tfscreen.simulate.library_prediction import growth_titrant_scale_from
 from tfscreen.simulate.library_binding_data import generate_library_binding_df
 from tfscreen.simulate.presplit_data import generate_presplit_df
 from tfscreen.simulate.base_growth_data import generate_base_growth_df, generate_k_ref_df
 from tfscreen.simulate.growth_parameters_output import generate_growth_parameters_df
 from tfscreen.simulate.transformation_lam_output import generate_transformation_lam_df
 from tfscreen.process_raw import counts_to_lncfu
+from tfscreen.genetics.library_subsample import (
+    build_library,
+    format_subsample_summary,
+    has_subsample,
+    subsample_design,
+)
+from tfscreen.simulate.raw_output import (
+    undetectable_tubes,
+    write_raw_experiment,
+)
+from tfscreen.simulate.build_sample_dataframes import (
+    CONDITION_COLUMNS,
+    read_design,
+)
 from tfscreen.util.cli.generalized_main import generalized_main
+
+
+def replicate_read_totals(total_num_reads, rep_ids, num_replicates,
+                          design=None):
+    """
+    Each sequenced replicate's share of ``total_num_reads``, by tube count.
+
+    ``total_num_reads`` is the total over every sequenced tube. With a design
+    the replicates can have different numbers of tubes, so each gets
+    ``total * (its tubes / all tubes)``; otherwise every sequenced replicate
+    has the same tubes and gets ``total / num_replicates``. OD600-only
+    replicates (beyond ``num_replicates``) get none.
+
+    Returns
+    -------
+    dict
+        replicate id -> reads (int, at least 1) for the sequenced replicates.
+    """
+    sequenced = rep_ids[:num_replicates]
+    if design is not None:
+        tubes = design.groupby("replicate").size()
+        share = {r: tubes[r] / tubes[sequenced].sum() for r in sequenced}
+    else:
+        share = {r: 1.0 / num_replicates for r in sequenced}
+    return {r: max(1, int(round(total_num_reads * share[r])))
+            for r in sequenced}
 
 
 def run_simulation_from_config(
     config_file,
-    output_dir,
-    output_prefix="tfs_sim_",
+    out_prefix="tfs_sim",
     num_replicates=2,
     seed=None,
+    write_raw=True,
+    write_growth=True,
 ):
     """
     Simulate a TF selection experiment from a YAML configuration file.
@@ -33,7 +75,16 @@ def run_simulation_from_config(
     tfscreen.simulate.growth_parameters_output.generate_growth_parameters_df),
     and transformation_lam (single-row congression Poisson-rate ground truth;
     see tfscreen.simulate.transformation_lam_output.generate_transformation_lam_df)
-    CSV files. If the config contains a 'binding_data' block, also writes a
+    CSV files. A mutation-decomposed theta model drawn from its prior (the
+    thermodynamic models) also writes mutation_parameters (one row per
+    mutation: the true d_* deltas and, for PddG/PnnC, ddG_{structure}) and,
+    when the library has multi-mutants, pair_parameters (one row per pair:
+    the true epi_* terms); see
+    tfscreen.simulate.thermo_to_growth._mutation_truth_tables. PddG/PnnC
+    also write ddG_sigma (one row per structure: the true SD of ΔΔG about
+    the structural prior mean, set by the config's ddG_truth_sd, 1 kT by
+    default; see _ddG_sigma_truth_table). If the config
+    contains a 'binding_data' block, also writes a
     simulated binding curve CSV (see
     tfscreen.simulate.binding_data.generate_binding_df). If it contains a
     'base_growth_data' block, also writes a simulated direct growth-rate
@@ -41,44 +92,83 @@ def run_simulation_from_config(
     tfscreen.simulate.base_growth_data.generate_base_growth_df and
     .generate_k_ref_df). If it contains a 'presplit_data' block, also writes
     a simulated presplit CSV (see
-    tfscreen.simulate.presplit_data.generate_presplit_df).
+    tfscreen.simulate.presplit_data.generate_presplit_df). If it contains an
+    'od600' block, also writes one OD600 reading per tube for every
+    replicate, sequenced or not ('od600'; see tfscreen.simulate.od600), and
+    simulates od600.num_od_only_replicates extra replicates that get OD600
+    but no reads. With shared_transformation, every replicate (OD-only ones
+    included) draws its cells from one library assembly and transformation.
+
+    With ``library_genotypes`` and/or ``library_subsample`` the library is
+    restricted to a subset of the described genotypes before anything is
+    simulated (``{out_prefix}_library.csv`` lists the kept ones); with the
+    default ``library_subsample_depth: full_library`` each kept sequence
+    keeps the pool share, transformants, reads and PCR templates it has in
+    the full library. See ``tfscreen.genetics.library_subsample``.
 
     Parameters
     ----------
     config_file : str
         Path to the YAML run configuration file.
-    output_dir : str
-        Directory to write output CSV files into (created if absent).
-    output_prefix : str
-        Prefix for all output filenames. Default 'tfs_sim_'.
+    out_prefix : str
+        Output prefix: files are written as ``{out_prefix}_{name}.csv``. A
+        directory part (``sim/tfs_sim``) is created if absent.
     num_replicates : int
         Number of independent experimental replicates to simulate. Default 2.
     seed : int, optional
         Random seed. Overrides seed in the config file when provided.
+    write_raw : bool
+        Also write the experiment in the raw formats real data come in (one
+        count file per tube in ``{out_prefix}_counts/``, the tube table
+        ``{out_prefix}_tubes.csv`` and, with an ``od600`` block, the OD600
+        table and the calibration), so ``tfs-process-counts`` processes it
+        exactly as it would a lab's data. The command is printed. See
+        ``tfscreen.simulate.raw_output``.
+    write_growth : bool
+        Also write ``{out_prefix}_growth.csv``, the growth table built
+        directly from the simulated counts (with each row's true values).
+        ``tfs-process-counts`` builds the same table from the raw files, so a
+        full-size simulation can skip it: on a real library's size it is
+        several GB. With an ``od600`` block, tubes read below the
+        calibration's detection threshold are left out of it, as they are
+        out of the raw tube table (``tfs-process-counts`` refuses them).
     """
     cf = tfscreen.util.read_yaml(config_file)
     if seed is not None:
         cf["seed"] = seed
 
-    os.makedirs(output_dir, exist_ok=True)
+    out_dir = os.path.dirname(out_prefix)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
 
     def out_path(name):
-        return os.path.join(output_dir, f"{output_prefix}{name}.csv")
+        return f"{out_prefix}_{name}.csv"
 
-    config_out = os.path.join(output_dir, f"{output_prefix}input-config.yaml")
+    config_out = f"{out_prefix}_input-config.yaml"
 
-    output_names = ["library", "parameters", "genotype_theta", "growth",
-                    "growth_parameters", "transformation_lam"]
+    output_names = ["library", "parameters", "genotype_theta",
+                    "growth_parameters", "transformation_lam",
+                    "mutation_parameters", "pair_parameters", "ddG_sigma"]
+    if write_growth:
+        output_names.append("growth")
     if "binding_data" in cf:
         output_names.append("binding")
         if cf["binding_data"].get("library_binding") is not None:
             output_names.append("library_binding")
+        if cf["binding_data"].get("genotype_offset_sd"):
+            output_names.append("binding_offsets")
+    if cf.get("growth_titrant_scale") is not None:
+        output_names.append("growth_titrant_scale")
     if "presplit_data" in cf:
         output_names.append("presplit")
     if "base_growth_data" in cf:
         output_names.append("base_growth")
         output_names.append("k_ref")
+    if cf.get("od600") is not None:
+        output_names.append("od600")
 
+    if write_raw:
+        output_names.append("tubes")
     existing = [out_path(n) for n in output_names if os.path.exists(out_path(n))]
     if os.path.exists(config_out):
         existing.append(config_out)
@@ -86,7 +176,7 @@ def run_simulation_from_config(
         paths = ", ".join(existing)
         raise FileExistsError(
             f"Output files already exist: {paths}\n"
-            f"Delete them or choose a different output_dir / output_prefix "
+            f"Delete them or choose a different out_prefix "
             f"before re-running."
         )
 
@@ -94,9 +184,29 @@ def run_simulation_from_config(
     rng = np.random.default_rng(base_seed)
 
     # -------------------------------------------------------------------------
+    # The library, restricted to the config's subsample (library_genotypes,
+    # library_subsample; paths relative to the config file). sim_cf carries
+    # the experiment settings the subsample is simulated with.
+
+    sim_cf = dict(cf)
+    library_kwargs = {}
+    if has_subsample(cf):
+        library_df, subsample_summary = build_library(
+            cf, base_dir=os.path.dirname(os.path.abspath(config_file)))
+        design_update = subsample_design(cf, subsample_summary)
+        sim_cf.update({k: v for k, v in design_update.items()
+                       if k != "kept_pool_share"})
+        print(format_subsample_summary(cf, subsample_summary, design_update),
+              flush=True)
+        library_kwargs["library_df"] = library_df
+
+    # -------------------------------------------------------------------------
     # Ground-truth library and phenotypes (deterministic given the config)
 
-    library_df, phenotype_df, genotype_theta_df, parameters_df, binding_theta_df = library_prediction(cf)
+    (library_df, phenotype_df, genotype_theta_df, parameters_df,
+     binding_theta_df, mutation_truth, library_binding_theta_df) = \
+        library_prediction(sim_cf, return_mutation_truth=True,
+                           return_binding_theta=True, **library_kwargs)
     growth_parameters_df = generate_growth_parameters_df(cf["growth"])
     transformation_lam_df = generate_transformation_lam_df(cf)
 
@@ -105,24 +215,73 @@ def run_simulation_from_config(
 
     all_sample_parts = []
     all_counts_parts = []
+    od_only_parts = []
     sample_id_offset = 0
 
-    for rep in range(1, num_replicates + 1):
-        print(f"\n--- Replicate {rep} of {num_replicates} ---", flush=True)
+    # One library assembly and transformation for every replicate when
+    # shared_transformation is set (selection_experiment ignores it otherwise).
+    shared_state = {}
+
+    od_cf = cf.get("od600") or {}
+    num_od_only = int(od_cf.get("num_od_only_replicates") or 0)
+
+    # A design tube table fixes the replicates and each one's tubes.
+    design = None
+    if cf.get("design") is not None:
+        design = read_design(cf["design"])
+        if num_od_only:
+            raise ValueError("od600.num_od_only_replicates cannot be combined "
+                             "with a design; add the OD-only tubes to the "
+                             "design instead.")
+        rep_ids = sorted(design["replicate"].unique().tolist())
+        if num_replicates != len(rep_ids):
+            print(f"Design has {len(rep_ids)} replicate(s) {rep_ids}; "
+                  f"num_replicates ({num_replicates}) is ignored.", flush=True)
+        num_replicates = len(rep_ids)
+    else:
+        rep_ids = list(range(1, num_replicates + num_od_only + 1))
+
+    # total_num_reads is the total over every sequenced tube, so each
+    # replicate gets its share by tube count. selection_experiment divides
+    # the total it is given among one replicate's tubes, so passing every
+    # replicate the full total multiplied the reads by the number of
+    # replicates (and, with a design, gave a replicate with few tubes far
+    # more reads per tube: 2.5e9 for the dev-data design's two-tube
+    # replicate 3; 2026-10-08).
+    # (selection_experiment validates total_num_reads; none here, none split)
+    rep_reads = {}
+    if sim_cf.get("total_num_reads") is not None:
+        rep_reads = replicate_read_totals(int(sim_cf["total_num_reads"]),
+                                          rep_ids, num_replicates, design)
+
+    for rep_num, rep in enumerate(rep_ids, start=1):
+        sequenced = rep_num <= num_replicates
+        label = ("" if sequenced else " (OD600 only)")
+        print(f"\n--- Replicate {rep} of {len(rep_ids)}{label} ---",
+              flush=True)
 
         # Give each replicate a distinct (but reproducible) random seed so
         # that replicates differ even when a base seed is set.
-        rep_cf = dict(cf)
+        rep_cf = dict(sim_cf)
         rep_cf["seed"] = (
-            base_seed * num_replicates + rep if base_seed is not None else None
+            base_seed * num_replicates + rep_num if base_seed is not None else None
         )
+        if rep in rep_reads:
+            rep_cf["total_num_reads"] = rep_reads[rep]
 
         rep_phenotype_df = phenotype_df.copy()
+        if design is not None:
+            tubes = design.loc[design["replicate"] == rep, CONDITION_COLUMNS]
+            rep_phenotype_df = rep_phenotype_df.merge(tubes, on=CONDITION_COLUMNS)
         rep_phenotype_df["replicate"] = rep
 
         sample_df_rep, counts_df_rep = selection_experiment(
-            rep_cf, library_df, rep_phenotype_df
+            rep_cf, library_df, rep_phenotype_df,
+            shared_state=shared_state, sequence=sequenced
         )
+        if not sequenced:
+            od_only_parts.append(sample_df_rep.assign(sequenced=False))
+            continue
 
         # Shift sample IDs so they are globally unique across replicates
         max_id = int(sample_df_rep.index.max()) + 1
@@ -139,7 +298,70 @@ def run_simulation_from_config(
     combined_sample_df = pd.concat(all_sample_parts)
     combined_counts_df = pd.concat(all_counts_parts, ignore_index=True)
 
-    growth_df = counts_to_lncfu(combined_sample_df, combined_counts_df)
+    if cf.get("od600") is not None:
+        od_df = pd.concat([combined_sample_df.assign(sequenced=True)]
+                          + od_only_parts, ignore_index=True)
+        keep = [c for c in ["replicate", "library", "condition_pre", "t_pre",
+                            "condition_sel", "t_sel", "titrant_name",
+                            "titrant_conc", "sequenced", "od600",
+                            "od600_detectable", "od600_in_range",
+                            "sample_cfu_true", "sample_cfu", "sample_cfu_std"]
+                if c in od_df.columns]
+        od_df[keep].to_csv(out_path("od600"), index=False)
+        print(f"Wrote: {out_path('od600')}")
+
+    if design is not None:
+        # The design's tube names, for the raw output.
+        key = ["replicate"] + CONDITION_COLUMNS
+        named = combined_sample_df[key].merge(
+            design[key + ["sample"]].rename(columns={"sample": "design_sample"}),
+            on=key, how="left")
+        combined_sample_df = combined_sample_df.copy()
+        combined_sample_df["design_sample"] = named["design_sample"].to_numpy()
+
+    # Tubes whose OD600 read below the detection threshold: the raw route
+    # leaves them out of the tube table (tfs-process-counts refuses such a
+    # reading, as the lab drops the tube), so the direct growth table drops
+    # them too and both routes hold the same tubes. The OD600 table above
+    # keeps every reading; presplit draws on the library, not on tubes.
+    bad = undetectable_tubes(combined_sample_df, cf.get("od600"))
+    growth_sample_df = combined_sample_df.loc[~bad]
+    growth_counts_df = combined_counts_df
+    if bad.any():
+        bad_ids = set(combined_sample_df.index[bad])
+        growth_counts_df = combined_counts_df.loc[
+            ~combined_counts_df["sample"].isin(bad_ids)]
+        cols = [c for c in ["replicate", "library", "condition_sel",
+                            "titrant_conc", "t_sel", "od600"]
+                if c in combined_sample_df.columns]
+        print(f"\nDropped {int(bad.sum())} of {len(bad)} tube(s) with OD600 "
+              f"below the detection threshold (from the growth table and the "
+              f"raw tube table, as tfs-process-counts would refuse them):\n"
+              f"{combined_sample_df.loc[bad, cols].to_string()}", flush=True)
+
+    # The in-memory growth table: written unless skipped, and needed by the
+    # in-library binding selection (survivors).
+    need_growth = write_growth or (
+        "binding_data" in cf
+        and cf["binding_data"].get("library_binding") is not None)
+    growth_df = None
+    if need_growth:
+        growth_df = counts_to_lncfu(
+            growth_sample_df.drop(columns="design_sample", errors="ignore"),
+            growth_counts_df)
+
+    if write_raw:
+        raw = write_raw_experiment(combined_sample_df, combined_counts_df,
+                                   library_df["genotype"], out_prefix,
+                                   od600_config=cf.get("od600"))
+        print(f"\nWrote the raw experiment: {raw['tubes']}, "
+              f"{raw['counts_dir']}/"
+              + (f", {raw['od600']}, {raw['calibration']}"
+                 if "od600" in raw else ""), flush=True)
+        if raw["dropped"]:
+            print(f"Left out of the tube table (OD600 below the detection "
+                  f"threshold): {raw['dropped']}", flush=True)
+        print(f"Process it as real data with:\n  {raw['command']}", flush=True)
 
     # -------------------------------------------------------------------------
     # Write outputs
@@ -147,10 +369,22 @@ def run_simulation_from_config(
     library_df.to_csv(out_path("library"), index=False)
     parameters_df.to_csv(out_path("parameters"), index=False)
     genotype_theta_df.to_csv(out_path("genotype_theta"), index=False)
-    growth_df.to_csv(out_path("growth"), index=False)
+    if write_growth:
+        growth_df.to_csv(out_path("growth"), index=False)
     growth_parameters_df.to_csv(out_path("growth_parameters"), index=False)
     transformation_lam_df.to_csv(out_path("transformation_lam"), index=False)
-    print(f"\nWrote: {', '.join(out_path(n) for n in ['library', 'parameters', 'genotype_theta', 'growth', 'growth_parameters', 'transformation_lam'])}")
+    written = ["library", "parameters", "genotype_theta", "growth_parameters",
+               "transformation_lam"] + (["growth"] if write_growth else [])
+    # Per-mutation / per-pair truth of mutation-decomposed theta models drawn
+    # from their prior (the thermodynamic models); absent otherwise.
+    for key, name in (("mutation", "mutation_parameters"),
+                      ("pair", "pair_parameters"),
+                      ("ddG_sigma", "ddG_sigma")):
+        truth_df = (mutation_truth or {}).get(key)
+        if truth_df is not None:
+            truth_df.to_csv(out_path(name), index=False)
+            written.append(name)
+    print(f"\nWrote: {', '.join(out_path(n) for n in written)}")
 
     if "binding_data" in cf:
         binding_cfg = cf["binding_data"]
@@ -174,12 +408,26 @@ def run_simulation_from_config(
                 growth_df,
                 spiked_genotypes=spiked_names,
                 rng=rng,
+                clip_theta_obs=bool(binding_cfg.get("clip_theta_obs", False)),
+                theta_df=library_binding_theta_df,
             )
             binding_df = pd.concat([binding_df, lib_binding_df], ignore_index=True)
             lib_manifest.to_csv(out_path("library_binding"), index=False)
             print(f"Wrote: {out_path('library_binding')}")
+        binding_df, offset_truth = apply_genotype_offsets(
+            binding_df, binding_cfg.get("genotype_offset_sd", 0.0), rng)
+        if offset_truth is not None:
+            offset_truth.to_csv(out_path("binding_offsets"), index=False)
+            print(f"Wrote: {out_path('binding_offsets')}")
         binding_df.to_csv(out_path("binding"), index=False)
         print(f"Wrote: {out_path('binding')}")
+
+    if cf.get("growth_titrant_scale") is not None:
+        s = growth_titrant_scale_from(cf)
+        pd.DataFrame({"parameter": ["growth_log_conc_shift"],
+                      "ref": [float(np.log(s))]}).to_csv(
+            out_path("growth_titrant_scale"), index=False)
+        print(f"Wrote: {out_path('growth_titrant_scale')}")
 
     if "base_growth_data" in cf:
         base_growth_df = generate_base_growth_df(cf["base_growth_data"], parameters_df, rng)
@@ -194,7 +442,7 @@ def run_simulation_from_config(
         print("\nGenerating presplit data...", flush=True)
         presplit_df = generate_presplit_df(combined_sample_df,
                                            combined_counts_df,
-                                           cf, rng)
+                                           sim_cf, rng)
         presplit_df.to_csv(out_path("presplit"), index=False)
         print(f"Wrote: {out_path('presplit')}")
 

@@ -16,7 +16,6 @@ from tfscreen.tfmodel.generative.components.sample_offset.normal import (
     get_hyperparameters,
     get_priors,
     get_guesses,
-    get_extract_specs,
 )
 
 
@@ -51,9 +50,6 @@ class TestNormalSampleOffset:
         guesses = get_guesses("sample_offset", None)
         assert "sample_offset_sigma_env" in guesses
         assert float(guesses["sample_offset_sigma_env"]) > 0
-
-    def test_get_extract_specs_returns_list(self):
-        assert isinstance(get_extract_specs(None), list)
 
     def test_define_model_output_shape(self):
         """define_model must return shape (R, T, CP, CS, TN, TC, 1)."""

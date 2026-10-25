@@ -1,0 +1,17 @@
+run,parameter,key,truth,q0_5,lo,hi,covered
+fit_null_s1_plain_from_plain_pinkm,growth_k,kanR+kan,0.015042,0.015042,0.015042,0.015042,True
+fit_null_s1_plain_from_plain_pinkm,growth_k,kanR-kan,0.023923,0.023923,0.023923,0.023923,True
+fit_null_s1_plain_from_plain_pinkm,growth_k,pheS+4CP,0.003107,0.003107,0.003107,0.003107,True
+fit_null_s1_plain_from_plain_pinkm,growth_k,pheS-4CP,0.022042,0.022042,0.022042,0.022042,True
+fit_null_s1_plain_from_plain_pinkm,growth_m,kanR+kan,-0.014122,-0.014122,-0.014122,-0.014122,True
+fit_null_s1_plain_from_plain_pinkm,growth_m,kanR-kan,0.0,0.0,0.0,0.0,True
+fit_null_s1_plain_from_plain_pinkm,growth_m,pheS+4CP,0.014379,0.014379,0.014379,0.014379,True
+fit_null_s1_plain_from_plain_pinkm,growth_m,pheS-4CP,0.0,0.0,0.0,0.0,True
+fit_null_s1_plain,growth_k,kanR+kan,0.015042,0.019639313,0.01776531,0.021214087,False
+fit_null_s1_plain,growth_k,kanR-kan,0.023923,0.029058484,0.026518818,0.03145352,False
+fit_null_s1_plain,growth_k,pheS+4CP,0.003107,0.0037996653,0.0013952442,0.0064904196,True
+fit_null_s1_plain,growth_k,pheS-4CP,0.022042,0.02379319,0.020922774,0.027036328,True
+fit_null_s1_plain,growth_m,kanR+kan,-0.014122,-0.017343588,-0.01765266,-0.016980322,False
+fit_null_s1_plain,growth_m,kanR-kan,0.0,2.2137636e-05,-2.0148449e-05,6.657838e-05,True
+fit_null_s1_plain,growth_m,pheS+4CP,0.014379,0.017263267,0.016902821,0.017571792,False
+fit_null_s1_plain,growth_m,pheS-4CP,0.0,2.6166083e-05,-5.8999135e-06,5.760233e-05,True

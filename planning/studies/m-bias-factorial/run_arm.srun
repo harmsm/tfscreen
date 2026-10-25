@@ -1,0 +1,22 @@
+#!/bin/bash -l
+#SBATCH --account=harmslab
+#SBATCH --job-name=tfs_mbias
+#SBATCH --output=run.out
+#SBATCH --error=run.err
+#SBATCH --partition=gpulong
+#SBATCH --time=01-00:00:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --gpus=1
+#SBATCH --mem=0
+#SBATCH --ntasks-per-node=1
+
+# One m-bias factorial arm (planning/studies/m-bias-factorial), submitted
+# from inside the arm's directory; run_arm.sh (one level up) runs the chain
+# and skips any step whose output exists, so a resubmit resumes.
+
+module load cuda/12.4.1
+set -e
+echo ">>> Start $(date)"
+bash ../run_arm.sh
+echo ">>> Done $(date)"

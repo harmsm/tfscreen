@@ -28,13 +28,27 @@ from tfscreen.simulate.sim_data_class import build_sim_data
 # Components excluded from simulation (calibration-only, no generative prior).
 _EXCLUDED = frozenset({"_simple"})
 
+# Sample sites returned with the deterministic sites (return_deterministic):
+# the PddG/PnnC per-state ΔΔG SD sigma_s, a latent sample site
+# (thermo/prior.py) but part of the simulation's truth.  The per-state ΔΔG
+# truth itself (theta_ddG) is the per-state draw of _per_state_truth_conditions.
+_TRUTH_SAMPLE_SITES = frozenset({"theta_ddG_sigma"})
+
+# fold_in tag for the key of the per-state ΔΔG truth draw.
+_PER_STATE_TRUTH_FOLD = 7919
+
+# SD (kT) of the simulated ΔΔG about the table when ddG_truth_sd is absent.
+DEFAULT_DDG_TRUTH_SD = 1.0
+
 
 def sample_theta_prior(component_name,
                        sim_data,
                        rng_key,
                        priors_overrides=None,
                        sim_priors_overrides=None,
-                       force_prior_predictive=False):
+                       force_prior_predictive=False,
+                       return_deterministic=False,
+                       conditions=None):
     """
     Draw one sample of theta from a registered theta component.
 
@@ -46,6 +60,10 @@ def sample_theta_prior(component_name,
 
     Otherwise the prior-predictive path is used: ``define_model`` is called
     inside a seeded NumPyro trace, and ``run_model`` produces ``theta_gc``.
+    For the structural models (PddG/PnnC, which put their prior on Δln K)
+    the per-state ΔΔG truth is drawn per state and Δln K is conditioned on
+    its projection, which takes a second traced draw with the same key
+    (``_per_state_truth_conditions``).
     Set ``force_prior_predictive=True`` to always use this path — this is
     required for mutation-decomposed components (e.g. ``hill_mut``) when the
     pool library has only the wt genotype and M=0 mutations, because the
@@ -70,6 +88,22 @@ def sample_theta_prior(component_name,
     force_prior_predictive : bool, default False
         When True, always use the prior-predictive path (``define_model`` +
         ``handlers.seed``), even if the component provides ``simulate``.
+    return_deterministic : bool, default False
+        When True, also return the values of every ``pyro.deterministic``
+        site recorded while drawing the sample (prior-predictive path), plus
+        the structural models' σ_s sample site (``theta_ddG_sigma``; see
+        ``_TRUTH_SAMPLE_SITES``), so callers can write the per-mutation
+        (``theta_d_*``), per-pair (``theta_epi_*``) and per-state
+        (``theta_ddG``, ``theta_ddG_sigma``) truth that ``ThetaParam`` does
+        not carry.  ``theta_ddG`` is the per-state truth draw, not the
+        model's post-hoc ΔΔG site.  Tracing does not change the draw.
+    conditions : dict or None
+        ``{sample_site: value}`` fixing sample sites of the draw
+        (prior-predictive path only; ``numpyro.handlers.condition``), e.g.
+        ``{"theta_ddG_sigma": ...}`` from :func:`ddG_truth_conditions`.  A
+        conditioned site draws no random number; every other site draws as
+        it would with the same value sampled.  A name that is not a sample
+        site of the model is an error.
 
     Returns
     -------
@@ -79,6 +113,9 @@ def sample_theta_prior(component_name,
     theta_param : ThetaParam
         Sampled parameter pytree.  When the perturbation path is used,
         ``mu`` and ``sigma`` fields are ``None``.
+    deterministic : dict[str, np.ndarray]
+        Only when ``return_deterministic`` is True: deterministic site name
+        to value.  Empty for the perturbation path, which has no trace.
 
     Raises
     ------
@@ -106,7 +143,11 @@ def sample_theta_prior(component_name,
         if sim_priors_overrides:
             sim_params.update(sim_priors_overrides)
         sim_priors = module.SimPriors(**sim_params)
-        return module.simulate("theta", sim_data, sim_priors, rng_key)
+        theta_gc, theta_param = module.simulate("theta", sim_data, sim_priors,
+                                                rng_key)
+        if return_deterministic:
+            return theta_gc, theta_param, {}
+        return theta_gc, theta_param
 
     # Prior-predictive fallback: seed the NumPyro trace and call define_model.
     # handlers.seed gives every pyro.sample site a reproducible draw
@@ -118,14 +159,194 @@ def sample_theta_prior(component_name,
         params.update(priors_overrides)
     priors = module.ModelPriors(**params)
 
-    with handlers.seed(rng_seed=rng_key):
-        theta_param = module.define_model("theta", sim_data, priors)
+    # Conditioned sample sites (e.g. the ddG truth-noise SD sigma_s) take
+    # the given value; condition sits inside seed, so they draw no key.
+    conditions = dict(conditions or {})
+
+    # handlers.trace only records the sites; the seeded draw is unchanged.
+    def _draw(conds):
+        with handlers.trace() as tr:
+            with handlers.seed(rng_seed=rng_key):
+                with handlers.condition(data=conds):
+                    param = module.define_model("theta", sim_data, priors)
+        return tr, param
+
+    trace, theta_param = _draw(conditions)
+
+    # Structural models (PddG/PnnC) put their prior on Δln K; the truth is
+    # drawn per state instead, so the per-state ΔΔG truth exists.
+    per_state_ddG = None
+    redraw = _per_state_truth_conditions(module, trace, conditions, rng_key)
+    if redraw is not None:
+        per_state_ddG, redraw_conditions = redraw
+        trace, theta_param = _draw(redraw_conditions)
+
+    if conditions:
+        samples_seen = {n for n, site in trace.items()
+                        if site["type"] == "sample"}
+        unknown = sorted(set(conditions) - samples_seen)
+        if unknown:
+            raise ValueError(
+                f"conditions {unknown} are not sample sites of theta "
+                f"component '{component_name}'.")
 
     # run_model returns (T=1, C, G) for simulation (scatter_theta=0).
     theta_tcg = module.run_model(theta_param, sim_data)
     theta_gc = np.array(theta_tcg[0]).T   # (G, C)
 
+    if return_deterministic:
+        deterministic = {name: np.asarray(site["value"])
+                         for name, site in trace.items()
+                         if site["type"] == "deterministic"
+                         or (site["type"] == "sample"
+                             and name in _TRUTH_SAMPLE_SITES)}
+        if per_state_ddG is not None:
+            deterministic["theta_ddG"] = per_state_ddG
+        return theta_gc, theta_param, deterministic
     return theta_gc, theta_param
+
+
+def _per_state_truth_conditions(module, trace, conditions, rng_key,
+                                name="theta"):
+    """
+    Conditions that make a structural model's Δln K a per-state draw.
+
+    The PddG/PnnC models sample Δln K ~ MVN(P · μ, P · diag(σ²) · Pᵀ)
+    (``thermo/prior.py``).  A simulation needs the per-state ΔΔG truth too,
+    which in the U0 models Δln K does not determine.  So the truth is drawn
+    as the per-state model states it, ΔΔG = μ + σ_s · z (``prior.
+    per_state_truth``), and Δln K is conditioned on P · ΔΔG, which has
+    exactly the model's distribution.  σ_s is the first draw's value (the
+    conditioned ``ddG_truth_sd``, or a draw from its prior); μ is the
+    model's ``theta_ddG_prior_mean`` (the table, or the untrained MLP's 0).
+
+    Parameters
+    ----------
+    module : module
+        The theta component; it has ``DLNK_PROJ`` when it is structural.
+    trace : dict
+        Trace of the first draw.
+    conditions : dict
+        The caller's conditions.
+    rng_key : jax.random.PRNGKey
+        The draw's key; the truth uses ``fold_in(rng_key, 7919)``.
+
+    Returns
+    -------
+    None, or (ddG, conditions)
+        None when the model has no Δln K site to redraw (not structural, no
+        mutations, or Δln K already conditioned).  Otherwise the per-state
+        ΔΔG truth (M, S) and the conditions for the second draw.
+    """
+    from tfscreen.tfmodel.generative.components.theta.thermo.prior import (
+        ddG_sigma_site,
+        dlnK_site,
+        per_state_truth,
+    )
+
+    proj = getattr(module, "DLNK_PROJ", None)
+    site = dlnK_site(name)
+    if (proj is None or site not in trace or site in conditions
+            or trace[site]["type"] != "sample"):
+        return None
+    if isinstance(rng_key, (int, np.integer)):
+        rng_key = jax.random.PRNGKey(int(rng_key))
+    sigma = np.asarray(trace[ddG_sigma_site(name)]["value"])
+    prior_means = np.asarray(trace[f"{name}_ddG_prior_mean"]["value"])
+    ddG, dlnK = per_state_truth(
+        prior_means, sigma, proj,
+        jax.random.fold_in(rng_key, _PER_STATE_TRUTH_FOLD))
+    return ddG, {**conditions, ddG_sigma_site(name): sigma, site: dlnK}
+
+
+def ddG_truth_conditions(ddG_truth_sd, theta_component, thermo_options=None):
+    """
+    Site conditions that set the SD of the simulated per-structure ΔΔG.
+
+    The PddG/PnnC models sample ``theta_ddG_sigma`` (σ_s, one per
+    state) and put the prior on Δln K (``thermo/prior.py``).  The
+    simulator draws the per-state truth ΔΔG = prior_mean + σ_s · z and
+    conditions Δln K on its projection (``sample_theta_prior``), so σ_s is
+    the SD of truth minus the structural prior mean.  The simulation
+    conditions σ_s rather than drawing it from its LogNormal prior, so the
+    truth noise is a known dial.
+
+    Parameters
+    ----------
+    ddG_truth_sd : float, dict or None
+        A scalar SD for every structure, or ``{structure: sd}`` naming every
+        structure in the component's ``STRUCTURE_NAMES``.  In the energy unit
+        of ``thermo_options['ddG_units']`` (kT by default) and converted to
+        kT once, like the ΔΔG table.  0 makes the truth the table exactly.
+        None gives 1 kT for every structure (the default truth noise).
+    theta_component : str
+        Registered theta component.
+    thermo_options : dict or None
+        Supplies ``ddG_units`` and ``temperature_K``.
+
+    Returns
+    -------
+    dict or None
+        ``{"theta_ddG_sigma": np.ndarray (S,)}`` in kT, in the component's
+        ``STRUCTURE_NAMES`` order.  None for a component without the site
+        when ``ddG_truth_sd`` is None.
+
+    Raises
+    ------
+    ValueError
+        ``ddG_truth_sd`` given for a component that is not PddG/PnnC, or
+        not a finite number >= 0, or a mapping that does not name exactly
+        the component's structures.
+    """
+    from tfscreen.tfmodel.generative.components.theta.thermo.io import (
+        ddG_to_kT_factor,
+        normalize_thermo_options,
+        required_struct_names,
+    )
+    from tfscreen.tfmodel.generative.components.theta.thermo.prior import (
+        ddG_sigma_site,
+    )
+
+    struct_names = (required_struct_names(theta_component)
+                    if theta_component is not None else None)
+    if struct_names is None:
+        if ddG_truth_sd is None:
+            return None
+        raise ValueError(
+            f"ddG_truth_sd applies only to the structural thermo components "
+            f"(thermo.*.PddG, thermo.*.PnnC); theta_component is "
+            f"'{theta_component}'.")
+    if ddG_truth_sd is None:
+        return {ddG_sigma_site(): np.full(len(struct_names), DEFAULT_DDG_TRUTH_SD)}
+
+    def _sd(value, label):
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"ddG_truth_sd{label} must be a number; got "
+                             f"{value!r}.")
+        value = float(value)
+        if not np.isfinite(value) or value < 0:
+            raise ValueError(f"ddG_truth_sd{label} must be finite and >= 0; "
+                             f"got {value}.")
+        return value
+
+    if isinstance(ddG_truth_sd, dict):
+        given = {str(k): v for k, v in ddG_truth_sd.items()}
+        unknown = sorted(set(given) - set(struct_names))
+        missing = [s for s in struct_names if s not in given]
+        if unknown or missing:
+            raise ValueError(
+                f"ddG_truth_sd mapping must name every structure of "
+                f"'{theta_component}' ({list(struct_names)}); "
+                + (f"unknown {unknown}" if unknown else "")
+                + ("; " if unknown and missing else "")
+                + (f"missing {missing}" if missing else "") + ".")
+        sd = np.array([_sd(given[s], f"[{s}]") for s in struct_names])
+    else:
+        sd = np.full(len(struct_names), _sd(ddG_truth_sd, ""))
+
+    opts = normalize_thermo_options(thermo_options)
+    factor = ddG_to_kT_factor(opts["ddG_units"], opts["temperature_K"])
+    return {ddG_sigma_site(): sd * factor}
 
 
 def _greedy_maximin(theta_gc, n_select):
@@ -173,6 +394,7 @@ def sample_theta_stratified(component_name,
                              n_select,
                              thermo_data=None,
                              pool_size=500,
+                             thermo_options=None,
                              priors_overrides=None,
                              sim_priors_overrides=None,
                              select_mode="stratified"):
@@ -204,6 +426,8 @@ def sample_theta_stratified(component_name,
     n_select : int
         Number of genotypes to select (= number of calibration binding genotypes).
     thermo_data : str or None
+        Forwarded to build_sim_data.
+    thermo_options : dict or None
         Forwarded to build_sim_data.
     pool_size : int, default 500
         Number of candidate parameter sets to draw before selection.
@@ -241,9 +465,13 @@ def sample_theta_stratified(component_name,
     # regime regardless of pool_size.
     single_library_df = pd.DataFrame({"genotype": ["wt"]})
     binding_sim_data = build_sim_data(single_library_df, binding_sample_df,
-                                      thermo_data=thermo_data, skip_pairs=True)
+                                      thermo_data=thermo_data, skip_pairs=True,
+                                     theta_component=component_name,
+                                     thermo_options=thermo_options)
     growth_sim_data = build_sim_data(single_library_df, growth_sample_df,
-                                     thermo_data=thermo_data, skip_pairs=True)
+                                     thermo_data=thermo_data, skip_pairs=True,
+                                     theta_component=component_name,
+                                     thermo_options=thermo_options)
 
     # Always use the prior-predictive path for pool building.  The perturbation
     # path (simulate()) requires mutations to generate diversity; with a wt-only

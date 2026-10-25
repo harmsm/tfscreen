@@ -41,7 +41,7 @@ def _make_fit_summary(subdir, training_rmse=0.05, test_rmse=None,
                       "r_squared": 0.90, "mean_error": 0.001,
                       "pct_success": 1.0, "normalized_rmse": 0.1,
                       "residual_corr": 0.02, "residual_corr_p_value": 0.4,
-                      "bp_p_value": 0.3, "coverage_prob": None}
+                      "bp_p_value": 0.3}
     theta_test = None
     if test_rmse is not None:
         theta_test = dict(theta_training)
@@ -266,3 +266,23 @@ class TestSummarizeGridFitSummary:
         assert len(df) == 3
         rmse_vals = sorted(df["theta_training_rmse"].tolist())
         assert rmse_vals == pytest.approx([0.03, 0.07, 0.12])
+
+
+def test_fit_summary_found_in_summary_subdir(tmp_path):
+    # tfs-summarize-fit's default output is {run_dir}/summary/tfs_summarize
+    sub = tmp_path / "run_0001_a"
+    (sub / "summary").mkdir(parents=True)
+    _make_combo(str(sub))
+    _make_fit_summary(str(sub / "summary"), training_rmse=0.07)
+    df = summarize_grid(str(tmp_path))
+    assert df.loc[0, "theta_training_rmse"] == 0.07
+
+
+def test_simulate_variables_included(tmp_path):
+    sub = tmp_path / "run_0001_a"
+    sub.mkdir()
+    with open(sub / "combo.json", "w") as fh:
+        json.dump({"simulate": {"seed": 3}, "template": {"arm": "map"}}, fh)
+    df = summarize_grid(str(tmp_path))
+    assert df.loc[0, "seed"] == 3
+    assert df.loc[0, "arm"] == "map"

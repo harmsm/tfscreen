@@ -161,8 +161,8 @@ def _process_paired_fastq(f1_fastq: str,
     chunk_size : int
         break the reads into chunks of chunk_size reads for processing by their
         own worker
-    num_workers : int or None
-        number of workers to use. If not specified, set to os.cpu_count() - 1
+    num_workers : int
+        number of worker processes; -1 (or None) uses os.cpu_count() - 1
 
     Returns
     -------
@@ -371,10 +371,10 @@ def _create_counts_df(sequences: Counter,
     return df
 
 
-def process_fastq(f1_fastq: str,
+def process_fastq(library_config: Union[str, dict, LibraryManager],
+                  f1_fastq: str,
                   f2_fastq: str,
-                  out_dir: str,
-                  run_config: Union[str, dict, LibraryManager],
+                  out_dir: str = "counts",
                   phred_cutoff: int = 10,
                   min_read_length: int = 50,
                   allowed_num_flank_diffs: int = 1,
@@ -382,20 +382,26 @@ def process_fastq(f1_fastq: str,
                   print_raw_seq: bool = False,
                   max_num_reads: Optional[int] = None,
                   chunk_size: int = 10000,
-                  num_workers: int | None = None) -> None:
+                  num_workers: int = -1) -> None:
     """
-    Count the protein genotypes observed in a pair of fastq files. 
+    Count the protein genotypes observed in a pair of fastq files.
+
+    Writes ``counts_<f1 name>.csv`` and ``stats_<f1 name>.csv`` into
+    ``out_dir``. tfs-process-counts finds each tube's counts file by its
+    sample name, so name the fastq files after the tubes.
 
     Parameters
     ----------
-    f1_fastq, f2_fastq : str, str
-        fastq/fastq.gz with paired-end reads
+    library_config : str, dict, LibraryManager
+        The library YAML (the same file later passed to tfs-configure-model
+        --library_config), a dict of its keys, or a LibraryManager. Only the
+        genetics keys are read; see LibraryManager.
+    f1_fastq : str
+        forward-read fastq/fastq.gz file
+    f2_fastq : str
+        reverse-read fastq/fastq.gz file of the same tube
     out_dir : str
-        output directory
-    run_config : str, dict, LibraryManager
-        input file/dict to initialize a LibraryManager or a pre-initialized
-        library instance. This defines the expected library. See the docstring
-        for the `LibraryManager` class for more details on the inputs. 
+        output directory, created if absent
     phred_cutoff : int, default 10
         assign any base with phred < cutoff to "N"
     min_read_length : int, default=50
@@ -419,8 +425,8 @@ def process_fastq(f1_fastq: str,
     chunk_size : int
         break the reads into chunks of chunk_size reads for processing by their
         own worker
-    num_workers : int or None
-        number of workers to use. If not specified, set to os.cpu_count() - 1
+    num_workers : int
+        number of worker processes; -1 (or None) uses os.cpu_count() - 1
     
     Returns
     -------
@@ -440,11 +446,14 @@ def process_fastq(f1_fastq: str,
     else:
         os.makedirs(out_dir)
 
+    if num_workers is not None and num_workers < 0:
+        num_workers = None
+
     # Initialize library manager
-    if isinstance(run_config,LibraryManager):
-        lm = run_config
+    if isinstance(library_config,LibraryManager):
+        lm = library_config
     else:
-        lm = LibraryManager(run_config)
+        lm = LibraryManager(library_config)
 
     # Set up a FastqToCounts object for calling read pairs
     ftc_instance = FastqToCounts(lm,
@@ -473,4 +482,9 @@ def process_fastq(f1_fastq: str,
     counts_df.to_csv(counts_file,index=False)
 
 def main():
-    return generalized_main(process_fastq,manual_arg_types={"num_workers": int})
+    return generalized_main(process_fastq,
+                            manual_arg_types={"max_num_reads": int})
+
+
+if __name__ == "__main__":
+    main()

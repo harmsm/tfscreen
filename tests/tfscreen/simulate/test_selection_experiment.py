@@ -1,3 +1,6 @@
+import copy
+import os
+
 import pytest
 import pandas as pd
 import numpy as np
@@ -16,12 +19,15 @@ from tfscreen.simulate.selection_experiment import (
     _sim_plasmid_probabilities,
     _sim_index_hop,
     _sim_transform,
+    _sim_transform_collapsed,
     _sim_transform_and_mix,
     _sim_growth,
-    MULTI_PLASMID_COMBINE_FCNS,
+    _cell_kt,
+    _check_cell_components,
     SIMULATE_KNOWN_KEYS,
     _sim_sequencing,
     _calc_genotype_cfu0,
+    _plasmid_shares,
     _compute_kt,
     _simulate_library_group,
     selection_experiment
@@ -54,8 +60,9 @@ def base_config() -> dict:
             "libA": 0.6,
             "libB": 0.4,
         },
-        "multi_plasmid_combine_fcn": {
-            "test_selection": "mean"
+        "growth": {
+            "M9": {"model": "linear", "b": 0.09, "m": 0.0},
+            "M9 + Ab": {"model": "linear", "b": 0.5, "m": 0.6},
         },
         "condition_selector": [
             "titrant_name", "titrant_conc",
@@ -76,16 +83,23 @@ def base_library_df() -> pd.DataFrame:
 
 @pytest.fixture
 def base_phenotype_df(base_library_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Phenotypes consistent with base_config["growth"]: k = b + m*theta + dk_geno.
+    """
     genotypes = sorted(list(pd.unique(base_library_df["genotype"])))
     conditions = [
         {"titrant_name": "IPTG", "titrant_conc": 10.0},
         {"titrant_name": "IPTG", "titrant_conc": 100.0},
     ]
-    base_growth_rates = {"A1V": 0.8, "A2V": 1.0, "A3V": 1.2, "A4V": 0.6}
-    
+    theta_by_geno = {"A1V": (0.2, 0.1), "A2V": (0.9, 0.5),
+                     "A3V": (0.6, 0.3), "A4V": (0.4, 0.05)}
+    dk_by_geno = {"A1V": 0.01, "A2V": -0.02, "A3V": 0.0, "A4V": 0.005}
+
     records = []
     for g in genotypes:
-        for c in conditions:
+        for i, c in enumerate(conditions):
+            theta = theta_by_geno[g][i]
+            dk = dk_by_geno[g]
             record = {
                 "genotype": g,
                 "replicate": 1,
@@ -94,10 +108,11 @@ def base_phenotype_df(base_library_df: pd.DataFrame) -> pd.DataFrame:
                 "t_pre": 4.0,
                 "condition_sel": "M9 + Ab",
                 "t_sel": 18.0,
-                "k_pre": 0.1,
-                "k_sel": base_growth_rates[g] * (1 + c["titrant_conc"] / 50.0),
-                "dk_geno": 0.01,
-                "theta": 1.0,
+                "k_pre": 0.09 + dk,
+                "k_sel": 0.5 + 0.6*theta + dk,
+                "dk_geno": dk,
+                "activity": 1.0,
+                "theta": theta,
                 **c
             }
             records.append(record)
@@ -248,26 +263,60 @@ def test_check_lib_spec_success(base_config: dict,
     _check_lib_spec(cf_copy, lib_df_copy, pheno_df_copy)
     assert True # Indicates successful run without errors
 
-def test_check_lib_spec_sets_defaults(base_config: dict, 
-                                      base_library_df: pd.DataFrame, 
-                                      base_phenotype_df: pd.DataFrame):
-    """
-    Tests that the function correctly sets the default for the
-    'multi_plasmid_combine_fcn' if it is not in the config.
-    """
-    cf_copy = base_config.copy()
-    lib_df_copy = base_library_df.copy()
-    pheno_df_copy = base_phenotype_df.copy()
+def test_check_cf_rejects_multi_plasmid_combine_fcn(base_config: dict):
+    """The removed key fails with a message naming its replacements."""
+    cf = dict(base_config)
+    cf["multi_plasmid_combine_fcn"] = {"test_selection": "mean"}
+    with pytest.raises(ValueError, match="congression_theta_rule"):
+        _check_cf(cf)
 
-    # Remove the key to test default-setting behavior
-    cf_copy.pop("multi_plasmid_combine_fcn")
 
-    result_cf = _check_lib_spec(cf_copy, lib_df_copy, pheno_df_copy)
+def test_check_cf_congression_rule_defaults(base_config: dict):
+    """Omitted congression rules default to homodimer theta and dilution dk."""
+    cf = _check_cf(dict(base_config))
+    assert cf["congression_theta_rule"] == "homodimer"
+    assert cf["congression_dk_rule"] == "dilution"
 
-    assert "multi_plasmid_combine_fcn" in result_cf
-    # 'test_selection' is the library name in base_phenotype_df
-    expected_default = {"test_selection": "mean"}
-    assert result_cf["multi_plasmid_combine_fcn"] == expected_default
+
+def test_check_cf_dk_alpha_default_none(base_config: dict):
+    cf = _check_cf(dict(base_config))
+    assert cf["congression_dk_alpha"] is None
+
+
+def test_check_cf_softmin_takes_alpha(base_config: dict):
+    cf = dict(base_config)
+    cf["congression_dk_rule"] = "softmin"
+    cf["congression_dk_alpha"] = 100
+    cf = _check_cf(cf)
+    assert cf["congression_dk_alpha"] == 100.0
+    assert isinstance(cf["congression_dk_alpha"], float)
+
+
+@pytest.mark.parametrize("alpha", [None, 0, -1.0, float("inf")])
+def test_check_cf_softmin_needs_positive_finite_alpha(base_config: dict, alpha):
+    cf = dict(base_config)
+    cf["congression_dk_rule"] = "softmin"
+    cf["congression_dk_alpha"] = alpha
+    with pytest.raises(ValueError, match="congression_dk_alpha"):
+        _check_cf(cf)
+
+
+@pytest.mark.parametrize("rule", ["dilution", "min"])
+def test_check_cf_other_dk_rules_refuse_alpha(base_config: dict, rule):
+    cf = dict(base_config)
+    cf["congression_dk_rule"] = rule
+    cf["congression_dk_alpha"] = 100.0
+    with pytest.raises(ValueError, match="only used by"):
+        _check_cf(cf)
+
+
+@pytest.mark.parametrize("key", ["congression_theta_rule", "congression_dk_rule"])
+def test_check_cf_bad_congression_rule(base_config: dict, key):
+    cf = dict(base_config)
+    cf[key] = "not_a_rule"
+    with pytest.raises(ValueError, match=key):
+        _check_cf(cf)
+
 
 @pytest.mark.parametrize("modification_lambda, match_error", [
     # Genotype in library_df is missing from phenotype_df
@@ -286,9 +335,7 @@ def test_check_lib_spec_sets_defaults(base_config: dict,
     
     # Ratios in library_mixture sum to zero
     (lambda cf, lib, pheno: cf.update({"library_mixture": {"libA": 0, "libB": 0}}), "cannot be zero"),
-    
-    # Invalid multi_plasmid_combine_fcn name
-    (lambda cf, lib, pheno: cf["multi_plasmid_combine_fcn"].update({"test_selection": "bad_fcn"}), "not recognized"),
+
 ])
 def test_check_lib_spec_failures(base_config: dict, 
                                  base_library_df: pd.DataFrame, 
@@ -498,11 +545,13 @@ def test_sim_transform_and_mix(mocker, base_library_df: pd.DataFrame,
     # FIX: Convert to dict, as the code now iterates over .items()
     lib_origin_dict = dict(list(df.groupby(groupby_key)))
     
-    mock_return_libA = (np.ones((2, 2)), np.zeros((2, 2), dtype=bool))
-    mock_return_libB = (np.ones((3, 1)), np.zeros((3, 1), dtype=bool))
+    mock_return_libA = (np.ones((2, 2)), np.zeros((2, 2), dtype=bool),
+                        np.ones(2))
+    mock_return_libB = (np.ones((3, 1)), np.zeros((3, 1), dtype=bool),
+                        np.ones(3))
 
     mock_sim_transform = mocker.patch(
-        "tfscreen.simulate.selection_experiment._sim_transform",
+        "tfscreen.simulate.selection_experiment._sim_transform_collapsed",
         side_effect=[mock_return_libA, mock_return_libB]
     )
     # We don't necessarily need to mock vstack_padded unless strictly testing flow
@@ -543,11 +592,14 @@ def test_sim_transform_and_mix_invariant_to_transform_sizes(rng: Generator):
     where per-cell weights weren't normalized by the number of transformants
     drawn, letting transform_sizes leak into the mixing ratio.
     """
-    df = pd.DataFrame({
-        "library_origin": ["A"] * 5 + ["B"] * 5,
-        "genotype": [f"A{i}" for i in range(5)] + [f"B{i}" for i in range(5)],
-    })
-    df["probs"] = 0.2
+    # every genotype in every origin (zero weight outside its own), as
+    # selection_experiment lays the library out, so genotype indices are
+    # global: A's genotypes are 0-4, B's 5-9
+    genos = [f"A{i}" for i in range(5)] + [f"B{i}" for i in range(5)]
+    df = pd.DataFrame({"library_origin": ["A"] * 10 + ["B"] * 10,
+                       "genotype": genos * 2})
+    df["probs"] = np.r_[np.full(5, 0.2), np.zeros(5),
+                        np.zeros(5), np.full(5, 0.2)]
     lib_origin_dict = dict(list(df.groupby("library_origin")))
 
     library_mixture = {"A": 1.0, "B": 1.0}
@@ -557,101 +609,199 @@ def test_sim_transform_and_mix_invariant_to_transform_sizes(rng: Generator):
         {"A": 1000, "B": 10000},
         {"A": 1000, "B": 100000},
     ):
-        _, _, probs = _sim_transform_and_mix(
+        trans, _, probs = _sim_transform_and_mix(
             lib_origin_dict, transform_sizes, library_mixture, None, rng
         )
-        n_a = transform_sizes["A"]
-        np.testing.assert_allclose(probs[:n_a].sum(), 0.5, atol=1e-9)
-        np.testing.assert_allclose(probs[n_a:].sum(), 0.5, atol=1e-9)
+        from_a = trans[:, 0] < 5
+        np.testing.assert_allclose(probs[from_a].sum(), 0.5, atol=1e-9)
+        np.testing.assert_allclose(probs[~from_a].sum(), 0.5, atol=1e-9)
 
 
 # ----------------------------------------------------------------------------
 # test _sim_growth
 # ----------------------------------------------------------------------------
 
-def test_sim_growth_single_plasmid():
-    """
-    Tests a simple case where all cells have exactly one plasmid.
-    """
-    # 3 cells, each with one plasmid (genotypes 0, 1, 2)
-    transformants = np.array([[0], [1], [2]])
-    trans_mask = np.array([[False], [False], [False]])
+def test_sim_growth():
+    """Final CFU is initial CFU times exp(cell k*t)."""
     trans_freq = np.array([0.2, 0.3, 0.5])
     total_cfu0 = 1.0e6
-    
-    # 3 genotypes, 2 conditions
-    genotype_vs_kt = np.array([
-        [0.1, 0.5], # Genotype 0 k*t values
-        [0.2, 0.6], # Genotype 1 k*t values
-        [0.3, 0.7], # Genotype 2 k*t values
-    ])
+    cell_kt = np.array([[0.1, 0.5],
+                        [0.2, 0.6],
+                        [0.3, 0.7]])
 
-    # Manually calculate expected CFU
-    initial_cfus = total_cfu0 * trans_freq
-    growth_factors = np.exp(genotype_vs_kt)
-    expected_cfu = initial_cfus[:, np.newaxis] * growth_factors
-
-    result_cfu = _sim_growth(
-        transformants, trans_mask, trans_freq, genotype_vs_kt, total_cfu0, "mean"
-    )
+    expected_cfu = (total_cfu0 * trans_freq)[:, np.newaxis] * np.exp(cell_kt)
+    result_cfu = _sim_growth(cell_kt, trans_freq, total_cfu0)
 
     np.testing.assert_allclose(result_cfu, expected_cfu)
 
-@pytest.mark.parametrize("combine_fcn_name", MULTI_PLASMID_COMBINE_FCNS.keys())
-def test_sim_growth_multi_plasmid(combine_fcn_name: str):
+
+# ----------------------------------------------------------------------------
+# test _cell_kt
+# ----------------------------------------------------------------------------
+
+def _cell_kt_inputs(growth_transition=None):
     """
-    Tests that multi-plasmid kt values are combined correctly for all
-    supported combination functions.
+    Three genotypes, two conditions, linear growth k = b + m*A*theta + dk.
+    Pre-growth has m = 0, so only selection depends on theta.
     """
-    # 2 cells: cell 0 has 2 plasmids (geno0, A1V), cell 1 has 1 (A2V)
-    transformants = np.array([[0, 1], [2, 0]]) # Second plasmid for cell 1 is masked
+    cf = {
+        "growth": {"pre": {"model": "linear", "b": 0.1, "m": 0.0},
+                   "sel": {"model": "linear", "b": 0.2, "m": 0.5}},
+        "theta_rescale": "passthrough",
+        "growth_transition": growth_transition,
+        "congression_theta_rule": "max",
+        "congression_dk_rule": "dilution",
+    }
+    theta = np.array([[0.1, 0.9],    # g0
+                      [0.8, 0.2],    # g1
+                      [0.5, 0.5]])   # g2
+    activity = np.array([1.0, 0.5, 1.0])
+    dk = np.array([0.0, -0.04, 0.02])
+    condition_info = pd.DataFrame({"condition_pre": ["pre", "pre"],
+                                   "condition_sel": ["sel", "sel"],
+                                   "t_pre": [1.0, 1.0],
+                                   "t_sel": [10.0, 10.0]})
+
+    def kt(theta_, activity_, dk_):
+        k_pre = 0.1 + dk_
+        k_sel = 0.2 + 0.5*activity_*theta_ + dk_
+        return k_pre*1.0 + k_sel*10.0
+
+    genotype_vs_kt = np.array([[kt(theta[g, c], activity[g], dk[g])
+                                for c in range(2)] for g in range(3)])
+    return cf, theta, activity, dk, condition_info, genotype_vs_kt, kt
+
+
+def test_cell_kt_single_plasmid_cells_match_genotypes():
+    cf, theta, activity, dk, info, gkt, _ = _cell_kt_inputs()
+    transformants = np.array([[0], [1], [2]])
+    trans_mask = np.zeros((3, 1), dtype=bool)
+    result = _cell_kt(transformants, trans_mask, gkt, theta, activity, dk,
+                      info, np.zeros(2), cf)
+    np.testing.assert_allclose(result, gkt)
+
+
+def test_cell_kt_co_transformed_cell_uses_cell_physics():
+    """
+    A {g0, g1} cell: theta and activity from the higher-theta plasmid at each
+    condition, dk diluted by share. Not any combination of the two
+    genotypes' k*t.
+    """
+    cf, theta, activity, dk, info, gkt, kt = _cell_kt_inputs()
+    transformants = np.array([[0, 1], [2, 0]])
     trans_mask = np.array([[False, False], [False, True]])
-    trans_freq = np.array([0.4, 0.6])
-    total_cfu0 = 1.0e6
+    tube_kt = np.array([0.01, -0.02])
 
-    genotype_vs_kt = np.array([
-        [0.1, 1.0], # Genotype 0
-        [0.5, 0.8], # Genotype 1
-        [0.3, 0.6], # Genotype 2
-    ])
+    result = _cell_kt(transformants, trans_mask, gkt + tube_kt, theta,
+                      activity, dk, info, tube_kt, cf)
 
-    # Calculate the expected effective kt for each cell
-    # Cell 0 combines kt from genotypes 0 and 1
-    kt_cell0 = genotype_vs_kt[[0, 1], :]
-    # Cell 1 only has kt from genotype 2
-    kt_cell1 = genotype_vs_kt[[2], :]
-    
-    # Use the actual numpy functions to get the expected combined kt values
-    if combine_fcn_name == "gmean":
-        from scipy.stats import gmean
-        expected_combined_kt_cell0 = gmean(kt_cell0, axis=0)
+    dk_cell = 0.5*dk[0] + 0.5*dk[1]
+    # condition 0: g1 has the higher theta (0.8, activity 0.5)
+    # condition 1: g0 has the higher theta (0.9, activity 1.0)
+    expected_cell0 = [kt(0.8, 0.5, dk_cell) + tube_kt[0],
+                      kt(0.9, 1.0, dk_cell) + tube_kt[1]]
+    np.testing.assert_allclose(result[0], expected_cell0)
+    # Single-plasmid cell keeps its genotype's k*t (tube noise included)
+    np.testing.assert_allclose(result[1], gkt[2] + tube_kt)
+
+
+@pytest.mark.parametrize("dk_rule,alpha", [("min", None), ("softmin", 100.0)])
+def test_cell_kt_dk_rule(dk_rule, alpha):
+    """The congression_dk_rule (and its alpha) sets a co-transformed cell's
+    dk_geno."""
+    cf, theta, activity, dk, info, gkt, kt = _cell_kt_inputs()
+    cf["congression_dk_rule"] = dk_rule
+    cf["congression_dk_alpha"] = alpha
+    transformants = np.array([[0, 1]])
+    trans_mask = np.zeros((1, 2), dtype=bool)
+    result = _cell_kt(transformants, trans_mask, gkt, theta, activity, dk,
+                      info, np.zeros(2), cf)
+    if dk_rule == "min":
+        dk_cell = min(dk[0], dk[1])
     else:
-        # Get the numpy/numpy.ma function (e.g., np.mean, np.max)
-        np_fcn = MULTI_PLASMID_COMBINE_FCNS[combine_fcn_name]
-        expected_combined_kt_cell0 = np_fcn(kt_cell0, axis=0)
+        dk_cell = -np.log(0.5*np.exp(-alpha*dk[0])
+                          + 0.5*np.exp(-alpha*dk[1])) / alpha
+    np.testing.assert_allclose(result[0], [kt(0.8, 0.5, dk_cell),
+                                           kt(0.9, 1.0, dk_cell)])
 
-    effective_kt = np.vstack([expected_combined_kt_cell0, kt_cell1])
-    
-    # Calculate final expected CFU
-    initial_cfus = total_cfu0 * trans_freq
-    expected_cfu = initial_cfus[:, np.newaxis] * np.exp(effective_kt)
-    
-    result_cfu = _sim_growth(
-        transformants, trans_mask, trans_freq, genotype_vs_kt, total_cfu0, combine_fcn_name
-    )
 
-    np.testing.assert_allclose(result_cfu, expected_cfu)
+def test_cell_kt_duplicate_genotype_matches_genotype():
+    """A cell with two copies of one genotype grows like that genotype."""
+    cf, theta, activity, dk, info, gkt, _ = _cell_kt_inputs()
+    transformants = np.array([[1, 1]])
+    trans_mask = np.zeros((1, 2), dtype=bool)
+    result = _cell_kt(transformants, trans_mask, gkt, theta, activity, dk,
+                      info, np.zeros(2), cf)
+    np.testing.assert_allclose(result[0], gkt[1])
 
-def test_sim_growth_invalid_fcn():
-    """
-    Tests that the function raises a ValueError for an invalid combine function.
-    """
-    # We can use dummy arrays as the function will fail before using them
-    dummy_array = np.array([[]])
-    with pytest.raises(ValueError, match="not recognized"):
-        _sim_growth(dummy_array, dummy_array, dummy_array, 
-                    dummy_array, 0, "not_a_real_function")
-        
+
+def test_cell_kt_applies_growth_transition():
+    """Co-transformed cells go through the growth transition model too."""
+    gt = [{"condition_pre": "pre", "model": "memory",
+           "tau0": 3.0, "k1": 1.0, "k2": 1.0}]
+    cf, theta, activity, dk, info, gkt, _ = _cell_kt_inputs(growth_transition=gt)
+
+    # Genotype k*t with the transition model, via the shared path
+    rows = []
+    for g in range(3):
+        for c in range(2):
+            rows.append({"k_pre": 0.1 + dk[g],
+                         "k_sel": 0.2 + 0.5*activity[g]*theta[g, c] + dk[g],
+                         "t_pre": 1.0, "t_sel": 10.0, "theta": theta[g, c],
+                         "condition_pre": "pre"})
+    gkt = _compute_kt(pd.DataFrame(rows), gt).reshape(3, 2)
+
+    # A {g2, g2} cell must reproduce g2's transition-model k*t exactly.
+    result = _cell_kt(np.array([[2, 2]]), np.zeros((1, 2), dtype=bool), gkt,
+                      theta, activity, dk, info, np.zeros(2), cf)
+    np.testing.assert_allclose(result[0], gkt[2])
+
+
+def test_cell_kt_nan_theta_gives_zero_growth():
+    cf, theta, activity, dk, info, gkt, _ = _cell_kt_inputs()
+    theta = theta.copy()
+    theta[1, 0] = np.nan
+    result = _cell_kt(np.array([[0, 1]]), np.zeros((1, 2), dtype=bool), gkt,
+                      theta, activity, dk, info, np.zeros(2), cf)
+    assert result[0, 0] == 0.0
+    assert np.isfinite(result[0, 1]) and result[0, 1] != 0.0
+
+
+def test_cell_kt_no_cells():
+    cf, theta, activity, dk, info, gkt, _ = _cell_kt_inputs()
+    result = _cell_kt(np.empty((0, 0), dtype=int), np.empty((0, 0), dtype=bool),
+                      gkt, theta, activity, dk, info, np.zeros(2), cf)
+    assert result.shape == (0, 2)
+
+
+# ----------------------------------------------------------------------------
+# test _check_cell_components
+# ----------------------------------------------------------------------------
+
+def test_check_cell_components_passes(base_config, base_phenotype_df):
+    _check_cell_components(_check_cf(dict(base_config)), base_phenotype_df)
+
+
+def test_check_cell_components_needs_growth(base_config, base_phenotype_df):
+    cf = _check_cf(dict(base_config))
+    cf.pop("growth")
+    with pytest.raises(ValueError, match="'growth' block"):
+        _check_cell_components(cf, base_phenotype_df)
+
+
+def test_check_cell_components_needs_columns(base_config, base_phenotype_df):
+    cf = _check_cf(dict(base_config))
+    with pytest.raises(ValueError, match="activity"):
+        _check_cell_components(cf, base_phenotype_df.drop(columns=["activity"]))
+
+
+def test_check_cell_components_mismatch(base_config, base_phenotype_df):
+    cf = _check_cf(dict(base_config))
+    df = base_phenotype_df.copy()
+    df.loc[0, "k_sel"] += 0.1
+    with pytest.raises(ValueError, match="k_sel"):
+        _check_cell_components(cf, df)
+
 
 # ----------------------------------------------------------------------------
 # test _sim_sequencing
@@ -725,6 +875,55 @@ def test_sim_sequencing_single_survivor(rng: Generator):
     expected_counts = np.array([[reads_per_sample], [0]])
     np.testing.assert_array_equal(result, expected_counts)
 
+def test_plasmid_shares():
+    """Each valid slot is 1/n of its cell; masked slots are 0."""
+    trans_mask = np.array([[False, True, True],
+                           [False, False, True],
+                           [False, False, False]])
+    expected = np.array([[1.0, 0.0, 0.0],
+                         [0.5, 0.5, 0.0],
+                         [1/3, 1/3, 1/3]])
+    np.testing.assert_allclose(_plasmid_shares(trans_mask), expected)
+    np.testing.assert_allclose(_plasmid_shares(trans_mask).sum(axis=1), 1.0)
+
+
+def test_plasmid_shares_empty():
+    """An empty transformant array gives an empty share array."""
+    result = _plasmid_shares(np.empty((0, 0), dtype=bool))
+    assert result.shape == (0, 0)
+
+
+def test_sim_sequencing_splits_cell_among_plasmids(mocker):
+    """
+    A co-transformed cell's abundance is split among its plasmids, so it
+    contributes one cell's worth of reads in total.
+    """
+    # Cell 0: {g0}, abundance 100. Cell 1: {g0, g1}, abundance 100.
+    transformants = np.array([[0, 0], [0, 1]])
+    trans_mask = np.array([[False, True], [False, False]])
+    trans_cfu = np.array([[100.0], [100.0]])
+
+    # g0 = 100 + 50, g1 = 50 -> probabilities 0.75 / 0.25.
+    rng = mocker.Mock()
+    rng.choice.return_value = np.zeros(10, dtype=int)
+    _sim_sequencing(transformants, trans_mask, trans_cfu, 2, 10, rng)
+
+    np.testing.assert_allclose(rng.choice.call_args.kwargs["p"], [0.75, 0.25])
+
+
+def test_sim_sequencing_duplicate_genotype_in_cell(mocker):
+    """Two copies of one genotype in a cell give it the whole cell."""
+    transformants = np.array([[0, 0], [1, 0]])
+    trans_mask = np.array([[False, False], [False, True]])
+    trans_cfu = np.array([[100.0], [100.0]])
+
+    rng = mocker.Mock()
+    rng.choice.return_value = np.zeros(10, dtype=int)
+    _sim_sequencing(transformants, trans_mask, trans_cfu, 2, 10, rng)
+
+    np.testing.assert_allclose(rng.choice.call_args.kwargs["p"], [0.5, 0.5])
+
+
 # ----------------------------------------------------------------------------
 # test _calc_genotype_cfu0
 # ----------------------------------------------------------------------------
@@ -763,19 +962,17 @@ def test_calc_genotype_cfu0_multi_plasmid():
     total_cfu0 = 1.0e7
     num_genotypes = 2
 
-    # Expected logic:
+    # Expected logic: a cell splits its frequency among its plasmids.
     # Plasmids:    [g0,   g0,   g1,   g1]
     # From cells:  [c0,   c1,   c1,   c2]
-    # Cell Freqs:  [0.2,  0.5,  0.5,  0.3]
+    # Share:       [1,    1/2,  1/2,  1]
+    # Weight:      [0.2,  0.25, 0.25, 0.3]
     #
-    # Total weighted count for g0 = 0.2 + 0.5 = 0.7
-    # Total weighted count for g1 = 0.5 + 0.3 = 0.8
-    # Total weight = 0.7 + 0.8 = 1.5
-    #
-    # Final frequency for g0 = 0.7 / 1.5
-    # Final frequency for g1 = 0.8 / 1.5
-    expected_cfu0 = np.array([ (0.7/1.5) * total_cfu0,
-                               (0.8/1.5) * total_cfu0 ])
+    # g0 = 0.2 + 0.25 = 0.45
+    # g1 = 0.25 + 0.3 = 0.55
+    # Total = 1.0 (one cell's worth per cell)
+    expected_cfu0 = np.array([0.45 * total_cfu0,
+                              0.55 * total_cfu0])
     
     result = _calc_genotype_cfu0(
         transformants, trans_mask, trans_freq, total_cfu0, num_genotypes
@@ -783,6 +980,42 @@ def test_calc_genotype_cfu0_multi_plasmid():
     
     np.testing.assert_allclose(result, expected_cfu0)
     
+@pytest.mark.parametrize("lam", [None, 0.357, 1.5])
+def test_calc_genotype_cfu0_matches_design_for_any_lambda(lam):
+    """
+    With plasmid copies shared within a cell, simulated genotype abundance
+    matches the library design's pool_fraction whatever lambda is. Bulk
+    origins are transformed with lambda; the spiked origin is monoclonal.
+    """
+    from tfscreen.genetics.library_design import expected_library_composition
+
+    genotypes = ["wt", "A1V", "B2C", "S3T"]
+    weights = {"bulk": [0.4, 0.3, 0.3, 0.0],
+               "spiked": [0.5, 0.0, 0.0, 0.5]}
+    library_df = pd.DataFrame([
+        {"library_origin": origin, "genotype": g, "weight": w, "probs": w}
+        for origin, ws in weights.items() for g, w in zip(genotypes, ws)
+    ])
+    library_mixture = {"bulk": 3.0, "spiked": 1.0}
+    lib_origin_dict = dict(list(library_df.groupby(["library_origin"])))
+
+    rng = np.random.default_rng(0)
+    transformants, trans_mask, trans_freq = _sim_transform_and_mix(
+        lib_origin_dict,
+        {"bulk": 200_000, "spiked": 200_000},
+        library_mixture,
+        lam,
+        rng)
+    cfu0 = _calc_genotype_cfu0(transformants, trans_mask, trans_freq,
+                               1.0, len(genotypes))
+
+    expected = (expected_library_composition(library_df, library_mixture)
+                .set_index("genotype")
+                .loc[genotypes, "pool_fraction"]
+                .to_numpy())
+    np.testing.assert_allclose(cfu0, expected, atol=0.005)
+
+
 def test_calc_genotype_cfu0_no_transformants():
     """
     Tests the edge case where there are no successful transformations.
@@ -839,7 +1072,7 @@ def test_simulate_library_group_integration(base_config: dict,
         lib_origin_dict, # Passed as dict
         ordered_genotypes,
         reads_per_sample,
-        base_config,
+        _check_cf(dict(base_config)),
         rng
     )
     
@@ -927,7 +1160,7 @@ def test_simulate_library_group_handles_sparse_data(
         lib_origin_dict=lib_origin_dict, # Passed as dict
         ordered_genotypes=ordered_genotypes,
         reads_per_sample=reads_per_sample,
-        cf=base_config,
+        cf=_check_cf(dict(base_config)),
         rng=rng
     )
 
@@ -1351,3 +1584,328 @@ def test_check_cf_accepts_base_growth_data(base_config: dict):
     cf = dict(base_config)
     cf["base_growth_data"] = {"k_ref": 0.025}
     _check_cf(cf)
+
+
+# =============================================================================
+# Sampling noise (roadmap step 4, planning/analysis-roadmap.md): founder
+# sampling, demographic growth, a template bottleneck with PCR jackpotting,
+# shared transformation across replicates and OD-only replicates.
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# config validation
+# ---------------------------------------------------------------------------
+
+def test_defaults_are_off(base_config):
+    cf = _check_cf(copy.deepcopy(base_config))
+    assert cf["founder_sampling"] is False
+    assert cf["demographic_growth"] is False
+    assert cf["shared_transformation"] is False
+    assert cf["pcr_template_molecules"] is None
+    assert cf["pcr_amplification_cv"] is None
+    assert cf["od600"] is None
+
+
+@pytest.mark.parametrize("update,match", [
+    ({"demographic_growth": True}, "founder_sampling"),
+    ({"pcr_amplification_cv": 0.5}, "pcr_template_molecules"),
+    ({"founder_sampling": "yes"}, "true or false"),
+    ({"pcr_template_molecules": 0}, "pcr_template_molecules"),
+    ({"od600": {"tube_volume_mL": 5.0}}, "calibration"),
+    ({"od600": {"calibration": "c.yaml", "bogus": 1}}, "Unknown keys"),
+    ({"od600": "c.yaml"}, "block"),
+])
+def test_invalid_settings(base_config, update, match):
+    cf = copy.deepcopy(base_config)
+    cf.update(update)
+    with pytest.raises(ValueError, match=match):
+        _check_cf(cf)
+
+
+def test_od600_defaults(base_config):
+    cf = copy.deepcopy(base_config)
+    cf["od600"] = {"calibration": "c.yaml"}
+    cf = _check_cf(cf)
+    assert cf["od600"] == {"calibration": "c.yaml", "tube_volume_mL": 5.0,
+                           "num_od_only_replicates": 0,
+                           "sample_cfu_from_od600": False}
+
+
+# ---------------------------------------------------------------------------
+# growth: founders and demographic noise
+# ---------------------------------------------------------------------------
+
+def _moments(kt, n0, draws, **kwargs):
+    rng = np.random.default_rng(1)
+    cell_kt = np.full((1, draws), kt)
+    out = _sim_growth(cell_kt, np.array([1.0]), n0, rng=rng, **kwargs)[0]
+    return out.mean(), out.var()
+
+
+def test_default_growth_is_deterministic():
+    cell_kt = np.array([[0.0, 1.0], [2.0, -1.0]])
+    out = _sim_growth(cell_kt, np.array([0.25, 0.75]), 100.0)
+    assert np.allclose(out, np.array([[0.25], [0.75]]) * 100 * np.exp(cell_kt))
+
+
+def test_founder_sampling_is_poisson():
+    n0, kt = 20.0, 1.5
+    mean, var = _moments(kt, n0, 200_000, founder_sampling=True)
+    fold = np.exp(kt)
+    assert mean == pytest.approx(n0 * fold, rel=0.01)
+    assert var == pytest.approx(n0 * fold ** 2, rel=0.03)
+
+
+def test_demographic_growth_doubles_variance():
+    # Poisson founders then Gamma(n0, e^kt) growth: var = 2 n0 e^(2 kt).
+    n0, kt = 20.0, 1.5
+    mean, var = _moments(kt, n0, 200_000, founder_sampling=True,
+                         demographic_growth=True)
+    fold = np.exp(kt)
+    assert mean == pytest.approx(n0 * fold, rel=0.01)
+    assert var == pytest.approx(2 * n0 * fold ** 2, rel=0.03)
+
+
+def test_demographic_death_is_binomial_thinning():
+    # Poisson(n0) founders each surviving with p: Poisson(n0 p).
+    n0, kt = 50.0, -0.7
+    mean, var = _moments(kt, n0, 200_000, founder_sampling=True,
+                         demographic_growth=True)
+    p = np.exp(kt)
+    assert mean == pytest.approx(n0 * p, rel=0.01)
+    assert var == pytest.approx(n0 * p, rel=0.03)
+
+
+def test_demographic_needs_founders():
+    with pytest.raises(ValueError, match="founder_sampling"):
+        _sim_growth(np.zeros((1, 1)), np.array([1.0]), 10.0,
+                    rng=np.random.default_rng(0), demographic_growth=True)
+
+
+def test_founders_are_independent_per_tube():
+    rng = np.random.default_rng(3)
+    out = _sim_growth(np.zeros((1, 50)), np.array([1.0]), 5.0, rng=rng,
+                      founder_sampling=True)
+    assert len(np.unique(out)) > 1
+
+
+# ---------------------------------------------------------------------------
+# sequencing: template bottleneck and jackpotting
+# ---------------------------------------------------------------------------
+
+def _count_variance_ratio(reads, templates=None, cv=None, num_geno=4000):
+    """Variance of per-genotype counts over the Poisson expectation, for
+    equally abundant single-plasmid genotypes."""
+    transformants = np.arange(num_geno)[:, None]
+    trans_mask = np.zeros_like(transformants, dtype=bool)
+    trans_cfu = np.ones((num_geno, 1))
+    counts = _sim_sequencing(transformants, trans_mask, trans_cfu, num_geno,
+                             reads, np.random.default_rng(5),
+                             pcr_template_molecules=templates,
+                             pcr_amplification_cv=cv)[:, 0]
+    return counts.var() / counts.mean()
+
+
+def test_no_bottleneck_is_poisson():
+    assert _count_variance_ratio(400_000) == pytest.approx(1.0, abs=0.1)
+
+
+@pytest.mark.parametrize("templates,cv", [(200_000, None), (200_000, 1.0),
+                                          (100_000, 0.5)])
+def test_bottleneck_inflates_variance(templates, cv):
+    # Multinomial templates, then reads from the (amplified) templates:
+    # variance / mean = 1 + (reads / templates) (1 + cv^2).
+    reads = 400_000
+    expected = 1 + (reads / templates) * (1 + (cv or 0) ** 2)
+    assert _count_variance_ratio(reads, templates, cv) == pytest.approx(
+        expected, rel=0.1)
+
+
+# ---------------------------------------------------------------------------
+# replicates: shared transformation and OD-only
+# ---------------------------------------------------------------------------
+
+def _run(cf, library_df, phenotype_df, seed, shared_state=None, sequence=True):
+    cf = copy.deepcopy(cf)
+    cf["seed"] = seed
+    return selection_experiment(cf, library_df.copy(), phenotype_df.copy(),
+                                shared_state=shared_state, sequence=sequence)
+
+
+@pytest.mark.parametrize("shared", [True, False])
+def test_shared_transformation(base_config, base_library_df,
+                               base_phenotype_df, shared):
+    cf = copy.deepcopy(base_config)
+    cf["shared_transformation"] = shared
+    state = {}
+    _, counts_1 = _run(cf, base_library_df, base_phenotype_df, 1, state)
+    _, counts_2 = _run(cf, base_library_df, base_phenotype_df, 2, state)
+    cfu0_1 = counts_1.groupby("genotype", observed=True)["ln_cfu_0"].first()
+    cfu0_2 = counts_2.groupby("genotype", observed=True)["ln_cfu_0"].first()
+    assert np.allclose(cfu0_1, cfu0_2) == shared
+
+
+def test_unsequenced_replicate(base_config, base_library_df,
+                               base_phenotype_df):
+    sample_df, counts_df = _run(base_config, base_library_df,
+                                base_phenotype_df, 1, sequence=False)
+    assert len(counts_df) == 0
+    assert len(sample_df) > 0
+    assert (sample_df["sample_cfu"] > 0).all()
+
+
+# ---------------------------------------------------------------------------
+# unassigned_read_fraction: reads that call no library genotype
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("frac", [0.25, "per_library"])
+def test_unassigned_reads_go_to_unknown(base_config, base_library_df,
+                                        base_phenotype_df, frac):
+    cf = copy.deepcopy(base_config)
+    libs = base_phenotype_df["library"].unique().tolist() \
+        if "library" in base_phenotype_df else []
+    if frac == "per_library":
+        if not libs:
+            pytest.skip("fixture has no library column")
+        cf["unassigned_read_fraction"] = {lib: 0.4 for lib in libs}
+        expect = 0.4
+    else:
+        cf["unassigned_read_fraction"] = frac
+        expect = frac
+    _, base_counts = _run(base_config, base_library_df, base_phenotype_df, 3)
+    _, counts = _run(cf, base_library_df, base_phenotype_df, 3)
+
+    total = counts.groupby("sample")["counts"].sum()
+    base_total = base_counts.groupby("sample")["counts"].sum()
+    # the tube's read budget is unchanged (index hopping moves a few reads
+    # between tubes); a share of it is unassigned
+    assert total.sum() == base_total.sum()
+    np.testing.assert_allclose(total, base_total, rtol=1e-4)
+    unknown = (counts[counts["genotype"] == "__unknown__"]
+               .set_index("sample")["counts"])
+    assert np.allclose(unknown / total.loc[unknown.index], expect, atol=1e-3)
+    assert "__unknown__" not in set(base_counts["genotype"].astype(str))
+
+
+def test_unassigned_fraction_validated(base_config, base_library_df,
+                                       base_phenotype_df):
+    cf = copy.deepcopy(base_config)
+    cf["unassigned_read_fraction"] = 1.0
+    with pytest.raises(ValueError):
+        _run(cf, base_library_df, base_phenotype_df, 1)
+    cf["unassigned_read_fraction"] = {"not_a_library": 0.5}
+    with pytest.raises(ValueError, match="per library"):
+        _run(cf, base_library_df, base_phenotype_df, 1)
+
+
+# ----------------------------------------------------------------------------
+# collapsed transformation: identical cells merged into weighted rows
+# ----------------------------------------------------------------------------
+
+def test_collapsed_transform_single_plasmid_rows_are_clone_counts():
+    rng = np.random.default_rng(0)
+    probs = np.array([0.5, 0.3, 0.2, 0.0])
+    trans, mask, cells = _sim_transform_collapsed(probs, 100_000, None, rng)
+    assert cells.sum() == 100_000
+    assert len(trans) == 3                      # one row per genotype seen
+    assert (~mask).sum(axis=1).tolist() == [1, 1, 1]
+    np.testing.assert_allclose(cells / cells.sum(), probs[trans[:, 0]],
+                               atol=0.01)
+
+
+def test_collapsed_transform_matches_per_cell_composition():
+    """The congressed share and each genotype's cell-equivalents agree with
+    the per-cell transformation (``_sim_transform``)."""
+    rng = np.random.default_rng(1)
+    probs = np.array([0.4, 0.3, 0.2, 0.1])
+    n, lam = 200_000, 0.357
+    t1, m1 = _sim_transform(probs, n, lam, rng)
+    t2, m2, c2 = _sim_transform_collapsed(probs, n, lam, rng)
+    multi1 = ((~m1).sum(axis=1) > 1).mean()
+    multi2 = c2[(~m2).sum(axis=1) > 1].sum() / c2.sum()
+    assert multi2 == pytest.approx(multi1, abs=0.01)
+    s1 = _calc_genotype_cfu0(t1, m1, np.full(n, 1.0 / n), 1.0, 4)
+    s2 = _calc_genotype_cfu0(t2, m2, c2 / c2.sum(), 1.0, 4)
+    np.testing.assert_allclose(s1, s2, atol=0.005)
+
+
+def test_collapsed_transform_cap_on_congressed_cells():
+    rng = np.random.default_rng(2)
+    probs = np.full(10, 0.1)
+    trans, mask, cells = _sim_transform_collapsed(
+        probs, 1_000_000, 0.357, rng, max_congressed_cells=1000)
+    congressed = (~mask).sum(axis=1) > 1
+    assert congressed.sum() == 1000
+    assert cells.sum() == pytest.approx(1_000_000)
+    assert np.allclose(cells[congressed], cells[congressed][0])
+    assert cells[congressed][0] > 100           # each row stands for many
+
+
+def test_merged_rows_founder_sampling_is_exact():
+    """Merging identical clones is exact for founder sampling: one row of k
+    clones gets Poisson(k m) founders, the sum of k Poisson(m)."""
+    rng = np.random.default_rng(3)
+    kt = np.zeros((1, 20_000))
+    merged = _sim_growth(kt, np.array([1.0]), 50.0, rng=rng,
+                         founder_sampling=True)[0]
+    split = _sim_growth(np.zeros((10, 20_000)), np.full(10, 0.1), 50.0,
+                        rng=rng, founder_sampling=True).sum(axis=0)
+    assert merged.mean() == pytest.approx(split.mean(), rel=0.02)
+    assert merged.var() == pytest.approx(split.var(), rel=0.05)
+
+
+def test_per_origin_skew(base_config, base_library_df, base_phenotype_df):
+    origins = base_library_df["library_origin"].unique().tolist()
+    cf = copy.deepcopy(base_config)
+    cf["lib_assembly_skew_sigma"] = {o: 0.5 for o in origins}
+    _run(cf, base_library_df, base_phenotype_df, 1)
+    cf["lib_assembly_skew_sigma"] = {origins[0]: 0.5}
+    if len(origins) > 1:
+        with pytest.raises(ValueError, match="per origin"):
+            _run(cf, base_library_df, base_phenotype_df, 1)
+
+
+def test_collapsed_transform_no_transformants():
+    trans, mask, cells = _sim_transform_collapsed(np.array([0.5, 0.5]), 0,
+                                                  0.357, np.random.default_rng(0))
+    assert trans.shape == (0, 0) and mask.shape == (0, 0)
+    assert mask.dtype == bool and cells.shape == (0,)
+
+
+def test_collapsed_transform_default_rng():
+    trans, mask, cells = _sim_transform_collapsed(np.array([0.5, 0.5]), 1000,
+                                                  None)
+    assert cells.sum() == 1000
+    assert set(trans[:, 0]) <= {0, 1}
+
+
+# ---------------------------------------------------------------------------
+# od600: one simulated reading per tube
+# ---------------------------------------------------------------------------
+
+_OD600_CAL = os.path.join(os.path.dirname(__file__), "..", "..", "..",
+                          "examples", "od600", "od600_calibration.yaml")
+
+
+@pytest.mark.parametrize("from_od600", [False, True])
+def test_selection_experiment_od600_readings(base_config, base_library_df,
+                                             base_phenotype_df, from_od600):
+    from tfscreen.process_raw.od600 import od600_to_cfu_per_mL
+    cf = copy.deepcopy(base_config)
+    cf["od600"] = {"calibration": _OD600_CAL, "tube_volume_mL": 5.0,
+                   "sample_cfu_from_od600": from_od600}
+    sample_df, _ = _run(cf, base_library_df, base_phenotype_df, 1,
+                        sequence=False)
+    for col in ("sample_cfu_true", "od600", "od600_detectable",
+                "od600_in_range"):
+        assert col in sample_df.columns
+    assert (sample_df["od600"] >= 0).all()
+    if from_od600:
+        cfu, cfu_std, _ = od600_to_cfu_per_mL(sample_df["od600"].to_numpy(),
+                                              _OD600_CAL)
+        np.testing.assert_allclose(sample_df["sample_cfu"], cfu * 5.0)
+        np.testing.assert_allclose(sample_df["sample_cfu_std"], cfu_std * 5.0)
+    else:
+        np.testing.assert_allclose(sample_df["sample_cfu"],
+                                   sample_df["sample_cfu_true"])
+        assert (sample_df["sample_cfu_std"] == 0).all()

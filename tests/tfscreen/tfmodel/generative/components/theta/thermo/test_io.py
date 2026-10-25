@@ -394,3 +394,449 @@ class TestLoadDdGPriorCsv:
         _write_ddG_csv(p, self._full_csv_rows())
         result = load_ddG_prior_csv(p, [])
         assert result['struct_features'].shape == (0, len(self._STRUCTS))
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Units, column handling, numbering and coverage checks
+# ──────────────────────────────────────────────────────────────────────────────
+
+import warnings
+
+from tfscreen.tfmodel.generative.components.theta.thermo.io import (
+    THERMO_OPTION_DEFAULTS,
+    ddG_to_kT_factor,
+    load_thermo_data,
+    normalize_thermo_options,
+    required_struct_names,
+)
+
+_C4 = ("H", "HD", "L", "LE2")
+_C12 = ("H", "HO", "L", "LO", "HE2", "LE2")
+
+# First 60 residues of LacI as they appear (0-based, V0 = residue 1) in the
+# 12-state ensemble CSV this loader has to handle.
+_LACI_60 = "VKPVTLYDVAEYAGVSYQTVSRVVNQASHVSAKTREKVEAAMAELNYIPNRVAQQLAGKQS"
+_ENSEMBLE_COLS = ["unfolded", "L", "HO", "LE2", "HOE2", "LE", "HOE", "H",
+                  "LO", "LOE", "LOE2", "HE", "HE2"]
+
+
+def _ensemble_like_csv(path, n_pos=60):
+    """Mimic notebooks/other-data/ddG_ensemble_clean_with_effector.csv:
+    pandas index column, 'Mutation', 0-based numbering, 12 states + unfolded."""
+    rng = np.random.default_rng(0)
+    labels = [f"{wt}{i}{mt}" for i, wt in enumerate(_LACI_60[:n_pos])
+              for mt in "ACDEFGHIKLMNPQRSTVWY"]
+    df = pd.DataFrame(rng.normal(2, 1, (len(labels), len(_ENSEMBLE_COLS))),
+                      columns=_ENSEMBLE_COLS)
+    df["unfolded"] = 0.0
+    df.insert(0, "Mutation", labels)
+    df.to_csv(path)            # writes the 'Unnamed: 0' index column
+    return str(path)
+
+
+def _lib_label(pos1, mt):
+    """Library (1-based) label for LacI residue pos1."""
+    return f"{_LACI_60[pos1 - 1]}{pos1}{mt}"
+
+
+class TestThermoOptions:
+
+    def test_defaults(self):
+        assert normalize_thermo_options(None) == THERMO_OPTION_DEFAULTS
+        assert normalize_thermo_options({}) == THERMO_OPTION_DEFAULTS
+
+    def test_kT_factor_is_exactly_one(self):
+        assert ddG_to_kT_factor("kT") == 1.0
+
+    def test_kcal_factor(self):
+        assert ddG_to_kT_factor("kcal/mol", 298.15) == pytest.approx(
+            1.0 / (1.987204259e-3 * 298.15), rel=1e-12)
+        assert ddG_to_kT_factor("kcal/mol", 298.15) == pytest.approx(1.6878, abs=1e-4)
+
+    def test_kJ_factor_and_temperature(self):
+        assert ddG_to_kT_factor("kJ/mol", 310.0) == pytest.approx(
+            1.0 / (8.314462618e-3 * 310.0), rel=1e-12)
+
+    def test_unit_aliases(self):
+        assert normalize_thermo_options({"ddG_units": "KCAL"})["ddG_units"] == "kcal/mol"
+        assert normalize_thermo_options({"ddG_units": "kj/mol"})["ddG_units"] == "kJ/mol"
+
+    @pytest.mark.parametrize("opts, match", [
+        ({"ddG_units": "eV"}, "not recognised"),
+        ({"temperature_K": -1}, "temperature_K"),
+        ({"residue_offset": 1.5}, "residue_offset"),
+        ({"max_missing_fraction": 2}, "max_missing_fraction"),
+        ({"units": "kT"}, "Unknown thermo_options"),
+        ({"column_map": "HD"}, "model_name=csv_column"),
+    ])
+    def test_bad_options_raise(self, opts, match):
+        with pytest.raises(ValueError, match=match):
+            normalize_thermo_options(opts)
+
+    def test_column_map_string(self):
+        opts = normalize_thermo_options({"column_map": "HD=HO, LE2=LOE2"})
+        assert opts["column_map"] == {"HD": "HO", "LE2": "LOE2"}
+
+    def test_required_struct_names(self):
+        assert required_struct_names("thermo.O2_C4_K3_U1_a.PddG") == _C4
+        assert required_struct_names("thermo.O2_C12_K5_U0_a.PnnC") == _C12
+        assert required_struct_names("thermo.O2_C4_K3_U0_a.PK") is None
+        assert required_struct_names("hill_geno") is None
+        assert required_struct_names(None) is None
+
+
+class TestDdGCsvUnits:
+
+    _ROWS = [["A10G", 1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+             ["C20R", 0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
+             ["D30E", -1.0, -2.0, -3.0, -4.0, -5.0, -6.0]]
+    _MUTS = ["A10G", "C20R", "D30E"]
+
+    def test_default_uses_values_as_is(self, tmp_path):
+        p = str(tmp_path / "ddG.csv")
+        _write_ddG_csv(p, self._ROWS)
+        raw = np.array([r[1:] for r in self._ROWS], dtype=np.float32)
+        for opts in (None, {}, {"ddG_units": "kT", "temperature_K": 350.0}):
+            out = load_ddG_prior_csv(p, self._MUTS, thermo_options=opts)
+            np.testing.assert_array_equal(out["struct_features"], raw)
+
+    def test_kcal_converted_to_kT(self, tmp_path):
+        p = str(tmp_path / "ddG.csv")
+        _write_ddG_csv(p, self._ROWS)
+        out = load_ddG_prior_csv(p, self._MUTS,
+                                 thermo_options={"ddG_units": "kcal/mol"})
+        RT = 1.987204259e-3 * 298.15
+        expected = np.array([r[1:] for r in self._ROWS]) / RT
+        np.testing.assert_allclose(out["struct_features"], expected, rtol=1e-6)
+
+    def test_kJ_converted_to_kT(self, tmp_path):
+        p = str(tmp_path / "ddG.csv")
+        _write_ddG_csv(p, self._ROWS)
+        out = load_ddG_prior_csv(p, self._MUTS, thermo_options={
+            "ddG_units": "kJ/mol", "temperature_K": 310.0})
+        RT = 8.314462618e-3 * 310.0
+        expected = np.array([r[1:] for r in self._ROWS]) / RT
+        np.testing.assert_allclose(out["struct_features"], expected, rtol=1e-6)
+
+
+class TestDdGCsvColumns:
+
+    def _csv(self, tmp_path, columns, rows, index=False):
+        p = str(tmp_path / "ddG.csv")
+        pd.DataFrame(rows, columns=columns).to_csv(p, index=index)
+        return p
+
+    def test_mutation_alias_and_unnamed_index(self, tmp_path):
+        p = self._csv(tmp_path, ["Mutation", "H", "HD", "L", "LE2"],
+                      [["A10G", 1.0, 2.0, 3.0, 4.0]], index=True)
+        assert "Unnamed: 0" in pd.read_csv(p).columns
+        out = load_ddG_prior_csv(p, ["A10G"])
+        assert out["struct_names"] == _C4
+        np.testing.assert_array_equal(out["struct_features"][0], [1, 2, 3, 4])
+
+    def test_lowercase_mutation_alias(self, tmp_path):
+        p = self._csv(tmp_path, ["mutation", "H"], [["A10G", 1.0]])
+        assert load_ddG_prior_csv(p, ["A10G"])["struct_names"] == ("H",)
+
+    def test_two_mutation_columns_raise(self, tmp_path):
+        p = self._csv(tmp_path, ["mut", "Mutation", "H"], [["A10G", "A10G", 1.0]])
+        with pytest.raises(ValueError, match="more than one mutation column"):
+            load_ddG_prior_csv(p, ["A10G"])
+
+    def test_extra_columns_ignored_and_reordered(self, tmp_path, capsys):
+        p = self._csv(tmp_path, ["mut", "LE2", "extra", "L", "HD", "H", "unfolded"],
+                      [["A10G", 4.0, 9.0, 3.0, 2.0, 1.0, 0.0]])
+        out = load_ddG_prior_csv(p, ["A10G"], struct_names=_C4)
+        assert out["struct_names"] == _C4
+        np.testing.assert_array_equal(out["struct_features"][0], [1, 2, 3, 4])
+        assert "ignoring column(s)" in capsys.readouterr().out
+
+    def test_missing_required_columns_listed(self, tmp_path):
+        p = self._csv(tmp_path, ["mut", "H", "L"], [["A10G", 1.0, 3.0]])
+        with pytest.raises(ValueError, match=r"missing structure column\(s\) \['HD', 'LE2'\]"):
+            load_ddG_prior_csv(p, ["A10G"], struct_names=_C4)
+
+    def test_column_map(self, tmp_path):
+        p = self._csv(tmp_path, ["mut", "H", "HO", "L", "LE2"],
+                      [["A10G", 1.0, 2.0, 3.0, 4.0]])
+        for cmap in ({"HD": "HO"}, "HD=HO"):
+            out = load_ddG_prior_csv(p, ["A10G"], struct_names=_C4,
+                                     thermo_options={"column_map": cmap})
+            np.testing.assert_array_equal(out["struct_features"][0], [1, 2, 3, 4])
+
+    def test_column_map_to_absent_column(self, tmp_path):
+        p = self._csv(tmp_path, ["mut", "H", "L", "LE2"], [["A10G", 1.0, 3.0, 4.0]])
+        with pytest.raises(ValueError, match="mapped to 'HO'"):
+            load_ddG_prior_csv(p, ["A10G"], struct_names=_C4,
+                               thermo_options={"column_map": {"HD": "HO"}})
+
+    def test_column_map_unknown_structure(self, tmp_path):
+        p = self._csv(tmp_path, ["mut", "H", "HD", "L", "LE2"],
+                      [["A10G", 1.0, 2.0, 3.0, 4.0]])
+        with pytest.raises(ValueError, match="not structures of this model"):
+            load_ddG_prior_csv(p, ["A10G"], struct_names=_C4,
+                               thermo_options={"column_map": {"HO": "H"}})
+
+    def test_non_numeric_column_raises(self, tmp_path):
+        p = self._csv(tmp_path, ["mut", "H"], [["A10G", "big"]])
+        with pytest.raises(ValueError, match="not numeric"):
+            load_ddG_prior_csv(p, ["A10G"])
+
+    def test_duplicate_labels_raise(self, tmp_path):
+        p = self._csv(tmp_path, ["mut", "H"], [["A10G", 1.0], ["A10G", 2.0]])
+        with pytest.raises(ValueError, match="more than once"):
+            load_ddG_prior_csv(p, ["A10G"])
+
+
+class TestDdGCsvCoverage:
+
+    def _csv(self, tmp_path, labels):
+        p = str(tmp_path / "ddG.csv")
+        df = pd.DataFrame({"mut": labels, "H": np.arange(len(labels), dtype=float)})
+        df.to_csv(p, index=False)
+        return p
+
+    def test_full_coverage_reported(self, tmp_path, capsys):
+        p = self._csv(tmp_path, ["A10G", "C20R"])
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            load_ddG_prior_csv(p, ["A10G", "C20R"])
+        assert "ΔΔG for 2/2 library mutations (100.0%)" in capsys.readouterr().out
+
+    def test_missing_above_threshold_warns_and_zero_fills(self, tmp_path):
+        p = self._csv(tmp_path, ["A10G"])
+        with pytest.warns(UserWarning, match=r"no ΔΔG for 2 of 3.*C20R, D30E"):
+            out = load_ddG_prior_csv(p, ["A10G", "C20R", "D30E"])
+        np.testing.assert_array_equal(out["struct_features"][1:], 0.0)
+
+    def test_threshold_is_configurable(self, tmp_path):
+        p = self._csv(tmp_path, ["A10G"])
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            load_ddG_prior_csv(p, ["A10G", "C20R"],
+                               thermo_options={"max_missing_fraction": 0.5})
+        with pytest.warns(UserWarning, match="max_missing_fraction 0.4"):
+            load_ddG_prior_csv(p, ["A10G", "C20R"],
+                               thermo_options={"max_missing_fraction": 0.4})
+
+    def test_warning_list_is_truncated(self, tmp_path):
+        p = self._csv(tmp_path, ["A1G"])
+        muts = ["A1G"] + [f"A{i}G" for i in range(2, 30)]
+        with pytest.warns(UserWarning, match=r"\(18 more\)"):
+            load_ddG_prior_csv(p, muts)
+
+    def test_zero_coverage_raises(self, tmp_path):
+        p = self._csv(tmp_path, ["A10G", "C20R"])
+        with pytest.raises(ValueError, match="covers none of the 2 library mutations"):
+            load_ddG_prior_csv(p, ["E40K", "F50L"])
+
+    def test_wt_mismatch_raises_with_offset_hint(self, tmp_path):
+        # File numbered one lower than the library: library H29 is file H28.
+        p = self._csv(tmp_path, ["H28A", "V29A", "S27A"])
+        with pytest.raises(ValueError, match=r"wild-type residues disagree.*"
+                                             r"H29A \(file wt V29\).*"
+                                             r"residue_offset is 1"):
+            load_ddG_prior_csv(p, ["H29A", "S28A"])
+
+    def test_residue_offset_lines_up_numbering(self, tmp_path):
+        p = self._csv(tmp_path, ["H28A", "V29A", "S27A"])
+        out = load_ddG_prior_csv(p, ["H29A", "S28A"],
+                                 thermo_options={"residue_offset": 1})
+        np.testing.assert_array_equal(out["struct_features"][:, 0], [0.0, 2.0])
+
+    def test_inconsistent_file_wt_raises(self, tmp_path):
+        p = self._csv(tmp_path, ["A10G", "C10R"])
+        with pytest.raises(ValueError, match="two wild-type residues"):
+            load_ddG_prior_csv(p, ["A10G"])
+
+    def test_blank_values_count_as_missing(self, tmp_path):
+        p = str(tmp_path / "ddG.csv")
+        pd.DataFrame({"mut": ["A10G", "C20R"], "H": [1.0, np.nan]}).to_csv(p, index=False)
+        with pytest.warns(UserWarning, match="blank values: C20R"):
+            out = load_ddG_prior_csv(p, ["A10G", "C20R"])
+        assert out["struct_features"][1, 0] == 0.0
+
+
+class TestEnsembleLikeCsv:
+    """The 12-state ensemble CSV layout (see _ensemble_like_csv)."""
+
+    _LIB = [_lib_label(29, "A"), _lib_label(30, "G"), _lib_label(52, "D")]  # H29A ...
+
+    def test_c4_names_missing_HD(self, tmp_path):
+        p = _ensemble_like_csv(tmp_path / "ens.csv")
+        with pytest.raises(ValueError, match=r"missing structure column\(s\) \['HD'\]"):
+            load_thermo_data(p, self._LIB, theta_name="thermo.O2_C4_K3_U0_a.PddG")
+
+    def test_c12_numbering_offset_detected(self, tmp_path):
+        p = _ensemble_like_csv(tmp_path / "ens.csv")
+        with pytest.raises(ValueError, match=r"H29A \(file wt V29\).*residue_offset is 1"):
+            load_thermo_data(p, self._LIB, theta_name="thermo.O2_C12_K5_U0_a.PddG")
+
+    def test_c12_loads_with_offset(self, tmp_path):
+        p = _ensemble_like_csv(tmp_path / "ens.csv")
+        out = load_thermo_data(p, self._LIB, theta_name="thermo.O2_C12_K5_U1_a.PddG",
+                               thermo_options={"residue_offset": 1})
+        assert out["struct_names"] == _C12
+        df = pd.read_csv(p).set_index("Mutation")
+        np.testing.assert_allclose(out["struct_features"][0],
+                                   df.loc["H28A", list(_C12)].to_numpy(), rtol=1e-6)
+
+    def test_c4_loads_with_offset_and_map(self, tmp_path):
+        p = _ensemble_like_csv(tmp_path / "ens.csv")
+        out = load_thermo_data(p, self._LIB, theta_name="thermo.O2_C4_K3_U0_a.PddG",
+                               thermo_options={"residue_offset": 1,
+                                               "column_map": {"HD": "HO"}})
+        df = pd.read_csv(p).set_index("Mutation")
+        np.testing.assert_allclose(out["struct_features"][2],
+                                   df.loc["V51D", ["H", "HO", "L", "LE2"]].to_numpy(),
+                                   rtol=1e-6)
+
+    def test_real_file_if_present(self):
+        import os
+        real = os.path.expanduser(
+            "~/work/programming/git-clones/tfscreen/notebooks/other-data/"
+            "ddG_ensemble_clean_with_effector.csv")
+        if not os.path.exists(real):
+            pytest.skip("real ensemble CSV not on this machine")
+        with pytest.raises(ValueError, match=r"\['HD'\]"):
+            load_thermo_data(real, self._LIB, theta_name="thermo.O2_C4_K3_U0_a.PddG")
+        with pytest.raises(ValueError, match="residue_offset is 1"):
+            load_thermo_data(real, self._LIB, theta_name="thermo.O2_C12_K5_U0_a.PddG")
+        out = load_thermo_data(real, self._LIB, theta_name="thermo.O2_C12_K5_U0_a.PddG",
+                               thermo_options={"residue_offset": 1})
+        assert out["struct_features"].shape == (3, 6)
+
+
+class TestStructEnsembleChecks:
+
+    def test_missing_residue_reports_coverage(self, tmp_path):
+        p = str(tmp_path / "ens.h5")
+        _write_h5(p, {"H": {"res_nums": [10, 20]}})
+        with pytest.raises(ValueError, match=r"1 of 2 library mutations are absent "
+                                             r"\(1/2 covered.*D30E"):
+            load_struct_ensemble(p, ["A10G", "D30E"])
+
+    def test_residue_offset_applied(self, tmp_path):
+        p = str(tmp_path / "ens.h5")
+        logP = np.arange(40, dtype=np.float32).reshape(2, 20)
+        _write_h5(p, {"H": {"res_nums": [9, 19], "logP": logP}})
+        out = load_struct_ensemble(p, ["C20R"], thermo_options={"residue_offset": 1})
+        np.testing.assert_array_equal(out["struct_features"][0, 0, :20], logP[1])
+
+    def test_wt_aa_mismatch_raises(self, tmp_path):
+        p = str(tmp_path / "ens.h5")
+        _write_h5(p, {"H": {"res_nums": [9, 10, 11]}})
+        with h5py.File(p, "a") as hf:
+            hf["H"].create_dataset("wt_aa", data=["A", "V", "C"],
+                                   dtype=h5py.string_dtype())
+        with pytest.raises(ValueError, match=r"A10G \(file wt V10\).*residue_offset is 1"):
+            load_struct_ensemble(p, ["A10G", "C12R"])
+
+    def test_wt_aa_match_passes(self, tmp_path):
+        p = str(tmp_path / "ens.h5")
+        _write_h5(p, {"H": {"res_nums": [10, 11]}})
+        with h5py.File(p, "a") as hf:
+            hf["H"].create_dataset("wt_aa", data=["A", "X"], dtype=h5py.string_dtype())
+        out = load_struct_ensemble(p, ["A10G", "C11R"])
+        assert out["struct_features"].shape == (2, 1, 60)
+
+
+class TestPddGStructPerm:
+
+    @pytest.mark.parametrize("module, names", [
+        ("O2_C4_K3_U0_a", _C4), ("O2_C4_K3_U1_a", _C4),
+        ("O2_C12_K5_U0_a", _C12), ("O2_C12_K5_U1_a", _C12),
+    ])
+    def test_extras_ignored_missing_listed(self, module, names):
+        import importlib
+        import types
+        mod = importlib.import_module(
+            f"tfscreen.tfmodel.generative.components.theta.thermo.{module}.PddG")
+        data = types.SimpleNamespace(struct_names=("unfolded",) + tuple(reversed(names)))
+        perm = mod._get_struct_perm(data)
+        assert [data.struct_names[i] for i in perm] == list(names)
+        data = types.SimpleNamespace(struct_names=names[1:])
+        with pytest.raises(ValueError, match=rf"lacks \['{names[0]}'\]"):
+            mod._get_struct_perm(data)
+
+
+class TestIoEdgeCases:
+    """Small branches of the option parsing and coverage checks."""
+
+    def test_struct_ensemble_with_no_mutations(self, tmp_path):
+        p = str(tmp_path / "ens.h5")
+        _write_h5(p, {"H": {"res_nums": [10]}})
+        out = load_struct_ensemble(p, [])
+        assert out["struct_names"] == ("H",)
+        assert out["struct_features"].shape[0] == 0
+
+    def test_column_map_string_skips_empty_items(self):
+        opts = normalize_thermo_options({"column_map": "HD=HO,, ,LE2=LOE2,"})
+        assert opts["column_map"] == {"HD": "HO", "LE2": "LOE2"}
+
+    def test_column_map_of_wrong_type_raises(self):
+        with pytest.raises(ValueError, match="column_map must be a dict.*got int"):
+            normalize_thermo_options({"column_map": 3})
+
+    def test_thermo_options_not_a_dict_raises(self):
+        with pytest.raises(ValueError, match="thermo_options must be a dict; got list"):
+            normalize_thermo_options(["kT"])
+
+    def test_unparseable_library_label_skips_wt_check(self, tmp_path):
+        p = str(tmp_path / "ddG.csv")
+        pd.DataFrame({"mut": ["A10G"], "H": [1.5]}).to_csv(p, index=False)
+        with pytest.warns(UserWarning):
+            out = load_ddG_prior_csv(p, ["A10G", "notamutation"])
+        np.testing.assert_array_equal(out["struct_features"][:, 0], [1.5, 0.0])
+
+    def test_column_map_names_mutation_column(self, tmp_path):
+        p = str(tmp_path / "ddG.csv")
+        pd.DataFrame({"label": ["A10G"], "H": [2.0]}).to_csv(p, index=False)
+        out = load_ddG_prior_csv(p, ["A10G"],
+                                 thermo_options={"column_map": {"mut": "label"}})
+        assert out["struct_names"] == ("H",)
+        np.testing.assert_array_equal(out["struct_features"][0], [2.0])
+
+    def test_column_map_mutation_column_absent_raises(self, tmp_path):
+        p = str(tmp_path / "ddG.csv")
+        pd.DataFrame({"mut": ["A10G"], "H": [2.0]}).to_csv(p, index=False)
+        with pytest.raises(ValueError, match="names mutation column 'label'"):
+            load_ddG_prior_csv(p, ["A10G"],
+                               thermo_options={"column_map": {"mut": "label"}})
+
+    def test_column_map_without_model_identity_entry(self, tmp_path):
+        p = str(tmp_path / "ddG.csv")
+        pd.DataFrame({"mut": ["A10G"], "H": [1.0], "L": [3.0]}).to_csv(
+            p, index=False)
+        # A structure mapped to its own column keeps its place and values.
+        out = load_ddG_prior_csv(p, ["A10G"],
+                                 thermo_options={"column_map": {"H": "H"}})
+        assert out["struct_names"] == ("H", "L")
+        np.testing.assert_array_equal(out["struct_features"][0], [1.0, 3.0])
+
+    def test_column_map_without_model_adds_structure(self, tmp_path):
+        # HO is kept as its own structure and copied to HD: one file column
+        # supplies two structures (failed with an ambiguous-truth-value error
+        # until 2026-10-25)
+        p = str(tmp_path / "ddG.csv")
+        pd.DataFrame({"mut": ["A10G"], "H": [1.0], "HO": [2.0]}).to_csv(
+            p, index=False)
+        out = load_ddG_prior_csv(p, ["A10G"],
+                                 thermo_options={"column_map": {"HD": "HO"}})
+        assert out["struct_names"] == ("H", "HO", "HD")
+        np.testing.assert_array_equal(out["struct_features"][0], [1.0, 2.0, 2.0])
+
+    def test_column_map_two_structures_from_one_column(self, tmp_path):
+        p = str(tmp_path / "ddG.csv")
+        pd.DataFrame({"mut": ["A10G"], "H": [1.0], "L": [3.0],
+                      "LE2": [4.0]}).to_csv(p, index=False)
+        out = load_ddG_prior_csv(p, ["A10G"], struct_names=_C4,
+                                 thermo_options={"column_map": {"HD": "H"}})
+        np.testing.assert_array_equal(out["struct_features"][0], [1, 1, 3, 4])
+
+    def test_column_map_without_model_to_absent_column_raises(self, tmp_path):
+        p = str(tmp_path / "ddG.csv")
+        pd.DataFrame({"mut": ["A10G"], "H": [1.0]}).to_csv(p, index=False)
+        with pytest.raises(ValueError, match="maps 'HD' to column 'HO'"):
+            load_ddG_prior_csv(p, ["A10G"],
+                               thermo_options={"column_map": {"HD": "HO"}})

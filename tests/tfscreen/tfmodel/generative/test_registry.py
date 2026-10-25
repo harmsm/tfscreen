@@ -32,7 +32,8 @@ COMPONENT_CATEGORIES = {
 }
 
 OBSERVE_KEYS = {"observe_binding", "observe_growth",
-                "observe_presplit", "observe_base_growth"}
+                "observe_presplit", "observe_base_growth",
+                "observe_growth_counts"}
 
 # Attributes that non-rescale component modules should expose
 STANDARD_COMPONENT_ATTRS = {"get_priors", "define_model", "guide", "get_guesses"}
@@ -49,7 +50,7 @@ MIN_COUNTS = {
     "ln_cfu0": 2,
     "dk_geno": 2,
     "activity": 5,
-    "transformation": 3,
+    "transformation": 2,
     "theta_rescale": 2,
     "theta": 4,
     "theta_growth_noise": 3,
@@ -150,13 +151,16 @@ class TestComponentInterfaces:
         assert priors is not None, f"Component '{name}'.get_priors() returned None"
 
     @pytest.mark.parametrize("name,mod", model_registry.get("transformation", {}).items())
-    def test_transformation_has_update_thetas(self, name, mod):
-        assert hasattr(mod, "update_thetas"), (
-            f"transformation/{name} missing 'update_thetas'"
+    def test_transformation_has_cell_classes(self, name, mod):
+        assert hasattr(mod, "cell_classes"), (
+            f"transformation/{name} missing 'cell_classes'"
         )
-        assert callable(mod.update_thetas)
+        assert callable(mod.cell_classes)
+        assert isinstance(getattr(mod, "NEEDS_POPULATION", None), bool), (
+            f"transformation/{name} must declare NEEDS_POPULATION"
+        )
 
-    @pytest.mark.parametrize("key", list(OBSERVE_KEYS))
+    @pytest.mark.parametrize("key", sorted(OBSERVE_KEYS))
     def test_observe_modules_have_observe_and_guide(self, key):
         mod = model_registry[key]
         for attr in OBSERVE_ATTRS:

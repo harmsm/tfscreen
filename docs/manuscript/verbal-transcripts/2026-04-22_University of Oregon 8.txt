@@ -1,0 +1,105 @@
+All right, so let's go through these questions that we need to add.
+So what is the Hill model equation?
+The Hill model equation is the theta with zero IPTG plus delta theta, that's the change
+in theta upon binding, upon going to fully saturating IPTG.
+That's multiplied by the IPTG concentration raised to the N over the IPTG concentration
+raised to the N plus the equilibrium constant raised to the N, where N is the hill coefficient.
+The multiple transformation correction math, I'm going to skip for now, but I'll get to
+that in a second.
+I'm going to add a block that just says there's some math to be done here, let me know.
+For the likelihood and noise model, we actually use the student T probability distribution
+to account for some possible outliers.
+We also actually tried it with normal distribution and saw no huge difference between the two.
+We did not actually add specifically, in that we estimated the variance on the distribution
+directly.
+We did not add any specific noise.
+We have our deterministic model of binding, which we then use to attempt to deterministically
+reproduce the binding and the growth data without actually adding a specific noise model
+to that.
+We just infer the variance on the probability distribution as our noise model.
+For the lag model selection, we basically did posterior predictive checks formally,
+but visually it was very clear that this was the best of the models that we tried.
+The models that we tried were an instantaneous transition model, so assuming no lag, a baryony
+transition model, which basically has a integrated sigmoidal curve that gives rise to the amount
+of time that it takes for a transition.
+Then the memory model that we described, that was the best one by far.
+I can add a note, actually, to the text to say we're going to add some numbers to support
+that, but for now we're just going to say we did the posterior predictive and visual
+inspection checks.
+How are the logs, if you can compute it from sign sequencing data, yes, let's add that
+to the top.
+The way that this is done is we did noviceek high throughput sequencing, which gave us
+approximately 2.5 billion reads per bioreplicate using barcoding to be able to pool samples
+into single reads.
+We demultiplexed those reads using standard, actually I'll describe the reads really quickly,
+so we did 150 base pair paired end reads on noviceek, so that's 2.5 billion paired end
+reads per run.
+We demultiplexed from our sequencing core itself, all sequencing was done at the UOGC3F,
+that is University of Oregon Genome, actually I don't know what I was saying before, but
+it's GC3F Gamma Charlie 3 Foxtrot, the UOGC3F facility, so they ran our sequencing for us
+and then demultiplexed.
+Once we had the demultiplexed reads, we then assigned reads using the TF screen library.
+We used a direct sequencing strategy here, so we were asking could we map our reads back
+onto our reference gene, the lacropressor gene, and also ask if we could do base calling.
+We did the base calling in a sort of multi-level strategy.
+We basically took every base in the read and we looked at its Q score and a Q score less
+than 15 was assigned to an N at that position.
+We then asked whether this was compatible with a unique gene in our library, so we specified
+what was in our library to begin with and asked could we match it to that library to
+do our read calling, and we basically allowed no more than one mismatch with the existing
+library and if there was ambiguity, meaning that it was one base away from more than one
+library, remember we threw the read out, so that was our primary quality control.
+We then took this collection of reads and on a per genotype basis asked if we saw that
+genotype more than 15 times within a bio-replicant across all of the different read conditions.
+This is basically asking whether we truly saw this genotype somewhere in the library.
+Once we had that, that gave us a raw count per position, for a raw count per genotype
+per condition.
+We then converted these counts into frequencies, so within a given population, so a given IPDG
+concentration, bio-replicant, pre-selection condition, and post-selection vision that
+we could uniquely define each tube that it came from effectively.
+We then calculated the frequency of each gene using a pseudo-count strategy.
+We added a pseudo-count of one for numerical stability.
+We then took these frequencies and multiplied the frequencies by the overall CFU port for
+that condition.
+We got the CFU for that condition by actually doing the experiment in a biological triplicate
+and measuring the OD600 at each bioreplicant and then taking the average across the bioreplicates
+to give us an estimate for how the OD600 changed as a function of time in these samples.
+We converted the OD600 into a log CFU using a careful plate calibration and polynomial
+fitting strategy where we measured OD600 very closely for 25 different conditions, and then
+we did serial dilution plating to measure how that mapped to colony forming units.
+That allowed us to define a second-order polynomial that allowed us to map from the OD600 to the
+CFUs.
+Now we have the total CFUs for each tube, and we have the frequency of each genotype
+in that.
+We multiply those numbers together to get us the absolute CFU for that genotype under
+those conditions.
+Finally, the last step is to do log conversion to convert those into log CFU as a function
+of time.
+Then with the In vivo binding data, how did they enter the likelihood?
+The way that this worked is we actually had two observations, so we had two likelihood
+terms.
+One likelihood term using a student T for the growth data.
+Our second likelihood term is a normal distribution for the binding curves, both go in at the
+same time.
+We did not use these to set priors.
+The priors were previously existing.
+We did have those.
+We had very tight uncertainties on these values experimentally, so the likelihood function
+was quite sharp around the correct theta for each of these in vitro binding data.
+Another feature of this is that we made sure, since we're using SVI, we're having to sample,
+we used a batch size of 1024.
+We found empirically that that gave us the best outcomes.
+We're looking at 1,024 genotypes per run.
+We also included the genotypes which measured theta in every single batch.
+Actually, I'll say what those genotypes are.
+The genotypes were wild type, M42I, H74A, K84L.
+We included those in every single batch, those four genotypes.
+We had 1,020 library genotypes and these four in every single genotype.
+Then we used JAX's internal tools to weight them correctly so that we got a correct likelihood
+weight.
+We were basically oversampling on these genotypes so we make sure they have a lower weight in
+the final analysis.
+Then I'll get to the SVI conversion criteria later, but at some level the primary convergence
+criteria was an elbow plateau and then making sure that we saw parameter stability across
+different parameter seeds.
+Those were the two major mechanisms we used.

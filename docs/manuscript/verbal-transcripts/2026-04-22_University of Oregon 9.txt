@@ -1,0 +1,31 @@
+All right some quick notes on the transformation correction which I kind of
+left as vague before. What we did is we empirically built a distribution of
+Thetas at every iteration of the model and then integrated this set of theta
+values. We then sampled from that distribution and so we could say all
+right for a given theta that we have what's the probability given the lambda
+and this empirical distribution what's the probability that my particular theta
+is being masked by another one. So if theta is very very high for example the
+probability of being masked is very low. If theta is very very low the
+probability of being masked is higher. Conditioned of course on that lambda the
+Poisson parameter there we go brain is falling apart here. Okay so that's how we
+did that there I'm actually gonna have to pull up the equation later which I
+don't have so again put a pin in that saying we have to add that that data to
+that. The other thing I wanted to add into this sort of extra bit is some of
+the parameters that we used in the actual SVI run so we use the atom
+optimizer which is built into
+sorry we used the clipped atom optimizer for SVI that is built into NumPyro and
+we use the auto delta optimizer for our map estimates. When we did our run we
+used a exponential decay in our step sizes we started with an atom step size
+of one times ten to the minus three and reached to a one time ten to the minus
+six step size. We did this with two elbow particles and did this for some
+number of epochs. I actually don't have the number of epochs on me. We used a
+convergence criteria for having the elbow score changed by less than ten to
+the minus six over a sliding window of a hundred epochs so we could pair the
+first hundred epochs the average elbow and the first hundred epochs the average
+elbow and the next set of hundred epochs. We then asked did they both or they
+both was the difference between them less than ten to the minus six and then
+we did this actually with a patience counterbase. We had to see that for at
+least ten times in a row before we decided that the system was converged so
+that was looking for convergence during each run. We then looked for convergence
+the level of the posterior parameters and I'm actually gonna have to give you the
+numbers for that later so we're gonna leave that now off that now.

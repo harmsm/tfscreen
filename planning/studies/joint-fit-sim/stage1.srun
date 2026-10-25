@@ -1,0 +1,74 @@
+#!/bin/bash -l
+#SBATCH --account=harmslab
+#SBATCH --job-name=jfsim_fit
+#SBATCH --partition=gpu
+#SBATCH --time=06:00:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --gpus=1
+#SBATCH --mem=0
+#SBATCH --ntasks-per-node=1
+
+# Joint stage 1 on one simulation (planning/studies/joint-fit-sim). Run from
+# the study's cluster directory after simulate.srun:
+#
+#   sbatch --export=ALL,SIM=sim_joint_s1,MODEL=full --output=fit_joint_full.out stage1.srun
+#
+#   SIM    simulation directory (from simulate.srun)
+#   MODEL  full | plain
+#   SEED   fit seed (default 1)
+#   INIT   optional: start at this fit's MAP (e.g. fit_null_s1_plain); the
+#          output is then fit_${SIM#sim_}_${MODEL}_from_${INIT#fit_*_s1_}
+#   PIN    optional: 1 pins k and m at the simulation's truth (stage1.py
+#          --pin_km_truth); output suffix _pinkm
+#   NOMIX  optional: 1 fits without the congression mixture (stage1.py
+#          --no_mixture); output suffix _single
+#   PRIORS optional: extra --set_priors items, separated by ':' (sbatch
+#          --export splits on commas); give TAG with it
+#   TAG    optional: output suffix _${TAG}
+#   CSETS  optional: the mixture's co-resident sets, ':'-separated (e.g.
+#          50:20:5; stage1.py --congression_sets); name the arm with TAG
+#   ADDB   optional: N extra binding singles (stage1.py
+#          --add_binding_singles); name the arm with TAG
+#   BSEED  optional: which random singles (stage1.py --binding_seed,
+#          default 1)
+#
+# Writes fit_${SIM#sim_}_${MODEL}/; a rerun resumes.
+
+module load cuda/12.4.1
+set -e
+SIM="${SIM:?set SIM}"
+MODEL="${MODEL:?set MODEL}"
+SEED="${SEED:-1}"
+STUDY=/gpfs/home/harms/tfscreen/planning/studies/joint-fit-sim
+OUT="fit_${SIM#sim_}_${MODEL}"
+EXTRA=()
+if [[ -n "${INIT:-}" ]]; then
+    OUT="${OUT}_from_${INIT#fit_*_s1_}"
+    EXTRA=(--init_from "${INIT}/tfs_fit_model_params.npz")
+fi
+if [[ "${NOMIX:-0}" == 1 ]]; then
+    OUT="${OUT}_single"
+    EXTRA+=(--no_mixture)
+fi
+if [[ -n "${PRIORS:-}" ]]; then
+    IFS=':' read -r -a ITEMS <<< "${PRIORS}"
+    EXTRA+=(--set_priors "${ITEMS[@]}")
+fi
+if [[ -n "${ADDB:-}" ]]; then
+    EXTRA+=(--add_binding_singles "${ADDB}" --binding_seed "${BSEED:-1}")
+fi
+if [[ -n "${CSETS:-}" ]]; then
+    IFS=':' read -r -a SETS <<< "${CSETS}"
+    EXTRA+=(--congression_sets "${SETS[@]}")
+fi
+if [[ -n "${TAG:-}" ]]; then
+    OUT="${OUT}_${TAG}"
+fi
+if [[ "${PIN:-0}" == 1 ]]; then
+    OUT="${OUT}_pinkm"
+    EXTRA+=(--pin_km_truth)
+fi
+echo ">>> stage 1 ${SIM} ${MODEL} -> ${OUT} $(date)"
+python "${STUDY}/stage1.py" "${SIM}" "${OUT}" --model "${MODEL}" --seed "${SEED}" "${EXTRA[@]}"
+echo ">>> done $(date)"

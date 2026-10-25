@@ -1,0 +1,46 @@
+#!/bin/bash -l
+#SBATCH --account=harmslab
+#SBATCH --job-name=jfreal_fit
+#SBATCH --partition=gpu
+#SBATCH --time=06:00:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --gpus=1
+#SBATCH --mem=0
+#SBATCH --ntasks-per-node=1
+
+# Joint stage 1 on the real screen (planning/studies/joint-fit-real). Run
+# from the study's cluster directory:
+#
+#   sbatch --export=ALL,MODEL=plain,OUT=plain --output=plain.out stage1_real.srun
+#
+#   MODEL    plain | full
+#   OUT      output directory
+#   INIT     optional: a fit directory to start from (its MAP params)
+#   BINDING  binding_df (default: dev-data/binding/2026-10-15_binding_2uM.csv)
+#   CSETS    co-resident sets, ':'-separated (default 50:20:5)
+#   DROP     tubes to leave out, ' '-separated condition_sel:replicate:t_sel
+#            (default the probably swapped pheS+4CP replicate 2, t_sel 82 row)
+#
+# A rerun resumes.
+
+module load cuda/12.4.1
+set -e
+MODEL="${MODEL:?set MODEL}"
+OUT="${OUT:?set OUT}"
+DEV=/gpfs/projects/harmslab/harms/studies/dev-data
+GROWTH="${GROWTH:-${DEV}/real_fit/recipe/tfs_growth.csv}"
+LIB="${LIB:-${DEV}/processed/library_config.yaml}"
+BINDING="${BINDING:-${DEV}/binding/2026-10-15_binding_2uM.csv}"
+CSETS="${CSETS:-50:20:5}"
+DROP="${DROP:-pheS+4CP:2:82}"
+STUDY=/gpfs/home/harms/tfscreen/planning/studies/joint-fit-real
+IFS=':' read -r -a SETS <<< "${CSETS}"
+read -r -a DROPS <<< "${DROP}"
+EXTRA=(--congression_sets "${SETS[@]}" --drop_tubes "${DROPS[@]}")
+if [[ -n "${INIT:-}" ]]; then
+    EXTRA+=(--init_from "${INIT}/tfs_fit_model_params.npz")
+fi
+echo ">>> stage 1 real ${MODEL} -> ${OUT} $(date)"
+python "${STUDY}/stage1_real.py" "${GROWTH}" "${LIB}" "${BINDING}" "${OUT}" --model "${MODEL}" "${EXTRA[@]}"
+echo ">>> done $(date)"

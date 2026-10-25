@@ -3,10 +3,16 @@ import tfscreen
 
 from tfscreen.simulate import (
     build_sample_dataframes,
+    design_conditions,
+    read_design,
     thermo_to_growth,
 )
 from tfscreen.simulate.sim_data_class import build_sim_data
-from tfscreen.simulate.sample_theta import sample_theta_stratified, sample_theta_prior
+from tfscreen.simulate.sample_theta import (
+    ddG_truth_conditions,
+    sample_theta_prior,
+    sample_theta_stratified,
+)
 from tfscreen.simulate.binding_params import (
     SUPPORTED_COMPONENTS as _BINDING_PARAMS_SUPPORTED,
     read_binding_genotype_params,
@@ -22,6 +28,7 @@ from tfscreen.simulate.empirical.resample import (
 from tfscreen.simulate.empirical.population import PopulationModel
 
 from tfscreen.genetics import library_manager
+from tfscreen.genetics.library_subsample import subsample_library_df
 from tfscreen.genetics import standardize_genotypes
 
 import jax
@@ -157,6 +164,67 @@ def _measured_params_override(params_file, cf, sim_data, library_df, rng,
     return gc_over, p_over, measured_binding_df.to_dict("records")
 
 
+def growth_titrant_scale_from(cf):
+    """
+    The config's ``growth_titrant_scale`` (s, default 1): growth sees each
+    genotype's curve at s times the nominal titrant, binding at the nominal.
+    """
+    s = cf.get("growth_titrant_scale")
+    if s is None:
+        return 1.0
+    s = float(s)
+    if not np.isfinite(s) or s <= 0:
+        raise ValueError(f"growth_titrant_scale must be a positive number, got {s}")
+    return s
+
+
+def _spiked_keeps_own_theta(theta_component):
+    """Whether spiked stratified/random binding genotypes keep their own theta.
+
+    The thermodynamic components derive each genotype's theta from per-mutation
+    equilibrium constants shared across the library, and their truth is those
+    K's.  Pasting a pool curve over a spiked genotype would leave its K truth
+    describing a curve that was never simulated, so for these components the
+    spiked genotypes keep their own model-generated theta, and stratified or
+    random only chooses which of them are measured.
+    """
+    return str(theta_component).startswith("thermo.")
+
+
+def _select_own_theta_spiked(spiked_names, num, select_mode, binding_theta,
+                             binding_concs, titrant_name, rng):
+    """Choose spiked binding genotypes by their own simulated binding theta.
+
+    ``binding_theta`` is the long-form (genotype, titrant_conc, theta) table
+    from ``thermo_to_growth(..., binding_titrant_conc=...)``.  ``stratified``
+    picks the ``num`` spiked genotypes whose binding curves span the most
+    space (greedy maximin), ``random`` picks ``num`` at random; ``num`` None
+    measures every spiked genotype.  Returns the binding rows
+    (``theta_true`` straight from the table).
+    """
+    from tfscreen.simulate.sample_theta import _greedy_maximin
+
+    concs = [float(c) for c in binding_concs]
+    wide = (binding_theta.assign(genotype=binding_theta["genotype"].astype(str))
+            .pivot(index="genotype", columns="titrant_conc", values="theta"))
+    names = [g for g in standardize_genotypes(spiked_names) if g in wide.index]
+    if num is None or int(num) >= len(names):
+        chosen = names
+    elif select_mode == "stratified":
+        idx = _greedy_maximin(wide.loc[names, concs].to_numpy(dtype=float),
+                              int(num))
+        chosen = [names[int(i)] for i in idx]
+    elif select_mode == "random":
+        idx = rng.choice(len(names), size=int(num), replace=False)
+        chosen = [names[int(i)] for i in idx]
+    else:
+        raise ValueError(f"Unknown spiked_binding choose_by: '{select_mode}'.")
+
+    return [{"genotype": g, "titrant_name": titrant_name, "titrant_conc": c,
+             "theta_true": float(wide.loc[g, c])}
+            for g in chosen for c in concs]
+
+
 def _spiked_stratified_binding(binding_genotypes, cf, sample_df, binding_sample_df,
                                theta_rng_key, conc_to_col, binding_concs,
                                titrant_name, select_mode):
@@ -175,6 +243,8 @@ def _spiked_stratified_binding(binding_genotypes, cf, sample_df, binding_sample_
         single_wt_df = pd.DataFrame({"genotype": ["wt"]})
         binding_wt_sim = build_sim_data(single_wt_df, binding_sample_df,
                                         thermo_data=cf.get('thermo_data'),
+                                        thermo_options=cf.get('thermo_options'),
+                                        theta_component=cf['theta_component'],
                                         skip_pairs=True)
         wt_binding_gc, _ = sample_theta_prior(
             cf['theta_component'], binding_wt_sim, theta_rng_key,
@@ -189,6 +259,7 @@ def _spiked_stratified_binding(binding_genotypes, cf, sample_df, binding_sample_
             rng_key=theta_rng_key,
             n_select=len(non_wt),
             thermo_data=cf.get('thermo_data'),
+            thermo_options=cf.get('thermo_options'),
             pool_size=cf.get('binding_stratify_pool_size', 500),
             priors_overrides=cf.get('theta_priors'),
             sim_priors_overrides=cf.get('theta_sim_priors'),
@@ -209,7 +280,11 @@ def _spiked_stratified_binding(binding_genotypes, cf, sample_df, binding_sample_
 
 
 def library_prediction(cf: Union[Dict[str, Any], str, Path],
-                       override_keys: dict=None):
+                       override_keys: dict=None,
+                       return_mutation_truth: bool=False,
+                       return_binding_theta: bool=False,
+                       library_df: pd.DataFrame=None,
+                       base_dir: str=None):
     """
     Predict the "ground-truth" phenotypes for a transcription factor screen
     experiment given a library, thermodynamic model, and map between that model
@@ -224,6 +299,23 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
         after reading the configuration file, replace keys in the configuration
         with the key/value pairs in override keys. No error checking is done
         on these keys; the user is responsible for checking their sanity.
+    return_mutation_truth : bool, default False
+        Also return the per-mutation, per-pair and per-structure ground
+        truth from ``thermo_to_growth`` as a sixth value (``{"mutation":
+        DataFrame or None, "pair": DataFrame or None, "ddG_sigma": DataFrame
+        or None}``).
+    return_binding_theta : bool, default False
+        Also return, last, the ground-truth theta of every library genotype
+        at the ``binding_data`` concentrations (None without a
+        ``binding_data`` block).
+    library_df : pandas.DataFrame, optional
+        The library to simulate, as ``genetics.library_subsample.
+        build_library`` returns it. Default: built from ``cf``, with any
+        ``library_genotypes``/``library_subsample`` applied.
+    base_dir : str, optional
+        Directory a relative ``library_genotypes`` path is read against when
+        the library is built here. Default: the YAML's directory when ``cf``
+        is a path, else the working directory.
 
     Returns
     -------
@@ -248,32 +340,70 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
         ``titrant_name``, ``titrant_conc``, ``theta_true``.  Theta values
         here are stratified (greedy maximin) across the binding concentrations
         and are consistent with the growth phenotypes in ``phenotype_df``.
+    mutation_truth : dict
+        Only when ``return_mutation_truth`` is True; see
+        ``thermo_to_growth``.
+    library_binding_theta_df : pandas.DataFrame or None
+        Only when ``return_binding_theta`` is True: columns ``genotype``,
+        ``titrant_name``, ``titrant_conc``, ``theta``, evaluated from each
+        genotype's drawn parameters at the binding concentrations (see
+        ``thermo_to_growth._theta_at_concs``).  ``library_binding`` reads
+        its theta from here.
     """
 
     # -------------------------------------------------------------------------
     # Read inputs and set up simulation
 
+    if isinstance(cf, (str, Path)) and base_dir is None:
+        base_dir = os.path.dirname(os.path.abspath(cf))
     cf = tfscreen.util.read_yaml(cf, override_keys=override_keys)
 
     # -------------------------------------------------------------------------
     # Do main calculation
 
-    # Build library_df
-    lm = library_manager.LibraryManager(cf)
-    library_df = lm.build_library_df()
+    # Build library_df (restricted to the config's subsample, if any)
+    if library_df is None:
+        lm = library_manager.LibraryManager(cf)
+        library_df, _ = subsample_library_df(lm.build_library_df(), cf,
+                                             base_dir=base_dir)
 
-    # Build sample_df (holds all conditions for the experiment)
-    sample_df = build_sample_dataframes(
-        cf['condition_blocks'],
-        replicate=1
-    )
+    # Build sample_df (holds all conditions for the experiment): from the
+    # condition blocks, or from a design tube table (the union of its
+    # replicates' conditions; each replicate later takes its own tubes).
+    if cf.get('design') is not None:
+        if cf.get('condition_blocks') is not None:
+            raise ValueError("Give either 'design' or 'condition_blocks', not "
+                             "both.")
+        sample_df = design_conditions(read_design(cf['design']))
+    else:
+        sample_df = build_sample_dataframes(
+            cf['condition_blocks'],
+            replicate=1
+        )
 
     # Build SimData: lightweight container for the theta model
     sim_data = build_sim_data(
         library_df=library_df,
         sample_df=sample_df,
         thermo_data=cf.get('thermo_data'),
+        thermo_options=cf.get('thermo_options'),
+        theta_component=cf.get('theta_component'),
     )
+
+    # In vivo titrant: growth sees each curve at s times the nominal
+    # concentration, binding at the nominal one (the fit's
+    # theta_growth_log_conc_shift = log s, hill_geno). Every growth-side
+    # theta evaluation reads sim_data's concentrations, so scaling them here
+    # covers the prior draw, the wt reference and the overrides; binding
+    # theta is evaluated at the binding concentrations themselves.
+    growth_titrant_scale = growth_titrant_scale_from(cf)
+    growth_sample_df = sample_df
+    if growth_titrant_scale != 1.0:
+        from tfscreen.simulate.sim_data_class import with_titrant_conc
+        nominal = np.sort(sample_df["titrant_conc"].unique()).astype(float)
+        sim_data = with_titrant_conc(sim_data, nominal * growth_titrant_scale)
+        growth_sample_df = sample_df.assign(
+            titrant_conc=sample_df["titrant_conc"] * growth_titrant_scale)
 
     # Derive both RNG objects from the single seed.  They are independent
     # objects with independent state; using the same integer for both introduces
@@ -301,10 +431,27 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
 
     binding_cfg = cf.get('binding_data')
     phenotype_source = cf.get('phenotype_source', 'prior')
+
+    # ddG_truth_sd: SD of the simulated per-structure ΔΔG around the table
+    # (PddG/PnnC), conditioned as the draw's sigma_s (1 kT when absent);
+    # checked before any sampling.
+    ddG_truth_sd = cf.get('ddG_truth_sd')
+    theta_conditions = None
+    if phenotype_source == 'empirical':
+        if ddG_truth_sd is not None:
+            raise ValueError("ddG_truth_sd does not apply with "
+                             "phenotype_source: empirical.")
+    else:
+        theta_conditions = ddG_truth_conditions(
+            ddG_truth_sd, cf.get('theta_component'), cf.get('thermo_options'))
+
     theta_gc_override = {}
     theta_params_override = {}
     dk_geno_override = None
     binding_theta_df = None
+    # spiked stratified/random binding whose genotypes keep their own theta
+    # (thermodynamic components): chosen after the draw, below.
+    deferred_spiked = None
 
     if phenotype_source == 'empirical':
         # Empirical phenotypes: resample every library genotype from the
@@ -348,11 +495,13 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
                 theta_gc_override.update(gc_over)
                 theta_params_override.update(p_over)
                 rows.extend(spiked_rows)
+            elif _spiked_keeps_own_theta(theta_component):
+                deferred_spiked = (sb.get("num"), choose_by)
             else:
                 num = sb.get("num")
                 sel = spiked_names if num is None else spiked_names[:int(num)]
                 s_over, s_rows = _spiked_stratified_binding(
-                    sel, cf, sample_df, binding_sample_df, theta_rng_key,
+                    sel, cf, growth_sample_df, binding_sample_df, theta_rng_key,
                     conc_to_col, binding_concs, titrant_name,
                     select_mode=choose_by)
                 theta_gc_override.update(s_over)
@@ -399,7 +548,10 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
         activity_wt = cf.get('activity_wt', 1.0)
         activity_mut_scale = cf.get('activity_mut_scale', 0.0)
 
-    phenotype_df, genotype_theta_df, parameters_df = thermo_to_growth(
+    need_binding_theta = binding_cfg is not None and (
+        return_binding_theta or deferred_spiked is not None)
+
+    result = thermo_to_growth(
         genotypes=library_df["genotype"],
         sim_data=sim_data,
         sample_df=sample_df,
@@ -421,6 +573,35 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
         theta_gc_override=theta_gc_override,
         theta_params_override=theta_params_override or None,
         dk_geno_override=dk_geno_override,
+        return_mutation_truth=return_mutation_truth,
+        theta_conditions=theta_conditions,
+        **({"binding_titrant_conc": binding_cfg['titrant_conc']}
+           if need_binding_theta else {}),
     )
+    phenotype_df, genotype_theta_df, parameters_df = result[:3]
 
-    return library_df, phenotype_df, genotype_theta_df, parameters_df, binding_theta_df
+    library_binding_theta_df = None
+    if need_binding_theta:
+        library_binding_theta_df = result[-1].copy()
+        library_binding_theta_df.insert(1, "titrant_name",
+                                        binding_cfg['titrant_name'])
+
+    # Spiked genotypes that keep their own theta: choose which are measured
+    # from their simulated binding curves, so their binding theta, growth
+    # theta and K truth all come from the same draw.
+    if deferred_spiked is not None:
+        num, choose_by = deferred_spiked
+        spiked_rows = _select_own_theta_spiked(
+            spiked_names, num, choose_by, library_binding_theta_df,
+            binding_cfg['titrant_conc'], binding_cfg['titrant_name'], rng)
+        prior = [] if binding_theta_df is None else \
+            binding_theta_df.to_dict("records")
+        binding_theta_df = pd.DataFrame(spiked_rows + prior)
+
+    out = (library_df, phenotype_df, genotype_theta_df, parameters_df,
+           binding_theta_df)
+    if return_mutation_truth:
+        out += (result[3],)
+    if return_binding_theta:
+        out += (library_binding_theta_df,)
+    return out

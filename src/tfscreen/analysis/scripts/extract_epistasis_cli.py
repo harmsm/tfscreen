@@ -156,6 +156,16 @@ def extract_epistasis(data_file,
     # estimate, (q0.841 - q0.159)/2 for the std) when not given explicitly.
     df, y_obs, y_std = resolve_obs_columns(df, y_obs=y_obs, y_std=y_std)
 
+    # tfs-predict-theta labels a relative fit's output as X (theta_scale),
+    # which is defined only up to an affine map: only additive epistasis
+    # applies to it (roadmap C8).
+    if "theta_scale" in df.columns and (df["theta_scale"] == "X").any() \
+            and scale != "add":
+        raise ValueError(
+            f"'{data_file}' holds the wt-relative growth variable X "
+            f"(theta_scale == 'X'), not an occupancy; only scale='add' "
+            f"applies to it (got scale={scale!r}).")
+
     # Fail fast on missing columns rather than deep inside the pivot.
     required = ["genotype", y_obs]
     if y_std is not None:

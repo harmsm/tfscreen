@@ -1,13 +1,19 @@
 import pandas as pd
 import numpy as np
 import itertools
-import warnings
-from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator, _RELATIVE_THETA
 from tfscreen.tfmodel.inference.posteriors import load_posteriors, get_posterior_samples
+from tfscreen.tfmodel.inference.model_params import (
+    hold_model_params,
+    read_model_params,
+    sample_keys,
+)
 from tfscreen.tfmodel.tensors.batch import get_batch as _get_batch
+from tfscreen.tfmodel.generative.model import growth_titrant
+from tfscreen.tfmodel.inference.initialization import structure_trace
 import jax
 from jax import numpy as jnp
-from numpyro.handlers import seed, trace
+from numpyro.handlers import seed, substitute, trace
 from numpyro.infer import Predictive
 
 def _align_site_to_tm_dims(spatial_shape, tm_sizes):
@@ -162,6 +168,11 @@ def _condition_rep_output_df(growth_tm, site_samples, q_to_get, num_samples):
     return df
 
 
+def _is_relative(orchestrator):
+    """True when the model's theta component is on the relative X scale."""
+    return orchestrator.settings.get("theta") in _RELATIVE_THETA
+
+
 def copy_orchestrator(orchestrator,
                       t_pre=None,
                       t_sel=None,
@@ -190,7 +201,8 @@ def copy_orchestrator(orchestrator,
         values from `orchestrator.growth_df`.
     genotypes : list, optional
         Subset of genotypes to include. Must be a subset of those in
-        ``orchestrator.growth_df``. If None, uses all genotypes.
+        ``orchestrator.growth_df``. If None, uses all genotypes. A relative
+        theta component is gauged on wt, so wt is always kept.
 
     Returns
     -------
@@ -247,6 +259,8 @@ def copy_orchestrator(orchestrator,
         missing = [g for g in geno_strs if g not in all_genos]
         if missing:
             raise ValueError(f"Genotype(s) not found in orchestrator: {missing}")
+        if _is_relative(orchestrator) and "wt" not in geno_strs:
+            geno_strs = geno_strs + ["wt"]
         unique_cats = unique_cats[
             unique_cats["genotype"].astype(str).isin(set(geno_strs))
         ]
@@ -261,10 +275,18 @@ def copy_orchestrator(orchestrator,
     # Add required data columns with dummy values
     new_growth_df["ln_cfu"] = 0.0
     new_growth_df["ln_cfu_std"] = 1.0
+    if orchestrator.settings.get("growth_likelihood") == "counts":
+        # The count observer's inputs; placeholders too, since prediction
+        # reads growth_pred, not the observation.
+        new_growth_df["counts"] = 0
+        new_growth_df["sample_reads"] = 1.0
+        new_growth_df["sample_ln_cfu"] = 0.0
 
     # We keep the binding_df as is, as it's keyed by genotype/titrant_name
-    # and we aren't subsetting those in this step.
-    new_binding_df = orchestrator.binding_df.copy()
+    # and we aren't subsetting those in this step. A growth-only model has
+    # none.
+    new_binding_df = (None if orchestrator.binding_df is None
+                      else orchestrator.binding_df.copy())
 
     # Create new ModelOrchestrator using settings from the old one
     settings = orchestrator.settings.copy()
@@ -276,17 +298,38 @@ def copy_orchestrator(orchestrator,
     # the subset must remain marked as spiked; those outside the subset are
     # simply omitted.  Dropping all spiked_genotypes would silently mis-classify
     # in-subset spiked genotypes as library genotypes and corrupt predictions.
-    if genotypes is not None:
+    # A model built from library_file reports the spiked list it derived, but
+    # the library table is the definition (and covers any subset), so the
+    # derived list is dropped, as write_configuration does.
+    if settings.get("library_file") is not None:
+        settings.pop("spiked_genotypes", None)
+    elif genotypes is not None:
         geno_set = set(geno_strs)
         orig_spiked = settings.get("spiked_genotypes") or []
         settings["spiked_genotypes"] = [
             g for g in orig_spiked if str(g) in geno_set
         ]
 
+    # Per-mutation and per-pair parameters (the *_mutation_plate and
+    # *_pair_plate sites of hill_mut, the *_mut activity components and the
+    # thermodynamic theta models, and the per-structure data built from
+    # those labels) are indexed by the fitted model's mut_labels and
+    # pair_labels. Built from a genotype subset alone, the labels would be
+    # the subset's mutations in a different first-seen order, and posterior
+    # arrays would land on the wrong mutations and pairs. Keep the fitted
+    # model's index space and rebuild only the genotype columns.
+    mut_label_kwargs = {}
+    if len(getattr(orchestrator, "mut_labels", None) or []) > 0:
+        mut_label_kwargs = {
+            "mut_labels": list(orchestrator.mut_labels),
+            "pair_labels": list(orchestrator.pair_labels),
+        }
+
     return ModelOrchestrator(
         growth_df=new_growth_df,
         binding_df=new_binding_df,
-        **settings
+        **settings,
+        **mut_label_kwargs,
     )
 
 def _convert_map_params(map_params, model_trace):
@@ -335,65 +378,134 @@ def _convert_map_params(map_params, model_trace):
     return constrained
 
 
-def _build_population_theta_reference(param_posteriors, max_samples=20):
+# Deterministic sites holding every genotype's library-ordered value, and the
+# GrowthData field each one fills for the congression mixture.
+_POPULATION_SITES = (("dk_geno", "external_dk_population"),
+                     ("activity", "external_activity_population"))
+
+
+def _missing_site_error(site):
+    return ValueError(
+        f"The mixture transformation needs every genotype's '{site}' from the "
+        f"posterior to build congressed cells, but '{site}' is not in "
+        f"param_posteriors. Raw MAP checkpoints store only guide parameters; "
+        f"run tfs-sample-posterior to write a full posterior file first."
+    )
+
+
+def _posterior_median(param_posteriors, site, max_samples):
+    """Median over the first ``max_samples`` posterior draws of ``site``."""
+    try:
+        values = get_posterior_samples(param_posteriors, site)
+    except KeyError:
+        raise _missing_site_error(site) from None
+    n_use = min(max_samples, values.shape[0])
+    return np.median(np.asarray(values[:n_use]), axis=0)
+
+
+def _binding_labels(orchestrator):
+    """Binding genotypes in binding-tensor order ([] without binding)."""
+    tm = getattr(orchestrator, "binding_tm", None)
+    if tm is None:
+        return []
+    names = list(tm.tensor_dim_names)
+    return [str(g) for g in tm.tensor_dim_labels[names.index("genotype")]]
+
+
+def _population_theta(orchestrator, param_posteriors, pred_growth,
+                      max_samples, model_params=None):
     """
-    Build a single population-wide theta_growth reference for transformation
-    components whose congression correction needs one (see
-    transformation/_congression.py and generative/model.py).
+    Every fitted genotype's theta at the prediction's titrant concentrations.
 
-    Reads the ``theta_growth_pred`` deterministic site, which get_posteriors()
-    always stores at full genotype-population size regardless of any
-    genotype batching used during training or posterior sampling (unlike a
-    fresh forward pass through a genotype-subsetted orchestrator, which only
-    ever sees the requested subset -- see copy_orchestrator()).
+    The theta component's posterior parameters (median over draws) are
+    evaluated over the whole fitted library on the prediction's
+    concentration grid, which can differ from the fit's (so the stored
+    ``theta_growth_pred`` cannot be used directly).
+    """
+    sample_theta, calc_theta, _ = orchestrator.main_control_kwargs["theta"]
+    num_genotype = orchestrator.data.growth.num_genotype
+    full = jnp.arange(num_genotype)
+    growth = orchestrator.get_batch(orchestrator.data, full).growth
 
-    Reduces across a small number of posterior draws (median) rather than
-    threading the full posterior sample axis through this call: the
-    population reference only needs to characterize the theta *distribution*
-    across genotypes for the congression correction, not track each specific
-    joint posterior draw, and this keeps the one-time cost independent of
-    both ``num_marginal_samples`` and the number of stored posterior draws.
+    theta_trace = trace(seed(sample_theta, rng_seed=0)).get_trace(
+        "theta", growth, orchestrator.priors.theta)
+    latents = {
+        name: jnp.asarray(_posterior_median(param_posteriors, name,
+                                            max_samples))
+        for name, site in theta_trace.items()
+        if site["type"] == "sample" and not site.get("is_observed", False)
+    }
+    # the theta component's own learned params (thermo PnnC NN) too
+    theta_param = substitute(seed(sample_theta, rng_seed=0),
+                             data={**(model_params or {}), **latents})(
+        "theta", growth, orchestrator.priors.theta)
+
+    view = growth.replace(batch_idx=full,
+                          geno_theta_idx=full,
+                          titrant_conc=pred_growth.titrant_conc,
+                          log_titrant_conc=pred_growth.log_titrant_conc,
+                          num_titrant_conc=pred_growth.num_titrant_conc)
+    # the titrant the growth sees (s times nominal), as in the model
+    return calc_theta(theta_param, growth_titrant(theta_param, view))
+
+
+def _build_population_references(orchestrator, param_posteriors, pred_growth,
+                                 max_samples=20, model_params=None):
+    """
+    Library-wide theta, dk_geno and activity references for the congression
+    mixture (transformation components with ``NEEDS_POPULATION``).
+
+    A prediction runs a model rebuilt for the requested genotypes only (see
+    copy_orchestrator), whose latents cover just that subset. The mixture's
+    congressed cells, though, look their co-resident plasmids up across the
+    whole fitted library, so the library-wide values come from the posterior:
+    theta from the theta component's parameters, evaluated at the
+    prediction's concentrations (``_population_theta``); dk_geno and activity
+    from their deterministic sites, which get_posteriors() stores for every
+    genotype in library order.
+
+    Each reference comes from the median over up to ``max_samples``
+    posterior draws, not per-draw values: the background only needs to
+    characterize the co-residents, and this keeps the cost independent of the
+    number of draws.
 
     Parameters
     ----------
+    orchestrator : ModelOrchestrator
+        The fitted model.
     param_posteriors : dict-like
-        Full (not genotype-subsetted) posterior samples, as returned by
-        load_posteriors().
+        Full (not genotype-subsetted) posterior samples.
+    pred_growth : GrowthData
+        The prediction's growth data (supplies the concentration grid).
     max_samples : int, optional
-        Maximum number of posterior draws to read when computing the
-        median. Default 20.
+        Maximum number of posterior draws to read. Default 20.
 
     Returns
     -------
-    jnp.ndarray or None
-        Shape matches theta_growth_pred's stored shape with the leading
-        sample axis reduced away (typically (num_titrant_name,
-        num_titrant_conc, num_genotype), possibly with extra broadcast dims
-        from scatter_theta=1). None if theta_growth_pred is not present in
-        param_posteriors (e.g. a raw MAP checkpoint, which stores guide
-        parameters rather than deterministic site values).
-    """
-    try:
-        theta_growth_pred = get_posterior_samples(param_posteriors, "theta_growth_pred")
-    except KeyError:
-        warnings.warn(
-            "The configured transformation component needs a population-wide "
-            "theta reference for its congression correction, but "
-            "'theta_growth_pred' was not found in param_posteriors (expected "
-            "for raw MAP checkpoints, which only store guide parameters, not "
-            "deterministic site values). Falling back to no population "
-            "reference; predictions may reproduce the population-CDF bug this "
-            "mechanism exists to avoid. Run tfs-sample-posterior to generate "
-            "a full posterior file instead.",
-            UserWarning,
-            stacklevel=2,
-        )
-        return None
+    dict
+        Maps each ``external_*_population`` GrowthData field to its array.
 
-    n_available = theta_growth_pred.shape[0]
-    n_use = min(max_samples, n_available)
-    theta_growth_pred = np.asarray(theta_growth_pred[:n_use])
-    return jnp.asarray(np.median(theta_growth_pred, axis=0))
+    Raises
+    ------
+    ValueError
+        If a site is missing (a raw MAP checkpoint stores guide parameters,
+        not deterministic sites) or is not library-sized.
+    """
+    num_genotype = orchestrator.data.growth.num_genotype
+    references = {}
+    for site, field_name in _POPULATION_SITES:
+        values = _posterior_median(param_posteriors, site, max_samples)
+        if values.shape[-1] != num_genotype:
+            raise ValueError(
+                f"Posterior '{site}' has {values.shape[-1]} genotypes on its "
+                f"last axis; expected the whole library ({num_genotype})."
+            )
+        references[field_name] = jnp.asarray(values)
+
+    references["external_theta_population"] = _population_theta(
+        orchestrator, param_posteriors, pred_growth, max_samples,
+        model_params=model_params)
+    return references
 
 
 def predict(orchestrator,
@@ -461,21 +573,21 @@ def predict(orchestrator,
     if isinstance(predict_sites, str):
         predict_sites = [predict_sites]
 
-    # Some transformation components (currently just "empirical") correct
-    # theta using a background CDF that must be estimated from the *full*
-    # genotype population, not whatever subset of genotypes this call
-    # happens to request (see generative/model.py and
-    # transformation/_congression.py). Build that reference once, up front,
-    # from the full-population posterior -- never from new_orchestrator,
-    # which copy_orchestrator() below rebuilds scoped to just the requested
-    # genotypes.
+    # The mixture transformation builds congressed cells from co-resident
+    # plasmids looked up across the whole library (see
+    # transformation/mixture.py and generative/model.py). Build the
+    # library-wide references once, up front, from the full-population
+    # posterior -- never from new_orchestrator, which copy_orchestrator()
+    # below rebuilds scoped to just the requested genotypes.
     transformation_control = orchestrator.main_control_kwargs.get("transformation")
     transformation_needs_population = (
         bool(transformation_control[2]) if transformation_control is not None else False
     )
-    external_theta_population = None
+    # Checked here, before any model work, so a raw MAP checkpoint fails fast.
     if transformation_needs_population:
-        external_theta_population = _build_population_theta_reference(param_posteriors)
+        for site, _ in _POPULATION_SITES:
+            if site not in param_posteriors:
+                raise _missing_site_error(site)
 
     # Create the expanded prediction model, subsetting genotypes if requested.
     # Passing genotypes to copy_orchestrator ensures the new orchestrator's TM
@@ -488,6 +600,11 @@ def predict(orchestrator,
                                          titrant_conc=titrant_conc,
                                          genotypes=genotypes)
 
+    # A relative theta component's gauge needs wt, so copy_orchestrator keeps
+    # it in any subset; it is dropped from the output below if not asked for.
+    drop_wt = (genotypes is not None and _is_relative(orchestrator)
+               and "wt" not in [str(g) for g in genotypes])
+
     # After copy_orchestrator the new TM contains exactly the requested
     # genotypes (or all genotypes when genotypes=None).
     genotypes = new_orchestrator.growth_tm.tensor_dim_labels[-1].tolist()
@@ -497,10 +614,11 @@ def predict(orchestrator,
     #
     # We use the original orchestrator because posteriors match its structure.
 
-    seeded_model = seed(orchestrator.jax_model, rng_seed=0)
-    traced_model = trace(seeded_model)
-    model_trace = traced_model.get_trace(data=orchestrator.data,
-                                         priors=orchestrator.priors)
+    # A structure trace: a prior draw that predicts a non-finite ln_cfu must
+    # not stop it at the count observation (see structure_trace).
+    model_trace = structure_trace(orchestrator.jax_model,
+                                  data=orchestrator.data,
+                                  priors=orchestrator.priors)
 
     # -------------------------------------------------------------------------
     # MAP param conversion (if needed)
@@ -516,6 +634,14 @@ def predict(orchestrator,
     # already store constrained values keyed by bare site name and are left
     # unchanged.
 
+    # The model's own learned params (thermo PnnC NN weights): a
+    # posterior file stores them in its model_params group, a raw MAP params
+    # file under their own names. They are held fixed in every model run
+    # below; without them the model would use their init values.
+    model_param_names = [name for name, site in model_trace.items()
+                         if site["type"] == "param"]
+    model_params = read_model_params(param_posteriors, model_param_names)
+
     if any(str(k).endswith("_auto_loc") for k in param_posteriors.keys()):
         param_posteriors = _convert_map_params(param_posteriors, model_trace)
 
@@ -523,7 +649,7 @@ def predict(orchestrator,
     # Sample selection from posterior
 
     # Identify how many samples we have
-    first_key = next(iter(param_posteriors.keys()))
+    first_key = sample_keys(param_posteriors)[0]
     total_available = param_posteriors[first_key].shape[0]
 
     # Sample indices for running through the model (quantile computation)
@@ -549,6 +675,18 @@ def predict(orchestrator,
             continue
             
         val = val[sample_indices]
+
+        # Per-tube offsets (sample_offset: one value per tube, on a
+        # "{name}_tubes" plate) describe particular tubes. A prediction is
+        # for a typical tube, and its tube grid (every t_pre x t_sel x
+        # concentration asked for) is not the training grid, so these are
+        # set to zero: the expected growth, without any one tube's shift.
+        if any(frame.name.endswith("_tubes")
+               for frame in site.get("cond_indep_stack", [])):
+            num_new_tubes = int(np.prod(new_orchestrator.growth_tm.tensor_shape[:-1]))
+            sliced_samples[site_name] = jnp.zeros((val.shape[0], num_new_tubes),
+                                                  dtype=val.dtype)
+            continue
 
         # Slice any plated dimension to match the new data labels.
         # This handles genotype subsetting and any other model plates (like
@@ -586,6 +724,25 @@ def predict(orchestrator,
 
                 continue
 
+            # Latents that exist only for binding genotypes (noise/
+            # genotype_offset's "*_binding_plate") follow the binding
+            # genotypes by label: a subset's binding table holds only the
+            # binding genotypes that are in its growth table.
+            if plate_name.endswith("_binding_plate"):
+                old_b = _binding_labels(orchestrator)
+                new_b = _binding_labels(new_orchestrator)
+                if old_b != new_b:
+                    try:
+                        indices = [old_b.index(g) for g in new_b]
+                    except ValueError:
+                        raise ValueError(
+                            f"Site '{site_name}' is plated on the binding "
+                            f"genotypes and has no value for "
+                            f"{sorted(set(new_b) - set(old_b))}.")
+                    val = jnp.take(val, jnp.array(indices, dtype=int),
+                                   axis=frame.dim)
+                continue
+
             # Find the corresponding dimension in the TensorManager
             dim_idx = None
             for i, name in enumerate(orchestrator.growth_tm.tensor_dim_names):
@@ -614,7 +771,8 @@ def predict(orchestrator,
     # -------------------------------------------------------------------------
     # Run Prediction
     
-    predictive = Predictive(new_orchestrator.jax_model,
+    predictive = Predictive(hold_model_params(new_orchestrator.jax_model,
+                                              model_params),
                             posterior_samples=sliced_samples,
                             return_sites=predict_sites)
 
@@ -637,12 +795,50 @@ def predict(orchestrator,
     all_indices = jnp.arange(num_geno, dtype=jnp.int32)
     pred_data = _get_batch(new_orchestrator.data, all_indices)
 
-    if external_theta_population is not None:
+    if transformation_needs_population:
+        population_references = _build_population_references(
+            orchestrator, param_posteriors, pred_data.growth,
+            model_params=model_params)
+        # The subset model draws its own co-resident sets over the subset;
+        # use the fitted model's instead. Their entries index the original
+        # library, which is what the external references cover.
+        orig_labels = list(orchestrator.growth_tm.tensor_dim_labels[-1])
+        new_labels = list(new_orchestrator.growth_tm.tensor_dim_labels[-1])
+        rows = jnp.array([orig_labels.index(g) for g in new_labels],
+                         dtype=jnp.int32)
+        orig_growth = orchestrator.data.growth
         pred_data = pred_data.replace(
             growth=pred_data.growth.replace(
-                external_theta_population=external_theta_population
+                coresident_idx=orig_growth.coresident_idx[rows],
+                bulk_fraction=orig_growth.bulk_fraction[rows],
+                **population_references,
             )
         )
+
+    # Every posterior array must have the shape the prediction model expects.
+    # A plate the slicing loop above does not know how to remap (one sized by
+    # something other than a growth-tensor dimension or condition_rep) would
+    # otherwise be indexed silently by the wrong entries, as the mutation and
+    # pair plates were before copy_orchestrator kept the fitted labels.
+    # Until 2026-10-11 this trace ran with argument validation on: with the
+    # PddG fits' learned sigma_s held, the prior draw of ln K reached +/-60,
+    # ln_cfu went non-finite and the count observation refused it, which
+    # stopped tfs-summarize-fit's trajectory plots.
+    new_trace = structure_trace(hold_model_params(new_orchestrator.jax_model,
+                                                  model_params),
+                                data=pred_data, priors=orchestrator.priors)
+    for site_name, val in sliced_samples.items():
+        new_site = new_trace.get(site_name)
+        if new_site is None:
+            continue
+        expected = tuple(jnp.shape(new_site["value"]))
+        if tuple(val.shape[1:]) != expected:
+            raise ValueError(
+                f"Posterior site '{site_name}' has shape "
+                f"{tuple(val.shape[1:])} but the prediction model expects "
+                f"{expected}; its plate cannot be mapped onto the requested "
+                f"genotypes/conditions."
+            )
 
     # Use the ORIGINAL orchestrator's priors so that any pinned hyperpriors
     # (e.g. activity_hyper_loc/activity_hyper_scale in the calibration model)
@@ -755,6 +951,11 @@ def predict(orchestrator,
             df = pd.concat([df, samples_df], axis=1)
 
         all_dfs[site] = df
+
+    if drop_wt:
+        for site, df in all_dfs.items():
+            if "genotype" in df.columns:
+                all_dfs[site] = df[df["genotype"].astype(str) != "wt"]
 
     if len(predict_sites) == 1:
         return all_dfs[predict_sites[0]]

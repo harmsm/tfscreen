@@ -7,11 +7,25 @@ from tfscreen.util.io import (
 )
 from tfscreen.util.validation import check_unknown_keys
 from tfscreen.simulate.growth.transition_linkage import get_transition_model
+from tfscreen.simulate.thermo_to_growth import (
+    growth_rates,
+    growth_rate_one_condition,
+)
+from tfscreen.simulate.od600 import (
+    read_od600_calibration,
+    simulate_od600,
+    od600_to_cfu_per_mL,
+)
+from tfscreen.simulate.cell_rules import (
+    THETA_RULES,
+    DK_RULES,
+)
 from tfscreen.util.numerical import (
     vstack_padded,
     zero_truncated_poisson,
 )
 from tfscreen.genetics import (
+    UNKNOWN_GENOTYPE,
     set_categorical_genotype
 )
 
@@ -21,10 +35,7 @@ from numpy.random import Generator
 
 import pandas as pd
 
-from scipy.stats import (
-    gmean,
-    lognorm,
-)
+from scipy.stats import lognorm
 from tqdm.auto import tqdm
 
 # Mostly for type hinting
@@ -39,32 +50,38 @@ from typing import (
 # Type Aliases introduced during review
 _Numeric = TypeVar("_Numeric", int, float)
 
-MULTI_PLASMID_COMBINE_FCNS = {"gmean":gmean,
-                              "mean":ma.mean,
-                              "min":ma.min,
-                              "max":ma.max,
-                              "sum":ma.sum}
-
 # All recognized top-level keys for a simulate config file.
 SIMULATE_KNOWN_KEYS = frozenset({
     # Library genetics (passed to LibraryManager)
     "reading_frame", "first_amplicon_residue", "wt_seq", "degen_sites",
     "tiles", "tile_combos", "spiked_seqs", "expected_5p", "expected_3p",
+    # Library subsample (genetics/library_subsample.py)
+    "library_genotypes", "library_subsample", "library_subsample_seed",
+    "library_subsample_depth",
     # Phenotype / theta calculation
-    "theta_component", "thermo_data", "theta_priors", "theta_rescale",
+    "theta_component", "thermo_data", "thermo_options", "ddG_truth_sd",
+    "theta_priors",
+    "theta_rescale",
     "theta_sim_priors",
+    "growth_titrant_scale",
     # Empirical phenotype source (resample from a fitted PopulationModel)
     "phenotype_source", "empirical",
     # Conditions and growth
-    "condition_blocks", "growth",
+    "condition_blocks", "design", "growth",
     "dk_geno_hyper_loc", "dk_geno_hyper_scale", "dk_geno_hyper_shift", "dk_geno_zero",
     "activity_wt", "activity_mut_scale", "activity_component", "activity_priors",
     # Experimental simulation parameters
     "transform_sizes", "library_mixture", "lib_assembly_skew_sigma",
-    "transformation_poisson_lambda", "multi_plasmid_combine_fcn", "cfu0",
+    "max_congressed_cells",
+    "transformation_poisson_lambda", "cfu0",
+    "congression_theta_rule", "congression_dk_rule", "congression_dk_alpha",
     "tube_noise_sigma", "growth_transition",
+    # Sampling noise (roadmap step 4; all off by default)
+    "founder_sampling", "demographic_growth", "shared_transformation",
+    "pcr_template_molecules", "pcr_amplification_cv",
     # Data collection
-    "total_num_reads", "prob_index_hop", "seed",
+    "total_num_reads", "prob_index_hop", "unassigned_read_fraction",
+    "seed", "od600",
     # Column selectors (rarely overridden)
     "condition_selector", "library_selector",
     # Optional output blocks
@@ -157,6 +174,86 @@ def _check_dict_number(
     return input_dict
 
 
+def _check_bool(key: str, cf: dict[str, Any], default: bool = False) -> None:
+    """Set ``cf[key]`` to a bool (``default`` when missing or None)."""
+    v = cf.get(key)
+    if v is None:
+        cf[key] = default
+    elif isinstance(v, (bool, np.bool_)):
+        cf[key] = bool(v)
+    else:
+        raise ValueError(f"'{key}' must be true or false, not {v!r}.")
+
+
+def _check_sampling_noise(cf: dict[str, Any]) -> None:
+    """
+    Validate the optional sampling-noise settings (roadmap step 4,
+    planning/analysis-roadmap.md) and the ``od600`` block, in place. Every
+    one is off by default, so an existing config simulates as before.
+
+    - ``founder_sampling``: each tube is seeded with a Poisson number of
+      cells from each transformant clone (mean ``cfu0 * frequency``), drawn
+      independently per tube, instead of exactly ``cfu0 * frequency``.
+    - ``demographic_growth``: given its founders, a clone's cells at harvest
+      are Gamma(founders, exp(kt)) when it grows (a birth process started
+      from few cells) and Binomial(founders, exp(kt)) when it shrinks.
+      Requires ``founder_sampling``.
+    - ``shared_transformation``: every replicate draws its cells from one
+      library assembly and transformation (one glycerol stock), rather than
+      each replicate redrawing them.
+    - ``pcr_template_molecules``: reads are drawn from this many template
+      molecules per tube (a bottleneck before sequencing).
+    - ``pcr_amplification_cv``: coefficient of variation of each template's
+      amplification (PCR jackpotting). Requires ``pcr_template_molecules``.
+    - ``od600``: block with ``calibration`` (path to the OD600-to-CFU
+      constants), ``tube_volume_mL`` (default 5.0), ``num_od_only_replicates``
+      (extra replicates that get OD600 but no reads; default 0) and
+      ``sample_cfu_from_od600`` (estimate each tube's total from its
+      simulated OD600, as the lab does, instead of using the true total;
+      default false).
+    """
+    for key in ("founder_sampling", "demographic_growth",
+                "shared_transformation"):
+        _check_bool(key, cf)
+    if cf["demographic_growth"] and not cf["founder_sampling"]:
+        raise ValueError("'demographic_growth' starts each clone from its "
+                         "sampled founders, so it needs "
+                         "'founder_sampling: true'.")
+
+    _check_dict_number("pcr_template_molecules", cf, cast_type=int,
+                       min_allowed=0, inclusive_min=False, allow_none=True)
+    _check_dict_number("pcr_amplification_cv", cf, min_allowed=0,
+                       allow_none=True)
+    if cf["pcr_amplification_cv"] and cf["pcr_template_molecules"] is None:
+        raise ValueError("'pcr_amplification_cv' varies the amplification of "
+                         "each template molecule, so it needs "
+                         "'pcr_template_molecules'.")
+
+    od = cf.get("od600")
+    if od is None:
+        cf["od600"] = None
+        return
+    if not isinstance(od, dict):
+        raise ValueError("'od600' must be a block with at least "
+                         "'calibration'.")
+    unknown = set(od) - {"calibration", "tube_volume_mL",
+                         "num_od_only_replicates", "sample_cfu_from_od600"}
+    if unknown:
+        raise ValueError(f"Unknown keys in 'od600': {sorted(unknown)}.")
+    if od.get("calibration") is None:
+        raise ValueError("'od600' needs 'calibration', the path to the "
+                         "OD600-to-CFU constants.")
+    if od.get("tube_volume_mL") is None:
+        od["tube_volume_mL"] = 5.0
+    _check_dict_number("tube_volume_mL", od, min_allowed=0,
+                       inclusive_min=False)
+    if od.get("num_od_only_replicates") is None:
+        od["num_od_only_replicates"] = 0
+    _check_dict_number("num_od_only_replicates", od, cast_type=int,
+                       min_allowed=0)
+    _check_bool("sample_cfu_from_od600", od)
+
+
 def _check_cf(
     cf: dict[str, Any] | str | Path
 ) -> dict[str, Any]:
@@ -190,16 +287,56 @@ def _check_cf(
     # Load from YAML if a path is provided, otherwise assume it's a dict
     cf = read_yaml(cf)
 
+    # Removed key: say what replaced it rather than failing as "unknown".
+    if "multi_plasmid_combine_fcn" in cf:
+        raise ValueError(
+            "'multi_plasmid_combine_fcn' has been removed. It combined the "
+            "whole growth rates of a cell's plasmids, which let dk_geno decide "
+            "which plasmid set the cell's growth. A co-transformed cell's "
+            "growth is now built from cell-level theta and dk_geno: set "
+            "'congression_theta_rule' (default 'homodimer') and "
+            "'congression_dk_rule' (default 'dilution') instead, or omit both "
+            "for the defaults."
+        )
+
     check_unknown_keys(cf, SIMULATE_KNOWN_KEYS, label="simulate config")
 
     # --- Validate single numerical values ---
     cf = _check_dict_number("prob_index_hop", cf, min_allowed=0, max_allowed=1, allow_none=True)
-    cf = _check_dict_number("lib_assembly_skew_sigma", cf, min_allowed=0, allow_none=True)
+    # lib_assembly_skew_sigma: one number, or one per library origin
+    if isinstance(cf.get("lib_assembly_skew_sigma"), dict):
+        cf["lib_assembly_skew_sigma"] = dict(cf["lib_assembly_skew_sigma"])
+        for origin in list(cf["lib_assembly_skew_sigma"]):
+            _check_dict_number(origin, cf["lib_assembly_skew_sigma"],
+                               min_allowed=0, allow_none=True)
+    else:
+        cf = _check_dict_number("lib_assembly_skew_sigma", cf, min_allowed=0, allow_none=True)
+    cf = _check_dict_number("max_congressed_cells", cf, cast_type=int,
+                            min_allowed=0, inclusive_min=False, allow_none=True)
     cf = _check_dict_number("transformation_poisson_lambda", cf, min_allowed=0, allow_none=True)
     cf = _check_dict_number("tube_noise_sigma", cf, min_allowed=0, allow_none=True)
     cf = _check_dict_number("seed", cf, cast_type=int, min_allowed=0, allow_none=True)
-    cf = _check_dict_number("cfu0", cf, allow_none=False,min_allowed=0)
+    # cfu0: cells per tube at -t_pre, one number or one per library
+    if isinstance(cf.get("cfu0"), dict):
+        for lib_name in list(cf["cfu0"]):
+            cf["cfu0"] = dict(cf["cfu0"])
+            _check_dict_number(lib_name, cf["cfu0"], allow_none=False,
+                               min_allowed=0)
+    else:
+        cf = _check_dict_number("cfu0", cf, allow_none=False,min_allowed=0)
     cf = _check_dict_number("total_num_reads", cf, cast_type=int, min_allowed=0, inclusive_min=False)
+    # unassigned_read_fraction: share of each tube's reads that go to
+    # __unknown__, one number or one per library
+    if isinstance(cf.get("unassigned_read_fraction"), dict):
+        cf["unassigned_read_fraction"] = dict(cf["unassigned_read_fraction"])
+        for lib_name in list(cf["unassigned_read_fraction"]):
+            _check_dict_number(lib_name, cf["unassigned_read_fraction"],
+                               min_allowed=0, max_allowed=1,
+                               inclusive_max=False)
+    else:
+        cf = _check_dict_number("unassigned_read_fraction", cf, min_allowed=0,
+                                max_allowed=1, inclusive_max=False,
+                                allow_none=True)
 
     # --- Validate nested dictionaries ---
     for key in ["transform_sizes", "library_mixture"]:
@@ -229,6 +366,33 @@ def _check_cf(
     # By default, a unique library in phenotype_df is defined by these columns
     if "library_selector" not in cf:
         cf["library_selector"] = ["replicate", "library"]
+
+    # --- Rules for combining a co-transformed cell's plasmids ---
+    for key, rules, default in (("congression_theta_rule", THETA_RULES, "homodimer"),
+                                ("congression_dk_rule", DK_RULES, "dilution")):
+        if cf.get(key) is None:
+            cf[key] = default
+        if cf[key] not in rules:
+            raise ValueError(f"'{key}' must be one of {sorted(rules)}, "
+                             f"not '{cf[key]}'.")
+
+    # congression_dk_alpha: required by 'softmin', refused by the other rules.
+    if cf.get("congression_dk_alpha") is None:
+        cf["congression_dk_alpha"] = None
+    if cf["congression_dk_rule"] == "softmin":
+        cf = _check_dict_number("congression_dk_alpha", cf, cast_type=float,
+                                min_allowed=0, inclusive_min=False)
+        if not np.isfinite(cf["congression_dk_alpha"]):
+            raise ValueError("'congression_dk_alpha' must be finite; use "
+                             "congression_dk_rule 'min' for the alpha -> inf "
+                             "limit.")
+    elif cf["congression_dk_alpha"] is not None:
+        raise ValueError(
+            f"'congression_dk_alpha' is only used by congression_dk_rule "
+            f"'softmin' (got rule '{cf['congression_dk_rule']}'); remove it "
+            f"or set the rule to 'softmin'.")
+
+    _check_sampling_noise(cf)
 
     if not isinstance(cf["condition_selector"], list):
         raise ValueError("condition_selector must be a list of column names.")
@@ -302,7 +466,6 @@ def _check_lib_spec(
     2. `library_df` has the required columns.
     3. Keys in `cf["library_mixture"]` and `cf["transform_sizes"]` match
        and are present in `library_df["library_origin"]`.
-    4. Sets defaults for and validates `cf["multi_plasmid_combine_fcn"]`.
 
     Parameters
     ----------
@@ -316,17 +479,12 @@ def _check_lib_spec(
     Returns
     -------
     dict
-        The configuration dictionary, potentially updated with default values
-        for `multi_plasmid_combine_fcn`.
+        The configuration dictionary.
 
     Raises
     ------
     ValueError
         If any of the consistency checks fail.
-
-    Notes
-    -----
-    This function modifies the `cf` dictionary in-place.
     """
 
     # Make sure all genotypes in library_df are in genotype_df
@@ -361,29 +519,71 @@ def _check_lib_spec(
     if sum(cf["library_mixture"].values()) == 0:
         raise ValueError("The sum of ratios in 'library_mixture' cannot be zero.")
 
-    # Deal with multi_plasmid_combine_fcn.
-
-    libraries = np.unique(phenotype_df["library"])
-    if "multi_plasmid_combine_fcn" not in cf:
-        cf["multi_plasmid_combine_fcn"] = {}
-        for lib in libraries:
-            cf["multi_plasmid_combine_fcn"][lib] = "mean"
-    
-    for lib in libraries:
-
-        if lib not in cf["multi_plasmid_combine_fcn"]:
-            err = f"lib '{lib}' not found in 'multi_plasmid_combine_fcn'\n"
-            raise ValueError(err)
-        fcn = cf["multi_plasmid_combine_fcn"][lib]
-
-        if fcn not in MULTI_PLASMID_COMBINE_FCNS:
-            err = f"The multi_plasmid_combine_fcn '{fcn}' for library '{lib}'\n"
-            err += "was not recognized. The function should be one of:\n"
-            for k in MULTI_PLASMID_COMBINE_FCNS:
-                err += f"    {k}\n"
-            raise ValueError(err)
-
     return cf
+
+
+# Columns a co-transformed cell's growth is rebuilt from.
+_CELL_COMPONENT_COLUMNS = ("theta", "activity", "dk_geno",
+                           "condition_pre", "condition_sel",
+                           "k_pre", "k_sel")
+
+
+def _check_cell_components(
+    cf: dict[str, Any],
+    phenotype_df: pd.DataFrame,
+) -> None:
+    """
+    Check that co-transformed cells' growth can be rebuilt from components.
+
+    A cell carrying several plasmids gets a growth rate built from its
+    cell-level theta, activity and dk_geno with the same formula
+    ``thermo_to_growth`` uses per genotype (``growth_rates``). That needs the
+    config's ``growth`` block and the phenotype's ``theta``/``activity``/
+    ``dk_geno`` columns, and those must reproduce the phenotype's own
+    ``k_pre``/``k_sel``. Otherwise co-transformed and single-plasmid cells
+    would grow by different formulas.
+
+    Raises
+    ------
+    ValueError
+        If the ``growth`` block or a component column is missing, or if the
+        rebuilt growth rates do not match ``k_pre``/``k_sel``.
+    """
+
+    if "growth" not in cf or not isinstance(cf["growth"], dict):
+        raise ValueError(
+            "With transformation_poisson_lambda > 0, co-transformed cells' "
+            "growth is built from theta, activity and dk_geno, which needs the "
+            "config's 'growth' block."
+        )
+
+    missing = [c for c in _CELL_COMPONENT_COLUMNS if c not in phenotype_df.columns]
+    if missing:
+        raise ValueError(
+            f"With transformation_poisson_lambda > 0, phenotype_df needs the "
+            f"columns {list(_CELL_COMPONENT_COLUMNS)} (as written by "
+            f"thermo_to_growth). Missing: {missing}."
+        )
+
+    theta = phenotype_df["theta"].to_numpy(dtype=float)
+    activity = phenotype_df["activity"].to_numpy(dtype=float)
+    dk_geno = phenotype_df["dk_geno"].to_numpy(dtype=float)
+    theta_rescale = cf.get("theta_rescale", "passthrough")
+
+    for k_col, cond_col in (("k_pre", "condition_pre"), ("k_sel", "condition_sel")):
+        rebuilt = growth_rates(phenotype_df[cond_col].to_numpy(), theta,
+                               activity, dk_geno, cf["growth"], theta_rescale)
+        observed = phenotype_df[k_col].to_numpy(dtype=float)
+        if not np.allclose(rebuilt, observed, rtol=1e-9, atol=1e-12,
+                           equal_nan=True):
+            bad = int(np.sum(~np.isclose(rebuilt, observed, rtol=1e-9,
+                                         atol=1e-12, equal_nan=True)))
+            raise ValueError(
+                f"phenotype_df '{k_col}' does not match growth rebuilt from "
+                f"theta, activity, dk_geno and the 'growth' block ({bad} of "
+                f"{len(observed)} rows differ). Co-transformed cells would "
+                f"grow by a different formula than single-plasmid cells."
+            )
 
 
 def _sim_plasmid_probabilities(
@@ -607,12 +807,109 @@ def _sim_transform(
 
     return transformants, plasmid_mask
 
+def _sim_transform_collapsed(
+    genotype_probs: np.ndarray,
+    num_transformants: int,
+    transformation_poisson_lambda: float | None = None,
+    rng: Generator | None = None,
+    max_congressed_cells: int | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Transformation with identical cells merged into weighted rows.
+
+    The same transformation as ``_sim_transform``, without one row per cell.
+    Cells with one plasmid are drawn as a clone count per genotype
+    (multinomial) and each genotype with any clones becomes one row carrying
+    that count. Nothing downstream can tell the difference: a row enters
+    growth, sequencing and cfu0 only through its starting abundance, the
+    founder draw is Poisson per cell (a sum of Poissons is Poisson with the
+    summed mean), and demographic growth is Gamma or Binomial per founder
+    (sums stay in the family). So a library can carry the realistic number
+    of transformants (hundreds per genotype) at the memory cost of one row
+    per genotype.
+
+    Cells with several plasmids (congression) are mostly distinct and stay
+    one row each. With ``max_congressed_cells``, more of them than that are
+    represented by a uniform sample of that many cells, each carrying
+    ``n_congressed / max_congressed_cells`` cells: an approximation that
+    keeps the congressed share of every genotype right on average but
+    lumps its noise.
+
+    Parameters
+    ----------
+    genotype_probs, num_transformants, transformation_poisson_lambda, rng
+        As for ``_sim_transform``.
+    max_congressed_cells : int, optional
+        Cap on the rows used for multi-plasmid cells. None (default) keeps
+        every one.
+
+    Returns
+    -------
+    transformants, plasmid_mask : numpy.ndarray
+        As for ``_sim_transform``, one row per merged clone set or
+        congressed cell.
+    cells_per_row : numpy.ndarray
+        ``(num_rows,)`` float, the number of cells each row stands for;
+        sums to ``num_transformants``.
+    """
+    if num_transformants == 0:
+        return (np.empty((0, 0), dtype=int), np.empty((0, 0), dtype=bool),
+                np.empty(0, dtype=float))
+    if rng is None:
+        rng = np.random.default_rng()
+
+    lam = transformation_poisson_lambda
+    if lam is None or lam == 0:
+        n_multi = 0
+    else:
+        # P(M >= 2 | M >= 1) for M ~ Poisson(lam)
+        p_multi = 1.0 - lam*np.exp(-lam)/(1.0 - np.exp(-lam))
+        n_multi = int(rng.binomial(num_transformants, p_multi))
+    n_single = num_transformants - n_multi
+
+    clones = rng.multinomial(n_single, genotype_probs)
+    single_geno = np.flatnonzero(clones)
+    single_cells = clones[single_geno].astype(float)
+
+    num_plas = np.empty(0, dtype=int)
+    n_rows_multi = n_multi
+    if max_congressed_cells is not None:
+        n_rows_multi = min(n_multi, int(max_congressed_cells))
+    if n_rows_multi > 0:
+        # plasmids per congressed cell: zero-truncated Poisson given >= 2
+        draws = []
+        need = n_rows_multi
+        while need > 0:
+            d = zero_truncated_poisson(max(2*need, 1000), lam, rng)
+            d = d[d >= 2][:need]
+            draws.append(d)
+            need -= len(d)
+        num_plas = np.concatenate(draws)
+    max_plas = max(1, int(num_plas.max()) if len(num_plas) else 1)
+
+    multi = rng.choice(len(genotype_probs), size=(n_rows_multi, max_plas),
+                       p=genotype_probs)
+    multi_mask = np.arange(max_plas) >= num_plas[:, np.newaxis]
+
+    single = np.zeros((len(single_geno), max_plas), dtype=int)
+    single[:, 0] = single_geno
+    single_mask = np.ones((len(single_geno), max_plas), dtype=bool)
+    single_mask[:, 0] = False
+
+    transformants = np.vstack([single, multi]).astype(int)
+    plasmid_mask = np.vstack([single_mask, multi_mask])
+    multi_cells = (np.full(n_rows_multi, n_multi/n_rows_multi)
+                   if n_rows_multi > 0 else np.empty(0))
+    cells_per_row = np.concatenate([single_cells, multi_cells])
+    return transformants, plasmid_mask, cells_per_row
+
+
 def _sim_transform_and_mix(
     lib_origin_dict: dict,
     transform_sizes: dict[str, int],
     library_mixture: dict[str, float],
     transformation_poisson_lambda: float | None,
     rng: Generator,
+    max_congressed_cells: int | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Simulate transformation for multiple source libraries and mix them.
 
@@ -634,19 +931,23 @@ def _sim_transform_and_mix(
         weight (float) in the final mixture.
     transformation_poisson_lambda : float, optional
         The lambda parameter for the multi-plasmid transformation simulation,
-        passed to `_sim_transform`.
+        passed to `_sim_transform_collapsed`.
     rng : numpy.random.Generator
         An initialized NumPy random number generator.
+    max_congressed_cells : int, optional
+        Passed to `_sim_transform_collapsed` for each origin.
 
     Returns
     -------
     transformants : numpy.ndarray
-        A 2D integer array representing the mixed population of transformants.
+        A 2D integer array representing the mixed population of
+        transformants, one row per merged clone set or congressed cell
+        (see `_sim_transform_collapsed`).
     trans_mask : numpy.ndarray
         The corresponding boolean mask for the `transformants` array.
     probs : numpy.ndarray
-        A 1D float array representing the frequency of each individual cell
-        (row) in the final mixed population. Sums to 1.0.
+        A 1D float array, the frequency of each row (all the cells it stands
+        for) in the final mixed population. Sums to 1.0.
     """
 
     # Go through all library_origin and transform. 
@@ -669,10 +970,12 @@ def _sim_transform_and_mix(
 
         # Together trans and trans_mask define a ragged array of cells with
         # (possibly) multiple plasmids
-        trans, tr_mask = _sim_transform(origin_sub_df["probs"].to_numpy(),
-                                        transform_sizes[lib_key],
-                                        this_lambda,
-                                        rng)
+        trans, tr_mask, cells = _sim_transform_collapsed(
+            origin_sub_df["probs"].to_numpy(),
+            transform_sizes[lib_key],
+            this_lambda,
+            rng,
+            max_congressed_cells=max_congressed_cells)
         all_trans.append(trans)
         all_trans_mask.append(tr_mask)
 
@@ -682,9 +985,9 @@ def _sim_transform_and_mix(
         # Without this, an origin's pool share becomes
         # library_mixture[lib_key] * transform_sizes[lib_key], entangling the
         # two config values.
-        n_cells = trans.shape[0]
+        n_cells = cells.sum()
         w = library_mixture[lib_key] / n_cells if n_cells > 0 else 0.0
-        all_weights.append(np.full(n_cells,w,dtype=float))
+        all_weights.append(cells*w)
 
     # This is vstack that accounts for the fact that these transformations 
     # might have different numbers of plasmids
@@ -698,42 +1001,155 @@ def _sim_transform_and_mix(
     return transformants, trans_mask, probs
 
 
-def _sim_growth(
+def _cell_kt(
     transformants: np.ndarray,
     trans_mask: np.ndarray,
-    trans_freq: np.ndarray,
     genotype_vs_kt: np.ndarray,
-    total_cfu0: float,
-    multi_plasmid_combine_fcn: str,
+    genotype_vs_theta: np.ndarray,
+    genotype_activity: np.ndarray,
+    genotype_dk_geno: np.ndarray,
+    condition_info: pd.DataFrame,
+    tube_kt: np.ndarray,
+    cf: dict[str, Any],
 ) -> np.ndarray:
-    """Simulate cell growth for a population under multiple conditions.
+    """Total log-growth (k*t) of every cell in every condition.
 
-    This function calculates the final cell abundance (CFU) for each initial
-    transformant across all experimental conditions. It accounts for
-    multi-plasmid transformants by combining their `kt` values using a
-    specified function.
+    A cell with one plasmid grows exactly as its genotype does
+    (``genotype_vs_kt``). A cell with several plasmids has one growth rate,
+    built from cell-level physics rather than by combining its plasmids'
+    growth rates: the ``congression_theta_rule`` gives the cell's theta and
+    activity, the ``congression_dk_rule`` its dk_geno (see
+    ``simulate.cell_rules``), and ``growth_rates`` turns them into ``k_pre``
+    and ``k_sel`` with the same formula used per genotype. The growth
+    transition model and per-tube noise then apply as for any genotype.
 
     Parameters
     ----------
     transformants : numpy.ndarray
-        A 2D integer array of shape `(num_cells, max_plasmids)` holding
-        genotype indices for each plasmid in each cell.
+        ``(num_cells, max_plasmids)`` genotype indices.
     trans_mask : numpy.ndarray
-        A 2D boolean array of shape `(num_cells, max_plasmids)` masking
-        invalid plasmid entries.
+        ``(num_cells, max_plasmids)``; True marks an invalid slot.
+    genotype_vs_kt : numpy.ndarray
+        ``(num_genotypes, num_conditions)`` k*t per genotype, including
+        ``tube_kt``.
+    genotype_vs_theta : numpy.ndarray
+        ``(num_genotypes, num_conditions)`` theta per genotype.
+    genotype_activity, genotype_dk_geno : numpy.ndarray
+        ``(num_genotypes,)`` per-genotype activity and dk_geno.
+    condition_info : pandas.DataFrame
+        One row per condition (column of the arrays above) with
+        ``condition_pre``, ``condition_sel``, ``t_pre`` and ``t_sel``.
+    tube_kt : numpy.ndarray
+        ``(num_conditions,)`` per-tube noise in k*t units.
+    cf : dict
+        Validated config (``growth``, ``theta_rescale``,
+        ``growth_transition``, ``congression_theta_rule``,
+        ``congression_dk_rule``, ``congression_dk_alpha``).
+
+    Returns
+    -------
+    numpy.ndarray
+        ``(num_cells, num_conditions)`` k*t per cell. NaN (a failed phenotype)
+        is set to 0, as for genotypes.
+    """
+
+    num_cells = transformants.shape[0]
+    num_conditions = genotype_vs_kt.shape[1]
+    if num_cells == 0:
+        return np.zeros((0, num_conditions), dtype=float)
+
+    # Single-plasmid cells (and every cell's first slot, overwritten below
+    # for co-transformed cells) take their genotype's k*t.
+    cell_kt = genotype_vs_kt[transformants[:, 0]].astype(float)
+
+    num_in_cell = np.sum(~trans_mask, axis=1)
+    multi = np.where(num_in_cell > 1)[0]
+    if len(multi) == 0:
+        return cell_kt
+
+    multi_trans = transformants[multi]
+    shares = _plasmid_shares(trans_mask[multi])
+
+    theta_rule = THETA_RULES[cf["congression_theta_rule"]]
+    dk_rule = DK_RULES[cf["congression_dk_rule"]]
+
+    # (num_multi, max_plasmids, num_conditions)
+    slot_theta = genotype_vs_theta[multi_trans]
+    slot_activity = np.broadcast_to(genotype_activity[multi_trans][:, :, np.newaxis],
+                                    slot_theta.shape)
+    theta_cell, activity_cell = theta_rule(slot_theta, slot_activity, shares)
+    dk_cell = dk_rule(genotype_dk_geno[multi_trans], shares,
+                      alpha=cf.get("congression_dk_alpha"))
+
+    growth_params = cf["growth"]
+    theta_rescale = cf.get("theta_rescale", "passthrough")
+    growth_transition = cf["growth_transition"]
+    num_multi = len(multi)
+    for c in range(num_conditions):
+        info = condition_info.iloc[c]
+        theta_c = theta_cell[:, c]
+        activity_c = activity_cell[:, c]
+        k_pre = growth_rate_one_condition(info["condition_pre"], theta_c,
+                                          activity_c, dk_cell,
+                                          growth_params, theta_rescale)
+        k_sel = growth_rate_one_condition(info["condition_sel"], theta_c,
+                                          activity_c, dk_cell,
+                                          growth_params, theta_rescale)
+        if growth_transition is None:
+            kt = k_pre*info["t_pre"] + k_sel*info["t_sel"]
+        else:
+            kt = _compute_kt_arrays(k_pre, k_sel,
+                                    np.full(num_multi, info["t_pre"], dtype=float),
+                                    np.full(num_multi, info["t_sel"], dtype=float),
+                                    theta_c,
+                                    np.full(num_multi, info["condition_pre"], dtype=object),
+                                    growth_transition)
+        cell_kt[multi, c] = np.nan_to_num(kt, nan=0.0) + tube_kt[c]
+
+    return cell_kt
+
+
+def _sim_growth(
+    cell_kt: np.ndarray,
+    trans_freq: np.ndarray,
+    total_cfu0: float,
+    rng: Generator | None = None,
+    founder_sampling: bool = False,
+    demographic_growth: bool = False,
+) -> np.ndarray:
+    """Simulate cell growth for a population under multiple conditions.
+
+    Each column of ``cell_kt`` is one tube. By default every tube starts
+    with exactly ``total_cfu0 * trans_freq`` cells of each transformant
+    clone and grows deterministically. The two options add the sampling
+    noise of a real split (study 0b, planning/studies/noise-anatomy/):
+
+    - ``founder_sampling``: a tube is seeded with a Poisson number of cells
+      of each clone (mean ``total_cfu0 * trans_freq``), drawn independently
+      for every tube. A rare clone's starting abundance then differs from
+      tube to tube.
+    - ``demographic_growth``: given ``n0`` founders, a clone's cells at
+      harvest are ``Gamma(n0, exp(kt))`` when ``kt >= 0`` (the sum of
+      ``n0`` birth-process lineages, each with mean ``exp(kt)`` and variance
+      about ``exp(2 kt)``) and ``Binomial(n0, exp(kt))`` when ``kt < 0``
+      (each cell survives with probability ``exp(kt)``). Requires
+      ``founder_sampling``.
+
+    Parameters
+    ----------
+    cell_kt : numpy.ndarray
+        A 2D float array of shape `(num_cells, num_conditions)` holding each
+        cell's total log-growth (`k*t`), from `_cell_kt`.
     trans_freq : numpy.ndarray
         A 1D float array of shape `(num_cells,)` with the initial frequency
         of each cell in the population.
-    genotype_vs_kt : numpy.ndarray
-        A 2D float array of shape `(num_genotypes, num_conditions)` holding
-        the growth rate multiplied by time (`k*t`) for each genotype.
     total_cfu0 : float
         The total initial colony-forming units (CFU) for the entire
         population.
-    multi_plasmid_combine_fcn : str
-        The name of the function used to combine the `kt` values from
-        multiple plasmids within a single cell. Must be a key in
-        `MULTI_PLASMID_COMBINE_FCNS`.
+    rng : numpy.random.Generator, optional
+        Required when either option is on.
+    founder_sampling, demographic_growth : bool, optional
+        See above. Both default to False.
 
     Returns
     -------
@@ -741,32 +1157,56 @@ def _sim_growth(
         A 2D float array of shape `(num_cells, num_conditions)` holding the
         final CFU for each cell after growth in each condition.
     """
-    
-    if multi_plasmid_combine_fcn not in MULTI_PLASMID_COMBINE_FCNS:
-        err = f"multi_plasmid_combine_fcn '{multi_plasmid_combine_fcn}' not recognized. Should be one\n"
-        err += f"of: '{list(MULTI_PLASMID_COMBINE_FCNS.keys())}\n"
-        raise ValueError(err)
-
-    # Look up kt for every plasmid slot in every cell for every condition.
-    # -> all_kt has shape (num_cells, max_plasmids, num_conditions)
-    all_kt = genotype_vs_kt[transformants]
-
-    # Expand the 2D mask to 3D to match the shape of all_kt.
-    # .copy() required: numpy 2.x rejects read-only broadcast arrays as ma masks
-    expanded_mask = np.broadcast_to(trans_mask[:, :, np.newaxis], all_kt.shape).copy()
-    masked_kt = ma.array(all_kt, mask=expanded_mask)
-
-    # Calculate the kt for each cell by combining effects of plasmids
-    # -> trans_kt has shape (num_cells, num_conditions)
-    trans_kt = MULTI_PLASMID_COMBINE_FCNS[multi_plasmid_combine_fcn](masked_kt,axis=1)
-
     # -> trans_cfu0 has shape (num_cells,)
     trans_cfu0 = total_cfu0*trans_freq
 
-    # -> trans_cfu has shape (num_cells, num_conditions)
-    trans_cfu = trans_cfu0[:,np.newaxis]*np.exp(trans_kt)
+    if not founder_sampling:
+        if demographic_growth:
+            raise ValueError("demographic_growth requires founder_sampling.")
+        # -> trans_cfu has shape (num_cells, num_conditions)
+        return trans_cfu0[:,np.newaxis]*np.exp(cell_kt)
 
+    # Founders: an independent Poisson draw for every clone in every tube.
+    founders = rng.poisson(np.broadcast_to(trans_cfu0[:, np.newaxis],
+                                           cell_kt.shape))
+    fold = np.exp(cell_kt)
+    if not demographic_growth:
+        return founders*fold
+
+    trans_cfu = np.zeros(cell_kt.shape, dtype=float)
+    grow = (cell_kt >= 0) & (founders > 0)
+    trans_cfu[grow] = rng.gamma(shape=founders[grow], scale=fold[grow])
+    shrink = (cell_kt < 0) & (founders > 0)
+    trans_cfu[shrink] = rng.binomial(founders[shrink], fold[shrink])
     return trans_cfu
+
+
+def _plasmid_shares(trans_mask: np.ndarray) -> np.ndarray:
+    """Fraction of its cell that each plasmid slot represents.
+
+    A cell carrying n plasmids splits its plasmid copies among them, so each
+    valid slot is 1/n of the cell. Masked slots are 0. A cell therefore
+    contributes one cell's worth of abundance in total, however many plasmids
+    it carries, and the spiked/bulk make-up of a genotype does not depend on
+    the congression parameter lambda (see
+    ``genetics.library_design.expected_library_composition``).
+
+    Parameters
+    ----------
+    trans_mask : numpy.ndarray
+        A 2D boolean array `(num_cells, max_plasmids)`; True marks an invalid
+        plasmid slot.
+
+    Returns
+    -------
+    numpy.ndarray
+        A 2D float array with the same shape as `trans_mask`.
+    """
+    valid = ~trans_mask
+    num_in_cell = np.sum(valid, axis=1, keepdims=True)
+    return np.divide(valid, num_in_cell,
+                     out=np.zeros(trans_mask.shape, dtype=float),
+                     where=num_in_cell > 0)
 
 
 def _sim_sequencing(
@@ -776,12 +1216,16 @@ def _sim_sequencing(
     num_genotypes: int,
     reads_per_sample: int,
     rng: Generator,
+    pcr_template_molecules: int | None = None,
+    pcr_amplification_cv: float | None = None,
 ) -> np.ndarray:
     """Simulate the sequencing of plasmids from grown cell populations.
 
     This function models deep sequencing. For each condition, it assumes that
     individual plasmids are sampled for sequencing with a probability
-    proportional to the final abundance (CFU) of their host cell.
+    proportional to the final abundance (CFU) of their host cell, divided
+    among the plasmids that cell carries (a cell with n plasmids gives each
+    1/n of its abundance).
 
     Parameters
     ----------
@@ -798,6 +1242,17 @@ def _sim_sequencing(
         The number of sequencing reads to simulate for each condition/sample.
     rng : numpy.random.Generator
         An initialized NumPy random number generator.
+    pcr_template_molecules : int, optional
+        If given, the reads are drawn from this many template molecules per
+        sample rather than from the cells directly: the templates are a
+        multinomial draw over genotypes by abundance, and each read then
+        picks a template. Models a limited amount of DNA going into PCR
+        (study 0b). None (default) means no bottleneck.
+    pcr_amplification_cv : float, optional
+        Coefficient of variation of each template's amplification (PCR
+        jackpotting). A genotype with ``m`` templates then carries weight
+        ``Gamma(m / cv^2, cv^2)`` (the sum of ``m`` independent
+        amplifications with mean 1). Requires ``pcr_template_molecules``.
 
     Returns
     -------
@@ -816,18 +1271,21 @@ def _sim_sequencing(
     # conditions. 
     all_transformed_plas = ma.array(transformants, mask=trans_mask).compressed()
 
+    # Share of its cell that each plasmid slot represents (1/n for a cell
+    # with n plasmids). Shared across all conditions.
+    shares = _plasmid_shares(trans_mask)
+
     # Loop over all conditions
     for i in range(num_conditions):
 
-        # Get the frequencies of cells at this condition and then broadcast to 
-        # match the shape/alignment of all_transformed_plas
+        # Split each cell's abundance at this condition among its plasmids,
+        # aligned with all_transformed_plas
         trans_freq = trans_cfu[:,i]
-        trans_freq_2d = np.broadcast_to(trans_freq[:, np.newaxis],
-                                        transformants.shape)
-        all_transformed_freq = ma.array(trans_freq_2d, mask=trans_mask).compressed()
+        plasmid_freq_2d = trans_freq[:, np.newaxis]*shares
+        all_transformed_freq = ma.array(plasmid_freq_2d, mask=trans_mask).compressed()
 
-        # Count the number of times each plasmid index appears, weighted by the 
-        # frequency of the cells in the population
+        # Count the number of times each plasmid index appears, weighted by
+        # its share of its cell's abundance
         geno_counts = np.bincount(all_transformed_plas,
                                   weights=all_transformed_freq,
                                   minlength=num_genotypes)
@@ -837,6 +1295,18 @@ def _sim_sequencing(
 
             # Normalize to get relative probability of each drawing each genotype
             geno_probs = geno_counts/np.sum(geno_counts)
+
+            # A limited number of template molecules goes into PCR; reads
+            # are drawn from those, each amplified by a random factor.
+            if pcr_template_molecules is not None:
+                templates = rng.multinomial(pcr_template_molecules, geno_probs)
+                weights = templates.astype(float)
+                if pcr_amplification_cv:
+                    cv2 = pcr_amplification_cv**2
+                    has = templates > 0
+                    weights[has] = rng.gamma(shape=templates[has]/cv2,
+                                             scale=cv2)
+                geno_probs = weights/np.sum(weights)
         
             # Sample genotypes based on their probabilities.
             sampled_plasmids = rng.choice(
@@ -863,8 +1333,10 @@ def _calc_genotype_cfu0(
 
     This function determines the starting abundance (cfu0) of each distinct
     genotype based on the stochastic outcome of the transformation simulation.
-    It aggregates the frequencies of all cells containing a given plasmid
-    and partitions the total library cfu0 accordingly.
+    Each cell's frequency is split among the plasmids it carries (1/n each
+    for n plasmids); these shares are summed per genotype and the total
+    library cfu0 is partitioned accordingly. A genotype's cfu0 is thus in
+    cell-equivalents, matching how `_sim_sequencing` counts reads.
 
     Parameters
     ----------
@@ -891,24 +1363,24 @@ def _calc_genotype_cfu0(
     # successfully transformed plasmid indices.
     all_transformed_plas = ma.array(transformants, mask=trans_mask).compressed()
 
-    # Create an array that has the frequency of the cell from which each 
-    # plasmid came from in the same shape/alignment as all_transformed_plas
-    trans_freq_2d = np.broadcast_to(trans_freq[:, np.newaxis], transformants.shape)
-    all_transformed_freq = ma.array(trans_freq_2d, mask=trans_mask).compressed()
+    # Split each cell's frequency among its plasmids, in the same
+    # shape/alignment as all_transformed_plas
+    plasmid_freq_2d = trans_freq[:, np.newaxis]*_plasmid_shares(trans_mask)
+    all_transformed_freq = ma.array(plasmid_freq_2d, mask=trans_mask).compressed()
 
-    # Count the number of times each plasmid index appears, weighted by the 
-    # frequency of the cells in the population
+    # Count the number of times each plasmid index appears, weighted by its
+    # share of its cell's frequency
     trans_geno_counts = np.bincount(all_transformed_plas,
                                     weights=all_transformed_freq,
                                     minlength=num_genotypes)
 
     # Calculate the frequency of each genotype in the post-transformation pool.
-    total_plasmids = np.sum(trans_geno_counts)
-    if total_plasmids == 0:
+    total_weight = np.sum(trans_geno_counts)
+    if total_weight == 0:
         # Handle edge case where no successful transformations occurred
         trans_freqs = np.zeros(num_genotypes, dtype=float)
     else:
-        trans_freqs = trans_geno_counts / total_plasmids
+        trans_freqs = trans_geno_counts / total_weight
 
     # Partition the total cfu0 according to these new frequencies.
     genotype_cfu0 = total_cfu0 * trans_freqs
@@ -916,16 +1388,23 @@ def _calc_genotype_cfu0(
     return genotype_cfu0 
 
 
-def _compute_kt(
-    phenotype_df: pd.DataFrame,
+def _compute_kt_arrays(
+    k_pre: np.ndarray,
+    k_sel: np.ndarray,
+    t_pre: np.ndarray,
+    t_sel: np.ndarray,
+    theta: np.ndarray,
+    condition_pre: np.ndarray,
     growth_transition: list | None,
 ) -> np.ndarray:
-    """Compute total log-growth (k*t) for every row in phenotype_df.
+    """Compute total log-growth (k*t) from aligned 1D arrays.
 
     Parameters
     ----------
-    phenotype_df : pandas.DataFrame
-        Must have columns: k_pre, k_sel, t_pre, t_sel, theta, condition_pre.
+    k_pre, k_sel, t_pre, t_sel, theta : numpy.ndarray
+        Growth rates, times and (raw) theta, one entry per row.
+    condition_pre : numpy.ndarray
+        Pre-growth condition of each row (selects the transition model).
     growth_transition : list of dict or None
         Validated growth_transition config (from _check_cf). None means instant
         transition for all conditions. Each entry must have 'condition_pre' and
@@ -934,20 +1413,12 @@ def _compute_kt(
     Returns
     -------
     numpy.ndarray
-        1-D array of kt values aligned with phenotype_df rows.
+        1-D array of kt values.
     """
-    k_pre = phenotype_df["k_pre"].to_numpy()
-    k_sel = phenotype_df["k_sel"].to_numpy()
-    t_pre = phenotype_df["t_pre"].to_numpy()
-    t_sel = phenotype_df["t_sel"].to_numpy()
-
     if growth_transition is None:
         return k_pre * t_pre + k_sel * t_sel
 
-    theta = phenotype_df["theta"].to_numpy()
-    condition_pre = phenotype_df["condition_pre"].to_numpy()
-
-    kt = np.zeros(len(phenotype_df))
+    kt = np.zeros(len(k_pre))
     for entry in growth_transition:
         mask = condition_pre == entry["condition_pre"]
         params = {k: v for k, v in entry.items()
@@ -962,6 +1433,41 @@ def _compute_kt(
     return kt
 
 
+def _compute_kt(
+    phenotype_df: pd.DataFrame,
+    growth_transition: list | None,
+) -> np.ndarray:
+    """Compute total log-growth (k*t) for every row in phenotype_df.
+
+    Parameters
+    ----------
+    phenotype_df : pandas.DataFrame
+        Must have columns: k_pre, k_sel, t_pre, t_sel, theta, condition_pre.
+    growth_transition : list of dict or None
+        Validated growth_transition config (from _check_cf). None means instant
+        transition for all conditions.
+
+    Returns
+    -------
+    numpy.ndarray
+        1-D array of kt values aligned with phenotype_df rows.
+    """
+    if growth_transition is None:
+        theta = np.zeros(len(phenotype_df))
+        condition_pre = np.zeros(len(phenotype_df))
+    else:
+        theta = phenotype_df["theta"].to_numpy()
+        condition_pre = phenotype_df["condition_pre"].to_numpy()
+
+    return _compute_kt_arrays(phenotype_df["k_pre"].to_numpy(),
+                              phenotype_df["k_sel"].to_numpy(),
+                              phenotype_df["t_pre"].to_numpy(),
+                              phenotype_df["t_sel"].to_numpy(),
+                              theta,
+                              condition_pre,
+                              growth_transition)
+
+
 def _simulate_library_group(
     sub_df: pd.DataFrame,
     index_offset: int,
@@ -970,6 +1476,8 @@ def _simulate_library_group(
     reads_per_sample: int,
     cf: dict[str, Any],
     rng: Generator,
+    shared_state: dict | None = None,
+    sequence: bool = True,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Run a complete simulation for a single library group.
@@ -996,6 +1504,15 @@ def _simulate_library_group(
         The main, validated configuration dictionary for the simulation.
     rng : numpy.random.Generator
         An initialized NumPy random number generator.
+    shared_state : dict, optional
+        With ``shared_transformation``, the transformation of each library
+        (keyed by its ``library`` value) is taken from here when present and
+        stored here otherwise, so every replicate draws its cells from the
+        same transformants.
+    sequence : bool, optional
+        If False, skip sequencing: the returned ``counts_df`` is empty and
+        only the tube totals (and OD600, with an ``od600`` block) are
+        simulated. Used for OD-only replicates. Default True.
 
     Returns
     -------
@@ -1010,9 +1527,14 @@ def _simulate_library_group(
     tube_noise_sigma = cf["tube_noise_sigma"]
     library_mixture = cf["library_mixture"]
     transform_sizes = cf["transform_sizes"]
-    multi_plasmid_combine_fcn = cf["multi_plasmid_combine_fcn"]
     prob_index_hop = cf["prob_index_hop"]
     total_cfu0 = cf["cfu0"]
+    if isinstance(total_cfu0, dict):
+        lib_names = sub_df["library"].unique().tolist()
+        if len(lib_names) != 1 or lib_names[0] not in total_cfu0:
+            raise ValueError(f"cfu0 is given per library {sorted(total_cfu0)}, "
+                             f"but this group is library {lib_names}.")
+        total_cfu0 = float(total_cfu0[lib_names[0]])
 
     num_genotypes = len(ordered_genotypes)
 
@@ -1038,13 +1560,26 @@ def _simulate_library_group(
 
     # -- simulate transformation and mixing of libraries --
 
-    print("--> simulating transformation",flush=True)
-    transformants, trans_mask, trans_freq = _sim_transform_and_mix(
-        lib_origin_dict,
-        transform_sizes,
-        library_mixture,
-        transformation_poisson_lambda,
-        rng)
+    # With shared_transformation, every replicate reuses one transformation
+    # per library (one glycerol stock); otherwise each group draws its own.
+    share_key = None
+    if cf.get("shared_transformation") and shared_state is not None:
+        share_key = ("transformation",
+                     sub_df["library"].iloc[0] if "library" in sub_df.columns
+                     else None)
+    if share_key is not None and share_key in shared_state:
+        transformants, trans_mask, trans_freq = shared_state[share_key]
+    else:
+        print("--> simulating transformation",flush=True)
+        transformants, trans_mask, trans_freq = _sim_transform_and_mix(
+            lib_origin_dict,
+            transform_sizes,
+            library_mixture,
+            transformation_poisson_lambda,
+            rng,
+            max_congressed_cells=cf.get("max_congressed_cells"))
+        if share_key is not None:
+            shared_state[share_key] = (transformants, trans_mask, trans_freq)
 
     # -- calculate cfu0 of every genotype --
     
@@ -1089,42 +1624,101 @@ def _simulate_library_group(
     # Create a 2D array of (genotype,conditions) holding kt.
     # .copy() required: pandas 3.x CoW returns a read-only view from to_numpy()
     genotype_vs_kt = genotype_vs_kt_pivot.to_numpy().copy()
-    
+
+    # One row per condition (column of genotype_vs_kt), aligned to the pivot.
+    condition_info = (sub_df
+                      .groupby(condition_selector, observed=True)
+                      [["condition_pre", "condition_sel", "t_pre", "t_sel"]]
+                      .first()
+                      .reindex(genotype_vs_kt_pivot.columns))
+
     # Add per-tube environmental noise: one delta_k per condition, shared across
-    # all genotypes in that tube.  tube_noise_sigma is in growth-rate units
-    # (hr⁻¹); the kt contribution is delta_k * t_total, which we read from the
-    # first row of the pivot (t_pre + t_sel is the same for every genotype).
+    # all genotypes (and cells) in that tube.  tube_noise_sigma is in
+    # growth-rate units (per minute, like every time in the simulator); the kt contribution is delta_k * t_total.
+    tube_kt = np.zeros(genotype_vs_kt.shape[1], dtype=float)
     if tube_noise_sigma is not None and tube_noise_sigma > 0:
-        t_pre_per_condition = sub_df.groupby(condition_selector, observed=True)["t_pre"].first().reindex(genotype_vs_kt_pivot.columns).to_numpy()
-        t_sel_per_condition = sub_df.groupby(condition_selector, observed=True)["t_sel"].first().reindex(genotype_vs_kt_pivot.columns).to_numpy()
-        t_total = t_pre_per_condition + t_sel_per_condition
+        t_total = (condition_info["t_pre"].to_numpy(dtype=float)
+                   + condition_info["t_sel"].to_numpy(dtype=float))
         delta_k = rng.normal(scale=tube_noise_sigma, size=len(t_total))
-        genotype_vs_kt += delta_k[np.newaxis, :] * t_total[np.newaxis, :]
-    
-    # Name of the library (e.g. kanR, pheS, ... ) for looking up how to 
-    # combine multiple plasmid effects
-    lib_name = np.unique(sub_df["library"])[0]
+        tube_kt = delta_k * t_total
+    genotype_vs_kt += tube_kt[np.newaxis, :]
+
+    # Per-genotype components for co-transformed cells, aligned to
+    # ordered_genotypes. Only needed when some cell carries >1 plasmid.
+    has_multi = transformants.shape[0] > 0 and np.any(np.sum(~trans_mask, axis=1) > 1)
+    if has_multi:
+        genotype_vs_theta = (sub_df
+                             .pivot_table(index="genotype",
+                                          columns=condition_selector,
+                                          values="theta",
+                                          observed=True,
+                                          dropna=False)
+                             .reindex(index=ordered_genotypes,
+                                      columns=genotype_vs_kt_pivot.columns)
+                             .to_numpy(dtype=float))
+        per_geno = (sub_df
+                    .groupby("genotype", observed=True)[["activity", "dk_geno"]]
+                    .first()
+                    .reindex(ordered_genotypes))
+        genotype_activity = per_geno["activity"].to_numpy(dtype=float)
+        genotype_dk_geno = per_geno["dk_geno"].to_numpy(dtype=float)
+    else:
+        num_cond = genotype_vs_kt.shape[1]
+        genotype_vs_theta = np.zeros((num_genotypes, num_cond), dtype=float)
+        genotype_activity = np.ones(num_genotypes, dtype=float)
+        genotype_dk_geno = np.zeros(num_genotypes, dtype=float)
 
     print("--> simulating growth",flush=True)
-    trans_cfu = _sim_growth(transformants,
-                            trans_mask,
-                            trans_freq,
-                            genotype_vs_kt,
-                            total_cfu0,
-                            multi_plasmid_combine_fcn[lib_name])
-    
-    # Record cfu/mL over all conditions
+    cell_kt = _cell_kt(transformants,
+                       trans_mask,
+                       genotype_vs_kt,
+                       genotype_vs_theta,
+                       genotype_activity,
+                       genotype_dk_geno,
+                       condition_info,
+                       tube_kt,
+                       cf)
+    trans_cfu = _sim_growth(cell_kt, trans_freq, total_cfu0, rng=rng,
+                            founder_sampling=cf.get("founder_sampling", False),
+                            demographic_growth=cf.get("demographic_growth", False))
+
+    # Record the total cells in each tube
     sample_df.loc[:,"sample_cfu"] = np.sum(trans_cfu,axis=0)
     sample_df.loc[:,"sample_cfu_std"] = 0.0
 
+    # One OD600 reading per tube. With sample_cfu_from_od600 the pipeline
+    # sees the lab's estimate of the total, not the truth.
+    od_cf = cf.get("od600")
+    if od_cf is not None:
+        cal = read_od600_calibration(od_cf["calibration"])
+        true_total = sample_df["sample_cfu"].to_numpy(dtype=float)
+        reading = simulate_od600(true_total, od_cf["tube_volume_mL"], cal, rng)
+        sample_df.loc[:,"sample_cfu_true"] = true_total
+        for k, v in reading.items():
+            sample_df.loc[:,k] = v
+        if od_cf["sample_cfu_from_od600"]:
+            cfu, cfu_std, _ = od600_to_cfu_per_mL(reading["od600"], cal)
+            sample_df.loc[:,"sample_cfu"] = cfu*od_cf["tube_volume_mL"]
+            sample_df.loc[:,"sample_cfu_std"] = cfu_std*od_cf["tube_volume_mL"]
+
+    if not sequence:
+        return sample_df, counts_df.iloc[0:0][["sample","genotype"]]
+
     # -- simulate sequencing -- 
+    # Reads that call no library genotype (unassigned_read_fraction; the
+    # dev data lost 66% of kanR and 20% of pheS reads to __unknown__) are
+    # taken off each tube's budget and reported as the __unknown__ row.
+    unassigned = _unassigned_fraction(cf, sub_df)
+    assigned_reads = int(round(reads_per_sample * (1.0 - unassigned)))
     print("--> simulating sequencing",flush=True)
     read_counts_dense = _sim_sequencing(transformants,
                                         trans_mask,
                                         trans_cfu,
                                         num_genotypes,
-                                        reads_per_sample,
-                                        rng)
+                                        assigned_reads,
+                                        rng,
+                                        pcr_template_molecules=cf.get("pcr_template_molecules"),
+                                        pcr_amplification_cv=cf.get("pcr_amplification_cv"))
 
     # Create a DataFrame from the dense counts with the same structure as the pivot
     counts_df_wide = pd.DataFrame(data=read_counts_dense,
@@ -1156,12 +1750,36 @@ def _simulate_library_group(
                            "dk_geno","k_pre","k_sel","theta","ln_cfu_0",
                            "counts"]]
 
+    if reads_per_sample - assigned_reads > 0:
+        unknown = pd.DataFrame({"sample": sample_df["sample"].to_numpy(),
+                                "genotype": UNKNOWN_GENOTYPE,
+                                "counts": reads_per_sample - assigned_reads})
+        counts_df["genotype"] = counts_df["genotype"].astype(str)
+        counts_df = pd.concat([counts_df, unknown], ignore_index=True)
+
     return sample_df, counts_df
+
+
+def _unassigned_fraction(cf, sub_df):
+    """This library group's unassigned_read_fraction (0 when not set)."""
+    frac = cf.get("unassigned_read_fraction")
+    if frac is None:
+        return 0.0
+    if isinstance(frac, dict):
+        libs = sub_df["library"].unique().tolist() if "library" in sub_df else []
+        if len(libs) != 1 or libs[0] not in frac:
+            raise ValueError(f"unassigned_read_fraction is given per library "
+                             f"{sorted(frac)}, but this group is library "
+                             f"{libs}.")
+        return float(frac[libs[0]])
+    return float(frac)
 
 def selection_experiment(
     cf: dict[str, Any] | str | Path,
     library_df: pd.DataFrame | str | Path,
     phenotype_df: pd.DataFrame | str | Path,
+    shared_state: dict | None = None,
+    sequence: bool = True,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Simulate a high-throughput selection experiment.
 
@@ -1183,12 +1801,21 @@ def selection_experiment(
         A dataframe containing the fitness landscape (growth rates `k_pre`
         and `k_sel`) for each genotype under all possible experimental
         conditions.
+    shared_state : dict, optional
+        Pass the same dict to every call (every replicate) so that, with
+        ``shared_transformation``, they share one library assembly and one
+        transformation. Ignored without ``shared_transformation``.
+    sequence : bool, optional
+        If False, simulate tube totals (and OD600) without sequencing, for
+        OD-only replicates; ``counts_df_final`` is then empty. Default True.
 
     Returns
     -------
     sample_df_final : pandas.DataFrame
         A dataframe describing each unique sample (experimental condition),
-        including the final total CFU/mL.
+        including the final total CFU/mL. With an ``od600`` block it also
+        has ``sample_cfu_true``, ``od600``, ``od600_detectable`` and
+        ``od600_in_range``.
     counts_df_final : pandas.DataFrame
         A dataframe containing the simulated sequencing counts for every
         genotype in every sample, along with the calculated initial
@@ -1219,6 +1846,11 @@ def selection_experiment(
 
     # Integrated check and update for library specification
     cf = _check_lib_spec(cf,library_df,phenotype_df)
+
+    # Co-transformed cells rebuild their growth from theta/activity/dk_geno.
+    lam = cf["transformation_poisson_lambda"]
+    if lam is not None and lam > 0:
+        _check_cell_components(cf, phenotype_df)
 
     # ------------------------------------------------------------------------
     # Set up calculation
@@ -1259,11 +1891,27 @@ def selection_experiment(
     # Build base probabilities for library transformation. By putting skew here
     # we are modeling skew that occurs during library construction, not skew 
     # during out growth or transformation. 
-    library_df["probs"] = 0.0
-    for _, origin_sub_df in lib_origin_grouper:
-        p = _sim_plasmid_probabilities(origin_sub_df["weight"],
-                                        cf["lib_assembly_skew_sigma"], rng)
-        library_df.loc[origin_sub_df.index, "probs"] = p
+    # With shared_transformation, one library assembly serves every call
+    # that passes the same shared_state (every replicate), like the
+    # transformation itself (see _simulate_library_group).
+    share = cf.get("shared_transformation") and shared_state is not None
+    if share and "assembly_probs" in shared_state:
+        library_df["probs"] = shared_state["assembly_probs"]
+    else:
+        library_df["probs"] = 0.0
+        for origin, origin_sub_df in lib_origin_grouper:
+            origin = origin[0] if isinstance(origin, tuple) else origin
+            skew = cf["lib_assembly_skew_sigma"]
+            if isinstance(skew, dict):
+                if origin not in skew:
+                    raise ValueError(f"lib_assembly_skew_sigma is given per "
+                                     f"origin {sorted(skew)}, without "
+                                     f"'{origin}'.")
+                skew = skew[origin]
+            p = _sim_plasmid_probabilities(origin_sub_df["weight"], skew, rng)
+            library_df.loc[origin_sub_df.index, "probs"] = p
+        if share:
+            shared_state["assembly_probs"] = library_df["probs"].to_numpy().copy()
 
     # Create a dictionary of grouped DataFrames. 
     lib_origin_dict = dict(list(library_df.groupby(["library_origin"])))
@@ -1317,7 +1965,9 @@ def selection_experiment(
                                                        ordered_genotypes,
                                                        reads_per_sample,
                                                        cf,
-                                                       rng)
+                                                       rng,
+                                                       shared_state=shared_state,
+                                                       sequence=sequence)
 
         sample_df_batches.append(sample_df)
         counts_df_batches.append(counts_df)

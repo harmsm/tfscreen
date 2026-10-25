@@ -77,6 +77,7 @@ def test_prefit_writes_per_condition_baseline_prior(tmpdir, library_smoke_yaml,
     out_prefix = os.path.join(tmpdir, f"tfs_{cg_model}")
 
     configure_model(binding_path,
+                    growth_likelihood="lncfu", sample_offset_model="zero",
                     growth_df=growth_path,
                     library_config=library_smoke_yaml,
                     condition_growth_model=cg_model,
@@ -94,8 +95,8 @@ def test_prefit_writes_per_condition_baseline_prior(tmpdir, library_smoke_yaml,
 
     run_prefit_calibration(config_file=config_file,
                            seed=1,
+                           out_prefix=f"{out_prefix}_prefit",
                            max_num_epochs=3,
-                           convergence_check_interval=1,
                            patience=1,
                            hessian_chunk_size=8)
 
@@ -126,6 +127,7 @@ def test_configure_prefit_fit_full_loop_with_per_condition_priors(tmpdir,
     out_prefix = os.path.join(tmpdir, "tfs_full")
 
     configure_model(binding_path,
+                    growth_likelihood="lncfu", sample_offset_model="zero",
                     growth_df=growth_path,
                     library_config=library_smoke_yaml,
                     condition_growth_model="linear",
@@ -134,7 +136,8 @@ def test_configure_prefit_fit_full_loop_with_per_condition_priors(tmpdir,
     config_file = f"{out_prefix}_config.yaml"
 
     run_prefit_calibration(config_file=config_file, seed=1,
-                           max_num_epochs=3, convergence_check_interval=1,
+                           out_prefix=f"{out_prefix}_prefit",
+                           max_num_epochs=3,
                            patience=1, hessian_chunk_size=8)
 
     # Sanity: the priors CSV now carries per-condition k_loc rows.

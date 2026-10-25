@@ -3,20 +3,31 @@ PddG — mutation effects on equilibrium constants from user-supplied ΔΔG prio
 
 Each mutation's effect on the three equilibrium constants (K_op, K_HL, K_E) is
 derived from per-structure ΔΔG latent variables whose prior means come from a
-user-supplied CSV file (columns: mut, H, HD, L, LE2).  A learned per-structure
-trust scale σ_s controls how far the posterior can deviate from the CSV values.
+user-supplied CSV file (columns: mut, H, HD, L, LE2).  A per-structure
+scale σ_s, sampled under a LogNormal prior, sets how far ΔΔG may deviate
+from the CSV values.
 Registry name: ``theta_lac_dimer_lnK_ddG_prior``.
 
 Contrast with PK (Δln_K inferred from data alone, no structure) and PnnC
 (ΔΔG prior means predicted by a per-structure MLP rather than supplied by the user).
 
-Implements the lac-dimer four-state partition function with three equilibrium
-constants, using four structural states as the free-energy basis:
+Implements M2, the standard MWC dimer restricted to K_h_e = K_l_o = 0
+(``thermo/mwc.py``), with three equilibrium constants, using four structural
+states as the free-energy basis:
 
     Structures: H, HD, L, LE2
 
-    ΔΔG[m, s]  ~ Normal( ddG_prior[m, s],  σ_s )
-    σ_s        — per-structure trust scale (``pyro.param``, init=1.0)
+    σ_s        ~ LogNormal(theta_ddG_sigma_loc, theta_ddG_sigma_scale), one per
+                 structure (SD of the true ΔΔG about its prior mean)
+    Δln K[m]   ~ MVN( P · ddG_prior[m],  P · diag(σ_s²) · Pᵀ )      (site theta_dlnK)
+
+with P = ``DLNK_PROJ``, the projection below. This is the distribution the
+per-structure model ΔΔG[m, s] ~ Normal(ddG_prior[m, s], σ_s) induces on the
+constants, which are all the data see (thermo/prior.py). The per-structure
+ΔΔG is the deterministic site ``theta_ddG``: the conditional mean under that
+per-structure prior, whose common shift across structures comes from the
+prior means, not the data (no unfolded state anchors it; score per-structure
+ΔΔG only for U1 models).
 
 where ``ddG_prior`` is a (M, S) float32 array loaded from a CSV spreadsheet
 (columns: ``mut``, ``H``, ``HD``, ``L``, ``LE2``).
@@ -25,43 +36,69 @@ Projection from per-structure ΔΔG to Δln_K is identical to lnK_nn_prior:
 
     Δln_K_op[m] = ΔΔG[m, H]  − ΔΔG[m, HD]
     Δln_K_HL[m] = ΔΔG[m, H]  − ΔΔG[m, L]
-    Δln_K_E[m]  = ΔΔG[m, L]  − ΔΔG[m, LE2]   (broadcast uniformly across effectors)
+    Δln_K_E[m]  = (ΔΔG[m, L] − ΔΔG[m, LE2]) / 2   (broadcast uniformly across effectors)
+
+ΔΔG_X adds to state X's free energy, and Δln K_{A→B} = ΔΔG_A − ΔΔG_B. K_E
+is the per-site constant of L (M⁻¹); LE2 has weight K_E²·e² relative to L, so
+ΔΔG_L − ΔΔG_LE2 = 2·Δln K_E. HD is the operator-bound H structure.
 
 Data requirements
 -----------------
 ``data`` must have (stored as ``pytree_node=False`` statics):
-    struct_names            — tuple containing exactly {'H', 'HD', 'L', 'LE2'}
+    struct_names            — tuple containing at least {'H', 'HD', 'L', 'LE2'} (extras ignored)
     struct_features         — (M, S) float32  per-mutation per-structure ΔΔG prior means
     mut_geno_matrix         — (M, G) for mutation → genotype scatter
     num_mutation            — M
-    num_struct              — S (must equal 4)
+    num_struct              — S (at least 4)
 
 Input CSV format (passed via ``thermo_data``)
 ------------------------------------------------------
-A CSV with columns ``mut`` (mutation label) and one column per structure
-(``H``, ``HD``, ``L``, ``LE2`` in any order).  Mutations absent from the CSV
-receive a prior mean of 0.0 (no structural prediction).
+A CSV with a mutation column (``mut``, ``Mutation`` or ``mutation``) and one
+column per structure (``H``, ``HD``, ``L``, ``LE2``, any order; other columns are
+ignored, and ``thermo_options`` ``column_map`` can name the column for a
+structure).  ΔΔG_X is the shift a mutation makes to state X's free energy,
+so positive destabilizes X, and Δln K_{A→B} = ΔΔG_A − ΔΔG_B.  The model
+needs kT; ``thermo_options`` ``ddG_units: kcal/mol`` (or ``kJ/mol``, with
+``temperature_K``) converts at load, and the default ``kT`` uses the values
+as-is.  The loader (``thermo.io.load_ddG_prior_csv``) reports coverage, errors
+on zero coverage or a wt-residue mismatch (numbering offset; see
+``residue_offset``), and gives absent mutations a prior mean of 0.0 with a
+warning when more than ``max_missing_fraction`` are absent.
 """
 
 import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
+from tfscreen.tfmodel.generative.components._horseshoe import regularized_scale
 import numpyro.distributions.constraints as constraints
 import pandas as pd
-from flax.struct import dataclass
+from flax.struct import dataclass, field
 from functools import partial
 from typing import Dict, Any, Union
 
 from tfscreen.tfmodel.data_class import GrowthData, BindingData
 from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix, apply_mut_matrix
+from tfscreen.tfmodel.generative.components.theta.thermo import mwc
 from tfscreen.tfmodel.generative.components.theta.thermo.prior import (
-    sample_ddG,
+    DEFAULT_DDG_SIGMA_LOC,
+    DEFAULT_DDG_SIGMA_SCALE,
+    ddG_sigma_fixed,
+    ddG_extract_specs,
+    dlnK_guesses,
+    guide_dlnK,
+    projection,
+    sample_dlnK,
 )
 from tfscreen.tfmodel.generative.components.theta.thermo.horseshoe import (
     sample_pair_ddG,
     _DEFAULT_D0,
 )
 from tfscreen.tfmodel.generative.components.theta.thermo.O2_C4_K3_U0_a.thermo import (
+    DEFAULT_CONC_UNIT_SCALE,
+    DEFAULT_LN_K_E_WT_LOC,
+    DEFAULT_LN_K_HL_WT_LOC,
+    DEFAULT_LN_K_OP_WT_LOC,
+    DEFAULT_TF_TOTAL_M,
     ThetaParam,
     _compute_theta,
     _population_moments,
@@ -69,14 +106,16 @@ from tfscreen.tfmodel.generative.components.theta.thermo.O2_C4_K3_U0_a.thermo im
     get_population_moments,
 )
 
-# Expected structure names — column order matches _PROJ below.
-STRUCTURE_NAMES = ('H', 'HD', 'L', 'LE2')
+# Structure basis and projection rows (thermo/mwc.py). Convention: ΔΔG_X
+# adds to state X's free energy (kT), Δln K_{A→B} = ΔΔG_A − ΔΔG_B, and the
+# effector rows are per site, half of ΔΔG_X − ΔΔG_XE2.
+STRUCTURE_NAMES = mwc.STRUCTURE_NAMES_C4
 
-# Fixed thermodynamic projection: rows = (K_op, K_HL, K_E), cols = (H, HD, L, LE2).
-# Δln_K = ddG @ _PROJ.T   where ddG is (..., 4) → result (..., 3)
-_PROJ = jnp.array([[1., -1.,  0.,  0.],   # K_op = ΔΔG_H − ΔΔG_HD
-                   [1.,  0., -1.,  0.],    # K_HL = ΔΔG_H − ΔΔG_L
-                   [0.,  0.,  1., -1.]])   # K_E  = ΔΔG_L − ΔΔG_LE2
+# Δln_K = ddG @ _PROJ.T; rows = constants, cols = STRUCTURE_NAMES.
+_PROJ = jnp.asarray(mwc.PROJ_C4)
+
+# Δln K (sampled, M × 3) = ΔΔG @ DLNK_PROJ.T (thermo/prior.py).
+DLNK_PROJ = projection(mwc.PROJ_C4)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -95,15 +134,24 @@ class ModelPriors:
     theta_ln_K_E_wt_loc:    float
     theta_ln_K_E_wt_scale:  float
 
-    # Physical concentrations (M); Sochor, PeerJ 2014
-    theta_tf_total_M: float   # ≈ 6.5e-7 M (650 nM)
-    theta_op_total_M: float   # ≈ 2.5e-8 M (25 nM)
+    # Total TF (M, monomer units); see thermo.py Units
+    theta_tf_total_M: float   # M, monomer units; default 1e-5 (thermo/mwc.py)
+    # Factor converting data titrant_conc (mM) to M (1e-3); see thermo.py.
+    theta_conc_unit_scale: float
 
-    # Regularised horseshoe for pairwise epistasis
+    # Regularized horseshoe for pairwise epistasis
     theta_epi_tau_scale:  float
     theta_epi_slab_scale: float
     theta_epi_slab_df:    float
     theta_epi_d0:         float
+
+    # LogNormal prior on the per-structure ΔΔG scale σ_s (log kT); see
+    # thermo/prior.py.
+    theta_ddG_sigma_loc:   float
+    theta_ddG_sigma_scale: float
+    # > 0 holds every σ_s at this value (kT) instead of sampling it;
+    # 0 (default) samples σ_s (thermo/prior.py, "Holding σ_s").
+    theta_ddG_sigma_fixed: float = field(pytree_node=False, default=0.0)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -112,14 +160,16 @@ class ModelPriors:
 
 def _get_struct_perm(data):
     """
-    Verify struct_names contains exactly the required structures and return a
-    permutation index mapping data's S ordering to STRUCTURE_NAMES order.
+    Verify struct_names contains every required structure (extras are
+    ignored) and return the index of each STRUCTURE_NAMES entry in it.
     """
-    data_names = data.struct_names
-    if set(data_names) != set(STRUCTURE_NAMES):
+    data_names = tuple(data.struct_names or ())
+    missing = [s for s in STRUCTURE_NAMES if s not in data_names]
+    if missing:
         raise ValueError(
-            f"lnK_ddG_prior (lac_dimer) requires struct_names to contain exactly "
-            f"{set(STRUCTURE_NAMES)}; got {data_names}."
+            f"lnK_ddG_prior (lac_dimer) needs structures {STRUCTURE_NAMES}; "
+            f"struct_names {data_names} lacks {missing}. Extra "
+            f"structures are ignored."
         )
     name_to_idx = {n: i for i, n in enumerate(data_names)}
     return [name_to_idx[s] for s in STRUCTURE_NAMES]
@@ -209,7 +259,7 @@ def define_model(name: str,
     ddG_prior_means = jnp.array(data.struct_features)[:, perm_idx]   # (M, S)
 
     tf_total = priors.theta_tf_total_M
-    op_total = priors.theta_op_total_M
+    conc_unit_scale = priors.theta_conc_unit_scale
 
     # ── WT equilibrium constants ─────────────────────────────────────────────
     ln_K_op_wt = pyro.sample(
@@ -223,12 +273,14 @@ def define_model(name: str,
             f"{name}_ln_K_E_wt",
             dist.Normal(priors.theta_ln_K_E_wt_loc, priors.theta_ln_K_E_wt_scale))
 
-    # ── Per-mutation per-structure ΔΔG latent variables ──────────────────────
-    # ddG_prior_means (M, S) serve as the Normal prior means; σ_s is learned.
-    ddG = sample_ddG(name, list(STRUCTURE_NAMES), num_mut, ddG_prior_means)  # (M, S)
-
-    # Project (M, 4) → (M, 3) Δln_K
-    delta_lnK = _project_ddG(ddG)
+    # ── Per-mutation Δln K under the structural prior ─────────────────────────
+    # Δln K[m] ~ MVN(P · prior_mean[m], P · diag(σ_s²) · Pᵀ), σ_s per state
+    # (thermo/prior.py); the post-hoc per-state ΔΔG is the site {name}_ddG.
+    dlnK = sample_dlnK(name, list(STRUCTURE_NAMES), num_mut, ddG_prior_means, DLNK_PROJ,
+                       sigma_loc=priors.theta_ddG_sigma_loc,
+                       sigma_scale=priors.theta_ddG_sigma_scale,
+                       sigma_fixed=ddG_sigma_fixed(priors))  # (M, C)
+    delta_lnK = dlnK[:, :3]
 
     pyro.deterministic(f"{name}_d_ln_K_op", delta_lnK[:, 0])
     pyro.deterministic(f"{name}_d_ln_K_HL", delta_lnK[:, 1])
@@ -268,11 +320,13 @@ def define_model(name: str,
 
     # ── Population moments for transformation model ───────────────────────────
     theta_vals = _compute_theta(ln_K_op, ln_K_HL, ln_K_E,
-                                data.titrant_conc, tf_total, op_total)
+                                data.titrant_conc * conc_unit_scale,
+                                tf_total)
     mu, sigma  = _population_moments(theta_vals, data)
 
     return ThetaParam(ln_K_op=ln_K_op, ln_K_HL=ln_K_HL, ln_K_E=ln_K_E,
-                      tf_total=tf_total, op_total=op_total, mu=mu, sigma=sigma)
+                      tf_total=tf_total, mu=mu, sigma=sigma,
+                      conc_unit_scale=conc_unit_scale)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -293,11 +347,11 @@ def guide(name: str,
                           mut_nnz_geno_idx=jnp.array(data.mut_nnz_geno_idx),
                           num_genotype=data.num_genotype)
     num_mut = data.num_mutation
-    S       = data.num_struct
+    S       = len(STRUCTURE_NAMES)
     ddG_prior_means = jnp.array(data.struct_features)[:, perm_idx]   # (M, S)
 
     tf_total = priors.theta_tf_total_M
-    op_total = priors.theta_op_total_M
+    conc_unit_scale = priors.theta_conc_unit_scale
     has_epi  = data.num_pair > 0
 
     # ── Variational params for WT K values ────────────────────────────────────
@@ -307,18 +361,6 @@ def guide(name: str,
     ln_K_HL_wt_scale = pyro.param(f"{name}_ln_K_HL_wt_scale", jnp.array(1.0), constraint=constraints.positive)
     ln_K_E_wt_locs   = pyro.param(f"{name}_ln_K_E_wt_locs",   jnp.full(T, priors.theta_ln_K_E_wt_loc))
     ln_K_E_wt_scales = pyro.param(f"{name}_ln_K_E_wt_scales", jnp.ones(T), constraint=constraints.positive)
-
-    # ── Register σ_s so param store includes it before sampling ──────────────
-    pyro.param(
-        f"{name}_ddG_sigma_s", jnp.ones(S), constraint=constraints.positive,
-    )
-
-    # ── Variational params for ddG offsets, shape (S, M) in plate layout ─────
-    ddG_offset_locs   = pyro.param(f"{name}_ddG_offset_locs",
-                                   jnp.zeros((S, num_mut)))
-    ddG_offset_scales = pyro.param(f"{name}_ddG_offset_scales",
-                                   jnp.ones((S, num_mut)),
-                                   constraint=constraints.positive)
 
     # ── Optional epistasis variational params ─────────────────────────────────
     if has_epi:
@@ -338,19 +380,9 @@ def guide(name: str,
     with pyro.plate(f"{name}_wt_plate", T, dim=-1):
         ln_K_E_wt = pyro.sample(f"{name}_ln_K_E_wt", dist.Normal(ln_K_E_wt_locs, ln_K_E_wt_scales))
 
-    # ── Sample ddG offsets (matches model's prior.sample_ddG plate layout) ────
-    with pyro.plate(f"{name}_struct_plate", S, dim=-2):
-        with pyro.plate(f"{name}_mut_plate", num_mut, dim=-1):
-            offsets = pyro.sample(
-                f"{name}_ddG_offset",
-                dist.Normal(ddG_offset_locs, ddG_offset_scales),
-            )  # (S, M)
-
-    sigma_s = pyro.param(
-        f"{name}_ddG_sigma_s", jnp.ones(S), constraint=constraints.positive,
-    )
-    ddG_SM = ddG_prior_means.T + sigma_s[:, None] * offsets   # (S, M)
-    ddG    = ddG_SM.T                                          # (M, S)
+    # ── Sample σ_s and Δln K (matches prior.sample_dlnK) ────────────────────
+    dlnK = guide_dlnK(name, num_mut, S, DLNK_PROJ, ddG_prior_means,
+                      sigma_fixed=ddG_sigma_fixed(priors))   # (M, C)
 
     # ── Sample epistasis ──────────────────────────────────────────────────────
     epi_delta_lnK = None
@@ -380,7 +412,7 @@ def guide(name: str,
                 )
 
         def _lam_tilde(l):
-            return jnp.sqrt(c2_epi * l ** 2 / (c2_epi + tau_epi ** 2 * l ** 2))
+            return regularized_scale(l, tau_epi, c2_epi)
 
         epi_SP        = epi_off * tau_epi * _lam_tilde(lam)   # (S, P)
         epi_ddG       = epi_SP.T                               # (P, S)
@@ -392,18 +424,20 @@ def guide(name: str,
                                num_genotype=data.num_genotype)
 
     # ── Assemble per-genotype K values ────────────────────────────────────────
-    delta_lnK = _project_ddG(ddG)
+    delta_lnK = dlnK[:, :3]
     ln_K_op, ln_K_HL, ln_K_E = _assemble_K(
         ln_K_op_wt, ln_K_HL_wt, ln_K_E_wt, delta_lnK, mut_scatter,
         epi_delta_lnK=epi_delta_lnK, pair_scatter=pair_scatter,
     )
 
     theta_vals = _compute_theta(ln_K_op, ln_K_HL, ln_K_E,
-                                data.titrant_conc, tf_total, op_total)
+                                data.titrant_conc * conc_unit_scale,
+                                tf_total)
     mu, sigma  = _population_moments(theta_vals, data)
 
     return ThetaParam(ln_K_op=ln_K_op, ln_K_HL=ln_K_HL, ln_K_E=ln_K_E,
-                      tf_total=tf_total, op_total=op_total, mu=mu, sigma=sigma)
+                      tf_total=tf_total, mu=mu, sigma=sigma,
+                      conc_unit_scale=conc_unit_scale)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -412,31 +446,36 @@ def guide(name: str,
 
 def get_hyperparameters() -> Dict[str, Any]:
     p = {}
-    # WT K priors (same values as lnK_mut for continuity)
-    p["theta_ln_K_op_wt_loc"]   = 23.0
+    # Wild-type defaults: see thermo/mwc.py (Sochor 2014 constants and the
+    # 80 µM midpoint calibration at tf_total = 1e-5 M monomer).
+    p["theta_ln_K_op_wt_loc"]   = DEFAULT_LN_K_OP_WT_LOC   # = K_h_o; Sochor: 4.2e8 M⁻¹
     p["theta_ln_K_op_wt_scale"] = 2.0
-    p["theta_ln_K_HL_wt_loc"]   = -9.0
+    p["theta_ln_K_HL_wt_loc"]   = DEFAULT_LN_K_HL_WT_LOC   # = K_h_l; Sochor: 6.3
     p["theta_ln_K_HL_wt_scale"] = 3.0
-    p["theta_ln_K_E_wt_loc"]    = 33.4
+    p["theta_ln_K_E_wt_loc"]    = DEFAULT_LN_K_E_WT_LOC   # = K_l_e, per site (M⁻¹); midpoint 80 µM
     p["theta_ln_K_E_wt_scale"]  = 3.0
-    p["theta_tf_total_M"]     = 6.5e-7
-    p["theta_op_total_M"]     = 2.5e-8
+    p["theta_tf_total_M"]     = DEFAULT_TF_TOTAL_M   # M, monomer units (5e-6 M dimer)
+    p["theta_conc_unit_scale"] = DEFAULT_CONC_UNIT_SCALE   # titrant_conc mM → M
     p["theta_epi_tau_scale"]  = 0.1
     p["theta_epi_slab_scale"] = 2.0
     p["theta_epi_slab_df"]    = 4.0
     p["theta_epi_d0"]         = float(_DEFAULT_D0)
+    p["theta_ddG_sigma_loc"]   = DEFAULT_DDG_SIGMA_LOC     # median σ_s 1 kT
+    p["theta_ddG_sigma_scale"] = DEFAULT_DDG_SIGMA_SCALE   # 95%: 0.1-10 kT
+    p["theta_ddG_sigma_fixed"] = 0.0   # > 0 holds σ_s (kT)
     return p
 
 
 def get_guesses(name: str, data: Union[GrowthData, BindingData]) -> Dict[str, Any]:
     T = data.num_titrant_name
     M = data.num_mutation
-    S = data.num_struct
+    S = len(STRUCTURE_NAMES)
     g = {}
-    g[f"{name}_ln_K_op_wt"]  = jnp.array(23.0)
-    g[f"{name}_ln_K_HL_wt"]  = jnp.array(-9.0)
-    g[f"{name}_ln_K_E_wt"]   = jnp.full(T, 33.4)
-    g[f"{name}_ddG_offset"]   = jnp.zeros((S, M))
+    g[f"{name}_ln_K_op_wt"]  = jnp.array(DEFAULT_LN_K_OP_WT_LOC)
+    g[f"{name}_ln_K_HL_wt"]  = jnp.array(DEFAULT_LN_K_HL_WT_LOC)
+    g[f"{name}_ln_K_E_wt"]   = jnp.full(T, DEFAULT_LN_K_E_WT_LOC)
+    # Δln K starts at P · (ΔΔG prior means), σ_s at 1 kT.
+    g.update(dlnK_guesses(name, jnp.asarray(data.struct_features)[:, jnp.array(_get_struct_perm(data))], DLNK_PROJ))
     if data.num_pair > 0:
         P = data.num_pair
         g[f"{name}_epi_tau"]    = jnp.array(0.05)
@@ -460,7 +499,7 @@ def predict_unmeasured(
     q_to_get,
     *,
     tf_total,
-    op_total,
+    conc_unit_scale=1.0,
 ):
     """
     Predict theta for unmeasured genotypes using ddG-prior ln-K assembly.
@@ -478,7 +517,8 @@ def predict_unmeasured(
     param_posteriors : dict-like
     q_to_get : dict
     tf_total : float
-    op_total : float
+    conc_unit_scale : float
+        Converts titrant_conc to M (1e-3 for mM data).
 
     Returns
     -------
@@ -536,11 +576,11 @@ def predict_unmeasured(
     ln_K_HL_rows = ln_K_HL_geno[:, geno_idx]
     ln_K_E_rows  = ln_K_E_geno[:, titrant_idx, geno_idx]
 
-    conc = calc_df["titrant_conc"].values.copy().astype(float)
+    conc = calc_df["titrant_conc"].values.copy().astype(float) * conc_unit_scale
     conc[conc == 0] = _ZERO_CONC_VALUE
 
     theta_samples = _solve_theta_np(
-        ln_K_op_rows, ln_K_HL_rows, ln_K_E_rows, conc, tf_total, op_total
+        ln_K_op_rows, ln_K_HL_rows, ln_K_E_rows, conc, tf_total
     )
 
     theta_samples[:, ~is_valid[geno_idx]] = np.nan
@@ -606,6 +646,10 @@ def get_extract_specs(ctx):
             get_columns=["pair"],
             in_run_prefix="theta_",
         ))
+
+    # Per-structure ddG and its prior mean, in STRUCTURE_NAMES order (the
+    # order the model samples in and the simulator labels its truth with).
+    specs.extend(ddG_extract_specs(ctx, STRUCTURE_NAMES))
 
     return specs
 

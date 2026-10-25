@@ -39,8 +39,7 @@ def test_get_batch_metadata_updates():
         t_sel=jnp.zeros((1, 1, 1, 1, 1, 1, total_size)),
         map_condition_pre=jnp.zeros((1, total_size)),
         map_condition_sel=jnp.zeros((1, total_size)),
-        good_mask=jnp.ones((1, total_size), dtype=bool),
-        congression_mask=jnp.ones((total_size,), dtype=bool)
+        good_mask=jnp.ones((1, total_size), dtype=bool)
     )
     
     full_data = MockDataClass(growth=growth)
@@ -60,4 +59,3 @@ def test_get_batch_metadata_updates():
     
     # Verify shape of sliced data (last dim should be new_batch_size)
     assert batch_data.growth.ln_cfu.shape[-1] == new_batch_size
-    assert batch_data.growth.congression_mask.shape[-1] == new_batch_size

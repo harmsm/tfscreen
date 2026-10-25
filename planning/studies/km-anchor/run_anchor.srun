@@ -1,0 +1,68 @@
+#!/bin/bash -l
+#SBATCH --account=harmslab
+#SBATCH --job-name=tfs_anchor
+#SBATCH --output=run.out
+#SBATCH --error=run.err
+#SBATCH --partition=gpulong
+#SBATCH --time=02-00:00:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --gpus=1
+#SBATCH --mem=0
+#SBATCH --ntasks-per-node=1
+
+# One k/m anchor arm (planning/studies/km-anchor): the recipe's model and
+# chain, refit on an existing growth table with k and m priors in the
+# selection conditions from the wt monoculture rates. Run from a new arm
+# directory; the paths below are relative to it.
+#
+#   GROWTH      growth table (tfs-process-counts output) to refit
+#   LIBRARY     library config the fit is configured with
+#   WT_RATES    wt_rates_selection.csv or wt_rates_selection_perturbed.csv
+#   TRUTH_DIR   (simulation arms) directory holding tfs_sim_*.csv; they are
+#               linked in so tfs-summarize-fit scores against the truth
+#
+# See README.md for the exact sbatch lines.
+
+module load cuda/12.4.1
+
+set -e
+
+GROWTH="${GROWTH:?set GROWTH}"
+LIBRARY="${LIBRARY:?set LIBRARY}"
+WT_RATES="${WT_RATES:?set WT_RATES}"
+SEED="${SEED:-1}"
+
+if [[ -n "${TRUTH_DIR:-}" ]]; then
+    for f in "${TRUTH_DIR}"/tfs_sim_*.csv; do
+        ln -sf "${f}" .
+    done
+fi
+
+echo ">>> Configure (k/m priors from ${WT_RATES}) $(date)"
+tfs-configure-model \
+    --allow_missing_spikes \
+    --growth_df "${GROWTH}" \
+    --library_config "${LIBRARY}" \
+    --theta_model hill_relative \
+    --growth_shares_replicates \
+    --batch_size 4096 \
+    --growth_priors ../growth_priors_loose.csv \
+    --growth_priors_wt_rates "${WT_RATES}" \
+    --set_priors sigma_fixed=0.17 theta_log_hill_n_hyper_scale_fixed=0.5
+
+echo ">>> Fit (staged MAP) $(date)"
+tfs-fit-model tfs_configure_config.yaml --seed "${SEED}" --analysis_method map
+
+echo ">>> Arrowhead Laplace $(date)"
+tfs-sample-posterior tfs_configure_config.yaml tfs_fit_model_checkpoint.pkl \
+    --laplace arrowhead --num_posterior_samples 500 --skip_growth_observations
+
+echo ">>> Extract and predict $(date)"
+tfs-extract-params tfs_configure_config.yaml tfs_posterior.h5
+tfs-predict-theta tfs_configure_config.yaml tfs_posterior.h5
+
+echo ">>> Summarize $(date)"
+tfs-summarize-fit .
+
+echo ">>> Done $(date)"

@@ -6,6 +6,14 @@ import glob
 # Set before any tfscreen/numba imports happen during collection.
 os.environ.setdefault("NUMBA_DISABLE_JIT", "1")
 
+# pandas 3 (what CI installs) always copies on write, so to_numpy() can
+# return a read-only view; pandas 2 can opt in. Run the tests that way on
+# pandas 2 too, so code that writes into such a view fails locally as it
+# does on CI (shared_shift.row_shifts did, 2026-10-18).
+import pandas as pd
+if int(pd.__version__.split(".")[0]) < 3:
+    pd.options.mode.copy_on_write = True
+
 def get_files(base_dir):
     """
     Traverse base_dir and return a dictionary that keys all files and some
@@ -112,3 +120,26 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if "slow" in item.keywords:
             item.add_marker(skip_slow)
+
+
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+
+
+@pytest.fixture(autouse=True)
+def _no_provenance_files_in_repo(monkeypatch):
+    """
+    Tests that call a command's main() with its default --out_prefix would
+    leave {out_prefix}_provenance.json in the working directory (usually the
+    repository). Skip provenance files that would land inside the
+    repository; ones under a test's tmp_path are written as usual.
+    """
+    from tfscreen.util import provenance
+
+    real = provenance.write_provenance
+
+    def guarded(path, prov=None):
+        if os.path.realpath(path).startswith(_REPO_ROOT + os.sep):
+            return path
+        return real(path, prov)
+
+    monkeypatch.setattr(provenance, "write_provenance", guarded)

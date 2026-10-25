@@ -22,7 +22,6 @@ class GrowthData:
     t_pre: jnp.ndarray
     t_sel: jnp.ndarray
     good_mask: jnp.ndarray
-    congression_mask: jnp.ndarray
 
         
     # Tensor shape
@@ -65,7 +64,56 @@ class GrowthData:
     ln_cfu0_library_masks: Any = field(default=None)
     num_ln_cfu0_library_classes: int = field(pytree_node=False, default=1)
 
+    # Float array, shape (num_genotype,): the fraction of each genotype's
+    # cells that come from the bulk (co-transformed) sub-libraries, in
+    # [0, 1]. 0 = pure monoclonal spike, 1 = pure bulk. This is a genotype's
+    # congression *purity*, kept separate from its ln_cfu0 prior class
+    # (ln_cfu0_spiked_mask), which it no longer shares a flag with. Built by
+    # ModelOrchestrator from the library composition table's bulk_fraction
+    # (legacy spiked_genotypes: 0 for spiked, 1 otherwise). Library-sized;
+    # consumers index it with batch_idx. Sets the congressed fraction of the
+    # mixture transformation (transformation/mixture.py).
+    bulk_fraction: Any = field(default=None)
+
+    # Fixed co-resident plasmid sets for the congression mixture, drawn once
+    # by ModelOrchestrator._draw_coresident_sets. coresident_idx: int,
+    # (num_genotype, K, N_max), library (growth-tensor) genotype indices,
+    # -1 = empty slot; coresident_n: int, (K,), co-residents per set.
+    # Library-sized; consumers index the first axis with batch_idx. Used by
+    # the mixture transformation (transformation/mixture.py).
+    coresident_idx: Any = field(default=None)
+    coresident_n: Any = field(default=None)
+
+    # How a congressed cell's theta is built from its plasmids' thetas
+    # ("max", "homodimer", "heterodimer"; see transformation/mixture.py).
+    # Static: set by ModelOrchestrator from its congression_theta_rule.
+    congression_theta_rule: str = field(pytree_node=False, default="homodimer")
+
+    # How a congressed cell's dk_geno is built from its plasmids' ("dilution",
+    # "softmin" with congression_dk_alpha, "min"). Static: set by
+    # ModelOrchestrator.
+    congression_dk_rule: str = field(pytree_node=False, default="dilution")
+    congression_dk_alpha: Any = field(pytree_node=False, default=None)
+
     growth_shares_replicates: bool = field(pytree_node=False, default=False)
+
+    # (ln c_lo, ln c_hi): the concentrations at which the relative theta
+    # component (theta/hill_relative.py) pins wt's X to 1 and 0. None for
+    # every other theta component. Set by ModelOrchestrator from its
+    # theta_gauge_conc (zero concentration mapped like log_titrant_conc).
+    theta_gauge_log_conc: Any = field(default=None)
+
+    # Growth observation model: "lncfu" (Student-t on ln_cfu, observe/growth.py)
+    # or "counts" (negative binomial on read counts, observe/growth_counts.py).
+    # Static: set by ModelOrchestrator from its growth_likelihood.
+    growth_likelihood: str = field(pytree_node=False, default="lncfu")
+    # Count-likelihood tensors, same layout as ln_cfu; None unless
+    # growth_likelihood == "counts". counts: reads of the genotype in the
+    # tube; ln_sample_reads: ln of the tube's total reads (__unknown__
+    # included); sample_ln_cfu: ln of the tube's total cells as supplied.
+    counts: Any = field(default=None)
+    ln_sample_reads: Any = field(default=None)
+    sample_ln_cfu: Any = field(default=None)
 
     # Optional mutation-decomposition matrices (set when using *_mut_decomp components).
     # Stored as pytree_node=False so they are treated as static by JAX tracing.
@@ -103,8 +151,8 @@ class GrowthData:
 
     # Precomputed theta at growth titrant concentrations for *every* genotype
     # in the library (shape (num_titrant_name, num_titrant_conc, true_num_genotype)),
-    # used only by transformation components whose congression correction needs
-    # a population-wide reference distribution (see transformation/_congression.py).
+    # used only by transformation components that need a population-wide
+    # reference (NEEDS_POPULATION; see transformation/mixture.py).
     # None (the default) tells `jax_model` to compute this locally from
     # `data.growth` itself, which is only correct when `data.growth` already
     # spans the full genotype population (true during SVI training, since
@@ -112,6 +160,16 @@ class GrowthData:
     # paths that subset genotypes (e.g. `analysis.prediction.predict`) must
     # supply this explicitly, computed against the true, unsubsetted library.
     external_theta_population: Any = field(default=None)
+
+    # Library-ordered dk_geno and activity for *every* genotype (shape
+    # (num_genotype,), or with leading sample dims), the counterparts of
+    # external_theta_population for the congression mixture's co-resident
+    # lookup (planning/congression-physics-plan.md, step 3). During training
+    # the dk_geno/activity components supply these themselves
+    # (return_population=True). A posterior forward pass that substitutes
+    # batch-sized latents cannot, so prediction code must pass them here.
+    external_dk_population: Any = field(default=None)
+    external_activity_population: Any = field(default=None)
 
 @dataclass(frozen=True)
 class BindingData:
@@ -159,6 +217,13 @@ class BindingData:
     struct_n_chains: Any = field(pytree_node=False, default=None)
     struct_contact_pair_idx: Any = field(pytree_node=False, default=None)
     struct_contact_distances: Any = field(pytree_node=False, default=None)
+
+    # Each batch position's ordinal among the binding genotypes (their order
+    # on the binding tensors' genotype axis), for latents that exist only
+    # for binding genotypes (noise/genotype_offset). Joint models:
+    # arange(num_binding), since the binding tensors are never sliced and
+    # batch_idx holds library indices. Binding-only: the batch's indices.
+    binding_ordinal: Any = None
 
 
 @dataclass(frozen=True)

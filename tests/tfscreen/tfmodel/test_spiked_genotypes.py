@@ -55,8 +55,8 @@ def test_spiked_genotypes_masking(dummy_data):
     genotype_idx = orchestrator.growth_tm.tensor_dim_names.index("genotype")
     genotype_labels = orchestrator.growth_tm.tensor_dim_labels[genotype_idx]
     
-    # Check the congression_mask in the data object
-    mask = np.array(orchestrator.data.growth.congression_mask)
+    # Spiked genotypes are the ones in the spiked ln_cfu0 class
+    mask = ~np.array(orchestrator.data.growth.ln_cfu0_spiked_mask)
     for i, label in enumerate(genotype_labels):
         if label == "A10G":
             assert not mask[i], f"Genotype {label} should be masked (False)"
@@ -93,7 +93,7 @@ def test_spiked_genotypes_single_string(dummy_data):
     genotype_idx = orchestrator.growth_tm.tensor_dim_names.index("genotype")
     genotype_labels = orchestrator.growth_tm.tensor_dim_labels[genotype_idx]
     
-    mask = np.array(orchestrator.data.growth.congression_mask)
+    mask = ~np.array(orchestrator.data.growth.ln_cfu0_spiked_mask)
     for i, label in enumerate(genotype_labels):
         if label == "A10G":
             assert not mask[i]

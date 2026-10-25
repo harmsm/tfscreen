@@ -247,13 +247,12 @@ def define_model(name: str,
     # Sample non-centered offsets for each ln_cfu0 group
     with pyro.plate(f"{name}_replicate", data.num_replicate, dim=-3):
         with pyro.plate(f"{name}_condition_pre", data.num_condition_pre, dim=-2):
-            with pyro.plate("shared_genotype_plate", size=data.batch_size, dim=-1):
-                with pyro.handlers.scale(scale=data.scale_vector):
-                    ln_cfu0_offsets = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
+            with pyro.plate(f"{name}_genotype_plate", data.num_genotype, dim=-1):
+                ln_cfu0_offsets = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
 
-    # Guard against full-sized array substitution during initialization or re-runs
-    # with full-sized initial values
-    if ln_cfu0_offsets.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+    # Sampled at library size: slice to this batch's genotypes. A value of
+    # any other size is an already-sliced substitution (posterior forward pass).
+    if ln_cfu0_offsets.shape[-1] == data.num_genotype:
         ln_cfu0_offsets = ln_cfu0_offsets[..., data.batch_idx]
 
     per_geno_loc, per_geno_scale = _per_geno_loc_scale(
@@ -364,17 +363,13 @@ def guide(name: str,
     # Sample non-centered offsets for each ln_cfu0 group
     with pyro.plate(f"{name}_replicate", data.num_replicate, dim=-3):
         with pyro.plate(f"{name}_condition_pre", data.num_condition_pre, dim=-2):
-            with pyro.plate("shared_genotype_plate", size=data.batch_size, dim=-1):
-                with pyro.handlers.scale(scale=data.scale_vector):
+            with pyro.plate(f"{name}_genotype_plate", data.num_genotype, dim=-1):
+                ln_cfu0_offsets = pyro.sample(f"{name}_offset",
+                                              dist.Normal(offset_locs, offset_scales))
 
-                    batch_locs   = offset_locs[..., data.batch_idx]
-                    batch_scales = offset_scales[..., data.batch_idx]
-                    ln_cfu0_offsets = pyro.sample(f"{name}_offset",
-                                                  dist.Normal(batch_locs, batch_scales))
-
-    # Guard against full-sized array substitution during initialization or re-runs
-    # with full-sized initial values
-    if ln_cfu0_offsets.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+    # Sampled at library size: slice to this batch's genotypes. A value of
+    # any other size is an already-sliced substitution (posterior forward pass).
+    if ln_cfu0_offsets.shape[-1] == data.num_genotype:
         ln_cfu0_offsets = ln_cfu0_offsets[..., data.batch_idx]
 
     per_geno_loc, per_geno_scale = _per_geno_loc_scale(
@@ -721,13 +716,49 @@ def get_priors(data: Optional[GrowthData] = None,
     return ModelPriors(**params)
 
 
-def get_extract_specs(ctx):
-    if "map_ln_cfu0" not in ctx.growth_tm.df.columns:
+def ln_cfu0_extract_spec(ctx):
+    """
+    Extraction spec for ``ln_cfu0``, shape (replicate, condition_pre,
+    genotype) in the model.
+
+    Each row is keyed by its position in that array, computed from the
+    growth tensor's axis labels. ``map_ln_cfu0`` numbers only the
+    (replicate, library, condition_pre, genotype) combinations present in
+    the data, so where a genotype is missing from a replicate or library
+    its numbers run behind the array's positions, and every later row was
+    labeled with another genotype's value (all ln_cfu0 outputs before
+    2026-09-29 on data with such gaps).
+    """
+    tm = ctx.growth_tm
+    df = tm.df
+    if "map_ln_cfu0" not in df.columns:
         return []
+    labels = dict(zip(tm.tensor_dim_names, tm.tensor_dim_labels))
+    index = {dim: {str(v): i for i, v in enumerate(labels[dim])}
+             for dim in ("replicate", "condition_pre", "genotype")}
+    n_cp = len(labels["condition_pre"])
+    n_g = len(labels["genotype"])
+    # the growth tensor's condition_pre axis is keyed library/condition_pre
+    cp = df["condition_pre"].astype(str)
+    if "library" in df.columns:
+        cp = df["library"].astype(str) + "/" + cp
+    rep = df["replicate"].astype(str).map(index["replicate"])
+    cp = cp.map(index["condition_pre"]).fillna(
+        df["condition_pre"].astype(str).map(index["condition_pre"]))
+    geno = df["genotype"].astype(str).map(index["genotype"])
+    if rep.isna().any() or cp.isna().any() or geno.isna().any():
+        raise ValueError("ln_cfu0 extraction: growth rows whose replicate, "
+                         "library/condition_pre or genotype is not a label "
+                         "of the growth tensor.")
+    flat = (rep.astype(int) * n_cp + cp.astype(int)) * n_g + geno.astype(int)
     return [dict(
-        input_df=ctx.growth_tm.df,
+        input_df=df.assign(_ln_cfu0_flat=flat.to_numpy()),
         params_to_get=["ln_cfu0"],
-        map_column="map_ln_cfu0",
+        map_column="_ln_cfu0_flat",
         get_columns=["replicate", "condition_pre", "genotype"],
         in_run_prefix="",
     )]
+
+
+def get_extract_specs(ctx):
+    return ln_cfu0_extract_spec(ctx)

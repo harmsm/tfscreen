@@ -857,7 +857,7 @@ class TestBuildCalibrationModel:
             "activity": "horseshoe_geno",         # → hierarchical
             "dk_geno": "fixed",              # → hierarchical
             "ln_cfu0": "fixed",              # → hierarchical
-            "transformation": "logit_norm",  # → single
+            "transformation": "mixture",  # → single
             "theta_growth_noise": "beta",    # → zero
             "theta_binding_noise": "beta",   # → zero
             "condition_growth": "linear",    # passthrough
@@ -909,7 +909,7 @@ class TestBuildCalibrationModel:
             "dk_geno": "pinned",
             "dk_geno_pins_file": "dk_geno_pins.csv",
             "ln_cfu0": "fixed",
-            "transformation": "logit_norm",
+            "transformation": "mixture",
             "theta_growth_noise": "beta",
             "theta_binding_noise": "beta",
             "condition_growth": "linear",
@@ -943,7 +943,7 @@ class TestBuildCalibrationModel:
             "dk_geno": "hierarchical_geno",
             "dk_geno_pins_file": "stale_pins.csv",
             "ln_cfu0": "fixed",
-            "transformation": "logit_norm",
+            "transformation": "mixture",
             "theta_growth_noise": "beta",
             "theta_binding_noise": "beta",
             "condition_growth": "linear",
@@ -965,7 +965,7 @@ class TestBuildCalibrationModel:
 
     def test_transformation_lambda_dropped_when_forced_to_single(self):
         """
-        Production transformation="empirical" carries a transformation_lambda
+        Production transformation="mixture" carries a transformation_lambda
         (mean, std) pair anchoring its lambda parameter. The calibration
         model always overrides transformation to "single", which has no
         lambda parameter -- ModelOrchestrator raises if transformation_lambda is
@@ -977,7 +977,7 @@ class TestBuildCalibrationModel:
             "activity": "horseshoe_geno",
             "dk_geno": "fixed",
             "ln_cfu0": "fixed",
-            "transformation": "empirical",
+            "transformation": "mixture",
             "transformation_lambda": (0.3572, 0.2592),
             "theta_growth_noise": "beta",
             "theta_binding_noise": "beta",
@@ -1008,7 +1008,7 @@ class TestBuildCalibrationModel:
             "activity": "horseshoe_geno",
             "dk_geno": "fixed",
             "ln_cfu0": "fixed",
-            "transformation": "logit_norm",
+            "transformation": "mixture",
             "theta_growth_noise": "beta",
             "theta_binding_noise": "beta",
             "condition_growth": "linear",
@@ -1034,7 +1034,7 @@ class TestBuildCalibrationModel:
                             "activity": "horseshoe_geno",
                             "dk_geno": "fixed",
                             "ln_cfu0": "fixed",
-                            "transformation": "logit_norm",
+                            "transformation": "mixture",
                             "theta_growth_noise": "beta",
                             "theta_binding_noise": "beta",
                             "spiked_genotypes": None,
@@ -1057,7 +1057,7 @@ class TestBuildCalibrationModel:
             "activity": "horseshoe_geno",
             "dk_geno": "hierarchical_geno",  # production value; not "pinned"
             "ln_cfu0": "fixed",
-            "transformation": "logit_norm",
+            "transformation": "mixture",
             "theta_growth_noise": "beta",
             "theta_binding_noise": "beta",
             "condition_growth": "linear",
@@ -1514,28 +1514,30 @@ class TestRunPrefitCalibrationOrchestration:
             seed=1,
             adam_step_size=2.5e-3,
             adam_final_step_size=2.5e-7,
+            adam_step_size_cut=0.5,
             adam_clip_norm=2.0,
             elbo_num_particles=5,
-            convergence_tolerance=1e-4,
-            convergence_window=20,
+            convergence_window_steps=500,
             patience=4,
-            convergence_check_interval=3,
+            convergence_z=2.0,
+            loss_rtol=1e-8,
+            param_tolerance=0.1,
             checkpoint_interval=25,
             max_num_epochs=500,
-            init_param_jitter=0.0,
         )
         kwargs = mock_run_map.call_args.kwargs
         assert kwargs["adam_step_size"] == 2.5e-3
         assert kwargs["adam_final_step_size"] == 2.5e-7
+        assert kwargs["adam_step_size_cut"] == 0.5
         assert kwargs["adam_clip_norm"] == 2.0
         assert kwargs["elbo_num_particles"] == 5
-        assert kwargs["convergence_tolerance"] == 1e-4
-        assert kwargs["convergence_window"] == 20
+        assert kwargs["convergence_window_steps"] == 500
         assert kwargs["patience"] == 4
-        assert kwargs["convergence_check_interval"] == 3
+        assert kwargs["convergence_z"] == 2.0
+        assert kwargs["loss_rtol"] == 1e-8
+        assert kwargs["param_tolerance"] == 0.1
         assert kwargs["checkpoint_interval"] == 25
         assert kwargs["max_num_epochs"] == 500
-        assert kwargs["init_param_jitter"] == 0.0
 
     def test_default_out_prefix_is_prefit(self, tmp_path, mocker):
         cfg, _, _ = self._write_yaml_and_csvs(tmp_path)
@@ -1550,12 +1552,15 @@ class TestRunPrefitCalibrationOrchestration:
                                out_prefix="my_runA")
         assert mock_run_map.call_args.kwargs["out_prefix"] == "my_runA"
 
-    def test_default_init_param_jitter_is_zero(self, tmp_path, mocker):
-        """Pre-fit should be deterministic given a seed; default jitter is 0."""
+    def test_map_starts_from_calibration_guesses(self, tmp_path, mocker):
+        """The calibration MAP starts from the calibration model's guesses
+        (as site values), not from AutoDelta's prior medians."""
         cfg, _, _ = self._write_yaml_and_csvs(tmp_path)
-        _, mock_run_map = self._patch_pipeline(mocker)
+        mock_ri, mock_run_map = self._patch_pipeline(mocker)
+        mock_ri.site_values.return_value = {"site": 1.0}
         run_prefit_calibration(config_file=cfg, seed=1)
-        assert mock_run_map.call_args.kwargs["init_param_jitter"] == 0.0
+        mock_ri.site_values.assert_called_once()
+        assert mock_run_map.call_args.kwargs["init_values"] == {"site": 1.0}
 
     def test_hessian_called_after_map(self, tmp_path, mocker):
         """compute_hessian_sigmas must be called exactly once after MAP."""
@@ -2071,3 +2076,49 @@ class TestPrefitMainCLI:
              patch("sys.argv", ["tfs-prefit-calibration"] + argv):
             main()
         assert mock_run.call_args.kwargs["checkpoint_file"] == "/tmp/ck.pkl"
+
+
+# ---------------------------------------------------------------------------
+# _run_calibration_map
+# ---------------------------------------------------------------------------
+
+def _calibration_map_kwargs(**overrides):
+    kw = dict(init_values={"a": 1.0}, out_prefix="pre", checkpoint_file=None,
+              adam_step_size=1e-3, adam_final_step_size=1e-6,
+              adam_step_size_cut=0.1, adam_clip_norm=None,
+              elbo_num_particles=2, convergence_window_steps=2000,
+              patience=3, convergence_z=3.0, loss_rtol=1e-6,
+              param_tolerance=0.05, checkpoint_interval=10,
+              max_num_epochs=100, epoch_checkpoint_interval=0)
+    kw.update(overrides)
+    return kw
+
+
+@pytest.mark.parametrize("converged,message", [
+    (True, "Calibration MAP run converged."),
+    (False, "Calibration MAP run has not yet converged."),
+])
+def test_run_calibration_map(converged, message, capsys):
+    from tfscreen.tfmodel.scripts.prefit_calibration_cli import (
+        _run_calibration_map,
+    )
+    ri = MagicMock()
+    ri.setup_svi.return_value = "map_obj"
+    ri.run_optimization.return_value = ("state", {"p": 1}, converged)
+
+    out = _run_calibration_map(ri, **_calibration_map_kwargs())
+
+    assert out == ("state", {"p": 1}, converged)
+    ri.setup_svi.assert_called_once_with(adam_step_size=1e-3,
+                                         adam_clip_norm=None,
+                                         elbo_num_particles=2,
+                                         guide_type="delta",
+                                         init_values={"a": 1.0})
+    ri.run_optimization.assert_called_once_with(
+        "map_obj", out_prefix="pre", svi_state=None,
+        convergence_window_steps=2000, patience=3, convergence_z=3.0,
+        loss_rtol=1e-6, param_tolerance=0.05, final_step_size=1e-6,
+        step_size_cut=0.1, checkpoint_interval=10, max_num_epochs=100,
+        epoch_checkpoint_interval=0)
+    ri.write_params.assert_called_once_with({"p": 1}, out_prefix="pre")
+    assert message in capsys.readouterr().out

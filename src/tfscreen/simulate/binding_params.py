@@ -382,6 +382,13 @@ def build_theta_gc_override_hill_mut(
             log_K       += _scatter_pair(_horseshoe(P))
             log_n       += _scatter_pair(_horseshoe(P))
 
+    # Optional upper limit on the Hill coefficient (mirrors hill_mut.simulate)
+    max_hill_n = getattr(sim_priors, "max_hill_n", None)
+    if max_hill_n is not None:
+        if max_hill_n <= 0:
+            raise ValueError(f"max_hill_n must be > 0; got {max_hill_n}")
+        log_n = np.minimum(log_n, np.log(max_hill_n))
+
     # Convert to theta: (G, C)
     theta_low_arr  = 1.0 / (1.0 + np.exp(-logit_low))
     theta_high_arr = 1.0 / (1.0 + np.exp(-(logit_low + logit_delta)))

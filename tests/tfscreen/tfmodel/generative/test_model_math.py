@@ -34,10 +34,10 @@ from tfscreen.tfmodel.generative.components.sample_offset import zero as sample_
 # ---------------------------------------------------------------------------
 
 # Only expose the fields actually consumed by the real simple components and
-# by jax_model itself (t_pre, t_sel, congression_mask).
+# by jax_model itself (t_pre, t_sel).
 _MockGrowthData = namedtuple(
     "_MockGrowthData",
-    ["batch_size", "t_pre", "t_sel", "congression_mask"],
+    ["batch_size", "t_pre", "t_sel"],
 )
 
 _MockBindingData = namedtuple("_MockBindingData", [])
@@ -70,7 +70,6 @@ def mock_data():
         batch_size=BATCH_SIZE,
         t_pre=T_PRE,
         t_sel=T_SEL,
-        congression_mask=None,
     )
     return _MockData(growth=growth, binding=_MockBindingData())
 
@@ -127,8 +126,8 @@ def _build_control(mock_data, real_priors, is_guide=False):
         "dk_geno": dk_geno_fixed.define_model,
         "growth_transition": growth_transition_instant.define_model,
         "transformation": (transformation_single.define_model,
-                          transformation_single.update_thetas,
-                          transformation_single.NEEDS_FULL_POPULATION_THETA),
+                          transformation_single.cell_classes,
+                          transformation_single.NEEDS_POPULATION),
         "theta_growth_noise": noise_zero.define_model,
         "theta_binding_noise": noise_zero.define_model,
         "growth_noise": growth_noise_zero.define_model,

@@ -34,7 +34,8 @@ class ModelPriors:
 
 def define_model(name: str,
                  data: GrowthData,
-                 priors: ModelPriors) -> jnp.ndarray:
+                 priors: ModelPriors,
+                 return_population: bool = False) -> jnp.ndarray:
     """
     Define the mutation-decomposed activity model.
 
@@ -45,11 +46,14 @@ def define_model(name: str,
         Must have ``mut_geno_matrix`` (num_mutation x G) and ``num_mutation``.
         If ``num_pair > 0``, must also have ``pair_geno_matrix``.
     priors : ModelPriors
+    return_population : bool, default False
+        Also return the library-ordered per-genotype activity, shape
+        ``(num_genotype,)``, as a ``(tensor, population)`` tuple.
 
     Returns
     -------
     jnp.ndarray
-        Activity values broadcast to shape ``(1, 1, 1, 1, 1, 1, num_genotype)``.
+        Activity values for the batch's genotypes, shape ``(1, 1, 1, 1, 1, 1, batch_size)``.
     """
     mut_nnz_mut_idx  = jnp.array(data.mut_nnz_mut_idx)    # COO row (mutation)
     mut_nnz_geno_idx = jnp.array(data.mut_nnz_geno_idx)   # COO col (genotype)
@@ -98,14 +102,19 @@ def define_model(name: str,
 
     pyro.deterministic(name, activity)
 
-    if data.batch_size < data.num_genotype:
-        activity = activity[data.batch_idx]
-    return activity[None, None, None, None, None, None, :]
+    # activity is library-ordered; always slice to the batch's genotypes.
+    # The full-batch index is a reshuffled permutation, not the identity.
+    population = activity
+    activity = activity[data.batch_idx][None, None, None, None, None, None, :]
+    if return_population:
+        return activity, population
+    return activity
 
 
 def guide(name: str,
           data: GrowthData,
-          priors: ModelPriors) -> jnp.ndarray:
+          priors: ModelPriors,
+          return_population: bool = False) -> jnp.ndarray:
     """Variational guide for the mutation-decomposed activity model."""
 
     num_mut = data.num_mutation
@@ -160,9 +169,13 @@ def guide(name: str,
 
     activity = jnp.clip(jnp.exp(log_activity), max=1e30)
 
-    if data.batch_size < data.num_genotype:
-        activity = activity[data.batch_idx]
-    return activity[None, None, None, None, None, None, :]
+    # activity is library-ordered; always slice to the batch's genotypes.
+    # The full-batch index is a reshuffled permutation, not the identity.
+    population = activity
+    activity = activity[data.batch_idx][None, None, None, None, None, None, :]
+    if return_population:
+        return activity, population
+    return activity
 
 
 def get_hyperparameters() -> Dict[str, Any]:

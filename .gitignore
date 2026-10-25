@@ -205,3 +205,45 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Local test/lint/coverage output from run_all_tests.sh
+reports/
+docs/badges/
+
+# Lab data for development; never committed (C10)
+planning/dev-data/
+planning/results/
+# Run outputs downloaded into study directories (lab-data fits, multi-GB
+# simulations); the study's scripts and README stay tracked
+planning/studies/recipe/
+planning/studies/full-size-sim/sim_*/
+planning/studies/full-size-sim/pilot_*/
+planning/studies/full-size-sim-*/
+planning/studies/m-bias-factorial/m_bias/
+planning/studies/m-bias-factorial/m_subsets/
+planning/studies/m-bias-factorial/m_subsets_real/
+planning/studies/m-bias-factorial/m_subsets_poisson/
+planning/studies/m-bias-factorial/held_s2/
+planning/studies/m-bias-factorial/held_kanR_*/
+planning/studies/m-bias-factorial/held_all_*/
+planning/studies/m-bias-factorial/held_mix_*/
+planning/studies/m-bias-factorial/kanR_only_*/
+planning/studies/m-bias-factorial/jk_seed*/
+planning/studies/m-bias-factorial/km_draws/
+planning/studies/m-bias-factorial/sim_realistic_seed2/
+planning/studies/m-bias-factorial/sim_realistic_s2/
+planning/studies/m-bias-factorial/real_depth/
+planning/studies/m-bias-factorial/sim_realistic_nocong/
+planning/studies/two-stage-validation/run_*/
+planning/studies/m-bias-factorial/stage2_*/
+
+.DS_Store 
+
+planning/studies/x-vs-binding/out/
+planning/studies/within-tube-m/out/
+planning/studies/within-tube-m/runs/
+planning/studies/relative-m/runs/
+planning/studies/joint-fit-sim/runs/
+planning/studies/joint-fit-sim/out/
+planning/studies/joint-fit-real/runs/
+planning/studies/joint-fit-real/out/

@@ -2,110 +2,523 @@
 Simulation
 ==========
 
-The ``tfscreen.simulate`` module generates synthetic high-throughput TF-library
-selection experiments. Starting from a thermodynamic model of TF binding, it
-builds a genotype library, samples per-genotype occupancy (*θ*) values, applies
-the growth model to convert occupancy to fitness, and then simulates the
-sequencing step. The result is a ``growth.csv`` that has exactly the same
-format as the output of ``tfs-process-counts``, so simulated data can be fed
-directly into ``tfs-configure-model`` for end-to-end benchmarking.
+The ``tfscreen.simulate`` module generates synthetic high-throughput screens
+of TF libraries. It builds a genotype library, draws each genotype's
+operator occupancy (*θ*) curve, converts *θ* to growth rates, grows the
+library through the selection experiment and sequences it. The simulated
+growth table has the same format as the output of ``tfs-process-counts``, so
+it goes straight into ``tfs-configure-model``. Because the ground truth is
+known, a simulation is how we benchmark a model choice or an inference
+method. :doc:`quickstart` runs one end to end.
 
-Configuration File (simulate_config.yaml)
-------------------------------------------
+The simulation config
+---------------------
 
-All simulation parameters are collected in a single YAML file. An
+One YAML file holds every simulation setting. The
 :download:`annotated example <../../examples/simulate/simulate_config.yaml>`
-is provided in ``examples/simulate/``. The top-level sections are:
+in ``examples/simulate/`` comments every key. ``tfs-simulate`` refuses a key
+it does not know, so a misspelled key fails at once rather than being
+ignored. Times are in minutes and growth rates are per minute throughout.
 
-**Library genetics** — same keys as the ``run_config.yaml`` used by
-``tfs-process-fastq`` (``reading_frame``, ``wt_seq``, ``degen_sites``,
-``tiles``, ``expected_5p``, ``expected_3p``, ``tile_combos``,
-``spiked_seqs``). This means a single config file can drive both simulation
-and raw-data processing.
+Library genetics
+^^^^^^^^^^^^^^^^
 
-**Phenotype** — controls how genotype *θ* values are drawn:
+The keys ``reading_frame``, ``first_amplicon_residue``, ``wt_seq``,
+``degen_sites``, ``tiles``, ``tile_combos``, ``spiked_seqs``,
+``expected_5p`` and ``expected_3p`` describe the library. They are the same
+keys ``tfs-process-fastq`` reads, and together with ``library_mixture`` they
+are what ``tfs-configure-model --library_config`` reads. Keep one file per
+experiment and hand that same file to ``tfs-simulate``, ``tfs-process-fastq``
+and ``tfs-configure-model --library_config``. Each tool ignores the keys it
+does not use. Nothing checks that ``library_mixture`` is the same in all
+three places, so a single file is the only guard against drift.
 
-* ``theta_component`` — registered theta-model name (e.g. ``hill_geno``,
-  ``thermo.O2_C12_K5_U0_a.PK``).
-* ``theta_rng_seed`` — JAX RNG seed for reproducible *θ* sampling.
-* ``theta_priors`` (optional) — dict of hyperparameter overrides for the
-  chosen component.
-* ``thermo_data`` (optional) — path to structural/thermodynamic data required
-  by ``PnnC`` and ``PddG`` theta components.
+Subsampling the library
+^^^^^^^^^^^^^^^^^^^^^^^
 
-**Conditions** — ``condition_blocks`` list; each entry specifies:
-``library``, ``titrant_name``, ``titrant_conc`` list, ``condition_pre``,
-``t_pre``, ``condition_sel``, and ``t_sel`` list.
+A real double-mutant library has hundreds of thousands of genotypes, far
+too many for some studies (a full Laplace posterior needs a dense Hessian
+over every genotype's parameters). Four optional keys restrict the described
+library to a subset. They belong with the library keys, because
+``tfs-configure-model --library_config`` reads them too and builds its
+library snapshot from the same subset. ``tfs-process-fastq`` ignores them.
 
-**Growth** — per-condition ``{m, b}`` parameters mapping *θ* to growth rate
-(*k = b + A·m·θ*). ``dk_geno_hyper_*`` sets the pleiotropic growth-cost
-distribution. ``activity_wt`` and ``activity_mut_scale`` control per-genotype
-TF activity.
+.. code-block:: yaml
 
-**Experimental parameters** — ``transform_sizes``, ``library_mixture``,
-``lib_assembly_skew_sigma``, ``transformation_poisson_lambda``,
-``multi_plasmid_combine_fcn``, ``cfu0``, ``tube_noise_sigma``,
-``total_num_reads``, ``prob_index_hop``, ``random_seed``.
+    # keep every single and 1,000 random cross-tile doubles
+    library_subsample:
+      double-1-2: 1000
+    library_subsample_seed: 20261010
 
-**Growth transition** (optional) — ``growth_transition`` list; one entry per
-``condition_pre`` that has a detectable lag phase. Supported models: ``instant``,
-``memory``.
+    # or keep exactly the genotypes listed in a file
+    library_genotypes: sampled_genotypes.txt
 
-**Binding data** (optional) — ``binding_data`` block; if present, a simulated
-binding CSV is also written. Required sub-keys: ``genotypes``,
-``titrant_name``, ``titrant_conc``, ``noise``.
+``library_genotypes`` names a text file with one genotype per line (``#``
+comments allowed), relative to the YAML's own directory. Every genotype not
+listed is dropped from every sub-library that encodes it, so the file lists
+everything to keep, singles included. A listed genotype the library does
+not encode is an error. ``library_subsample`` keeps ``N`` genotypes of a
+sub-library, drawn at random, and leaves the sub-libraries it does not name
+whole. It needs ``library_subsample_seed``, an integer. That seed is
+separate from ``seed`` on purpose: ``tfs-configure-model`` never sees
+``tfs-simulate --seed``, and both must draw the same genotypes. Each
+sub-library draws from its own stream, and a smaller ``N`` keeps a subset
+of what a larger one keeps, so a grid over ``N`` compares nested libraries.
+Both keys can be given; the random draw is then made from the listed
+genotypes. wt and every genotype a spiked sequence encodes are always kept,
+in every sub-library that encodes them, and do not count toward ``N``. A
+``double-x-y`` sub-library also encodes singles (and wt) wherever a site's
+codon set includes the wt residue; those are drawn like any other member.
+
+``library_subsample_depth`` says what the experiment settings describe.
+With ``full_library`` (the default) ``library_mixture``, ``transform_sizes``,
+``total_num_reads`` and ``pcr_template_molecules`` describe the full
+library, and every kept sequence keeps the pool share, transformants, reads
+and PCR templates it has there: each sub-library's mixture weight and
+transformants are multiplied by its kept fraction of sequences, and the
+reads and templates by the kept share of the pool. ``cfu0`` is not changed,
+so tube totals and OD600 stay those of the full experiment and each kept
+genotype has 1 / (kept share) times the cells. A grid over ``N`` then varies
+only the number of genotypes, not the depth per genotype. With
+``as_written`` the settings apply to the subsampled library as given: the
+subsample is the library. ``tfs-simulate`` prints a table of genotypes and
+sequences kept per sub-library and the settings it used.
+
+``tfs_sim_library.csv``, the raw count files and every other output list
+only the kept genotypes. Pass the same YAML to ``tfs-configure-model
+--library_config``; its snapshot (``*_library.csv``) then holds the same
+genotypes with the composition the simulation used, and its config records
+the subsample keys under ``library.subsample``. ``tfs-setup-sim-grid``
+copies a ``library_genotypes`` file into the grid, and ``library_subsample``
+is an ordinary grid variable.
+
+Phenotypes
+^^^^^^^^^^
+
+``theta_component`` names the theta model that draws each genotype's *θ*
+curve. ``hill_geno`` draws an independent Hill curve per genotype around a
+wild-type reference. ``hill_mut`` draws per-mutation effects, adds them and,
+when the library has double mutants, adds sparse pairwise epistasis from a
+regularized horseshoe. The ``thermo.*`` keys are thermodynamic
+partition-function models; ``PnnC`` and ``PddG`` variants also need
+``thermo_data``, the structural ensemble (HDF5) or the per-mutation ΔΔG CSV.
+An optional ``thermo_options`` block says how to read it: ``ddG_units``
+(``kT``, the default, ``kcal/mol`` or ``kJ/mol``), ``temperature_K``,
+``column_map``, ``residue_offset`` and ``max_missing_fraction``, with the
+same meaning as the ``--thermo_*`` flags of ``tfs-configure-model`` (see
+:doc:`model-inputs`). Without it the CSV is read as kT, so the simulated
+truth is unchanged.
+
+In a ``PddG`` or ``PnnC`` simulation the truth is drawn per structure: each
+mutation's ΔΔG in each structure is the structural value plus Normal noise
+with SD σ_s, one σ_s per structure, and the true constants are its
+projection. That is exactly the distribution the models' prior on the
+constants assumes. The simulator fixes σ_s at ``ddG_truth_sd`` instead of
+drawing it from its prior, so the key is the dial for how far the truth
+sits from the structural prior. It is in the
+unit of ``thermo_options`` ``ddG_units`` and converted once at load, like
+the CSV: with ``ddG_units: kcal/mol``, ``ddG_truth_sd: 0.5`` means
+0.5 kcal/mol. Give one number for every structure or a mapping that names
+each structure of the model, such as ``{H: 0.5, HO: 0.5, L: 1.0, LO: 1.0,
+HE2: 0.5, LE2: 0.5}``. With 0 the truth is the CSV exactly. Without the key
+σ_s is 1 kT in every structure. The noise is independent across mutations
+and structures. The true σ_s goes to ``tfs_sim_ddG_sigma.csv`` (one row per
+structure, in kT), which ``tfs-summarize-fit`` compares with the fit's
+``ddG_sigma`` table. The setting changes only the simulated draw. A fit of
+the result still centers the prior on the unperturbed CSV, which its
+``ddG_prior_mean_{structure}`` tables report, and estimates σ_s under its
+own prior. For ``PnnC`` the structural value
+in a simulation is the untrained network's output, 0. Other theta
+components refuse the key, as does ``phenotype_source: empirical``. In a
+``tfs-setup-sim-grid`` grid it is an ordinary top-level variable, and a
+mapping is given whole as one variant.
+
+``theta_sim_priors`` overrides the simulation priors of ``hill_geno`` and
+``hill_mut`` (wild-type curve, perturbation widths, epistasis scale), and
+``theta_priors`` overrides the hyperparameters of the other components. The
+example config lists every key. ``theta_rescale`` (``passthrough``, the
+default, or ``logit``) transforms *θ* before it enters the growth model, as
+the fit-side component of the same name does.
+
+The ``growth`` block maps *θ* to a growth rate for every condition named in
+``condition_blocks``. Each entry is a dict whose optional ``model`` key picks
+the form. The default ``linear`` takes ``b`` and ``m`` and gives
+*k = b + A·m·θ + dk_geno*. ``power`` takes ``b``, ``a`` and ``n``, and
+``saturation`` takes ``kmin`` and ``kmax``. These match the fit's
+``condition_growth`` components, and ``tfs-simulate`` writes the values as
+ground truth under the fit's names (``growth_k``, ``growth_m`` and so on).
+
+Each genotype's pleiotropic growth effect is drawn as
+``dk_geno = dk_geno_hyper_shift - exp(Normal(dk_geno_hyper_loc,
+dk_geno_hyper_scale))``, with wild type at 0. The three ``dk_geno_hyper_*``
+keys are required unless ``dk_geno_zero: true``, which sets every
+genotype's ``dk_geno`` to 0.
+
+TF activity *A* defaults to 1 for every genotype. With the default
+``activity_component: fixed``, ``activity_wt`` sets wild type and
+``activity_mut_scale`` > 0 draws each mutant's log *A* around it.
+``activity_component`` can instead be ``hierarchical_geno`` or
+``horseshoe_geno``, numpy versions of the fit's priors, tuned through
+``activity_priors``.
+
+``phenotype_source: empirical`` replaces all of this with phenotypes
+resampled from a distribution fit to real data. See
+`Empirical phenotypes`_ below.
+
+Conditions
+^^^^^^^^^^
+
+``condition_blocks`` is a list. Each entry gives a ``library``, a
+``titrant_name``, a ``titrant_conc`` list, a ``condition_pre`` and its
+``t_pre``, and a ``condition_sel`` with a ``t_sel`` list. Every combination
+of concentration and selection time is one tube. Every ``condition_pre`` and
+``condition_sel`` must appear in ``growth``.
+
+To follow a real experiment's layout exactly, give ``design`` instead: the
+path to a tube table, the format ``tfs-process-counts`` reads (``sample``,
+``library``, ``replicate``, ``condition_pre``, ``t_pre``, ``condition_sel``,
+``t_sel``, ``titrant_name``, ``titrant_conc``; other columns are ignored).
+Each replicate gets exactly its own tubes, so irregular time points and
+replicates sampled at different times carry over, and the replicates are
+the design's (``--num_replicates`` is ignored). The raw experiment keeps the
+design's tube names, so the simulated tube table has the real layout. A
+design cannot be combined with ``condition_blocks`` or with
+``od600.num_od_only_replicates``. Like every path in the config, it is read
+relative to the directory ``tfs-simulate`` runs in.
+
+``growth_transition`` is an optional list with one entry per
+``condition_pre``, describing the switch from pre-growth to selection.
+The simulator supports ``instant`` (no lag), ``memory`` (``tau0``, ``k1``,
+``k2``; a lag that depends on *θ*), ``baranyi`` (``tau_lag``, ``k_sharp``)
+and ``two_pop`` (``k_trans``). Omit the block for an instant transition
+everywhere. The fit has two more transition components, ``baranyi_k`` and
+``baranyi_tau``, that the simulator does not have.
+
+Transformation and congression
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``transform_sizes`` gives the number of transformants for each entry in
+``tile_combos`` plus ``spiked``. ``library_mixture`` gives the ratio in
+which those sub-libraries are pooled. ``lib_assembly_skew_sigma`` spreads
+the starting genotype frequencies log-normally; 0 makes them even. It is one
+number, or one per sub-library (``{double-1-2: 2.0, single-1: 0.8, ...}``):
+a pool of doubles is usually far less even than one of singles.
+
+Transformants are counted, not listed one by one. Cells carrying one plasmid
+are drawn as a number of clones per genotype, and each genotype becomes one
+weighted row, so a library can carry a realistic number of transformants
+(hundreds per genotype, tens of millions in all) at the cost of one row per
+genotype. Nothing downstream changes: founder sampling and demographic noise
+add up exactly over identical clones. Cells with several plasmids stay one
+row each; ``max_congressed_cells`` caps how many are kept, representing the
+rest by a weighted sample of that many cells (an approximation that lumps
+their noise).
+``cfu0`` is the number of cells in each tube at the start of pre-growth: one
+number, or one per library (``cfu0: {kanR: 2.6e7, pheS: 5.3e7}``) when the
+libraries were grown up separately. A tube's simulated total scales with
+it, which makes it easy to match a real experiment's densities.
+
+``transformation_poisson_lambda`` gives each cell a zero-truncated Poisson
+number of plasmids; 0 or null gives exactly one. A cell with several
+plasmids splits its abundance among them and has one growth rate, built from
+cell-level physics. ``congression_theta_rule`` sets the cell's *θ*:
+``homodimer`` (the default) combines the plasmids' *θ* odds weighted by
+share, ``heterodimer`` sits closer to the mean logit, and ``max`` lets the
+highest-*θ* plasmid set *θ* and activity. ``homodimer`` and ``heterodimer``
+need activity 1. ``congression_dk_rule`` sets the cell's ``dk_geno``:
+``dilution`` (the default, the share-weighted mean), ``softmin`` with a
+finite ``congression_dk_alpha``, or ``min``, where the worst plasmid sets
+the cost. ``congression_dk_alpha`` is required by ``softmin`` and refused by
+the other rules. The fit's ``mixture`` transformation uses the same rules.
+
+``tube_noise_sigma`` adds one growth-rate offset per tube, shared by every
+genotype in it.
+
+Sequencing and sampling noise
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``total_num_reads`` is the total number of reads across all tubes of all
+replicates, split evenly over the sequenced tubes. ``prob_index_hop`` is the
+fraction of reads reassigned to a random genotype.
+``unassigned_read_fraction`` (one number, or a map from library to a
+number) sends that share of each tube's reads to ``__unknown__``, as reads
+that call no library genotype; they count toward the tube's reads but carry
+no genotype. Real libraries can lose a large share of their reads this way.
+``seed`` makes the run reproducible; ``tfs-simulate --seed`` overrides it.
+
+Without further settings, read counts are Poisson given each tube's
+composition. Real counts vary 5 to 18 times more than that at 100 to 3,000
+reads (``planning/studies/noise-anatomy/``). Five optional keys, all off by
+default, add the physical sources one at a time. ``founder_sampling`` seeds
+each tube with a Poisson number of cells from each transformant clone.
+``demographic_growth`` then grows each clone from its founders with
+birth-death noise and needs ``founder_sampling``. ``shared_transformation``
+draws every replicate from one library assembly and transformation, as from
+one glycerol stock, instead of redrawing them per replicate.
+``pcr_template_molecules`` draws each tube's reads from that many template
+molecules, and ``pcr_amplification_cv`` gives each template's amplification
+that coefficient of variation. The count variance grows by about
+(reads per tube / templates)(1 + cv²), so matching real data needs templates
+on the order of a tenth of the reads per tube.
+
+``condition_selector`` and ``library_selector`` name the columns that define
+a growth condition and a library. The defaults are right for every config we
+know of; leave them out.
+
+OD600
+^^^^^
+
+An optional ``od600`` block gives every tube one OD600 reading.
+``calibration`` is a calibration YAML from ``tfs-calibrate-od600`` (the one
+in ``examples/od600/`` is synthetic). The simulator inverts it to get each
+tube's true OD600 from its true total, then adds reading noise and applies
+the detection threshold. ``tube_volume_mL`` (default 5.0) converts the
+calibration's per-mL units to the tube. ``num_od_only_replicates`` adds
+replicates that are read but not sequenced. With
+``sample_cfu_from_od600: true`` the growth table gets each tube's total as
+estimated from its reading, as in the lab, instead of the true total.
+
+A tube read below the detection threshold has only an upper bound on its
+total, so the lab drops it, and ``tfs-process-counts`` refuses such a
+reading rather than guess. ``tfs-simulate`` drops these tubes from every
+route the same way: from the raw tube table and count files, and from the
+direct growth table ``tfs_sim_growth.csv`` (also with ``--no_write_raw``).
+It prints the dropped tubes. ``tfs_sim_od600.csv`` still lists every
+reading with its ``od600_detectable`` flag, and the presplit table, which
+samples the library before the split, is not affected.
+
+Binding data
+^^^^^^^^^^^^
+
+An optional ``binding_data`` block writes a simulated binding table for
+``tfs-configure-model --binding_df``. ``titrant_name``, ``titrant_conc`` and
+``noise`` describe the assay. Noise is Gaussian on ``theta_obs`` and is not
+clipped to [0, 1], since the fit's binding likelihood is an unclipped
+Normal. ``clip_theta_obs: true`` restores the old clipping.
+
+Two sub-blocks pick the measured genotypes. ``spiked_binding`` draws from
+``spiked_seqs``, the clean monoclonal controls. ``library_binding`` draws
+from the rest of the library, so its genotypes grow under congression like
+any bulk genotype, which is what lets the fit learn the growth slope *m*
+from data. Each sub-block takes ``choose_by``: ``stratified`` (curves spread
+across the prior), ``random``, or the path to a CSV of measured Hill
+parameters (``genotype``, ``theta_low``, ``theta_high``, ``log_hill_K``,
+``hill_n``) that become those genotypes' true phenotypes. ``num`` sets how
+many genotypes to pick and is forbidden with a file. It is optional for
+``spiked_binding`` (default all spikes) and required for a non-file
+``library_binding``. ``library_binding`` picks its genotypes after the
+growth simulation, from those that survived with growth data. A file of
+measured parameters needs a Hill theta component (``hill_geno`` or
+``hill_mut``).
+
+Binding theta is the true theta at the binding concentrations, which need
+not match the growth concentrations: the simulator evaluates each genotype's
+drawn parameters there, so any theta component works. For the Hill
+components, ``stratified`` and ``random`` give the chosen spikes new curves
+drawn from the prior. For the thermodynamic components (``thermo.*``) every
+genotype's theta follows from per-mutation equilibrium constants, so the
+spikes keep their own curves and K truth, and ``stratified`` or ``random``
+only chooses which ``num`` spikes are measured: ``stratified`` takes the
+spikes whose binding curves are most spread out.
+
+Presplit and base-growth data
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+An optional ``presplit_data`` block writes a presplit table for
+``tfs-configure-model --presplit_df``: one ``ln_cfu`` per replicate,
+``condition_pre`` and genotype, sequenced before the culture is split, with
+the true ``ln_cfu_0`` alongside. Its one optional key, ``noise``, adds
+Gaussian noise on the ln scale. ``presplit_data:`` with nothing under it
+turns it on with no extra noise.
+
+An optional ``base_growth_data`` block writes direct growth-rate
+measurements for ``tfs-configure-model --base_growth_df``. ``k_ref`` (the
+wild-type rate) is required. ``genotypes`` (default ``[wt]``) lists genotypes
+already in the library, each measured at ``k_ref`` plus its own
+``dk_geno``. ``rates`` overrides the true rate for listed genotypes, and
+``noise`` is the measurement SD, also reported as ``rate_std``. Set
+``noise`` above 0 if the table will be fit: ``rate_std`` is a likelihood
+scale, and a value of 0 crashes the pre-fit and the fit the first time the
+model is traced.
 
 tfs-simulate
 ------------
 
-Runs a full simulation from a config file and writes output CSVs.
-
-**Usage:**
+``tfs-simulate`` runs a simulation from a config file:
 
 .. code-block:: bash
 
-    tfs-simulate <config_file> <output_dir> [options]
+    tfs-simulate simulate_config.yaml --out_prefix sim/tfs_sim --num_replicates 2 --seed 1
 
-**Positional arguments:**
+It draws the ground-truth library and phenotypes once, then simulates
+``--num_replicates`` independent replicates (default 2). Files are written as
+``{out_prefix}_{name}.csv``; the default prefix is ``tfs_sim``, and a
+directory part of the prefix is created if needed. ``tfs-simulate`` refuses
+to overwrite existing outputs. See :doc:`cli` for every flag.
 
-* ``config_file``: Path to the simulate YAML configuration file.
-* ``output_dir``: Directory to write output files (created if absent).
+Every run writes these files:
 
-**Optional arguments:**
+``tfs_sim_growth.csv``
+    The analysis-ready growth table, the same format as
+    ``tfs-process-counts`` output, with the read counts and tube totals the
+    count likelihood needs. It also carries each row's true ``theta``,
+    ``dk_geno``, ``activity``, ``k_pre``, ``k_sel`` and ``ln_cfu_0``.
+``tfs_sim_library.csv``
+    Every genotype in the library and its origin.
+``tfs_sim_parameters.csv``
+    Ground-truth per-genotype parameters (the theta model's parameters,
+    ``dk_geno``, activity). For the thermodynamic models these are the
+    per-genotype equilibrium constants, such as ``ln_K_op``, ``ln_K_HL``
+    and ``ln_K_E``.
+``tfs_sim_genotype_theta.csv``
+    Ground-truth *θ* per genotype and titrant concentration.
+    ``tfs-summarize-fit`` finds this file and uses it as the reference for
+    out-of-sample *θ*.
+``tfs_sim_growth_parameters.csv``
+    Ground truth for each condition's growth parameters, keyed by
+    ``condition_rep``.
+``tfs_sim_transformation_lam.csv``
+    The configured congression rate, the ground truth for the fit's ``lam``.
+``tfs_sim_input-config.yaml``
+    The config as run, with ``--seed`` applied.
+``tfs_sim_provenance.json``
+    Version, git commit and command line of the run.
 
-* ``--output_prefix``: Prefix for all output filenames (default: ``tfscreen_``).
-* ``--num_replicates``: Number of independent experimental replicates to
-  simulate (default: 2).
+The thermodynamic theta models also write ``tfs_sim_mutation_parameters.csv``,
+one row per mutation with its true ``d_*`` effects and, for PddG and PnnC,
+its true ``ddG_{structure}`` values. When the library has multi-mutants they
+write ``tfs_sim_pair_parameters.csv`` as well, one row per mutation pair with
+its true ``epi_*`` terms. The column names match the tables
+``tfs-extract-params`` writes, so ``tfs-summarize-fit`` can score them. The
+``ddG_{structure}`` columns follow the model's structure names, whatever order
+the ΔΔG CSV or structure ensemble lists them in. PddG and PnnC also write
+``tfs_sim_ddG_sigma.csv``, the true σ_s of each structure (``structure``,
+``ddG_sigma``; see ``ddG_truth_sd`` above).
 
-**Outputs** (all written to ``output_dir``):
+The optional blocks add ``tfs_sim_binding.csv`` (and, with
+``library_binding``, ``tfs_sim_library_binding.csv`` listing the in-library
+genotypes chosen), ``tfs_sim_presplit.csv``, ``tfs_sim_base_growth.csv``
+with ``tfs_sim_k_ref.csv``, and ``tfs_sim_od600.csv``.
 
-* ``{prefix}library.csv`` — all genotypes in the library.
-* ``{prefix}phenotype.csv`` — ground-truth growth rates per genotype.
-* ``{prefix}genotype_theta.csv`` — ground-truth *θ* per genotype and
-  titrant concentration.
-* ``{prefix}growth.csv`` — analysis-ready ln(CFU) data (same format as
-  ``tfs-process-counts`` output).
-* ``{prefix}binding.csv`` — simulated binding curve data (only written when
-  ``binding_data`` is present in the config).
+The raw experiment
+^^^^^^^^^^^^^^^^^^
 
-tfs-setup-sim-grid
-------------------
+``tfs-simulate`` also writes the experiment the way a lab hands it to the
+pipeline, so a simulation is processed by exactly the commands real data go
+through (see :doc:`process-raw`):
 
-Creates a directory grid for sweeping simulate parameters (see
-:doc:`grid` for a full description of the grid format). Each subdirectory
-receives its own ``tfs_sim_config.yaml`` derived from a base config, plus
-an optional rendered shell script.
+``tfs_sim_counts/counts_tube0001.csv``, ...
+    One file per sequenced tube in ``tfs-process-fastq``'s format: every
+    library genotype with its read count, zeros included, and the
+    ``__unknown__`` row (0; the simulator assigns every read). Tubes are
+    named with fixed-width ids, so each name matches exactly one file.
+``tfs_sim_tubes.csv``
+    The tube table: ``sample``, ``library`` and the design columns, with no
+    ground truth. Without an ``od600`` block it also carries each tube's
+    total (``sample_cfu``, ``sample_cfu_std``).
+``tfs_sim_tube_od600.csv``, ``tfs_sim_od600_calibration.yaml``
+    With an ``od600`` block: one OD600 reading per tube and a copy of the
+    calibration. A tube read below the detection threshold is left out of
+    the tube table, as a lab would drop it, and the dropped tubes are
+    printed. ``tfs_sim_growth.csv`` leaves out the same tubes.
+
+``tfs-simulate`` prints the ``tfs-process-counts`` command that processes
+these files. Its output matches ``tfs_sim_growth.csv`` row for row: the same
+counts, tube totals and *ln_cfu*. The ln_cfu values differ slightly only
+where a library genotype never appears in any tube, because a real counts
+file lists it and its pseudocount enters the denominator. ``--no_write_raw``
+skips the raw files, which on a full-size library are one file per tube
+with every genotype. ``--no_write_growth`` skips ``tfs_sim_growth.csv``,
+which ``tfs-process-counts`` rebuilds from the raw files anyway. The
+presplit table is still written directly.
+
+A simulation the size of a real screen (a few hundred thousand genotypes
+in about a hundred tubes) is large: tens of GB of memory at its peak, an
+hour or more of computing, and several GB of output, most of it the growth
+table and the count files.
+
+Empirical phenotypes
+--------------------
+
+Prior-predictive phenotypes test whether a fit recovers the truth when the
+truth looks like the model's prior. To test it on phenotypes shaped like a
+real library, fit the real data to a phenotype-generating distribution and
+resample the simulated library from it. The ground truth stays known.
+
+``tfs-build-empirical`` builds that distribution from a real growth table.
+It configures a ``hill_geno`` model with linear growth, runs the pre-fit to
+calibrate each condition's *k* and *m*, fits each genotype's growth curves
+separately by maximum likelihood (Stage 1), then fits a multivariate normal
+to those estimates with their estimation noise deconvolved (Stage 2):
 
 .. code-block:: bash
 
-    tfs-setup-sim-grid simulate_grid.yaml --out_prefix my_sim_grid
+    tfs-build-empirical growth.csv --binding_df binding.csv \
+        --library_config library_config.yaml --seed 42 --out_prefix emp
 
-An :download:`annotated example grid YAML <../../examples/simulate/simulate_grid.yaml>`
-is provided in ``examples/simulate/``. After running the command, launch all
-simulations with:
+It writes ``emp_phenotype_model.json``, the distribution, and
+``emp_stage1_fits.csv``, the per-genotype fits, plus the configure and
+pre-fit files under ``emp_configure_*`` and ``emp_prefit_*``. The pre-fit is
+the slow step. Once a calibration exists, pass it with
+``--growth_calibration_file`` (the pre-fit priors CSV, or a CSV with
+``condition_rep``, ``growth_k`` and ``growth_m``) to skip configuring and
+pre-fitting. ``--binding_df``, ``--library_config`` and ``--seed`` are then
+not needed. ``--num_workers -1`` runs the Stage 1 fits in parallel.
+
+The Stage 1 fits do not correct for congression, so the distribution carries
+its small bias (about 0.05 ln units in the measured regime).
+
+To simulate from the distribution, set two keys in an ordinary simulate
+config:
+
+.. code-block:: yaml
+
+    phenotype_source: empirical
+    empirical:
+      phenotype_model: /abs/path/to/emp_phenotype_model.json
+
+Every genotype then gets a resampled Hill curve and ``dk_geno``; wild type
+keeps its own Stage 1 fit with ``dk_geno`` 0. ``theta_component`` is forced
+to ``hill_geno``, activity is forced to 1, and ``theta_priors`` and
+``theta_sim_priors`` are ignored. The ``growth`` block must hold the same
+calibrated *k* and *m* the build used, or the simulated growth will not
+match the distribution. ``binding_data`` still chooses which genotypes are
+measured, and their curves come from the resampled phenotypes. The
+:download:`empirical example config <../../examples/simulate-empirical/simulate_config.yaml>`
+shows a complete file.
+
+Prior-predictive datasets
+-------------------------
+
+``tfs-sample-prior`` draws synthetic datasets from a configured model's own
+prior rather than from the simulator. It takes the YAML written by
+``tfs-configure-model``:
 
 .. code-block:: bash
 
-    for d in my_sim_grid/*/; do
-        cd "$d" && bash run.sh && cd -
-    done
+    tfs-sample-prior tfs_configure_config.yaml --num_datasets 10 --seed 0 --out_prefix tfs_prior
+
+Each dataset gives ``tfs_prior_NNN_growth.csv``, the configured growth table
+with ``ln_cfu`` replaced by a prior draw, and
+``tfs_prior_NNN_ground_truth.h5``, the latent values that generated it in
+the format of a ``tfs-sample-posterior`` file. Observation noise from
+``ln_cfu_std`` is added unless ``--no_noise`` is given. Fitting these
+datasets checks the inference against the model it assumes, the basis of
+simulation-based calibration. ``tfs-simulate`` is the stronger test, since
+its physics is not the fit's model.
+
+Simulation grids
+----------------
+
+``tfs-setup-sim-grid`` sets up a sweep of simulate settings, one directory
+per combination, each with its own ``tfs_sim_config.yaml`` and a rendered
+run script:
+
+.. code-block:: bash
+
+    tfs-setup-sim-grid simulate_grid.yaml --out_dir my_sim_grid
+
+The :download:`example grid YAML <../../examples/simulate/simulate_grid.yaml>`
+and its ``run.sh`` template are in ``examples/simulate/``. :doc:`grid`
+describes the grid format, and ``tfs-summarize-calibration`` pools the
+posterior calibration across a finished simulate-and-fit grid.

@@ -29,7 +29,1469 @@ fall into two kinds:
 
 ## [Unreleased]
 
-Nothing yet.
+## [0.5.0] - 2026-10-24
+
+The release for the first manuscript on the 2026 screen: someone in the lab
+can take a screen from per-tube read counts to per-genotype *X* curves with
+95% intervals through one command, `tfs-fit-two-stage`, documented in
+"Analyzing a screen" (`docs/source/screen-analysis.rst`). On simulations of
+that screen the deep genotypes' intervals cover the truth 0.88-0.91 of the
+time up to 1e5 reads and 0.76-0.81 above. tfscreen now needs Python 3.12 or
+newer.
+
+The entries come in two groups. The first covers 2026-10-03 to
+2026-10-24: the two-stage fit, its validation and results table, tube checks
+and corrections, dependency floors, and the experimental joint
+growth/binding pieces, which the two-stage fit refuses. The second, from
+"Changes up to 2026-10-03" on, is the release as summarized then.
+
+### Fixed
+
+- **A ΔΔG CSV column can supply two structures.** `load_ddG_prior_csv`
+  failed ("The truth value of a Series is ambiguous") whenever one file
+  column fed two structures: a `column_map` such as `{HD: H}` for a model,
+  or, with no model given, a column kept as its own structure and copied to
+  another. The numeric check now looks at each source column once
+  (`theta/thermo/io.py`).
+- **`--shared_shift` works under pandas 3.** `shared_shift.row_shifts`
+  wrote wt's zero into the array from `Series.to_numpy()`, which pandas
+  3's copy-on-write returns as a read-only view (`ValueError: assignment
+  destination is read-only`), so `tfs-predict-theta` and
+  `tfs-predict-epistasis` with `--shared_shift` failed, and so did the
+  two-stage fit's predict step. It now takes a copy. CI (pandas 3) had
+  failed these 7 tests on every job since the shift was added; locally
+  (pandas 2) they passed. `tests/conftest.py` now turns copy-on-write on
+  under pandas 2, so the local suite behaves as CI's does.
+
+- **`tfs-fit-two-stage`'s k-shift refits stay at stage 2's MAP.** They
+  restarted at Adam's default step size (1e-3), fell about 6.7e5 nats off
+  stage 2's MAP and re-descended along the dk_geno population against wt,
+  so on the real data X moved +0.32 even with k unchanged and the shift
+  measured where the optimizer stopped
+  (`planning/studies/two-stage-validation/`, run 1). The refits now start
+  at `two_stage.kshift_step_size` (default 1e-5) with the dk_geno
+  population hyperparameters held at stage 2's MAP
+  (`two_stage.dk_geno_hypers`, `pin_dk_geno_hypers`), and a third refit
+  with k unchanged (`two_stage.kshift_control`, on by default) checks the
+  procedure: `kshift/drift.csv` gives each refit's change in X from stage
+  2's MAP, and the command warns when the control moves more than a
+  quarter of the shift. Existing `kshift/` directories are reused as
+  they are; delete them (and `predict/`) to rerun.
+
+- **`tfs-fit-two-stage` with a pinned k or m in stage 1.** A pinned k or
+  m is a deterministic site, which a MAP checkpoint does not hold, so
+  `tfs-extract-params` skipped both and stage 1 failed writing `km.csv`.
+  It now falls back to `two_stage.km_from_map`, which reads the MAP's
+  parameters and takes a pinned condition's prior location.
+
+- **`total_num_reads` is the total over all replicates.** `tfs-simulate`
+  passed every replicate the full total and each split it over its own
+  tubes, so a simulation had N times the configured reads, and with a
+  design a replicate with few tubes got far more reads per tube (2.5e9 for
+  the dev-data design's two-tube replicate). Each sequenced replicate now
+  gets its share by tube count (`simulate_cli.replicate_read_totals`).
+  Multi-replicate simulations now produce the reads their config states,
+  1/N of what they produced before.
+- **Simulated wt keeps its reference curve under `hill_geno`.** The
+  simulation sampler drew wt's phenotype category and perturbation like any
+  genotype's, so wt could come out flat ("never binds", about 5% of seeds)
+  or shifted; a relative fit gauges X on wt, and the full-size simulation's
+  flat wt stretched the X truth 3,600-fold. `thermo_to_growth` now sets wt
+  to the `wt_*` SimPriors curve unless a wt override is given
+  (`_pin_wt_reference`). Simulations with `hill_geno` change for wt only.
+- **`tfs-configure-model --set_priors` works under pandas 3.** The priors
+  CSV's `value` column mixes numbers and text, which pandas 3 reads as a
+  string dtype that refused the new float (`TypeError: Invalid value ... for
+  dtype 'str'`). `priors_edit.apply_priors_updates` reads it as object. This
+  failed every CI job from 2026-10-04 on; pandas 2 was unaffected.
+- `python -m tfscreen.tfmodel.scripts.sample_posterior_cli` ran the command
+  twice (a duplicated `__main__` block). The `tfs-sample-posterior` console
+  script was unaffected.
+
+### Changed
+
+- **Dependency floors and a `cuda12` extra.** `pyproject.toml` gives
+  every dependency a lower bound, the oldest versions the suite has passed
+  with (pandas 2.3, numpy 2.3, jax 0.11.2, numpyro 0.22, among others);
+  there are no upper bounds. `pip install -e ".[cuda12]"` installs GPU jax
+  on Linux, where pip's plain jax is CPU-only. A fresh install on the
+  newest releases (pandas 3.0.6, numpy 2.5.4, jax 0.12.0) passed the full
+  suite. The README, quickstart and "Analyzing a screen" page say how to
+  install.
+- **tfscreen needs Python 3.12 or newer** (was 3.11): jax 0.11 and newer,
+  the new floor, have no 3.11 wheels. CI tests 3.12, 3.13 and 3.14.
+- **`tfs-fit-two-stage` no longer adds k's uncertainty by default.** A new
+  `two_stage.kshift` setting (default false) skips the jackknife and the
+  k-shift refits, and predict runs without `--shared_shift`; `tfs_x.csv`'s
+  `k_shift` is then blank. Validation run 2 found the repaired shift a
+  third or less of the true one on simulations
+  (`planning/studies/two-stage-validation/`). Without it, the deep
+  genotypes' 95% intervals covered 0.88-0.91 up to 1e5 reads and
+  0.76-0.81 above. The whole fit now takes about half a day. Set
+  `kshift: true` for the old behavior, which `--step jackknife` and
+  `--step kshift` still run. The example SLURM chain follows the setting.
+- **`tfs-fit-two-stage` refuses the experimental joint-fit pieces and the
+  marker warp.** `read_two_stage_config` now fails on `binding_df`, a
+  theta growth or binding noise model other than `zero` (such as
+  `genotype_offset`), the titrant-shift, binding-offset and warp priors in
+  `set_priors`, and a `growth_priors` table whose `m_warp` column turns the
+  warp on. A warp was fitted in stage 1 and silently dropped in stage 2,
+  whose pins carry only k and m. Those components' docstrings now say they
+  are experimental.
+- **`binding_weight` defaults to 1.** Each binding observation now counts
+  once, the likelihood of the data as measured. The old default,
+  `N_growth_rows / N_binding_rows`, made the binding data weigh as much as
+  the whole growth dataset, so any
+  mismatch between binding and growth distorted the growth fit; it was one
+  reason binding was split from growth on 2026-09-26. A config stores its
+  resolved weight, so one written before this change keeps it; pass the
+  ratio as `--binding_weight` to reproduce the old default in a new one.
+  The count-likelihood, congression-calibration, svi-overconfidence and
+  real-data-fit studies already set 1. Joint-fit plan step 3
+  (`planning/joint-fit-return.md`).
+
+- CI runs the tests in parallel (`pytest-xdist`, `-n auto`) and the coverage
+  job measures through `pytest-cov`; `pytest-xdist` and `pytest-cov` joined
+  the `test` extra. The Ubuntu / Python 3.12 matrix job is gone, since the
+  coverage job runs the same suite there plus the slow tests. A newer push
+  to a branch cancels its older run.
+- The fit's progress line counts plateau windows from 1: `Plateau: 1/3` in
+  the first window that could stall, `3/3` in the window that decides a
+  step-size cut or a stop.
+
+### Added
+
+- **"Analyzing a screen" docs page** (`docs/source/screen-analysis.rst`):
+  the real-screen route from per-tube counts to `tfs_x.csv`, with tube
+  checks and corrections, the two-stage YAML, what each step does, cost,
+  the results table's columns, what *X* is and what its intervals carry
+  and leave out. The index, quickstart, README and `fitting.rst` point to
+  it; `fitting.rst` marks the joint growth/binding model experimental.
+  `examples/tfmodel/` gains `growth_priors_loose.csv` (named by
+  `two_stage.yaml`, which until now pointed at a file that was not there)
+  and a SLURM chain, `two_stage_submit.sh` with `two_stage_step.srun`.
+- **`tfs-fit-two-stage` writes one results table, `{out_dir}/tfs_x.csv`.**
+  A new last step, `summary`: one row per genotype and concentration with
+  X's quantiles (with the shared k shift), the shift itself (`k_shift`),
+  the genotype's number of mutations, its reads in total and per library
+  (counted once into `{out_dir}/genotype_reads.csv`), `in_training_data`,
+  and the marker-consistency `consistency_z` and `inconsistent` (NaN when
+  the check did not run). It is rewritten on every run, so it picks up a
+  consistency step run later (`two_stage.genotype_reads`, `num_mutations`,
+  `x_summary`).
+- **`tfs-configure-model --congression_sets`.** The congression mixture's
+  fixed co-resident draws (entry n-1 = number of sets with n co-residents;
+  default 12 3 1) were an orchestrator setting with no flag; now settable
+  and written to the config, refused without `transformation_model
+  mixture`. Each set is a cell class grown through the whole model, so
+  cost grows with the total (140 sets took about twice the default's wall
+  time on a small stage 1). On the joint-fit simulation the mixture's
+  approximation is the largest remaining source of stage 1's m bias
+  (`planning/studies/joint-fit-sim/`, run 8).
+
+- **`hill_geno` holds any population SD.** `theta_logit_low_hyper_scale_fixed`,
+  `theta_logit_delta_hyper_scale_fixed` and `theta_log_hill_K_hyper_scale_fixed`
+  join `theta_log_hill_n_hyper_scale_fixed`: > 0 makes that SD a
+  deterministic site at the held value with no guide parameters, as in
+  `hill_relative`. Set with `tfs-configure-model --set_priors`. On the
+  joint-fit simulation's stage 1, the learned SDs (tight HalfNormal priors,
+  log K's at 0.1) and the population locations' priors compressed the
+  singles' theta range and steepened m by 14%
+  (`planning/studies/joint-fit-sim/`, run 5).
+
+- **Simulator pieces for the joint fit.** A linear growth condition takes
+  `warp_a` and `warp_x0` (`growth_linkage.warp_theta`, the fit's `m_warp`
+  in numpy; truth `warp_log_a`, `warp_x0` in
+  `tfs_sim_growth_parameters.csv`); the top-level `growth_titrant_scale`
+  (s) makes growth see each curve at s times the nominal titrant while
+  binding sees the nominal one (`library_prediction` scales the growth
+  concentrations of the simulator's data, so the prior draw, wt's
+  reference and the overrides all follow; truth log s in
+  `tfs_sim_growth_titrant_scale.csv`); `binding_data.genotype_offset_sd`
+  adds one Normal offset per binding genotype to its whole curve
+  (`binding_data.apply_genotype_offsets`; truth in
+  `tfs_sim_binding_offsets.csv`). All off by default, so existing configs
+  simulate as before. Study: `planning/studies/joint-fit-sim/`, joint-fit
+  plan step 5.
+
+- **`tfs-extract-params` writes linear growth's warp.** With `m_warp` on,
+  `{out_prefix}_warp_log_a.csv` and `{out_prefix}_warp_x0.csv` hold each
+  warped condition's steepness and threshold (the extraction context now
+  carries the condition_growth priors, so only warped conditions get rows).
+  The warp runs with `hill_geno`'s absolute theta and the congression
+  mixture's partition-function rules, acting on each cell class's theta;
+  tested with the titrant shift and the binding offsets together. Joint-fit
+  plan step 4(c) (`planning/joint-fit-return.md`).
+
+- **`theta_binding_noise: genotype_offset`.** Each binding genotype's
+  binding theta is its curve plus one offset of its own, the same at every
+  titrant concentration, delta_g = tau * z_g with z_g ~ Normal(0, 1) and
+  tau ~ HalfNormal(0.2), learned unless `offset_scale_fixed` > 0 holds it.
+  Growth never sees it, so the shared curve is the in vivo one; a genotype
+  whose in vitro binding differs from its in vivo occupancy (M42I), or
+  whose curve carries its day's normalization error, disagrees alone
+  instead of pulling the growth parameters. The offsets live in a plate
+  over the binding genotypes only, indexed by a new
+  `BindingData.binding_ordinal` (binding-tensor order; the batch's indices
+  in binding-only mode), so a full library carries no prior-only offsets.
+  Subset and chunked predictions remap the plate by binding genotype label
+  (`analysis/prediction.py`); `tfs-extract-params` writes
+  `{out_prefix}_offset.csv` (per binding genotype) and
+  `{out_prefix}_offset_scale.csv`, and now runs the binding noise
+  component's extraction specs. Joint-fit plan step 4(b)
+  (`planning/joint-fit-return.md`).
+
+- **A titrant scale between binding and growth (`hill_geno`).** With
+  `theta_growth_log_conc_shift_scale` > 0 (a priors row, e.g.
+  `tfs-configure-model --set_priors theta_growth_log_conc_shift_scale=1`),
+  one global site `theta_growth_log_conc_shift` (log s) ~ Normal(loc,
+  scale) is sampled and growth sees each genotype's curve at s times the
+  nominal titrant concentration, while binding sees the nominal one: the
+  in vivo IPTG need not equal the nominal, and the curve is in binding
+  units. Applied in `generative/model.py` (`growth_titrant`) to the growth
+  data the theta component sees, including the congression mixture's
+  population and `tfs-predict-growth`'s; extracted as
+  `{out_prefix}_growth_log_conc_shift.csv`. Off by default (scale 0, no
+  site), so existing models trace unchanged. `tfs-predict-theta` still
+  reports the curve at the concentrations asked for, in binding units.
+  Joint-fit plan step 4(a) (`planning/joint-fit-return.md`).
+
+- **`tfs-process-binding`: a lab binding table to a `binding_df`.** One
+  row per measurement (genotype, protein and titrant concentrations in
+  molar by default, theta, replicate and date) becomes one row per
+  genotype and IPTG concentration at a chosen protein concentration (2 uM
+  by default), with the titrant in mM. Concentrations are rounded to six
+  significant digits before grouping, since the lab's values carry
+  floating-point residue that differs between days and would otherwise
+  split replicates of one point. Measurements within a replicate are
+  averaged first; `theta_std` is the standard error of the replicate mean
+  from one replicate SD pooled over every replicated point at that protein
+  concentration (most points have one replicate), or from `--theta_std`.
+  Writes `{out_prefix}.csv` for `tfs-configure-model --binding_df` and a
+  summary with replicate counts (`process_raw/binding.py`; joint-fit plan
+  step 2, `planning/joint-fit-return.md`).
+
+- **`tfs-check-tubes`: flag tubes whose composition disagrees with their
+  titrant label.** A routine QC of the growth table from
+  `tfs-process-counts`, for any titrant. Within each library x condition
+  panel, every tube's centered log-ratio composition is fit robustly as a
+  row (replicate x time) effect plus a per-row-scaled concentration profile,
+  scored on the axis from the lowest concentration's profile (0) to the
+  highest's (1), and tested within its row by a leave-one-out isotonic
+  order test and a level test against its label's expected score. Tube
+  totals and read depth cancel, and rows missing concentrations are not
+  shifted, unlike the row centering of the study script
+  (`planning/studies/relative-m/tube_qc.py`). Writes `{out_prefix}.csv`, one
+  row per tube with `score`, `expected`, `order_z`, `deviation_z` and
+  `flagged` (`process_raw/tube_qc.py::score_tubes`). On the dev data it
+  flags four tubes of pheS+4CP replicate 2, t_sel 82, and nothing else.
+
+- **`tfs-correct-tubes`: documented corrections to a tube table.** A YAML
+  corrections file kept with the experiment's data names each correction
+  (`id`, `action` swap/relabel/exclude, `tubes`, `reason`, `by`, `date`,
+  optional `evidence`), and the command writes a new tube table for
+  `tfs-process-counts` with a `correction_id` column, a long-form
+  `{out_prefix}_changes.csv`, and a provenance file holding the
+  corrections and the SHA-256 of the inputs, evidence files and output.
+  A correction moves only the design columns
+  (`tube_corrections.DESIGN_COLUMNS`); the sample name, its count file,
+  OD600 and totals stay with the physical sample, which is right for a
+  bench swap and a sample-sheet swap alike. It refuses unknown tubes, a
+  tube in two corrections, a swap across libraries or one that changes
+  nothing, a relabel of a non-design column, a result where two tubes
+  share a library and design, an empty reason, by or date, and an output
+  that would overwrite an input. Prompted by the pheS+4CP replicate 2,
+  t_sel 82 row of the dev data (`planning/studies/relative-m/`, run 3).
+  Example: `examples/process_raw/corrections.yaml`.
+
+- **A per-condition warp of theta in `linear` growth.** `m_warp` (bool, or
+  per condition through a 0/1 `--growth_priors` column) makes a
+  condition's growth follow f(theta) = (s(theta) - s(0)) / (s(1) - s(0)),
+  s a logistic with steepness a and threshold x0 sampled per warped
+  condition (priors `warp_log_a_*`, `warp_x0_*`); f(0) = 0 and f(1) = 1,
+  so wt's gauge and m keep their meaning, and f is linear as a -> 0. For
+  selection markers that read occupancy through differently shaped maps
+  (dev data: kanR switch-like, pheS graded;
+  `planning/studies/relative-m/`).
+- **A titrant-dependent k in `linear` growth.** The prior
+  `k_titrant_loglinear_scale`, set with `tfs-configure-model
+  --set_priors`, adds a growth shift shared by every genotype to the
+  selection phase of selection conditions, one slope in log
+  concentration per selection condition; 0 at no titrant, 0 (off) by
+  default. The dev data's flat genotypes grow faster at 1 mM IPTG than
+  at none under both selections (`planning/studies/within-tube-m/`). A
+  free shift at every concentration was tried and dropped: it is not
+  identified when every genotype has its own curve.
+- **Hold wt's curve in `hill_relative`.** Priors `theta_wt_hill_K_fixed`
+  (a titrant concentration) and `theta_wt_hill_n_fixed`, set with
+  `tfs-configure-model --set_priors`, hold wt's Hill K and n when > 0
+  (default 0, free). wt's curve sets the X gauge, and a one-library fit
+  of the dev data collapsed it below 1 uM IPTG.
+- **`--shared_shift` for `tfs-predict-theta` and `tfs-predict-epistasis`.**
+  A table of X shifts (`genotype`, `titrant_name`, `titrant_conc`,
+  `shift`) shared by every non-wt genotype: each posterior draw gets one
+  standard-normal multiple of it before quantiles (or epistasis) are taken
+  (`tfmodel/analysis/shared_shift.py`), so each genotype's interval carries
+  the uncertainty while differences between genotypes keep only what does
+  not cancel; wt (fixed by the X gauge) does not move. Needs a posterior
+  with draws. Written for the two-stage fit's k uncertainty, which moves
+  every genotype's X nearly alike.
+- **`tfs-fit-two-stage`**: the two-stage fit of a growth-only relative
+  model as one command (`planning/two-stage-fit.md`). In its output
+  directory it runs stage 1 (wt, spikes and singles with the congression
+  mixture, `max` rule, lambda fitted with the measured value as its prior),
+  a delete-d jackknife of stage 1 (30 refits, 20% of tubes dropped,
+  stratified by condition and IPTG), stage 2 (the full library with every
+  condition's k and m pinned at stage 1; MAP, Laplace, X), two stage 2
+  refits at k plus and minus one jackknife SD (the X shift per SD), X (and
+  optionally epistasis) with that shift as one shared offset per draw, and
+  a marker-consistency check (stage 2 on one library alone; per-genotype
+  z-scores; on by default, `--no_consistency`). The YAML's top-level keys
+  are `tfs-configure-model`'s arguments; a `two_stage` block holds the rest
+  (`examples/tfmodel/two_stage.yaml`). Steps skip finished work, `--step`
+  runs one and `--jackknife_task i` one jackknife subsample (for a cluster
+  array).
+- **`tfmodel/two_stage.py`**: the two-stage fit's pieces as functions
+  (stage-1 genotypes, stratified delete-d jackknife subsamples of tubes,
+  jackknife k/m standard errors and k's main direction, pinned growth-prior
+  tables, the X shift table), ported from `planning/studies/m-bias-factorial/`
+  and checked to reproduce its numbers; also chunked growth-table filters
+  and the marker-consistency statistic. `tfs-fit-two-stage` chains them.
+
+- **Per-condition k/m pins in `linear` growth.** `m_pinned` and `k_pinned`
+  take one flag per `condition_rep` as well as a single bool, so one
+  marker's k and m can be held at an independent estimate while the
+  other's are fitted. `tfs-configure-model --growth_priors` takes 0/1
+  `k_pinned`/`m_pinned` columns (indexed rows in the priors CSV, read back
+  as a tuple; flags that all agree collapse to the bool). The free
+  conditions are sampled as `condition_growth_{k,m}_free` and
+  `condition_growth_{k,m}` is a deterministic site holding every condition,
+  so it is read from a posterior file, not a MAP checkpoint. Configs
+  without per-condition pins trace exactly as before.
+
+- **Merged transformants, per-origin skew.** The simulator draws
+  single-plasmid cells as clone counts per genotype, one weighted row each
+  (`_sim_transform_collapsed`), so `transform_sizes` can be realistic (the
+  dev-data calibration has 6.7e7 double transformants) at one row per
+  genotype; founder sampling and demographic growth add up exactly over
+  merged clones. `max_congressed_cells` caps the multi-plasmid cells kept
+  one by one. `lib_assembly_skew_sigma` takes one value per library origin.
+  The random stream changed, so a seed no longer reproduces a simulation
+  made before this.
+- **`unassigned_read_fraction`** simulate key (one number or one per
+  library): that share of each tube's reads goes to `__unknown__`, as in
+  real count files, where the dev data's kanR library lost 66% of its
+  reads. The raw count files and the growth table carry it like real data.
+
+- **Tube-offset diagnostic in `tfs-summarize-fit`** (pipeline plan step 7).
+  `tfs-extract-params` now writes the per-tube sample offsets,
+  `{out_prefix}_sample_offset_offset.csv` (`level`) or `_delta_k.csv`
+  (`normal`), one row per tube labeled by its design, plus their SD
+  (`sample_offset/_tubes.py`). `tfs-summarize-fit` reports them in prior SDs
+  and, per condition, their Spearman trend with titrant and with time
+  (`tfmodel/analysis/tube_offsets.py`), writes `_tube_offsets.csv`,
+  `_tube_offset_trends.csv` and `_tube_offsets.pdf`, and flags a fit whose
+  offsets trend (BH q < 0.05) in the JSON's new `tube_offsets` block, so a
+  fit in the offset mode is not accepted silently.
+- **`cfu0` per library** in the simulate config (`{library: cells}`), so
+  separately grown libraries can start at their own densities, and
+  **`tfs-simulate --no_write_growth`**, which skips the direct growth table
+  (several GB at a real library's size; `tfs-process-counts` rebuilds it from
+  the raw files). The full-size simulation study calibrates `cfu0` per
+  library from a pilot run.
+
+- **Simulation designs** (`design` key in the simulate config,
+  `simulate/build_sample_dataframes.read_design`): a tube table in the
+  format `tfs-process-counts` reads, in place of `condition_blocks`, so a
+  simulation follows a real experiment's layout exactly (irregular times,
+  replicates sampled differently). Each replicate gets its own tubes and the
+  raw output keeps the design's tube names. Used by the full-size simulation
+  study (`planning/studies/full-size-sim/`).
+
+- **`tfs-simulate` writes the raw experiment** (`simulate/raw_output.py`,
+  pipeline plan step 6): one counts file per sequenced tube in
+  `tfs-process-fastq`'s format (`{out_prefix}_counts/`), the tube table
+  (`{out_prefix}_tubes.csv`) and, with an `od600` block, the OD600 table and
+  a copy of the calibration, and prints the `tfs-process-counts` command
+  that processes them. A simulation now goes through exactly the commands
+  real data do; the output matches `tfs_sim_growth.csv` row for row.
+  `--no_write_raw` skips it. `examples/simulate-and-analyze/run.sh` and the
+  quickstart now fit the processed table.
+
+- **MAP convergence on the exact loss** (`RunInference.full_batch_loss`,
+  `run_optimization(exact_loss=None)`, `ConvergenceMonitor.end_window(...,
+  exact_loss=)`). A MAP fit (and the staged MAP's stages, the SVI pre-MAP
+  and `tfs-prefit-calibration`) now computes the exact full-batch negative
+  log joint at the end of each convergence window and judges the window by
+  a line through the recent exact losses. On the dev-data screen the
+  mini-batch loss's trend SE was about 5e4 nats per window, so a descent of
+  1e5 nats per window read as a stall and every MAP was cut to its final
+  step size while still descending; the reference fit and the staged fit
+  stopped at points 6e3 nats apart that the final losses ranked the wrong
+  way round. The convergence CSV gains a `loss_exact` column. SVI keeps the
+  mini-batch test.
+
+- **Staged MAP for level tube offsets** (`tfmodel/inference/staged_map.py`,
+  `tfs-fit-model --stage_offsets auto|on|off --staged_step_size`). A cold
+  MAP with `sample_offset: level` could settle with the tube offsets near
+  ±2.8, carrying the population's growth; the real-data fit avoided that by
+  hand over six runs. A fresh level-offset MAP now runs three MAPs itself:
+  the offsets held at 0, the offsets alone with everything else held there,
+  and the joint MAP from that point at step size 1e-4. Each stage writes its
+  own checkpoint, convergence record and `_params.npz`
+  (`{out_prefix}_stage1_*`, `{out_prefix}_stage2_*`); a finished stage is
+  reused and an interrupted one resumes. `HeldModel` wraps a model with
+  sites held at fixed values (a `numpyro.handlers.condition`). Dev-data
+  validation (`planning/studies/staged-map/`): it avoids the offset mode,
+  which the cold MAP fell into (4.8e5 nats worse), but run to convergence
+  the offset mode scores 7.9e4 nats better than the staged MAP; it is the
+  model's preferred optimum, with IPTG-structured offsets and unphysical
+  k/m. Filed: `planning/offset-mode-growth-transition.md`.
+
+### Changes up to 2026-10-03
+
+A modeling release and an interface release. The model changes (the
+congression mixture, the count likelihood, the growth-only relative fit, tube
+offsets, OD600 tube totals, the convergence monitor and the block and
+arrowhead Laplace) are listed from "Added" onward below the interface
+entries. The interface entries come first: the command-line tools were made
+consistent, three hand-edited steps of the real-data fit became flags, and
+the documentation was rewritten to match the code. Many commands changed
+their arguments; old scripts and run templates need updating.
+
+### Added
+
+- **Provenance on every run** (`tfscreen.util.provenance`). Every `tfs-*`
+  command prints the tfscreen version, git commit (with a flag for
+  uncommitted changes) and command line when it starts, and writes them to
+  `{out_prefix}_provenance.json` when it takes `--out_prefix`. The
+  `tfs-configure-model` YAML has a `provenance:` block and fit checkpoints a
+  `provenance` entry. Study READMEs no longer need to infer commits from file
+  times.
+- **`tfs-process-counts` reads OD600.** `--od600_file` (one reading per
+  tube), `--od600_calibration_file` (a `tfs-calibrate-od600` calibration) and
+  `--tube_volume_mL` give each tube's `sample_cfu` and SD
+  (`od600.tube_totals_from_od600`), with the calibration curve's shared error
+  (`sample_cfu_curve_std`) kept apart from the reading's own
+  (`sample_cfu_reading_std`). A reading below the detection threshold is an
+  error. Supplied `sample_cfu` still works. Several libraries go through in
+  one call, as before, now tested against separate runs.
+- **`tfs-configure-model --set_priors name=value ...`** sets any scalar prior
+  by full row name or unique dotted suffix (`sigma_fixed=0.17`,
+  `theta_log_hill_n_hyper_scale_fixed=0.5`); unknown or ambiguous names are
+  errors. Replaces `sed` on the priors CSV.
+- **`tfs-configure-model --growth_priors`** (per-condition linear k/m priors
+  from a table) and **`--growth_priors_wt_rates`** (k and m from wt
+  monoculture rates on the relative-X gauge, SD floored by
+  `--growth_priors_sd_floor`), for models the pre-fit does not calibrate.
+  Replaces `set_growth_priors.py`. Shared helpers in
+  `tfscreen.tfmodel.priors_edit`, which `tfs-prefit-calibration` now uses too.
+- **`tfs-sample-posterior --laplace auto|full|arrowhead|blocks|point`** and
+  `--laplace_max_params` (default 20,000). `auto` uses the full Laplace up
+  to that many MAP parameters and the arrowhead Laplace above. The arrowhead
+  writes the Schur-complement directions it held at the MAP to
+  `{out_prefix}_held_directions.csv` (`RunInference.held_shared_directions`).
+- **CLI reference page** `docs/source/cli.rst`, generated from the commands'
+  own parsers by `docs/scripts/make_cli_reference.py`;
+  `tests/tfscreen/util/cli/test_cli_reference.py` fails when it is stale.
+  `generalized_main.capture_parser` returns a command's parser without
+  running it.
+- **Per-argument `--help`.** `generalized_main` takes each argument's help
+  from the function's numpydoc `Parameters` entry and shows defaults; the
+  program name is the command's own.
+- `examples/process_raw/`: a synthetic tube table, OD600 table and per-tube
+  count files (`make_example_data.py`) in the formats `tfs-process-counts`
+  reads.
+- Documentation: a pipeline page (reads to posterior, one command per step),
+  and the old analysis page split into fitting, model and downstream pages.
+
+### Changed
+
+- **A switch that defaults to on is turned off with `--no_<name>`.**
+  Previously `--<name>` silently inverted it: `tfs-sample-prior --noise`
+  turned noise off, `tfs-build-empirical --drop_railed` stopped dropping and
+  `tfs-process-counts --verbose` made it quiet. `--<name>` now does nothing.
+- **A flag whose default is None reads a string** unless the command types
+  it. `tfs-summarize-fit --out_prefix` and `tfs-process-fastq
+  --max_num_reads` crashed with "invalid NoneType value" whenever they were
+  passed.
+- `tfs-process-fastq library_config f1_fastq f2_fastq [--out_dir counts]`:
+  the library YAML comes first and the output directory is a flag (was
+  `f1 f2 out_dir run_config`). `--num_workers` defaults to -1.
+- `tfs-process-counts sample_file counts_dir [--out_prefix]` writes
+  `{out_prefix}.csv` (default `tfs_growth`, or `tfs_presplit` with
+  `--presplit`); the output path was a positional. A missing `library`
+  column defaults to `default`. The `obs_file` column is no longer written.
+- `tfs-simulate config_file [--out_prefix tfs_sim]` writes
+  `{out_prefix}_{name}.csv` (was positional `output_dir` and
+  `--output_prefix tfs_sim_`). Default file names are unchanged.
+- `tfs-configure-model` refuses a library whose spiked genotype has no growth
+  data (`check_spikes_in_data`); `--allow_missing_spikes` restores the old
+  report-only behavior.
+- `tfs-sample-posterior`: `--laplace` replaces `--map_point`,
+  `--laplace_blocks` and `--laplace_shared`. A small MAP is unchanged (full
+  Laplace); a MAP above 20,000 parameters now gets the arrowhead Laplace by
+  default instead of a dense Hessian that does not fit in memory.
+- `tfs-build-empirical growth_df [--binding_df] [--seed]
+  [--growth_calibration_file] [--base_growth_df]` (was `growth_file seed
+  --binding_file --calibration_file --base_growth_file`); `--seed` is
+  required only when the pre-fit runs.
+- `tfs-fit-genotypes growth_df growth_calibration_file`, default prefix
+  `tfs_fit_genotypes` (was `growth_file calibration_file`, `tfs_mle`).
+- `tfs-predict-growth --seed` (was `--subset_seed`).
+- `ModelOrchestrator`'s `theta_growth_noise` defaults to `zero`, as
+  `tfs-configure-model` does (was `logit_normal`), so the Python API and the
+  CLI build the same model by default. Saved configs record the component,
+  so they read back unchanged.
+- `tfs-setup-grid` and `tfs-setup-sim-grid` take `--out_dir` (was
+  `--out_prefix`, which named a directory); `grid_summary.json` records
+  `out_dir`.
+- Docstrings corrected where they described old behavior: MAP predictions
+  give a `q0.5` column, not `point_est`; default quantiles are the bare
+  `q<level>` ladder; `tfs-build-empirical` writes
+  `<prefix>_phenotype_model.json`; `tfs-summarize-fit`'s default prefix is
+  `{run_dir}/summary/tfs_summarize`.
+
+### Removed
+
+- `tfs-process-presplit`: use `tfs-process-counts --presplit`.
+- `tfs-diagnose-nan` (SVI component guide only, the one hand-written argparse
+  CLI), `tfs-subset-genotypes` (its output no longer fit the configure and
+  fit flow), `tfs-report-cfu0` and `tfs-summarize-sbc` (superseded by
+  `tfs-summarize-calibration`; `error_calibration.summarize_sbc` remains as a
+  library function).
+- `coverage_prob` and the `param_std` argument of
+  `analysis.stats_test_suite`. Its only caller, `tfs-summarize-fit`, never
+  passed uncertainties, so the statistic was always null; coverage is in
+  the summary's calibration outputs.
+
+### Fixed
+
+- The first spiked sequence in the example library configs
+  (`examples/process_raw/library_config.yaml`,
+  `examples/simulate/simulate_config.yaml`,
+  `examples/simulate-empirical/simulate_config.yaml`) carried a stray H74A
+  codon, so it decoded to H74A/K84L instead of the K84L its comment names.
+  The `examples/process_raw` count files were regenerated.
+- The presplit table now carries `library`. `tfs-process-presplit` wrote
+  `replicate, condition_pre, genotype, ln_cfu, ln_cfu_std`, and
+  `tfs-configure-model --presplit_df` refused it ("Missing columns:
+  library"), so processed presplit data could not enter the model.
+- `tfs-summarize-fit` finds a posterior written as `{out_prefix}.h5`, the
+  name `tfs-sample-posterior` uses. It looked only for `*_posterior.h5`, so
+  any prefix other than the default `tfs_posterior` lost the trajectory
+  plots. `*_ground_truth.h5` prior draws are not taken for a posterior.
+
+### Added
+
+- **`tfs-sample-posterior --laplace_blocks`** (`RunInference.get_laplace_posteriors(block_genotypes=True)`,
+  `block_laplace_factors`): a per-genotype Laplace at a MAP. The shared
+  parameters (growth k and m, hyperparameters, tube offsets) stay at the
+  MAP. Given them, each genotype's parameters couple to no other genotype,
+  so the Hessian splits into one small block per genotype (9-11
+  parameters). B Hessian-vector products per genotype chunk give every
+  block at once (`--genotype_chunk_size`), so it runs on a full library,
+  where the full Hessian (about 2M parameters) cannot. It checks that the
+  blocks really separate, and refuses a model where they do not. On the
+  relative-fit run-4 MAPs, X 95% coverage was 0.93 (Poisson) and 0.84
+  (realistic), against 0.98 / 0.94 for the full Laplace and 0.81 / 0.76 for
+  the low-rank guide. It leaves out the k/m uncertainty (coverage 0).
+
+- **`tfs-sample-posterior --laplace_blocks --laplace_shared`**
+  (`get_laplace_posteriors(block_shared=True)`, `arrowhead_laplace_factors`):
+  the block Laplace with the shared parameters' uncertainty. The Hessian is
+  an arrowhead: genotype blocks, each genotype's coupling to the shared
+  parameters, and the shared block. One more Hessian-vector product per
+  shared parameter per chunk gives all of it. The shared parameters are drawn
+  from their marginal (the Schur complement) and each genotype from its
+  conditional given them. That is the full Laplace, and it matched the
+  dense inverse Hessian exactly on a toy model, chunked or not. Two
+  departures, both for MAPs short of an optimum: a floored direction of a
+  genotype block carries no coupling, and a negative direction of the Schur
+  complement is held at the MAP and named in the log. On the relative-fit
+  run-4 MAPs, X 95% coverage was 0.97 (Poisson) and 0.94 (realistic), with
+  0.95-0.98 above 1000 reads. k/m coverage was 0.92 / 1.0 and 0.50 / 0.42,
+  close to the full Laplace's 0.92 / 0.92 and 0.58 / 0.50.
+
+- **`theta: hill_relative` can hold every population SD.**
+  `theta_X_low_hyper_scale_fixed`, `theta_X_delta_hyper_scale_fixed` and
+  `theta_log_hill_K_hyper_scale_fixed` join the log(n) field below (above
+  0: held, a deterministic site with no guide parameters). On the dev-data
+  growth-only MAP the learned SDs ran to 3.6, 4.3 and 11, against about
+  0.45, 0.45 and 0.7 among genotypes with more than 1e4 reads, so the MAP
+  shrank nothing and its X at 100 reads or fewer was noise.
+
+### Fixed
+
+- **`test_nan_explosion` passes under numpyro 0.22.** numpyro 0.22 checks
+  distribution arguments by default (0.19 did not), so `svi.init` refused
+  the test's NaN starting loc with a `ValueError` before the optimization
+  loop's own NaN check ran. Every CI runner failed (numpyro 0.22.0, jax
+  0.11.2), while local runs on numpyro 0.19.0 passed. The test now fits
+  under `validation_enabled(False)`
+  (`tests/tfscreen/tfmodel/inference/test_run_optimization.py`). A fit run
+  on numpyro 0.22 that starts from a non-finite point now stops at init with
+  numpyro's `ValueError`, not tfscreen's "model exploded" `RuntimeError`.
+
+- **The Laplace path no longer applies the mini-batch likelihood scale at
+  full batch.** `scale_vector` is built for the configured batch size, so a
+  model configured with `batch_size` below the library weighted every
+  growth likelihood by `num_genotype / batch_size` (53x on the dev-data
+  screen at 4096) even when the Hessian was taken over the whole library.
+  `RunInference._unscaled_batch` removes it. The full Laplace had only run
+  on simulations with `batch_size` at or above the library, so no result
+  was affected.
+
+- **`theta: hill_geno` and `hill_relative` take
+  `theta_log_hill_n_hyper_scale_fixed`.** Above 0, the population SD of
+  log(hill_n) is held at that value (a deterministic site, no guide
+  parameters) instead of learned. Set `theta.theta_log_hill_n_hyper_scale_fixed`
+  in the priors CSV; default 0 keeps it learned. On the dev-data screen
+  the learned SD ran to about 19 in every MAP fit, joint and growth-only.
+  n spread from 0.01 to 13, and in 42% of genotypes the curve changed more
+  between 0 and the lowest nonzero IPTG (0.1 µM) than across the whole
+  measured range. The data show no such step: for the binding genotypes
+  the fit predicted a 0.4-0.55 ln-unit gain relative to wt in kanR+kan,
+  and the counts show 0.00-0.08.
+
+- **`condition_growth: linear` takes per-condition `m_scale_plus` and
+  `m_scale_minus`.** Like `k_scale`, each may now be a per-condition array:
+  indexed rows in the priors CSV, joined to the conditions by
+  `condition_rep`. Each condition takes the entry its `+`/`-` flag names.
+  Before this, every selection condition shared one m prior width. That
+  could not express a tight prior from monoculture data for kan alongside
+  a loose one for pheS, which the growth-only dev-data fits need.
+  Scalars behave as before.
+
+- **`tfs-fit-model --init_from <params.npz>`** starts a fit at a MAP
+  point, the `{site}_auto_loc` arrays of an earlier fit's
+  `*_params.npz`, wherever they name a site of this model. They take
+  precedence over the guesses, and other sites start at their guesses. So
+  a model can be seeded from a simpler one, for example a
+  `sample_offset: level` fit from a `zero` fit. The option is refused with
+  `checkpoint_file`. Before this, guesses were the only way in, and
+  `read_configuration` silently drops guess rows for names outside the
+  configured guesses, including sites such as `condition_growth_k` and the
+  tube offsets. On the dev-data screen the level-offset MAP had fallen into
+  a mode with offsets of ±2.8. Holding the no-offset MAP's point and
+  fitting only small per-tube offsets beat it by 1.2e5 nats of count
+  likelihood (`planning/dev-data/real_fit`, gitignored).
+
+- **`sample_offset: level` takes `sigma_fixed`.** Above 0, the SD of the
+  per-tube offsets is held at that value (a deterministic site, no guide
+  parameters) instead of learned; set `growth.sample_offset.sigma_fixed` in
+  the priors CSV. On the first real-data fit the learned SD went from its
+  0.2 prior scale to 0.53, and the offsets (-2.7 to +3.0, smooth in IPTG
+  and time) carried the population's growth in place of k and m. Default 0
+  keeps the learned SD.
+
+- **`tfs-sample-posterior --map_point`** writes a MAP checkpoint's point
+  itself (one sample, `RunInference.get_map_posteriors`) instead of a
+  Laplace posterior, whose full Hessian is out of reach on a full library
+  (about 2 million parameters for the dev-data screen).
+- **`tfs-sample-posterior --skip_growth_observations`** leaves the
+  per-observation growth sites (`growth_pred`, `growth_obs`) out of the
+  posterior file. They were 94% of its size on a 300-genotype subset and
+  would be about 100 GB per site at 500 draws on the full library;
+  `tfs-predict-growth` recomputes growth from the parameter draws.
+
+- **Compressed tables load by their inner extension.** `read_dataframe`
+  reads `.csv.gz`, `.tsv.bz2` and the like as CSV or TSV, with pandas
+  inferring the compression. They used to fall through to the slow
+  delimiter-sniffing reader. A full-library growth table from
+  `tfs-process-counts` is 5 GB as CSV and 0.7 GB gzipped.
+
+- **`linear` growth takes `k_pinned`.** Like `m_pinned`, it holds the
+  per-condition baseline k at `k_loc` (a deterministic site with no guide
+  parameters), set by `condition_growth.k_pinned` in the priors CSV. It is
+  for conditional fits at a fixed draw of k and m, such as the two-stage fit
+  in `planning/studies/svi-overconfidence/`. It is not meant for production
+  fits.
+
+### Fixed
+
+- **`ln_cfu0` extraction labeled rows with other genotypes' values.** The
+  model holds `ln_cfu0` as a (replicate, condition_pre, genotype) array, but
+  the extract spec indexed its flattened values with `map_ln_cfu0`, which
+  numbers only the combinations present in the data. Wherever a genotype
+  was missing from a replicate or library, every later row took another
+  cell's value: on an SVI-overconfidence run (2 of 200 cells missing) three
+  of four blocks correlated 0.09-0.25 with the presplit data they were fit
+  to, against 0.999 once labeled correctly. Fits were unaffected; the
+  `*_ln_cfu0.csv` outputs of `tfs-extract-params`, and anything downstream
+  of them, were wrong. Both `ln_cfu0` components now key rows by array
+  position (`hierarchical.ln_cfu0_extract_spec`).
+
+- **Simulated binding observations are no longer clipped to [0, 1].**
+  `generate_binding_df` and `generate_library_binding_df` clipped noisy
+  `theta_obs` to [0, 1], while the fit's binding likelihood is an unclipped
+  Normal, so the clipped anchors near 0 and 1 were biased (10-17% of the
+  observations in the SVI-overconfidence grids). `binding_data.clip_theta_obs:
+  true` reproduces the old simulations; the random draws are unchanged, so
+  only the formerly clipped values differ.
+
+- **SVI hyperparameter scales no longer start frozen.** The component
+  guide's hyperparameter scales are constrained `greater_than(1e-4)`, and
+  the guide start capped every scale at `guide_init_scale`, also 1e-4. They
+  started on the bound, `-inf` in unconstrained space, and never moved: in
+  every component-guide SVI fit since 2026-09-27 each hyperparameter's guide
+  SD stayed at 1e-4. The convergence monitor reported them as an infinite
+  drift, so conditional fits never stopped before their cap.
+  `initialization.component_guide_init` now starts a bounded scale at least
+  `init_scale` above its bound (`component_guide_map` records the bound).
+  Study grids fit with the component guide since then (count-likelihood v4,
+  relative-fit v3, SVI-overconfidence v2 and two-stage) carry the bug.
+- **Laplace posteriors no longer blow up along a MAP's negative-curvature
+  directions.** `get_laplace_posteriors` floored Hessian eigenvalues at
+  1e-3, a variance of 1000 in unconstrained units. A MAP stopped short of
+  its optimum always has a few negative eigenvalues, and where they touched
+  the growth slopes m the Laplace draws of m spread 50x wider than their
+  posterior. Eigenvalues are now floored at the prior's curvature along
+  each eigenvector (`laplace_eigenvalue_floor`, prior SDs from
+  `site_unconstrained_prior_sds` at the MAP), so no direction is wider than
+  the prior. On seed 8 of the two-stage grid the SD of m fell from 0.018 to
+  0.0005.
+
+- **Breaking: `ln_cfu0: hierarchical_factored` is refused across libraries.**
+  It shares each genotype's starting abundance across every pre-condition of
+  a replicate. kanR and pheS are transformed and grown up separately, so
+  that is wrong for them. On simulations the fit pushed the per-genotype
+  difference, SD 0.17-0.29 ln units, into a confident per-genotype theta
+  error: 95% coverage above 1000 reads was 0.09, against 0.80 with
+  `hierarchical`. The orchestrator now refuses the factored model when a
+  replicate's pre-conditions come from different libraries. The study grids
+  and `examples/simulate-and-analyze/run.sh` now use `hierarchical`, and
+  their earlier calibration numbers carry the mismatch.
+
+- **Breaking: `ln_cfu0: hierarchical_factored` has a non-centered tube
+  offset.** It used to draw `tube_offset ~ Normal(0, tube_scale)` directly.
+  The 4 offsets (replicate x pre-condition) trade against the genotype
+  baselines, so they could sit at 0. The joint density then grew without
+  bound as `tube_scale` went to 0, so no MAP existed: the pre-MAP put the
+  scale at 5e-5 against a prior median of 0.34. The component now samples
+  `tube_offset_z ~ N(0, 1)` and keeps `tube_offset = tube_scale *
+  tube_offset_z` as a deterministic site. The guide's parameters are now
+  `ln_cfu0_tube_offset_z_locs/scales`, so checkpoints and guesses files
+  written before do not load. Reconfigure and refit.
+- **A runaway loss is no longer called converged.** The convergence monitor
+  records the run's starting loss. A window whose loss falls below -1000
+  times its magnitude now ends the run as `diverged`, not converged
+  (`convergence.RUNAWAY_LOSS_FACTOR`). A full-covariance guide had run to a
+  loss of -8e23 and was reported as converged.
+
+- **NUTS starts where it should.** `RunInference.run_nuts` passed
+  `initialize_model`'s `ParamInfo` tuple to `init_to_value`. No site
+  matched it, so every chain started at a uniform draw in [-2, 2] on the
+  unconstrained scale. `tfs-fit-model --analysis_method nuts` now starts
+  the chains at the MAP warm-up's point (`--pre_map_num_epoch`, as SVI
+  does), falling back to prior medians. It also passes the full data set
+  through `get_batch`, prints the worst split R-hat and least n_eff, and
+  takes `--nuts_dense_mass`.
+
+- **SVI no longer throws away the pre-MAP solution.** The component guide
+  started with every scale at 0.1 and a multiplicative 0.1 jitter on every
+  starting value. The scale is in each parameter's own units, so for growth
+  rates (per minute) and ln_cfu levels it was enormous. SVI started about
+  1000x above the pre-MAP's loss, count and `lncfu` fits alike. It then
+  re-descended for tens of thousands of epochs into other optima: a
+  sign-flipped mirror mode, a halved slope `m`, or the whole library
+  shifted against wt. `tfs-fit-model --guide_init_scale` now defaults to
+  1e-4 (`DEFAULT_GUIDE_INIT_SCALE`). It also sets the autoguides'
+  `init_scale` for a fresh fit, instead of numpyro's 0.1. SVI widens the
+  scales itself. `--init_param_jitter` and
+  `RunInference.run_optimization(init_param_jitter=...)` now default to 0.
+  SVI calibration results from before this fix (the count-likelihood and
+  relative-fit grids) need a rerun.
+
+### Added
+
+- **`tfs-calibrate-od600` (roadmap step 3).** Fits an OD600-to-CFU/mL
+  calibration from a lab's own two experiments: repeated OD600 readings of
+  a dilution series (reading noise and detection threshold) and plate
+  counts of cultures whose OD600 was read (CFU/mL from colonies, dilution
+  and plated volume, with counting and pipetting error). Writes the
+  polynomial's coefficients with their full covariance (the curve's error
+  is shared by every tube, so callers get it apart from the reading noise),
+  the reading noise, the detection threshold and the calibrated range, plus
+  a diagnostic PDF and CSVs. The method, file format and apply/invert
+  functions are in `tfscreen.process_raw.od600`; documented CSV inputs;
+  synthetic example in `examples/od600/`. It reproduces the lab
+  notebook's coefficients to 2e-9 when fed the notebook's CFU/mL, but the
+  notebook did not divide by the plated volume, so its constants (and the
+  CFU totals made with them) are 10x low.
+
+### Changed
+
+- **Breaking: the simulator's `od600.calibration` is a
+  `tfs-calibrate-od600` file.** The lab notebook's format (`A_CFU`,
+  `OD600_PCT_STD`, ...) is refused with a pointer to the new tool.
+  `examples/simulate/od600_calibration.yaml` is replaced by
+  `examples/od600/od600_calibration.yaml`, made by the tool from synthetic
+  data at a realistic scale (8e8 CFU/mL per OD600 unit, not the old
+  example's 8e7). `od600_in_range` now means at or below the top of the
+  calibrated OD600 range.
+
+- **Breaking: `tfs-configure-model` defaults to the count likelihood.**
+  `--growth_likelihood` now defaults to `counts` and
+  `--sample_offset_model` to `level` (was `lncfu` and `zero`). On the
+  count-likelihood simulation grid (`planning/studies/count-likelihood/`)
+  counts cut theta RMSE by 35-60% and dk_geno RMSE by 40-85% at about the
+  same coverage. The growth file then needs read counts, each tube's total
+  reads and its total cells (see `--growth_likelihood`), and
+  `--growth_noise_model` must stay `zero`: a call that passed
+  `--growth_noise_model normal_kt` without a likelihood now fails, and
+  should add `--growth_likelihood lncfu --sample_offset_model zero` to keep
+  its old model. `ModelOrchestrator` keeps `lncfu`/`zero` as its own
+  defaults, so a config written before the count likelihood existed (no
+  `growth_likelihood` key) still reads back as the model it was.
+  `tfs-build-empirical` inherits the new defaults.
+
+### Added
+
+- **Relative-X fit (`theta: hill_relative`; roadmap step 5).** A theta
+  component that fits growth alone on a wt-relative scale X instead of
+  claiming absolute occupancy (growth fixes it only up to an affine map):
+  hill_geno's per-genotype curve with real-valued baselines, gauged so that
+  wt's X is 1 at the low and 0 at the high gauge concentration
+  (`theta_gauge_conc`, an orchestrator setting and `tfs-configure-model
+  --theta_gauge_conc c_lo c_hi`; default the lowest and highest measured
+  concentration, recorded in the config). wt keeps its K and n free. It
+  refuses binding data, a learned activity, `logit` rescaling, non-linear
+  condition growth, theta noise and, under the congression mixture, any
+  theta rule but `max`. Outputs are labelled: deterministic sites
+  `theta_X_low`/`theta_X_high`, a `theta_scale = X` column from
+  `tfs-predict-theta`; `tfs-predict-epistasis` and `tfs-extract-epistasis`
+  allow only `--scale add` on X, and the former writes no `in_regime`.
+  `tfs-summarize-fit` puts simulated theta and `growth_k`/`growth_m` truth
+  on the X gauge, and `tfs-summarize-calibration` gives such rows
+  `theta_regime = X`. Prediction on a genotype subset keeps wt (the gauge
+  needs it) and drops it from the output. Validation grid:
+  `planning/studies/relative-fit/`.
+- **Count likelihood (`growth_likelihood: counts`; roadmap step 7).** Growth
+  can be observed as read counts instead of `ln_cfu`: each genotype's reads
+  in a tube are negative binomial with mean
+  `depth * exp(ln_cfu_pred - ln(tube total))` and variance
+  `mu (1 + phi) + mu^2 inv_r` (both learned; study 0b found real counts 5-18x
+  Poisson), with no pseudocount (`generative/observe/growth_counts.py`). The
+  log-pmf is computed by Loader's algorithm (`CountNegativeBinomial`),
+  accurate to ~1e-4 nats in float32 where numpyro's negative binomial loses
+  several nats per observation at 1e4-1e6 reads. `tfs-configure-model
+  --growth_likelihood counts` (requires `growth_noise_model zero`); the
+  growth file needs `counts`, each tube's total reads (`sample_reads`, or
+  `adjusted_counts`/`frequency` to derive it) and total cells
+  (`sample_ln_cfu` or `sample_cfu`). Presplit data are still observed as
+  `ln_cfu`.
+- **`sample_offset: level`.** One ln_cfu offset per tube, shared by every
+  genotype in it, with a learned constant SD (the tube's composition offset
+  and any error in its supplied total), in place of `normal`'s
+  time-scaled growth-rate offset. `tfs-configure-model` now exposes
+  `--sample_offset_model` (it was always `zero` before).
+- **`counts_to_lncfu` writes `sample_reads`**, each tube's total reads
+  (`__unknown__` included, no pseudocounts).
+- **Simulator sampling noise and OD600 (roadmap step 4).** Optional
+  simulate-config keys, all off by default so existing configs simulate
+  exactly as before: `founder_sampling` (Poisson founders per clone per
+  tube), `demographic_growth` (birth-death noise given the founders),
+  `shared_transformation` (one library assembly and transformation for all
+  replicates, as from one glycerol stock), `pcr_template_molecules` and
+  `pcr_amplification_cv` (a template bottleneck with PCR jackpotting before
+  sequencing). An `od600` block gives every tube one simulated OD600 reading
+  through an OD600-to-CFU calibration (`simulate/od600.py`), optionally
+  feeds the pipeline the OD600-derived total instead of the truth, adds
+  OD-only replicates, and writes `tfs_sim_od600.csv`.
+  `selection_experiment` gains `shared_state` and `sequence`.
+  `examples/simulate/od600_calibration.yaml` is a synthetic calibration for
+  examples; `od600.calibration` is a `tfs-setup-sim-grid` path key.
+- **Growth-only models (no binding data).** `ModelOrchestrator` accepts
+  `binding_df=None` alongside growth data, and `tfs-configure-model` takes
+  `--binding_df` as an optional flag (at least one of `--binding_df` and
+  `--growth_df` is required). A growth-only model has no binding tensors,
+  no binding likelihood and no `theta_binding_noise` component; it refuses
+  a `binding_weight` or a non-`zero` binding noise model, and
+  `tfs-prefit-calibration` refuses a growth-only config.
+  `tfs-summarize-fit` then plots trajectories for wt, the spiked genotypes
+  and ten other genotypes chosen with a fixed seed, instead of every
+  genotype. Joint growth + binding models are unchanged (identical log
+  density at a fixed seed). Step 1 of `planning/analysis-roadmap.md`.
+- **Soft-min congression dk rules (`congression_dk_rule` `softmin`, `min`).**
+  A congressed cell's dk_geno can now follow the whole soft-min family
+  `dk_cell = -(1/alpha) log sum_g x_g exp(-alpha dk_g)`, not only its
+  `alpha -> 0` limit: `dilution` (still the default, the share-weighted
+  mean), `softmin` (finite alpha, from the new `congression_dk_alpha`, in
+  units of 1/dk) and `min` (`alpha -> inf`, the worst variant sets the
+  cell's cost). Available in the simulator (`simulate/cell_rules.py`,
+  config keys `congression_dk_rule`/`congression_dk_alpha`) and the fit's
+  `mixture` transformation (`ModelOrchestrator` settings written to the
+  config and carried as static `GrowthData` fields; `tfs-configure-model
+  --congression_dk_rule`/`--congression_dk_alpha`). Alpha is required by
+  `softmin` and refused by the other rules. Congression physics plan,
+  step 5.
+- **Limit on simulated Hill coefficients (`theta_sim_priors.max_hill_n`).**
+  hill_mut's simulation adds per-mutation and horseshoe-epistasis effects on
+  log(hill_n), so double mutants could reach Hill coefficients in the
+  hundreds (270 in the congression calibration study's library, with 50 of
+  483 genotypes above 4). An optional `max_hill_n` in hill_mut's `SimPriors`
+  sets larger draws to the limit, in both `hill_mut.simulate` and
+  `binding_params.build_theta_gc_override_hill_mut` (the path used when
+  spiked binding curves come from a params file). Off by default, so
+  existing configs simulate as before.
+
+- **Guide selection for SVI (`tfs-fit-model --guide_type`).** With
+  `analysis_method=svi`, the variational family can now be any numpyro
+  autoguide as well as the component guide (still the default):
+  `delta`, `auto_normal`, `auto_diagonal_normal`, `auto_multivariate_normal`
+  or `auto_low_rank_multivariate_normal`. Numpyro class names such as
+  `AutoNormal` are accepted, case-insensitively. `--guide_rank` sets the rank
+  of `auto_low_rank_multivariate_normal`, and `--guide_init_scale` sets an
+  autoguide's initial scale. An option the chosen guide does not take is
+  refused before any fitting starts, as is any guide option with
+  `analysis_method` `map` or `nuts`.
+  - `RunInference.setup_svi` takes `guide_type`, `guide_kwargs` and
+    `init_values` (constrained site values an autoguide's location starts
+    from, via `init_to_value`). The registry is `AUTOGUIDES`/`GUIDE_TYPES` in
+    `inference/run_inference.py`, with `resolve_guide_type` and
+    `check_guide_kwargs`.
+  - An autoguide starts from the pre-MAP solution when `pre_map_num_epoch > 0`,
+    and from the configured guesses otherwise.
+  - Checkpoints record `guide_type` and `guide_kwargs`.
+    `restore_svi_from_checkpoint` rebuilds that guide; a checkpoint written
+    before this change is treated as a component-guide checkpoint.
+    `tfs-fit-model` refuses to resume a checkpoint with a different guide.
+  - `tfs-sample-posterior` sends `delta` checkpoints to the Laplace
+    approximation and every other guide to guide sampling. It routes by the
+    recorded `guide_type`, because `AutoNormal` parameters share AutoDelta's
+    `{site}_auto_loc` names. Older checkpoints still fall back to that name
+    check.
+  - `get_posteriors` drops autoguide auxiliary sites (names starting with
+    `_`, such as `AutoContinuous`'s `_auto_latent`) before the forward pass.
+
+- **`tfs-summarize-calibration`** (`analysis/calibration_grid.py`) pools
+  posterior calibration across a `tfs-setup-sim-grid` grid. It reads each
+  run's `combo.json` and the `tfs-summarize-fit` outputs in its `summary/`
+  directory, and reports coverage at several interval levels, calibration
+  error and bias, PIT uniformity (KS), interval width, and median RMSE and
+  Pearson r against the simulated truth. Rows are per run x quantity x
+  stratum: whether the genotype has binding data, its purity (`spike`: only
+  a spiked sequence encodes it, `bulk_fraction` 0; `bulk`: only the bulk
+  sub-libraries, `bulk_fraction` 1; `mixed`: both, like wt and the spiked
+  single mutants), and, for theta, whether the true value is resolvable or
+  saturated. Arms (runs sharing every grid variable except `--replicate_keys`)
+  are averaged, and `--baseline key=value ...` pairs each run with the
+  baseline run fit to the same simulated data. Unfinished runs are listed in
+  `{out_prefix}_run_status.csv`. No thresholds or grades. New console script:
+  reinstall to register it.
+
+- **`GrowthData.bulk_fraction`**: each genotype's fraction of cells from the
+  bulk (co-transformed) sub-libraries, built by `ModelOrchestrator` from the
+  library composition table (legacy `spiked_genotypes`: 0 for spiked, 1
+  otherwise; `__unknown__` counts as bulk; a genotype missing from the table
+  is an error). This separates congression purity from the `ln_cfu0` prior
+  class, which previously shared one flag. Not yet used by the model, so fits
+  are unchanged.
+
+- **Library-ordered dk_geno and activity from their components.** Every
+  `dk_geno` (`fixed`, `pinned`, `hierarchical_geno`) and `activity`
+  (`fixed`, `hierarchical_geno`, `horseshoe_geno`, `hierarchical_mut`,
+  `horseshoe_mut`) component's `define_model` and `guide` take
+  `return_population=False`. When True they return `(tensor, population)`,
+  where `population` holds every genotype's value in library order, computed
+  from the same draw (no new sample sites), or `None` when the latents arrived
+  as a batch-sized substitution. The shared helper is
+  `generative/components/_population.py::per_genotype`. New
+  `GrowthData.external_dk_population` / `external_activity_population`
+  fields are the fallback for prediction. Groundwork for the congression
+  mixture's co-resident lookup; nothing requests the population yet, so fits
+  are unchanged.
+
+- **Fixed co-resident sets for the congression mixture.** `ModelOrchestrator`
+  draws, once per genotype, K co-resident plasmid sets
+  (`_draw_coresident_sets`) into `GrowthData.coresident_idx`
+  (`(num_genotype, K, N_max)` library indices, -1 = empty slot) and
+  `GrowthData.coresident_n` (co-residents per set). New settings
+  `congression_sets` (default `[12, 3, 1]`: 12 sets with one co-resident,
+  3 with two, 1 with three) and `congression_seed` (default 0) are written
+  to the config's `components` block, so a refit reproduces the same draws.
+  Co-residents are drawn from the bulk share of the pool,
+  `pool_fraction * bulk_fraction`, over genotypes with growth data
+  (`__unknown__` excluded); the legacy `spiked_genotypes` path uses a
+  uniform pool over non-spiked genotypes. Not yet used by the model, so fits
+  are unchanged.
+
+### Changed
+
+- **`tfs-configure-model`: `binding_df` is now the `--binding_df` flag**,
+  no longer a positional argument (breaking for command-line callers;
+  `configure_model(binding_path, ...)` from Python still works).
+  `examples/simulate-and-analyze/run.sh`, the congression-calibration
+  study's `run.srun` and the docs are updated.
+- **Breaking: a congressed cell's theta now follows a partition function
+  (`congression_theta_rule: homodimer`), and TF activity defaults to 1.**
+  The congression mixture (`transformation: mixture`) and the simulator
+  took a co-transformed cell's theta from its highest-theta plasmid. Both
+  now default to the homodimer partition function over equal plasmid
+  shares, `logit(theta_cell) = log sum_g x_g exp(l_g)` with `x_g = 1/M`;
+  `heterodimer` (`2 log sum_g x_g exp(l_g / 2)`) and the old `max` remain
+  selectable. The fit's rule is a new `ModelOrchestrator` setting
+  (`congression_theta_rule`, written to the config) and
+  `tfs-configure-model --congression_theta_rule`; the simulator key keeps
+  its name. The partition-function rules mix the variants' occupancies and
+  require TF activity 1: the simulator refuses otherwise, and
+  `ModelOrchestrator` refuses a mixture model with these rules and a
+  learned activity component. To match, the default activity component is
+  now `fixed` (was `horseshoe_geno`) in `ModelOrchestrator` and
+  `tfs-configure-model`. Configs that set neither key change behavior;
+  set `congression_theta_rule: max` and/or `activity_model: horseshoe_geno`
+  to keep the old ones. The example simulate configs now use `homodimer`.
+  See `planning/congression-physics-plan.md`, step 4.
+
+- **Gradient clipping is off by default in `tfs-fit-model` and
+  `tfs-prefit-calibration` (SVI, MAP, pre-MAP, prefit).** Every
+  congression-calibration fit on the step-3.5 grids ran to `max_num_epochs`,
+  and the lambda-1 seed-1 fits "blew up" to 4-5 times their best loss.
+  numpyro's `ClippedAdam` (the only optimizer, `adam_clip_norm=1.0`) clips each
+  gradient *element*. These losses have gradients of 1e3-1e6 per element, so
+  every element was clipped every step and each update followed the sign of
+  one draw's gradient; the fit settled where those signs balance, not where
+  the expected gradient vanishes. The ELBO was heavy-tailed: one binding
+  genotype (a step-like curve, `hill_n` 24.6, measured with SD 0.001) cost
+  ~2.4e5 nats whenever a guide draw crossed its step. At the sign-balance
+  point 5-90% of draws crossed it, depending on the run, and a step-size cut
+  cannot move such a point. The "blow-ups" were the block medians flipping
+  once that share passed 50%; the parameters barely moved. Resumed unclipped
+  from the blown-up checkpoints, the crossings fall to ~0 and the loss to
+  below the clipped runs' best, and a fresh unclipped fit converges (46k
+  steps). Study: `planning/studies/congression-calibration/diagnosis/`.
+  - The default optimizer is numpyro `Adam` (`inference/run_inference.py`,
+    `adam_optimizer`). `--adam_clip_norm` still selects `ClippedAdam`.
+    Step-size cuts keep whichever was chosen. Both share their state, so
+    checkpoints written under clipping resume unclipped. Checkpoints now
+    record `adam_clip_norm`.
+  - Results of fits made with the clip, notably the step-3.5 baseline and
+    lambda-profile grids, are biased toward whatever the clipped
+    equilibrium favored, and should be rerun.
+- **The convergence stop also needs an unskewed loss, and posterior SDs used
+  to measure parameter movement are floored at 1% of the prior SD.**
+  - The loss test reads block medians, which ignore rare large penalties that
+    dominate the mean, the actual objective. Each window now also reports its
+    mean and its skew, `(mean - median) / (1.4826 MAD)` about the trend line
+    (`convergence.loss_skew`). At the final step size a window with skew above
+    `MAX_LOSS_SKEW` (3) is not a plateau, so such a run is reported rather
+    than called converged. Skew never forces a step-size cut. Benign ELBO noise
+    stays below ~1 (at most 0.4 on every recorded clean trace); the clipped
+    calibration runs gave 29-37. The statistic cannot see penalties carried
+    by most steps, but then the loss level shows them.
+  - The mean-field component guide collapses the guide SDs of hierarchical
+    scales (hill_mut `theta_sigma_d_*`, `theta_epi_tau`) to ~4e-4, far below
+    any honest posterior width. Measured in those units, a location creeping
+    ~2e-4 per window read as 0.3-0.5 SDs of movement at step size 1e-6
+    forever. The SD used is now at least `PRIOR_SD_FLOOR` (0.01) times the
+    site's prior SD in the location's unconstrained units
+    (`initialization.site_unconstrained_prior_sds`), for the component guide,
+    AutoNormal and the AutoContinuous guides.
+  - `{out_prefix}_convergence.csv` gains `loss_mean`, `loss_skew` and
+    `loss_skewed`. A resume rewrites an older file under the new columns.
+
+- **Breaking: convergence and step size in `tfs-fit-model` and
+  `tfs-prefit-calibration`.** The stop rule divided the window-to-window loss
+  change by the improvement since the start of the run. On the step-3.5
+  simulations the start-up loss was ~500 times the final loss, so fits stopped
+  (and printed "converged") while the loss was still falling 20-30% per 1000
+  epochs; after a resume the same rule effectively never fired. The rule
+  before that (change relative to the loss itself) never fired on a noisy
+  ELBO. Both measured against an arbitrary scale instead of the loss's noise.
+  - Optimization now runs in windows of `--convergence_window_steps` optimizer
+    steps (default 2000, at least 10 epochs). A window's loss is *improving*
+    if a line through 20 block medians drops by more than `--convergence_z`
+    (3) standard errors and more than `--loss_rtol` (1e-6) of the loss. Each
+    parameter's trend is measured in posterior SDs (guide scale), prior SDs
+    (MAP) or log units (positive parameters), beyond noise and the step size's
+    resolution; it is *moving* above `--param_tolerance` (0.05). See
+    `inference/convergence.py`.
+  - The step size is now cut by `--adam_step_size_cut` (0.1) after
+    `--patience` (3) windows without loss improvement, down to
+    `--adam_final_step_size`. This replaces the exponential decay over
+    `max_num_epochs`, which collapsed the pre-MAP's step size within its own
+    1000 epochs and made resumes depend on `max_num_epochs`. At the final step
+    size, `--patience` windows with neither loss improvement nor parameter
+    movement end the run. `--max_num_epochs` is only a cap, and a run that
+    reaches it says it has not converged and names the parameter still
+    moving.
+  - Removed flags: `--convergence_tolerance`, `--convergence_window` (replaced
+    by `--convergence_window_steps`, in optimizer steps) and
+    `--convergence_check_interval`. `--patience` now counts windows (default
+    3, was 10 checks). `--init_param_jitter` was removed from
+    `tfs-prefit-calibration` (it never affected the MAP). Old templates that
+    pass the removed flags now fail at argument parsing.
+  - New output `{out_prefix}_convergence.csv`, one row per window (loss, drop,
+    standard error, parameter moving most, step size, decision).
+    `{out_prefix}_losses.txt` is now `epoch,loss,step,step_size`, with the
+    loss the median of each block. Checkpoints record the step size and the
+    monitor state; a resume continues at that step size.
+  - `RunInference.run_optimization` takes `convergence_window_steps`,
+    `patience`, `convergence_z`, `loss_rtol`, `param_tolerance`,
+    `final_step_size` and `step_size_cut`, in place of `convergence_tolerance`,
+    `convergence_window` and `convergence_check_interval`.
+- **SVI and MAP start where they were meant to.** AutoDelta (MAP, the SVI
+  pre-MAP, `tfs-prefit-calibration`) ignored the configured guesses and
+  started at prior medians. The component guide ignored guesses keyed by site
+  name, and the pre-MAP result reached it under names it does not use
+  (`{site}_auto_loc`), so SVI never started from the pre-MAP. Now
+  `RunInference.site_values` collects site values from guesses and MAP
+  results, MAP runs start from them, and `RunInference.component_guide_start`
+  maps them onto the component guide's `{site}_loc(s)` parameters
+  (`inference/initialization.py`). The component guide's scales now start at
+  most `--guide_init_scale` (default 0.1; was the prior width, 1.0), as the
+  numpyro autoguides do. `--pre_map_num_epoch` is now a cap for a warm-up
+  that stops when it converges (default 10000, was a fixed 1000). On the smoke
+  data SVI starts ~18 times lower in loss, converges in 40k instead of 64k
+  steps, and ends ~185 nats lower.
+
+- **Breaking: congression is now an observable-level mixture
+  (`transformation: mixture`).** The old `empirical` component replaced each
+  bulk genotype's theta by the expected maximum over co-resident plasmids and
+  grew one trajectory with the genotype's own dk_geno. Averaging theta cannot
+  represent a mixture of growth rates, and in simulation that correction
+  removed almost none of the congression error once dk_geno varies
+  (`planning/studies/congression-estimator/`). The `mixture` component splits
+  each genotype's cells into a clean class and K congressed classes built from
+  the fixed co-resident sets: a congressed cell takes theta and TF activity
+  from its highest-theta plasmid (at each titrant concentration) and the mean
+  dk_geno of its plasmids (dilution). Every class is grown through the usual
+  `theta_rescale` → `calculate_growth` → `growth_transition` pipeline on a
+  leading class axis, and the classes are mixed as
+  `ln_cfu = ln_cfu0 + logsumexp_c(log w_c + G_c)`, with
+  `w_cong = bulk_fraction * (1 - P(M = 1))` split over the sets by
+  `P(M = n + 1)`, where a transformant carries `M` ~ zero-truncated
+  Poisson(lambda) plasmids that share its abundance (as in the simulator, so
+  the fit's lambda is the simulator's `transformation_poisson_lambda`; the
+  zero class of cells that never took up a plasmid is not observed). Theta noise acts on
+  the genotype's own theta before the classes are built; `theta_growth_pred`
+  is still the genotype's own theta.
+  - `empirical` and `logit_norm` are removed and refused by name with a
+    message; configs must switch to `transformation: mixture` (fits are not
+    comparable).
+  - New transformation interface: `define_model`/`guide` sample lambda only;
+    `cell_classes(focal, population, params, data)` returns the classes;
+    `NEEDS_POPULATION` replaces `NEEDS_FULL_POPULATION_THETA`.
+  - `GrowthData.congression_mask` is removed; purity is `bulk_fraction`.
+  - The `categorical_geno`/`empirical` incompatibility check is gone (fixed in
+    step 3.3a).
+  - A `mixture` model with bulk genotypes but an empty co-resident pool is
+    refused when built.
+  - `predict()` passes library-wide references and the fitted model's
+    co-resident sets to the genotype-subset model: dk_geno and activity are
+    posterior medians of their deterministic sites; theta is the theta
+    component evaluated at posterior-median parameters over the whole library
+    on the *prediction's* concentration grid (which can differ from the fit's). A raw MAP
+    checkpoint with a `mixture` model now raises (run `tfs-sample-posterior`)
+    instead of warning and predicting without a background.
+  - Growth tensors grow by a factor of 1 + K (K = 16 by default); use
+    mini-batching or a smaller `congression_sets` on large libraries.
+
+- **Breaking: the empirical pipeline's congression de-attenuation (Stage 1.5)
+  is retired.** `--congression_lambda` is removed from `tfs-fit-genotypes`
+  and `tfs-build-empirical`, together with `--library_config` and
+  `--save_theta_history` on `tfs-fit-genotypes` and the
+  `*_params_deattenuated.csv`, `*_theta_history.csv` and
+  `*_stage1p5_fits.csv` outputs. It corrected theta alone with the
+  expected-maximum operator the fit dropped above, and it used Poisson rather
+  than zero-truncated co-resident weights, a spiked/bulk split rather than
+  `bulk_fraction`, and no dk_geno dilution. Empirical distributions are now
+  built from uncorrected per-genotype fits. `genotype_fit/congression.py`,
+  `simulate/empirical/congression.py` and
+  `transformation/_congression.py` are deleted. A replacement is filed as
+  `planning/empirical-mixture-refit.md`.
+
+- **Test reports and badges are no longer committed.** `reports/` and
+  `docs/badges/` are gitignored and untracked; `run_all_tests.sh` now writes
+  everything, badges included, under `reports/`, and stops on the first
+  failing step. `README.rst` shows the live GitHub Actions status badge for
+  `tests.yml` instead. A new `.flake8` excludes `.claude/` (agent worktrees),
+  build and venv directories, which made up most of `reports/flake.txt`.
+
+- **Co-transformed cells in the simulator now grow by cell-level physics.**
+  A cell carrying several plasmids used to get the min/max/mean/... of its
+  plasmids' whole `k*t` (`multi_plasmid_combine_fcn`, per marker library).
+  Because `dk_geno` varies more across genotypes than the whole theta signal,
+  that let `dk_geno` decide which plasmid set the cell's growth. Now the
+  cell's theta and TF activity come from `congression_theta_rule` (`max`:
+  the highest-theta plasmid at each condition), its `dk_geno` from
+  `congression_dk_rule` (`dilution`: share-weighted mean), and its `k_pre`,
+  `k_sel` and `k*t` from the same growth model, theta rescale, growth
+  transition and tube noise as any genotype. Single-plasmid cells are
+  unchanged; at lambda = 0 output is identical to before.
+  - **Breaking:** `multi_plasmid_combine_fcn` is removed and a config that
+    sets it is refused with a message naming the new keys. Both new keys are
+    optional (defaults `max` and `dilution`). Example configs updated.
+  - With `transformation_poisson_lambda > 0`, `selection_experiment` needs
+    the config's `growth` block and phenotype columns `theta`, `activity`,
+    `dk_geno`, and checks that they reproduce the phenotype's `k_pre`/`k_sel`
+    (`_check_cell_components`), so the two paths cannot drift apart.
+  - New `simulate/cell_rules.py` (`THETA_RULES`, `DK_RULES`). New
+    `thermo_to_growth.growth_rates`/`growth_rate_one_condition` are the one
+    theta/activity/dk_geno -> k formula, used per genotype and per cell;
+    they replace `_apply_growth_params`.
+
+### Fixed
+
+- **Step-size cuts during a slow descent.** The convergence monitor cut the
+  step size after `patience` windows each without a significant loss trend,
+  even when those windows together were clearly still falling: on the
+  count-likelihood v2 grid, 20 of 23 runs made their first cut mid-descent
+  (pooled t = 4-14), and one (run 0012) was cut into a wrong optimum at
+  twice its twin's ELBO. Before a cut or a stop the monitor now fits one
+  line through all the stalled windows (`convergence.pooled_loss_trend`) and
+  starts the count over if that is a significant descent. Fits spend longer
+  at the large step size; more may reach `max_num_epochs`. New
+  `pooled_loss_t` column in `{out_prefix}_convergence.csv`; checkpoints
+  carry the stalled windows.
+- **NaN from horseshoe priors far in the tail.** The slab-regularized
+  horseshoe scale `sqrt(c2 lam^2 / (c2 + tau^2 lam^2))` and numpyro's
+  HalfCauchy log density both square the local scale; a draw near 1e20
+  overflowed float32 and turned the fit to NaN (hill_mut epistasis for
+  low-read doubles, whose guide local scales widened to ~11 in log space;
+  count-likelihood v2 run 0007). New `components/_horseshoe.py`
+  (`regularized_scale`, a `HalfCauchy` with a `hypot`-based log density),
+  used by hill_mut, activity `horseshoe_mut`, `thermo/horseshoe.py` and the
+  thermo `PK`/`PnnC`/`PddG` variants; same values, no overflow.
+- **`tfs-prefit-calibration` took its Hessian at the wrong point.**
+  `RunInference.compute_hessian_sigmas` treated the MAP values it was given
+  as unconstrained, but its caller passes `svi.get_params(...)`, which
+  AutoDelta returns constrained; every positive site (hyper-scales, noise
+  scales, the count likelihood's `phi`) was evaluated at `exp(value)`. The
+  pre-fit's Hessian-derived `k_scale`/`m_scale_plus` were therefore off
+  (on a count-likelihood grid run, k sigmas of 0.0012-0.0029 against 0.0003-0.0007 at the
+  right point, so the written `k_scale` was ~0.0028 where the 0.002 floor
+  now applies), and on the count likelihood `phi` overflowed and wrote
+  NaN scales that crashed the fit. It now maps the values to unconstrained
+  space first. `tfs-sample-posterior` and `tfs-extract-params` read the
+  optimizer state (already unconstrained) and were not affected.
+- **Count likelihood NaN for genotypes predicted near extinction.** The
+  negative binomial's concentration `mu / phi` underflowed float32 when the
+  expected reads fell below about `e^-40` (reached by genotypes with zero
+  reads everywhere, whose likelihood keeps rising as `mu` falls), and the
+  log-pmf's gradient and Hessian went to NaN; SVI then exploded within its
+  first 250 steps. The concentration now has a floor of `e^-30`
+  (`growth_counts._LOG_C_FLOOR`), which changes only rows expecting under
+  ~1e-12 reads.
+- **Prediction with a per-tube `sample_offset`.** `tfs-predict-growth` (and
+  anything calling `analysis.prediction.predict` on a new time or
+  concentration grid) failed to reshape the per-tube offsets of
+  `sample_offset: normal` (and now `level`) onto the prediction grid's
+  tubes. Per-tube offsets are now set to zero there: a prediction is for a
+  typical tube.
+- **Absent prior groups survive the priors CSV.** `write_configuration`
+  wrote a `None` prior group (growth priors of a binding-only model, binding
+  priors of a growth-only one) as a `None` row that reloaded as NaN; it is
+  now left out and reloads as `None` (`configuration_io._extract_scalars`,
+  `_update_dataclass`).
+- **MAP parameter movement silently lost all its prior-SD units on models with
+  a horseshoe slab.** `initialization.site_prior_sds` did not catch the
+  `ZeroDivisionError` numpyro raises for the variance of an `InverseGamma`
+  with Python-float concentration 2 (the slab prior with the default
+  `slab_df` 4). The whole calculation then fell back to unconstrained units
+  for every parameter ("Could not compute prior SDs for MAP parameter
+  movement" in the pre-MAP log of every hill_mut epistasis fit). An undefined
+  variance now skips only its own site.
+
+- **Library enumeration counted every codon of a tile as a site, flooding
+  partially degenerate libraries with wt.** `LibraryManager._prepare_indexes`
+  (`genetics/library_manager.py`) indexed every block in a tile, so each
+  non-degenerate codon (and each out-of-frame flank) added one wt copy to every
+  single-mutant sub-library, and each such codon paired with a degenerate one
+  added a full single-mutant expansion to the double-mutant sub-libraries. A
+  site is now a codon whose designed sequence differs from wt (a degenerate or
+  explicit mutant codon). Fully degenerate tiles, including the real design and
+  `examples/process_raw`/`examples/simulate`, enumerate exactly as before.
+  Partially degenerate ones change a lot: in
+  `planning/studies/congression-calibration/simulate_config.yaml`, `single-1`
+  goes from 46 sequences (30 wt) to 16 (0 wt), `single-2` from 67 (36 wt) to
+  32 (1 wt), and `double-1-2` from 3082 (1080 wt) to 512 (0 wt), and wt's share
+  of the co-resident pool drops from 0.39 to 0.003 (0.59 to 0.015 for
+  `examples/simulate-and-analyze`). Everything built on the enumeration moves
+  with it for such libraries: the simulator's transformation draws,
+  `tfs-report-cfu0`, and `tfs-configure-model`'s library snapshot
+  (`pool_fraction`, `bulk_fraction`) and hence the fit's co-resident sets.
+  Simulations and fits made from partially degenerate configs should be
+  regenerated. Genotype names are unchanged. `tfs-process-fastq` no longer
+  expects the exact wt DNA sequence unless a site's expansion or a spiked
+  sequence contains it (it used to come from the non-degenerate codons). A
+  tile with no
+  site is now an error, and a design that encodes no wt at all (no site's
+  codon encodes the wt amino acid and no spiked sequence is wt) warns, since wt
+  is then not an expected genotype.
+
+- **The SVI loss file and epoch checkpoints were numbered from the end of the
+  pre-MAP**, because the step counter carried over from the pre-MAP to SVI on
+  the same `RunInference`; the SVI `losses.txt` also lost its header. A run
+  started without a state now resets the counter.
+
+- **`tfs-setup-sim-grid` grids could not be moved, and nested file paths were
+  not resolved.** Each run's `tfs_sim_config.yaml` and rendered template
+  referred to input files by a path relative to their original location, so
+  moving the grid (on or off a cluster, to another partition) broke every run.
+  Nested file keys (`binding_data.*.choose_by` params files,
+  `empirical.phenotype_model`) were not resolved at all and so needed the run
+  template to copy the file in. Setup now copies every input file into
+  `<out_prefix>/inputs/` once and each run refers to it as
+  `../inputs/<name>`, so the grid directory is self-contained. The file-path
+  keys are listed in `_SIM_PATH_KEYS`
+  (`simulate/scripts/setup_sim_grid_cli.py`), nested ones included; the
+  `stratified`/`random` `choose_by` keywords are left alone, and template
+  variables naming a file are copied the same way. Two different files with
+  the same name get a numeric suffix, and a changed file never overwrites a
+  copy that existing runs use. Setup fails before writing anything if an input
+  file is missing or is a directory, or if a config value outside
+  `_SIM_PATH_KEYS` names an existing file. The congression-calibration study's
+  `run.srun` no longer copies `hill_params.csv`, and its grid YAMLs drop the
+  `hill_params_file` template block.
+- **`tfs-setup-grid` grids could not be moved.** Each run's
+  `tfs_configure_config.yaml` and rendered template referred to the input
+  files (`growth_df`, `binding_df`, `library_config`, ...) by a path relative
+  to their original location, so moving the grid directory (on or off a
+  cluster, to another partition) broke every run. Setup now copies every input
+  file into `<out_prefix>/inputs/` once and each run refers to it as
+  `../inputs/<name>`, so the grid directory is self-contained. The inputs are
+  the `configure_model` file arguments in `_PATH_KEYS`
+  (`tfmodel/scripts/setup_grid_cli.py`) and template variables naming a file;
+  the written config names the copy everywhere it recorded the file,
+  `library.source` included. The priors/guesses/library CSVs are per-run
+  outputs and are unchanged. Two different files with the same name get a
+  numeric suffix, and a changed file never overwrites a copy that existing
+  runs use. Setup now fails before writing anything if an input file is
+  missing or is a directory (previously a missing data file quietly skipped
+  the combination), if a `configure_model` value outside `_PATH_KEYS` names a
+  file, or if the template does not render. The staging helpers moved from
+  `setup_sim_grid_cli.py` into `util/grid_utils.py` (`InputStager`,
+  `check_no_outside_paths`, `stage_template_vars`, `render_run_template`),
+  and both grid CLIs use them; the unused `relativize_*` path helpers were
+  removed.
+- **Growth prediction failed on every model built from a library file.**
+  `tfs-predict-growth`, and everything else that goes through
+  `prediction.predict` (prior-predictive growth, the genotype trajectory
+  plots), raised. `prediction.copy_orchestrator` rebuilt the prediction model from
+  `orchestrator.settings`, which carries both `library_file` and the spiked
+  list derived from it, and `ModelOrchestrator` refuses the pair. It now
+  drops the derived list when `library_file` is set, as
+  `write_configuration` does. Configs from `tfs-configure-model
+  --library_config` (the only current path) were affected; legacy
+  `spiked_genotypes` configs were not.
+
+- **Per-genotype latents scrambled across genotypes under autoguides.**
+  Several components sampled their per-genotype latents in a plate sized
+  `data.batch_size`, so every numpyro autoguide -- including the `AutoDelta`
+  behind MAP, pre-MAP and `tfs-prefit-calibration` -- held one parameter per
+  batch *position* rather than per genotype. The full-batch index is
+  binding-first and reshuffled every step, so this happened even without
+  mini-batching: binding genotypes kept their positions, but every bulk
+  genotype's latents were overwritten by whichever genotype landed in that
+  position. The component SVI guide was not affected, since it holds
+  library-sized parameters and slices them itself.
+  - `activity/hierarchical_geno`, `activity/horseshoe_geno`,
+    `dk_geno/hierarchical_geno`, `ln_cfu0/hierarchical`,
+    `ln_cfu0/hierarchical_factored`, `theta/categorical_geno` and
+    `noise/logit_normal` now sample these latents in a library-sized
+    `{name}_genotype_plate` and slice them to the batch with
+    `data.batch_idx`. The latent priors and guides that were wrapped in
+    `scale_vector` no longer are; only the likelihood is scaled.
+  - The theta-noise components (`zero`, `beta`, `logit_normal`) take an
+    optional `data` argument, which `generative/model.py` now passes.
+  - `noise/beta` is a documented exception: its `{name}_dist` latent is the
+    noisy theta itself and remains batch-shaped.
+  - `RunInference.get_map_posteriors` and `get_laplace_posteriors` now raise
+    on a MAP checkpoint whose genotype-indexed latents are not library-sized,
+    instead of clipping the indices and reusing one genotype's value for
+    another. **MAP checkpoints written before this fix must be refit.**
+  - `draw_prior` no longer returns plate sites as if they were latents.
+- **New `tfmodel/inference/batch_safety.py`** detects batch-dependent latents
+  by tracing a model at two batch sizes (abstractly, under `jax.eval_shape`).
+  `tests/tfscreen/tfmodel/inference/test_batch_safety.py` runs it across the
+  component registry. `orchestrator_latent_dimension` gives the size of the
+  flattened latent vector an `AutoContinuous` guide works in.
+- **`RunInference.run_optimization` refuses unsafe autoguide fits.** When the
+  guide is any numpyro `AutoGuide` (including the `AutoDelta` behind MAP,
+  pre-MAP and `tfs-prefit-calibration`), it first runs the batch-safety check
+  and raises a `ValueError` naming the offending sites -- for example, a MAP
+  fit with `theta_growth_noise=beta`. The component guide is not checked. For
+  an `AutoMultivariateNormal` guide it also reports the latent dimension and
+  the memory the dense covariance needs, and warns above 4 GB.
+
+- **`tfs-summarize-fit` could pick the wrong config or losses file in a grid
+  run directory.** It matched `*_config.yaml` and `*_losses.txt`, which there
+  also match the simulate config and the prefit/pre-MAP losses; the right file
+  won only by alphabetical order. It now takes the config that has `data` and
+  `components` sections, and ignores `*_prefit_losses.txt` and
+  `*_premap_losses.txt`.
+
+- **Simulator counted a co-transformed cell once per plasmid.**
+  `_sim_sequencing` and `_calc_genotype_cfu0`
+  (`simulate/selection_experiment.py`) gave every plasmid in a cell that
+  cell's whole abundance, so a cell carrying n plasmids contributed n cells'
+  worth of reads and `ln_cfu_0`. Bulk genotypes (transformed with
+  `transformation_poisson_lambda`) were inflated relative to the monoclonal
+  spikes by `E[n | n >= 1] = lambda / (1 - exp(-lambda))` (1.19 at
+  lambda = 0.357), so a genotype's simulated spike/bulk make-up depended on
+  lambda. A cell's abundance is now split among its plasmids (1/n each; new
+  helper `_plasmid_shares`), so each cell counts once and the simulated
+  composition matches the design `pool_fraction`/`bulk_fraction` from
+  `genetics.library_composition_table` at any lambda. **Simulated read counts
+  and `ln_cfu_0` change for any config with lambda > 0.** Growth itself
+  (`_sim_growth`) is unchanged.
+
+- **Batch-order bug in three more components.** `activity/hierarchical_mut`
+  and `activity/horseshoe_mut` sliced activity to the batch only when
+  `batch_size < num_genotype`, and `theta/_simple` indexed its per-genotype
+  theta by the batch-relative `geno_theta_idx` alone. The full-batch training
+  index is binding-first and reshuffled every step, so at full batch these
+  returned library-ordered values for reordered batch positions: bulk
+  genotypes got other genotypes' activity (or, for `_simple` with
+  per-genotype curves, theta). The shape-based batch-safety check could not
+  see it. All three now slice through `batch_idx`. Fits using
+  `hierarchical_mut`/`horseshoe_mut` activity without mini-batching should be
+  rerun. The pre-fit's `_simple` model contains only binding genotypes, whose
+  index is library order and never reshuffled, so pre-fit results are
+  unaffected.
+  - New `find_batch_order_mismatches` /
+    `find_orchestrator_batch_order_mismatches` in
+    `inference/batch_safety.py`: trace two orderings of the full batch with
+    the latents held fixed and check that the batch-positional predictions
+    follow the index. `test_batch_safety.py` runs it across the component
+    registry and the epistasis and binding-only variants.
+
+- **`theta/categorical_geno` full-population theta.** The component sliced
+  its per-genotype latent to the batch when sampling, so the full-population
+  theta `generative/model.py` builds for the congression background (by
+  calling `run_model` with `batch_idx = geno_theta_idx = arange(num_genotype)`)
+  came back in batch order at full batch and indexed past the batch under
+  mini-batching, repeating the last genotype. The empirical correction's
+  background CDF is order-free, so full-batch fits were unaffected; fits
+  combining `categorical_geno`, `transformation=empirical` and mini-batching
+  used a corrupted background and should be rerun. theta now stays
+  library-sized and `run_model` indexes it through
+  `batch_idx[geno_theta_idx]` (the `hill_geno` pattern). The `theta_theta`
+  deterministic site is now stored for every genotype.
+  - New `tests/tfscreen/tfmodel/generative/test_population_theta.py`
+    checks, for every theta component (model and guide; shuffled full batch
+    and mini-batch), that the full-population theta is library-ordered.
+
+- **Posterior files depended on `forward_batch_size`.** `get_posteriors`,
+  `get_laplace_posteriors` and `get_map_posteriors` run the model over
+  genotype chunks, and sliced every genotype-indexed latent to the chunk
+  first. Components that index library-sized parameters by library position
+  (`hill_geno`, `thermo.*`, and `categorical_geno`) then read past the sliced
+  arrays for every chunk after the first, and JAX clamped the index instead
+  of raising. So for any library larger than one chunk (512 genotypes by
+  default), the deterministic sites written for genotypes past the first
+  chunk (`theta_growth_pred`, `growth_pred`, and everything
+  `tfs-predict-theta`/`-growth` derive from them) were wrong. The forward pass
+  now receives library-sized latents whole, as in training, and slices only
+  batch-positional latents (`noise/beta`) and the saved output
+  (`RunInference._batch_positional_latents`). Posterior files for libraries
+  larger than `forward_batch_size` should be regenerated with
+  `tfs-sample-posterior`.
+  - New `tests/tfscreen/tfmodel/inference/test_forward_chunking.py` checks
+    that posterior and MAP posterior files are identical at
+    `forward_batch_size` 512 and 2.
 
 ## [0.4.4] - 2026-09-22
 
@@ -677,7 +2139,8 @@ genotypes are handled.
 - **Fitting routines** (`tfscreen.fitting`): OLS, WLS, GLS, GEE, GLM, NLS, matrix NLS/WLS, and Kalman / unscented Kalman filter estimators.
 - Walkthrough notebook (`notebooks/tfscreen-walkthrough/`).
 
-[Unreleased]: https://github.com/harmslab/tfscreen/compare/v0.4.4...HEAD
+[Unreleased]: https://github.com/harmslab/tfscreen/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/harmslab/tfscreen/compare/v0.4.4...v0.5.0
 [0.4.4]: https://github.com/harmslab/tfscreen/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/harmslab/tfscreen/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/harmslab/tfscreen/compare/v0.4.1...v0.4.2

@@ -724,13 +724,13 @@ class TestPredictGrowthSubset:
                            out_prefix=str(tmp_path / "out"),
                            subset_genotypes=True,
                            genotype_batch_size=3,
-                           subset_seed=0)
+                           seed=0)
         genos = set(all_calls[0]["genotypes"])
         assert "wt" in genos      # binding
         assert "A1B" in genos     # spiked
 
     def test_subset_seed_is_deterministic(self, mock_orchestrator_subset, tmp_path):
-        """Same subset_seed → identical sampled block across runs."""
+        """Same seed → identical sampled block across runs."""
         results = []
         for _ in range(2):
             fake_predict, all_calls = self._make_fake_predict(mock_orchestrator_subset)
@@ -740,7 +740,7 @@ class TestPredictGrowthSubset:
                                out_prefix=str(tmp_path / "out"),
                                subset_genotypes=True,
                                genotype_batch_size=3,
-                               subset_seed=42)
+                               seed=42)
             results.append(sorted(all_calls[0]["genotypes"]))
         assert results[0] == results[1]
 
@@ -756,7 +756,7 @@ class TestPredictGrowthSubset:
                                out_prefix=str(tmp_path / "out"),
                                subset_genotypes=True,
                                genotype_batch_size=3,
-                               subset_seed=seed)
+                               seed=seed)
             # the non-mandatory member of the block
             extra = set(all_calls[0]["genotypes"]) - {"wt", "A1B"}
             sampled |= extra
@@ -826,7 +826,7 @@ class TestPredictGrowthSubset:
                            out_prefix=out,
                            subset_genotypes=True,
                            genotype_batch_size=3,
-                           subset_seed=0)
+                           seed=0)
         df = pd.read_csv(f"{out}.csv")
         assert (df["in_training_data"] == 1).all()
 
@@ -899,7 +899,7 @@ class TestPredictGrowthSubsetBackoff:
                            out_prefix=out,
                            subset_genotypes=True,
                            genotype_batch_size=6,
-                           subset_seed=0)
+                           seed=0)
         # More than one attempt was made, and the final (successful) call fit.
         assert len(all_calls) > 1
         assert len(all_calls[-1]["genotypes"]) <= 3
@@ -917,7 +917,7 @@ class TestPredictGrowthSubsetBackoff:
                            out_prefix=out,
                            subset_genotypes=True,
                            genotype_batch_size=6,
-                           subset_seed=0)
+                           seed=0)
         # Every attempted call must contain the mandatory anchors.
         for call in all_calls:
             assert "wt" in call["genotypes"]
@@ -937,7 +937,7 @@ class TestPredictGrowthSubsetBackoff:
                                out_prefix=str(tmp_path / "out"),
                                subset_genotypes=True,
                                genotype_batch_size=6,
-                               subset_seed=0)
+                               seed=0)
         # Last attempt was the mandatory-only block (extra exhausted).
         assert len(all_calls[-1]["genotypes"]) == 2
 
@@ -956,5 +956,5 @@ class TestPredictGrowthSubsetBackoff:
                                out_prefix=str(tmp_path / "out"),
                                subset_genotypes=True,
                                genotype_batch_size=6,
-                               subset_seed=0)
+                               seed=0)
         assert len(all_calls) == 1  # no retries on a non-OOM error

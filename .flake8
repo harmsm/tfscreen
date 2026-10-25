@@ -1,0 +1,11 @@
+[flake8]
+exclude =
+    .git,
+    .claude,
+    __pycache__,
+    build,
+    dist,
+    docs/build,
+    *.egg-info,
+    .venv,
+    venv

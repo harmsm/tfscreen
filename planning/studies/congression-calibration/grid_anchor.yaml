@@ -1,0 +1,55 @@
+# ---------------------------------------------------------------------------
+# Anchored follow-up to grid.yaml (congression calibration, step 3.5)
+#
+#   tfs-setup-sim-grid grid_anchor.yaml --out_prefix congression_calibration_anchor
+#   for d in congression_calibration_anchor/run_*/; do (cd "$d" && sbatch run.srun); done
+#
+# Tests the slide diagnosis (README "Third diagnosis"): the k/dk_geno slide
+# is held only by wt's dk_geno pin, which the Student-t growth likelihood
+# makes cheap to abandon, and the prefit's k prior never engaged (its
+# Hessian scale hit the 0.1 ceiling). Pin k with a tight prefit prior
+# (k_scale_ceiling 0.005), at binding_weight 1. Same simulations as grid.yaml
+# runs 0001-0003 (lambda 0) and 0037-0039 (lambda 1.0): wide dk, seed 1.
+# 2 lambda x 3 fits = 6 runs.
+# ---------------------------------------------------------------------------
+
+base_config: simulate_config.yaml
+
+run_name: "lam{{ transformation_poisson_lambda }}__dkloc{{ dk_geno_hyper_loc }}__seed{{ seed }}__{{ fit }}_{{ lam_prior }}__bw{{ binding_weight }}__kceil{{ k_scale_ceiling }}"
+
+output_file: run.srun
+
+
+simulate:
+
+  - name: lam
+    variants:
+      - transformation_poisson_lambda: 0.0
+      - transformation_poisson_lambda: 1.0
+
+  - name: dk
+    variants:
+      - dk_geno_hyper_loc: -3.5
+        dk_geno_hyper_scale: 0.5
+        dk_geno_hyper_shift: 0.02
+
+  - name: seed
+    variants:
+      - seed: 1
+
+
+template:
+
+  - name: fit
+    variants:
+      - fit: single
+        lam_prior: "off"
+      - fit: mixture
+        lam_prior: matched
+      - fit: mixture
+        lam_prior: measured
+
+  - name: weight
+    variants:
+      - binding_weight: 1.0
+        k_scale_ceiling: 0.005

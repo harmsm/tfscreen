@@ -5,6 +5,7 @@ from flax.struct import dataclass, field
 from typing import Dict, Any, Mapping
 
 from tfscreen.tfmodel.data_class import GrowthData
+from tfscreen.tfmodel.generative.components._population import per_genotype
 from tfscreen.tfmodel.generative.components._pinning import (
     _hyper,
     _pinned_value,
@@ -43,9 +44,19 @@ class ModelPriors:
         pytree_node=False, default_factory=dict
     )
 
+def _activity_values(hyper_loc, hyper_scale, wt_indexes):
+    """Per-genotype activity from log-space offsets; wt pinned to 1."""
+    def compute(activity_offset, genotype_idx):
+        log_activity = hyper_loc + activity_offset * hyper_scale
+        activity = jnp.clip(jnp.exp(log_activity), max=1e30)
+        return jnp.where(jnp.isin(genotype_idx, wt_indexes), 1.0, activity)
+    return compute
+
+
 def define_model(name: str, 
                  data: GrowthData, 
-                 priors: ModelPriors) -> jnp.ndarray:
+                 priors: ModelPriors,
+                 return_population: bool = False) -> jnp.ndarray:
     """
     Defines the hierarchical model for genotype-specific activity.
 
@@ -73,12 +84,18 @@ def define_model(name: str,
     priors : ModelPriors
         A Pytree (Flax dataclass) containing the hyperparameters for
         the pooled priors.
+    return_population : bool, default False
+        Also return the library-ordered per-genotype values (shape
+        ``(num_genotype,)``, or ``None`` when the latents arrived as a
+        batch-sized substitution), for callers that look genotypes up by
+        library index (the congression mixture).
 
     Returns
     -------
     jnp.ndarray
         The sampled `activity` values, expanded to match the shape of
-        the observations via ``data.map_genotype``.
+        the observations via ``data.map_genotype``. With
+        ``return_population``, a ``(tensor, population)`` tuple.
     """
 
     pinned = priors.pinned
@@ -97,22 +114,16 @@ def define_model(name: str,
     )
 
     # Sample non-centered offsets for mutant genotypes only
-    with pyro.plate("shared_genotype_plate", size=data.batch_size,dim=-1):
-        with pyro.handlers.scale(scale=data.scale_vector):
-            activity_offset = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
+    with pyro.plate(f"{name}_genotype_plate", data.num_genotype, dim=-1):
+        activity_offset = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
 
-    # Guard against full-sized array substitution during initialization or re-runs 
-    # with full-sized initial values
-    if activity_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
-        activity_offset = activity_offset[..., data.batch_idx]
-    
-    # Calculate in log-space, then exponentiate
-    log_activity_mutant_dists = log_activity_hyper_loc + activity_offset * log_activity_hyper_scale
-    activity = jnp.clip(jnp.exp(log_activity_mutant_dists), max=1e30)
-
-    # Set wildtype activity to 1.0
-    is_wt_mask = jnp.isin(data.batch_idx, data.wt_indexes)
-    activity = jnp.where(is_wt_mask, 1.0, activity)
+    # Sampled at library size: slice to this batch's genotypes (a value of
+    # any other size is an already-sliced substitution from the posterior
+    # forward pass). Computed in log-space; wt activity is 1.0.
+    activity, population = per_genotype(
+        _activity_values(log_activity_hyper_loc, log_activity_hyper_scale,
+                         data.wt_indexes),
+        [activity_offset], data, return_population)
 
     # Register per-genotype values for inspection
     pyro.deterministic(name, activity)  
@@ -120,11 +131,14 @@ def define_model(name: str,
     # Broadcast to full-sized tensor
     activity = activity[None,None,None,None,None,None,:] 
 
+    if return_population:
+        return activity, population
     return activity
 
 def guide(name: str, 
           data: GrowthData, 
-          priors: ModelPriors) -> jnp.ndarray:
+          priors: ModelPriors,
+          return_population: bool = False) -> jnp.ndarray:
     """
     Guide corresponding to the hierarchical activity model.
 
@@ -167,30 +181,22 @@ def guide(name: str,
                                constraint=dist.constraints.positive)
 
     # Sample non-centered offsets for mutant genotypes only
-    with pyro.plate("shared_genotype_plate", size=data.batch_size,dim=-1):
-        with pyro.handlers.scale(scale=data.scale_vector):
+    with pyro.plate(f"{name}_genotype_plate", data.num_genotype, dim=-1):
+        activity_offset = pyro.sample(f"{name}_offset", dist.Normal(offset_locs, offset_scales))
 
-            batch_locs = offset_locs[data.batch_idx]
-            batch_scales = offset_scales[data.batch_idx]
-
-            activity_offset = pyro.sample(f"{name}_offset", dist.Normal(batch_locs, batch_scales))
-
-    # Guard against full-sized array substitution during initialization or re-runs 
-    # with full-sized initial values
-    if activity_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
-        activity_offset = activity_offset[..., data.batch_idx]
-    
-    # Calculate in log-space, then exponentiate
-    log_activity_mutant_dists = log_activity_hyper_loc + activity_offset * log_activity_hyper_scale
-    activity = jnp.clip(jnp.exp(log_activity_mutant_dists), max=1e30)
-
-    # Set wildtype activity to 1.0
-    is_wt_mask = jnp.isin(data.batch_idx, data.wt_indexes)
-    activity = jnp.where(is_wt_mask, 1.0, activity)
+    # Sampled at library size: slice to this batch's genotypes (a value of
+    # any other size is an already-sliced substitution from the posterior
+    # forward pass). Computed in log-space; wt activity is 1.0.
+    activity, population = per_genotype(
+        _activity_values(log_activity_hyper_loc, log_activity_hyper_scale,
+                         data.wt_indexes),
+        [activity_offset], data, return_population)
 
     # Broadcast to full-sized tensor
     activity = activity[None,None,None,None,None,None,:] 
 
+    if return_population:
+        return activity, population
     return activity
 
 

@@ -49,8 +49,9 @@ def mock_data():
     scale_vector = jnp.ones(batch_size, dtype=float)
     map_theta = jnp.array([0, 5, 10, 23, 1], dtype=jnp.int32)
     
-    # New required fields
-    geno_theta_idx = jnp.array([1, 3], dtype=jnp.int32)
+    # geno_theta_idx is batch-relative (as get_batch builds it); batch_idx
+    # maps batch positions to library genotypes.
+    geno_theta_idx = jnp.arange(batch_size, dtype=jnp.int32)
     titrant_conc = jnp.array([0.0, 1.0, 10.0])
     
     return MockData(
@@ -66,20 +67,24 @@ def mock_data():
         titrant_conc=titrant_conc
     )
 
+def _distinct_offsets(mock_data):
+    """Library-sized offsets that differ by genotype, so indexing is visible."""
+    shape = (mock_data.num_titrant_name, mock_data.num_titrant_conc,
+             mock_data.num_genotype)
+    return jnp.arange(np.prod(shape), dtype=float).reshape(shape) / 10.0
+
+
 @pytest.fixture
 def model_setup(mock_data):
     """
-    Provides a deterministic ThetaParam object (BATCHED) for testing run_model.
+    Provides a deterministic, library-sized ThetaParam for testing run_model.
     """
     name = "test_theta_cat"
     priors = get_priors()
-    base_guesses = get_guesses(name, mock_data)
-    
-    batch_guesses = base_guesses.copy()
-    full_offsets = base_guesses[f"{name}_logit_theta_offset"]
-    batch_guesses[f"{name}_logit_theta_offset"] = full_offsets[..., mock_data.batch_idx]
+    guesses = get_guesses(name, mock_data)
+    guesses[f"{name}_logit_theta_offset"] = _distinct_offsets(mock_data)
 
-    substituted_model = substitute(define_model, data=batch_guesses)
+    substituted_model = substitute(define_model, data=guesses)
     theta_param = substituted_model(name=name,
                                     data=mock_data,
                                     priors=priors)
@@ -123,22 +128,20 @@ def test_define_model_shapes_and_values(mock_data):
     name = "test_theta_cat"
     priors = get_priors()
     
-    base_guesses = get_guesses(name, mock_data)
-    batch_guesses = base_guesses.copy()
-    full_offsets = base_guesses[f"{name}_logit_theta_offset"]
-    batch_guesses[f"{name}_logit_theta_offset"] = full_offsets[..., mock_data.batch_idx]
-    
-    substituted_model = substitute(define_model, data=batch_guesses)
+    guesses = get_guesses(name, mock_data)
+
+    substituted_model = substitute(define_model, data=guesses)
     theta_param = substituted_model(name=name,
                                     data=mock_data,
                                     priors=priors)
 
-    expected_batch_shape = (
+    # theta stays library-sized (library order); run_model selects the batch.
+    expected_shape = (
         mock_data.num_titrant_name,
         mock_data.num_titrant_conc,
-        mock_data.batch_size
+        mock_data.num_genotype
     )
-    assert theta_param.theta.shape == expected_batch_shape
+    assert theta_param.theta.shape == expected_shape
     assert theta_param.mu.shape == (mock_data.num_titrant_name, mock_data.num_titrant_conc, 1)
     assert jnp.allclose(theta_param.theta, 0.5)
     assert jnp.allclose(theta_param.concentrations, mock_data.titrant_conc)
@@ -151,18 +154,14 @@ def test_run_model_no_scatter(model_setup, mock_data):
     data = mock_data._replace(scatter_theta=0)
     theta_calc = run_model(theta_param, data)
     
-    # We no longer assert 'is' because run_model slices genotypes
-    # it should be equal if indices match full theta_param.theta
-    # In model_setup, theta_param.theta already has batch_size genotypes.
-    # mock_data.geno_theta_idx is [1, 3] which matches mock_data.batch_idx.
-    
+    # Batch position j must hold library genotype batch_idx[j].
     expected_shape = (
         mock_data.num_titrant_name,
         mock_data.num_titrant_conc,
         mock_data.batch_size
     )
     assert theta_calc.shape == expected_shape
-    assert jnp.allclose(theta_calc, theta_param.theta)
+    assert jnp.allclose(theta_calc, theta_param.theta[..., mock_data.batch_idx])
 
 def test_run_model_with_scatter(model_setup, mock_data):
     """
@@ -194,7 +193,7 @@ def test_run_model_concentration_mapping(model_setup, mock_data):
     # Check values mapping
     # Orig concentrations: [0.0, 1.0, 10.0] -> indices [0, 1, 2]
     # new_conc [1.0, 0.0] should map to indices [1, 0]
-    expected = theta_param.theta[:, [1, 0], :]
+    expected = theta_param.theta[:, [1, 0], :][..., mock_data.batch_idx]
     assert jnp.allclose(theta_calc, expected)
 
 def test_guide_logic_and_shapes(mock_data):
@@ -212,7 +211,7 @@ def test_guide_logic_and_shapes(mock_data):
     expected_sample_shape = (
         mock_data.num_titrant_name,
         mock_data.num_titrant_conc,
-        mock_data.batch_size
+        mock_data.num_genotype
     )
     assert theta_param.theta.shape == expected_sample_shape
     assert theta_param.mu.shape == (mock_data.num_titrant_name, mock_data.num_titrant_conc, 1)

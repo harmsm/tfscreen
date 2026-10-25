@@ -633,3 +633,68 @@ def test_simulate_theta_param_compatible_with_run_model(mock_data):
     C = data.num_titrant_conc
     # simulate() always produces T=1 (no per-titrant structure); run_model reflects that
     assert result.shape == (1, C, G)
+
+
+@pytest.mark.parametrize("fixed", [0.0, 0.5])
+def test_log_hill_n_hyper_scale_fixed(mock_data, fixed):
+    """theta_log_hill_n_hyper_scale_fixed > 0 holds the log(n) population SD:
+    a deterministic model site at that value and no guide parameters for it;
+    0 keeps it learned. Model and guide sample sites match either way."""
+    name = "nfix"
+    priors = get_priors().replace(theta_log_hill_n_hyper_scale_fixed=fixed)
+    assert get_hyperparameters()["theta_log_hill_n_hyper_scale_fixed"] == 0.0
+    with seed(rng_seed=0):
+        mtr = trace(define_model).get_trace(name=name, data=mock_data, priors=priors)
+    with seed(rng_seed=0):
+        gtr = trace(guide).get_trace(name=name, data=mock_data, priors=priors)
+    site = mtr[f"{name}_log_hill_n_hyper_scale"]
+    if fixed:
+        assert site["type"] == "deterministic"
+        assert np.allclose(site["value"], fixed)
+        assert f"{name}_log_hill_n_hyper_scale_loc" not in gtr
+    else:
+        assert site["type"] == "sample"
+        assert f"{name}_log_hill_n_hyper_scale_loc" in gtr
+    model_samples = {n for n, s in mtr.items() if s["type"] == "sample"}
+    guide_samples = {n for n, s in gtr.items() if s["type"] == "sample"}
+    assert model_samples == guide_samples
+
+
+@pytest.mark.parametrize("h", ["logit_low", "logit_delta", "log_hill_K"])
+def test_other_hyper_scales_fixed(mock_data, h):
+    """Every population SD can be held, one at a time: a deterministic model
+    site at the held value, no guide parameters for it, the others learned,
+    and the curve built with the held value."""
+    name = "hfix"
+    field = f"theta_{h}_hyper_scale_fixed"
+    assert get_hyperparameters()[field] == 0.0
+    priors = get_priors().replace(**{field: 0.7})
+    with seed(rng_seed=0):
+        mtr = trace(define_model).get_trace(name=name, data=mock_data, priors=priors)
+    with seed(rng_seed=0):
+        gtr = trace(guide).get_trace(name=name, data=mock_data, priors=priors)
+    assert mtr[f"{name}_{h}_hyper_scale"]["type"] == "deterministic"
+    assert np.allclose(mtr[f"{name}_{h}_hyper_scale"]["value"], 0.7)
+    assert f"{name}_{h}_hyper_scale_loc" not in gtr
+    for o in {"logit_low", "logit_delta", "log_hill_K", "log_hill_n"} - {h}:
+        assert mtr[f"{name}_{o}_hyper_scale"]["type"] == "sample"
+        assert f"{name}_{o}_hyper_scale_loc" in gtr
+    assert ({n for n, s in mtr.items() if s["type"] == "sample"}
+            == {n for n, s in gtr.items() if s["type"] == "sample"})
+
+    # The held SD scales the offsets: with every offset 1 and the location
+    # at 0, the parameter is the held value.
+    G, T = mock_data.num_genotype, mock_data.num_titrant_name
+    loc = {"logit_low": "logit_low_hyper_loc", "logit_delta": "logit_delta_hyper_loc",
+           "log_hill_K": "log_hill_K_hyper_loc"}[h]
+    off = {"logit_low": "logit_low_offset", "logit_delta": "logit_delta_offset",
+           "log_hill_K": "log_hill_K_offset"}[h]
+    values = {f"{name}_{loc}": jnp.zeros(T), f"{name}_{off}": jnp.ones((T, G))}
+    if h == "logit_delta":
+        values.update({f"{name}_logit_low_hyper_loc": jnp.zeros(T),
+                       f"{name}_logit_low_offset": jnp.zeros((T, G))})
+    tp = substitute(seed(define_model, 0), data=values)(name, mock_data, priors)
+    got = {"logit_low": jnp.log(tp.theta_low / (1 - tp.theta_low)),
+           "logit_delta": jnp.log(tp.theta_high / (1 - tp.theta_high)),
+           "log_hill_K": tp.log_hill_K}[h]
+    np.testing.assert_allclose(np.asarray(got), 0.7, rtol=1e-5)

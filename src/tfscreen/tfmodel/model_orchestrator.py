@@ -38,7 +38,8 @@ ZERO_CONC_VALUE = 1e-20
 
 def _read_growth_df(growth_df,
                     theta_group_cols=None,
-                    treatment_cols=None):
+                    treatment_cols=None,
+                    growth_likelihood="lncfu"):
     """
     Reads and preprocesses a DataFrame containing growth curve data.
 
@@ -64,6 +65,10 @@ def _read_growth_df(growth_df,
         Column names used to define unique growth treatment conditions.
         If not specified, defaults to ["condition_pre", "condition_sel",
         "titrant_name", "titrant_conc"].
+    growth_likelihood : str, optional
+        "lncfu" (default) or "counts". For "counts" the frame also needs
+        ``counts``, each tube's total reads and total cells; see
+        :func:`_add_count_columns`.
 
     Returns
     -------
@@ -105,6 +110,9 @@ def _read_growth_df(growth_df,
     required.extend(["ln_cfu","ln_cfu_std","replicate","t_pre","t_sel"])
     tfscreen.util.dataframe.check_columns(growth_df,required_columns=required)
 
+    if growth_likelihood == "counts":
+        growth_df = _add_count_columns(growth_df)
+
     # These two maps are used to look up parameters after sampling posteriors
     growth_df = add_group_columns(target_df=growth_df,
                                   group_cols=treatment_cols,
@@ -123,6 +131,62 @@ def _read_growth_df(growth_df,
 
         
     return growth_df
+
+def _add_count_columns(growth_df):
+    """
+    Columns the count likelihood needs (``growth_likelihood='counts'``):
+    ``counts`` (reads of the genotype in the tube), ``ln_sample_reads`` (ln of
+    the tube's total reads, ``__unknown__`` included) and ``sample_ln_cfu``
+    (ln of the tube's total cells).
+
+    The tube's total reads come from ``sample_reads`` (written by
+    ``counts_to_lncfu``) when present, else from ``adjusted_counts /
+    frequency`` (the frequency denominator of older processed files, which
+    also counts one pseudocount per genotype: about 1% more than the reads,
+    the same for every genotype in a tube, so a per-tube offset absorbs
+    it). ``sample_ln_cfu`` is used as given, else derived from
+    ``sample_cfu`` as ``counts_to_lncfu`` does.
+
+    Raises
+    ------
+    ValueError
+        If a column cannot be found or derived, or a tube's reads or
+        ``counts`` are not finite and non-negative.
+    """
+    from tfscreen.process_raw.counts_to_lncfu import get_sample_ln_cfu
+
+    if "counts" not in growth_df.columns:
+        raise ValueError("growth_likelihood='counts' needs a 'counts' column "
+                         "in growth_df (reads per genotype per tube).")
+    counts = growth_df["counts"].to_numpy(dtype=float)
+    if not np.all(np.isfinite(counts) & (counts >= 0)):
+        raise ValueError("growth_df 'counts' must be finite and >= 0.")
+
+    if "sample_reads" in growth_df.columns:
+        reads = growth_df["sample_reads"].to_numpy(dtype=float)
+    elif {"adjusted_counts", "frequency"} <= set(growth_df.columns):
+        with np.errstate(divide="ignore", invalid="ignore"):
+            reads = (growth_df["adjusted_counts"].to_numpy(dtype=float)
+                     / growth_df["frequency"].to_numpy(dtype=float))
+    else:
+        raise ValueError(
+            "growth_likelihood='counts' needs each tube's total reads: a "
+            "'sample_reads' column (tfs-process-counts writes it), or "
+            "'adjusted_counts' and 'frequency' to derive it from.")
+    if not np.all(np.isfinite(reads) & (reads > 0)):
+        raise ValueError("Every tube's total reads must be finite and > 0.")
+    growth_df["ln_sample_reads"] = np.log(reads)
+
+    if "sample_ln_cfu" not in growth_df.columns:
+        try:
+            growth_df = get_sample_ln_cfu(growth_df)
+        except ValueError as e:
+            raise ValueError(
+                f"growth_likelihood='counts' needs each tube's total cells: "
+                f"{e}") from e
+
+    return growth_df
+
 
 def _infer_is_selection(growth_df, per_library=False):
     """
@@ -167,7 +231,8 @@ def _infer_is_selection(growth_df, per_library=False):
         return {cond: bool(cond not in pre_set) for cond in sorted(all_conds)}
 
 
-def _build_growth_tm(growth_df, growth_shares_replicates=False):
+def _build_growth_tm(growth_df, growth_shares_replicates=False,
+                     growth_likelihood="lncfu"):
     """
     Builds a TensorManager for the main growth data.
 
@@ -186,6 +251,9 @@ def _build_growth_tm(growth_df, growth_shares_replicates=False):
         Must contain all columns required for pivots and maps.
     growth_shares_replicates : bool, optional
         Whether to exclude replicate when mapping identical parameters.
+    growth_likelihood : str, optional
+        "lncfu" (default) or "counts". "counts" also registers the
+        ``counts``, ``ln_sample_reads`` and ``sample_ln_cfu`` tensors.
 
     Returns
     -------
@@ -222,6 +290,9 @@ def _build_growth_tm(growth_df, growth_shares_replicates=False):
     growth_tm.add_data_tensor("ln_cfu_std",dtype=FLOAT_DTYPE)
     growth_tm.add_data_tensor("t_pre",dtype=FLOAT_DTYPE)
     growth_tm.add_data_tensor("t_sel",dtype=FLOAT_DTYPE)
+    if growth_likelihood == "counts":
+        for col in ("counts", "ln_sample_reads", "sample_ln_cfu"):
+            growth_tm.add_data_tensor(col, dtype=FLOAT_DTYPE)
 
     # This creates a full-dimension map tensor that lets us look up the growth
     # conditions (pre and sel) for each element in the tensor. 
@@ -691,64 +762,178 @@ def _setup_batching(growth_genotypes,
     return out
 
 
-# Theta components that cannot yet supply a full-population theta reference
-# for the "empirical" transformation's congression correction.  Unlike
-# hill_mut/hill_geno/thermo.*, which already assemble per-genotype parameters
-# for the full library on every forward pass (batching only gathers a subset
-# of an already-full-size ThetaParam), categorical_geno only ever samples
-# batch_size-worth of per-genotype offsets per call.  Wiring it up to
-# "empirical" would silently reproduce the population-CDF bug the
-# NEEDS_FULL_POPULATION_THETA mechanism exists to fix (see
-# transformation/_congression.py and generative/model.py), rather than
-# raising — so it's blocked explicitly here until categorical_geno gets its
-# own full-population code path.
-_THETA_MODELS_INCOMPATIBLE_WITH_EMPIRICAL = frozenset({"categorical_geno"})
+# Transformation components that were removed or renamed, with the reason.
+# Refused by name so an old config fails loudly instead of silently meaning
+# something new.
+# Growth observation models: Student-t on ln_cfu, or negative binomial on
+# read counts (roadmap step 7).
+_GROWTH_LIKELIHOODS = {"lncfu": "observe_growth",
+                       "counts": "observe_growth_counts"}
+
+# Rules for a congressed cell's theta (transformation/mixture.py).
+_CONGRESSION_THETA_RULES = ("homodimer", "heterodimer", "max")
+# Rules for a congressed cell's dk_geno (the soft-min family; only
+# "softmin" takes congression_dk_alpha).
+_CONGRESSION_DK_RULES = ("dilution", "softmin", "min")
+
+# Theta components on the wt-relative X scale (roadmap step 5): real-valued,
+# defined up to an affine map, gauged on wt at two concentrations.
+_RELATIVE_THETA = ("hill_relative",)
+
+_RETIRED_TRANSFORMATIONS = {
+    "empirical": (
+        "transformation 'empirical' has been replaced by 'mixture'. The old "
+        "component corrected each genotype's theta to the expected maximum "
+        "over co-resident plasmids and grew one trajectory with the "
+        "genotype's own dk_geno; averaging theta cannot represent a mixture "
+        "of growth rates. 'mixture' instead mixes clean and congressed cells "
+        "at the level of exp(ln_cfu), with cell-level theta, activity and "
+        "dk_geno (see planning/congression-physics-plan.md). Set "
+        "transformation: mixture (fits are not comparable with the old "
+        "component)."
+    ),
+    "logit_norm": (
+        "transformation 'logit_norm' has been removed: it modeled the "
+        "co-resident background as a parametric theta distribution with no "
+        "dk_geno counterpart. Use 'mixture' (or 'single' for no congression)."
+    ),
+}
 
 
-def _check_theta_transformation_compatibility(theta, transformation, binding_only=False):
+def _check_relative_theta(theta, has_binding, activity, theta_rescale,
+                          condition_growth, theta_growth_noise,
+                          transformation, congression_theta_rule,
+                          theta_gauge_conc):
     """
-    Raise a clear error for known theta/transformation combinations that
-    would silently produce incorrect results rather than failing loudly.
+    Refuse settings that assume theta is an absolute occupancy when the theta
+    component is on the relative X scale, and check ``theta_gauge_conc``.
 
-    Parameters
-    ----------
-    theta : str
-        Name of the requested theta component (model_registry["theta"] key).
-    transformation : str
-        Name of the requested transformation component
-        (model_registry["transformation"] key).
-    binding_only : bool, optional
-        Whether the model is being built in binding-only mode. In that mode
-        jax_model returns before ever touching the transformation/congression
-        code path (see generative/model.py's early `if binding_only: ...
-        return`), so the transformation setting is inert and this check does
-        not apply. Default False.
-
-    Raises
-    ------
-    ValueError
-        If `transformation == "empirical"` and `theta` is a component that
-        cannot supply a full-population theta reference for the congression
-        correction, and the model is not binding-only.
+    Returns ``theta_gauge_conc`` as a list of two floats, or None.
     """
-    if binding_only:
-        return
+    if theta not in _RELATIVE_THETA:
+        if theta_gauge_conc is not None:
+            raise ValueError(
+                f"theta_gauge_conc={theta_gauge_conc!r} was given but theta "
+                f"{theta!r} is not a relative theta component "
+                f"({list(_RELATIVE_THETA)}); only those have a gauge.")
+        return None
 
-    if (transformation == "empirical"
-            and theta in _THETA_MODELS_INCOMPATIBLE_WITH_EMPIRICAL):
+    why = (f"theta={theta!r} infers a wt-relative growth variable X, not an "
+           f"absolute occupancy (roadmap step 5, "
+           f"planning/analysis-roadmap.md)")
+    if has_binding:
         raise ValueError(
-            f"theta='{theta}' is not compatible with transformation='empirical'. "
-            "The empirical congression correction requires a theta reference "
-            f"covering the full genotype population, but '{theta}' only ever "
-            "assembles theta for the genotypes in the current batch/request "
-            "(see categorical_geno.define_model's batch_size-scoped "
-            "logit_theta_offset plate). Using it with transformation='empirical' "
-            "would silently reproduce the population-CDF bug this check exists "
-            "to prevent, rather than raise. Use transformation='single' or "
-            "'logit_norm' with this theta model, or choose a theta component "
-            "that already assembles full-population parameters (hill_geno, "
-            "hill_mut, or a thermo.* component)."
+            f"{why}, so binding data (an absolute occupancy) cannot be fit "
+            f"with it. Leave out binding_df.")
+    fixed = {"activity": (activity, "fixed"),
+             "theta_rescale": (theta_rescale, "passthrough"),
+             "condition_growth": (condition_growth, "linear"),
+             "theta_growth_noise": (theta_growth_noise, "zero")}
+    for key, (value, required) in fixed.items():
+        if value != required:
+            raise ValueError(
+                f"{why}; it requires {key}={required!r} (got {value!r}). "
+                f"X's scale absorbs activity, and rescaling, nonlinear "
+                f"growth and theta noise all assume theta in (0, 1).")
+    if transformation == "mixture" and congression_theta_rule != "max":
+        raise ValueError(
+            f"{why}; under the congression mixture only "
+            f"congression_theta_rule='max' is invariant to X's affine gauge "
+            f"(the partition-function rules take logit(theta)). Got "
+            f"{congression_theta_rule!r}.")
+
+    if theta_gauge_conc is None:
+        return None
+    gauge = [float(c) for c in theta_gauge_conc]
+    if len(gauge) != 2 or not (0.0 <= gauge[0] < gauge[1]):
+        raise ValueError(
+            f"theta_gauge_conc must be two concentrations (c_lo, c_hi) with "
+            f"0 <= c_lo < c_hi; got {theta_gauge_conc!r}.")
+    return gauge
+
+
+def _check_factored_ln_cfu0(ln_cfu0, growth_df):
+    """
+    Refuse ``ln_cfu0: hierarchical_factored`` when it would share a
+    genotype's starting abundance across separately grown libraries.
+
+    The factored model gives each genotype one baseline per replicate, shared
+    by every ``condition_pre``, plus one offset per tube. That holds when the
+    pre-conditions are split from one culture. When a replicate's
+    pre-conditions come from different libraries (kanR and pheS are
+    transformed and grown up separately, user 2026-09-28), each genotype's
+    starting abundance differs between them and the fit pushes the
+    difference into its growth rates: on simulations with separate libraries
+    it gave a confident per-genotype theta error, 95% coverage 0.09 above
+    1000 reads against 0.80 with ``hierarchical``
+    (planning/studies/svi-overconfidence/). Data without a ``library``
+    column are not checked.
+    """
+    if ln_cfu0 != "hierarchical_factored" or growth_df is None:
+        return
+    if "library" not in growth_df.columns:
+        return
+    per_rep = (growth_df[["replicate", "condition_pre", "library"]]
+               .drop_duplicates()
+               .groupby("replicate", observed=True)["library"].nunique())
+    mixed = per_rep[per_rep > 1]
+    if len(mixed):
+        pairs = (growth_df[["condition_pre", "library"]].drop_duplicates()
+                 .astype(str).agg(" from ".join, axis=1).tolist())
+        raise ValueError(
+            "ln_cfu0='hierarchical_factored' shares each genotype's starting "
+            "abundance across every condition_pre of a replicate, but these "
+            f"pre-conditions come from different libraries ({', '.join(pairs)}), "
+            "which are grown up separately. Use ln_cfu0='hierarchical' (one "
+            "starting abundance per replicate, condition_pre and genotype).")
+
+
+def _check_congression_sets(congression_sets):
+    """
+    Validate ``congression_sets``: a non-empty sequence of non-negative
+    integers with a positive sum. Returns it as a tuple of ints.
+    """
+    try:
+        values = [int(v) for v in congression_sets]
+        exact = all(float(v) == int(v) for v in congression_sets)
+    except (TypeError, ValueError):
+        values, exact = None, False
+    if (not values or not exact or any(v < 0 for v in values)
+            or sum(values) == 0):
+        raise ValueError(
+            f"congression_sets must be a non-empty list of non-negative "
+            f"integers with a positive sum (entry n-1 = number of sets with "
+            f"n co-residents); got {congression_sets!r}."
         )
+    return tuple(values)
+
+
+def _check_congression_dk_alpha(congression_dk_rule, congression_dk_alpha):
+    """
+    Validate ``congression_dk_alpha`` against the dk rule: ``"softmin"``
+    needs a finite alpha > 0 (returned as a float); every other rule takes
+    none (returns None).
+    """
+    if congression_dk_rule != "softmin":
+        if congression_dk_alpha is not None:
+            raise ValueError(
+                f"congression_dk_alpha is only used by "
+                f"congression_dk_rule='softmin'; got "
+                f"congression_dk_rule={congression_dk_rule!r} with "
+                f"congression_dk_alpha={congression_dk_alpha!r}."
+            )
+        return None
+    try:
+        alpha = float(congression_dk_alpha)
+    except (TypeError, ValueError):
+        alpha = None
+    if alpha is None or not np.isfinite(alpha) or alpha <= 0:
+        raise ValueError(
+            f"congression_dk_rule='softmin' needs a finite "
+            f"congression_dk_alpha > 0; got {congression_dk_alpha!r}. Use "
+            f"'dilution' or 'min' for the alpha -> 0 and alpha -> inf limits."
+        )
+    return alpha
 
 
 class ModelOrchestrator:
@@ -764,9 +949,13 @@ class ModelOrchestrator:
     Parameters
     ----------
     growth_df : pd.DataFrame or str
-        DataFrame or path to file with growth data.
-    binding_df : pd.DataFrame or str
-        DataFrame or path to file with binding data.
+        DataFrame or path to file with growth data. None for a binding-only
+        model (``binding_only=True``).
+    binding_df : pd.DataFrame or str or None
+        DataFrame or path to file with binding data. None for a growth-only
+        model: theta is then inferred from growth alone, with no binding
+        likelihood, no ``theta_binding_noise`` component and no binding
+        weight (both of which are refused unless left at their defaults).
     condition_growth : str, optional
         Model name for condition-specific growth. Allowed values are 'linear'
         (default), 'linear_independent', 'power', or 'saturation'.
@@ -779,27 +968,28 @@ class ModelOrchestrator:
         Model name for genotype-specific death rate. Allowed values are 'hierarchical' 
         (default) or 'fixed'.
     activity : str, optional
-        Model name for genotype activity. Allowed values are "horseshoe" (default), 
-        "hierarchical", or "fixed".
+        Model name for genotype activity: "fixed" (default; activity 1 for
+        every genotype), "hierarchical_geno", "horseshoe_geno",
+        "hierarchical_mut" or "horseshoe_mut".
     theta : str, optional
         Model name for theta calculation (e.g., "hill").
     transformation : str, optional
-        Model name for transformation correction. Allowed values are 'single'
-        (default), 'empirical', or 'logit_norm'.
+        Model name for congression. 'single' (default; every cell carries one
+        plasmid) or 'mixture' (clean and congressed cells mixed at the
+        observable level; see ``transformation/mixture.py``).
     transformation_lambda : tuple, optional
         ``(mean, std)`` -- the experimentally measured congression lambda,
         in linear space -- used to anchor the ``transformation`` prior when
-        it is 'empirical' or 'logit_norm'. Forbidden when
-        ``transformation == 'single'`` (which has no lambda parameter). If
-        omitted for 'empirical'/'logit_norm', a weakly-informative
-        placeholder prior is used (see
-        ``generative/components/transformation/_congression.get_hyperparameters``);
+        it is 'mixture'. Forbidden when ``transformation == 'single'``
+        (which has no lambda parameter). If omitted for 'mixture', a
+        weakly-informative placeholder prior is used (see
+        ``generative/components/transformation/mixture.get_hyperparameters``);
         ``configure_model`` (the ``tfs-configure-model`` entry point)
         requires it explicitly rather than silently falling back to the
         placeholder.
     theta_growth_noise : str, optional
         Model name for noise on theta in the growth model ('zero', 'beta',
-        or 'logit_normal'). Default 'logit_normal'.
+        or 'logit_normal'). Default 'zero', as in tfs-configure-model.
     theta_binding_noise : str, optional
         Model name for noise on theta in the binding model ('zero' or 'beta').
     spiked_genotypes : list or str, optional
@@ -814,6 +1004,37 @@ class ModelOrchestrator:
         ``spiked_genotypes``.
     batch_size : int, optional
         The batch size for SVI. If None (default), use full batch.
+    congression_sets : sequence of int, optional
+        Number of fixed co-resident sets drawn per genotype for the
+        congression mixture, by co-resident count: entry n-1 is the number of
+        sets with n co-resident plasmids. Default (12, 3, 1): 16 sets, with
+        1, 2 or 3 co-residents. See ``_draw_coresident_sets``.
+    congression_seed : int, optional
+        Seed for drawing the co-resident sets (default 0). Recorded in the
+        config, so a refit reproduces the same draws.
+    congression_theta_rule : str, optional
+        How the congression mixture builds a congressed cell's theta from its
+        plasmids' thetas: ``"homodimer"`` (default; ``logit theta_cell = log
+        sum_g x_g exp(l_g)``), ``"heterodimer"`` (``2 log sum_g x_g exp(l_g /
+        2)``) or ``"max"`` (the highest-theta plasmid sets theta and
+        activity). The homodimer and heterodimer rules require
+        ``activity='fixed'`` (activity 1).
+    congression_dk_rule : str, optional
+        How the congression mixture builds a congressed cell's dk_geno from
+        its plasmids', the soft-min family ``dk_cell = -(1/alpha) log sum_g
+        x_g exp(-alpha dk_g)``: ``"dilution"`` (default; alpha -> 0, the
+        share-weighted mean), ``"softmin"`` (finite alpha, from
+        ``congression_dk_alpha``) or ``"min"`` (alpha -> inf, the worst
+        variant sets the cost).
+    congression_dk_alpha : float, optional
+        alpha for ``congression_dk_rule="softmin"`` (> 0, in units of 1/dk);
+        required by that rule and refused by the others.
+    growth_likelihood : str, optional
+        How growth is observed: ``"lncfu"`` (default; Student-t on ``ln_cfu``,
+        ``observe/growth.py``) or ``"counts"`` (negative binomial on the read
+        counts, ``observe/growth_counts.py``; needs ``counts``, each tube's
+        total reads and total cells, see ``_add_count_columns``, and
+        ``growth_noise='zero'``).
 
     Attributes
     ----------
@@ -841,12 +1062,12 @@ class ModelOrchestrator:
                  ln_cfu0="hierarchical",
                  dk_geno="hierarchical_geno",
                  dk_geno_pins_file=None,
-                 activity="horseshoe_geno",
+                 activity="fixed",
                  theta="hill_geno",
                  transformation="single",
                  transformation_lambda=None,
                  theta_rescale="passthrough",
-                 theta_growth_noise="logit_normal",
+                 theta_growth_noise="zero",
                  theta_binding_noise="zero",
                  growth_noise="zero",
                  sample_offset="zero",
@@ -855,9 +1076,28 @@ class ModelOrchestrator:
                  growth_shares_replicates=False,
                  epistasis=False,
                  thermo_data=None,
+                 thermo_options=None,
                  binding_weight=None,
                  presplit_df=None,
-                 base_growth_df=None):
+                 base_growth_df=None,
+                 congression_sets=(12, 3, 1),
+                 congression_seed=0,
+                 congression_theta_rule="homodimer",
+                 congression_dk_rule="dilution",
+                 congression_dk_alpha=None,
+                 growth_likelihood="lncfu",
+                 theta_gauge_conc=None,
+                 mut_labels=None,
+                 pair_labels=None):
+
+        # Fixed mutation/pair index space (not a setting: never written to a
+        # configuration). copy_orchestrator passes the fitted model's labels
+        # so a model rebuilt on a genotype subset indexes per-mutation and
+        # per-pair parameters exactly as the fit did.
+        self._fixed_mut_labels = (None if mut_labels is None
+                                  else list(mut_labels))
+        self._fixed_pair_labels = (None if pair_labels is None
+                                   else list(pair_labels))
 
         self._ln_cfu_df = growth_df
         self._binding_df = binding_df
@@ -888,11 +1128,86 @@ class ModelOrchestrator:
         self._growth_shares_replicates = growth_shares_replicates
         self._epistasis = epistasis
         self._thermo_data = thermo_data
+        # Validated up front so a bad option fails at configure time.  Stored
+        # as given (None stays None) so old configs round-trip unchanged.
+        if thermo_options is not None:
+            from tfscreen.tfmodel.generative.components.theta.thermo.io import (
+                normalize_thermo_options,
+            )
+            normalize_thermo_options(thermo_options)
+            thermo_options = dict(thermo_options)
+        self._thermo_options = thermo_options
         self._binding_weight = binding_weight
+        self._congression_sets = _check_congression_sets(congression_sets)
+        self._congression_seed = int(congression_seed)
+        self._congression_theta_rule = congression_theta_rule
+        self._congression_dk_rule = congression_dk_rule
+        self._congression_dk_alpha = _check_congression_dk_alpha(
+            congression_dk_rule, congression_dk_alpha)
+        self._growth_likelihood = growth_likelihood
 
-        _check_theta_transformation_compatibility(
-            self._theta, self._transformation, binding_only=self._binding_only
-        )
+        if self._growth_likelihood not in _GROWTH_LIKELIHOODS:
+            raise ValueError(
+                f"growth_likelihood must be one of "
+                f"{list(_GROWTH_LIKELIHOODS)}; got {self._growth_likelihood!r}.")
+        if self._growth_likelihood == "counts" and growth_noise != "zero":
+            raise ValueError(
+                f"growth_likelihood='counts' describes extra per-row noise "
+                f"through its own dispersion (phi, inv_r), so growth_noise "
+                f"must be 'zero'; got {growth_noise!r}.")
+
+        if self._transformation in _RETIRED_TRANSFORMATIONS:
+            raise ValueError(_RETIRED_TRANSFORMATIONS[self._transformation])
+
+        self._theta_gauge_conc = _check_relative_theta(
+            theta, binding_df is not None, activity, theta_rescale,
+            condition_growth, theta_growth_noise, transformation,
+            congression_theta_rule, theta_gauge_conc)
+
+        # A growth-only model has no binding data at all: no binding tensors,
+        # no binding likelihood, no binding noise component.
+        self._has_binding = binding_df is not None
+        if self._binding_only and not self._has_binding:
+            raise ValueError("binding_only=True requires binding_df.")
+        if not self._binding_only and growth_df is None:
+            raise ValueError(
+                "growth_df is required unless binding_only=True.")
+        if not self._has_binding:
+            if self._binding_weight is not None:
+                raise ValueError(
+                    f"binding_weight={self._binding_weight!r} was given but "
+                    f"there is no binding_df; a growth-only model has no "
+                    f"binding likelihood to weight.")
+            if self._theta_binding_noise != "zero":
+                raise ValueError(
+                    f"theta_binding_noise={self._theta_binding_noise!r} was "
+                    f"given but there is no binding_df; a growth-only model "
+                    f"has no binding observations to add noise to. Leave it "
+                    f"at 'zero'.")
+
+        if self._congression_theta_rule not in _CONGRESSION_THETA_RULES:
+            raise ValueError(
+                f"congression_theta_rule must be one of "
+                f"{list(_CONGRESSION_THETA_RULES)}; got "
+                f"{self._congression_theta_rule!r}."
+            )
+        if self._congression_dk_rule not in _CONGRESSION_DK_RULES:
+            raise ValueError(
+                f"congression_dk_rule must be one of "
+                f"{list(_CONGRESSION_DK_RULES)}; got "
+                f"{self._congression_dk_rule!r}."
+            )
+        if (self._transformation == "mixture"
+                and self._congression_theta_rule != "max"
+                and self._activity != "fixed"):
+            raise ValueError(
+                f"congression_theta_rule={self._congression_theta_rule!r} "
+                f"mixes the occupancies of a cell's variants and requires TF "
+                f"activity 1 (activity='fixed'); got "
+                f"activity={self._activity!r}. Use activity='fixed', or "
+                f"congression_theta_rule='max'. See the congression physics "
+                f"plan, step 4."
+            )
 
         if self._library_file is not None:
             if self._spiked_genotypes is not None:
@@ -955,8 +1270,12 @@ class ModelOrchestrator:
         # Load in growth data, creating two blocks of tensors. One holds the
         # growth (replicate,time,condition,genotype) data. The other holds
         # the theta (titrant_conc,theta_group) tensor.
-        self.growth_df = _read_growth_df(self._ln_cfu_df)
-        self.growth_tm = _build_growth_tm(self.growth_df, self._growth_shares_replicates)
+        self.growth_df = _read_growth_df(self._ln_cfu_df,
+                                         growth_likelihood=self._growth_likelihood)
+        _check_factored_ln_cfu0(self._ln_cfu0, self.growth_df)
+        self.growth_tm = _build_growth_tm(self.growth_df,
+                                          self._growth_shares_replicates,
+                                          growth_likelihood=self._growth_likelihood)
                    
         # Assemble tensors. 
         tensors = {}
@@ -964,6 +1283,9 @@ class ModelOrchestrator:
         from_growth_tm = ["ln_cfu","ln_cfu_std","t_pre","t_sel",
                           "map_condition_pre","map_condition_sel","good_mask"]
                           
+        if self._growth_likelihood == "counts":
+            from_growth_tm += ["counts", "ln_sample_reads", "sample_ln_cfu"]
+
         for k in from_growth_tm:
             tensors[k] = self.growth_tm.tensors[k]
 
@@ -982,11 +1304,11 @@ class ModelOrchestrator:
         wt_loc = np.where(self.growth_tm.tensor_dim_labels[genotype_idx] == "wt")
         wt_info = {"wt_indexes":jnp.array(wt_loc[0], dtype=jnp.int32)}
 
-         # scatter_theta tells the theta model caller to return a full-sized
-        # growth_tm tensor instead of the smaller growth_theta_tm-sized tensor
-        # congression_mask is a boolean array of shape (num_genotype,) that 
-        # tells the model which genotypes should be corrected for congression.
-        # Initialize to all True (no masking).
+        # scatter_theta tells the theta model caller to return a full-sized
+        # growth_tm tensor instead of the smaller growth_theta_tm-sized tensor.
+        # mask is a boolean array of shape (num_genotype,): False for spiked
+        # genotypes. It sets the ln_cfu0 prior class and, on the legacy path,
+        # the binary bulk_fraction. Initialize to all True (nothing spiked).
         mask = np.ones(sizes["num_genotype"],dtype=bool)
 
         # A library composition table (the current interface) names the spiked
@@ -1039,6 +1361,21 @@ class ModelOrchestrator:
             spiked_idx = np.where(np.isin(genotype_names,self._spiked_genotypes))[0]
             mask[spiked_idx] = False
 
+        bulk_fraction = self._build_bulk_fraction(mask)
+        coresident_idx, coresident_n = self._draw_coresident_sets(mask)
+
+        if (self._transformation == "mixture"
+                and np.any(bulk_fraction > 0)
+                and np.all(coresident_idx < 0)):
+            raise ValueError(
+                "transformation='mixture' needs co-resident plasmids to draw, "
+                "but no genotype with growth data can be one (the co-resident "
+                "pool is empty: every genotype is spiked-only or has zero "
+                "bulk share) while some genotypes have bulk_fraction > 0. "
+                "Check the library composition table, or use "
+                "transformation='single'."
+            )
+
         wt_mask = np.zeros(sizes["num_genotype"], dtype=bool)
         wt_mask[wt_loc[0]] = True
 
@@ -1059,10 +1396,16 @@ class ModelOrchestrator:
         sizes["num_ln_cfu0_library_classes"] = 2
 
         other_data = {"scatter_theta":1,
-                      "congression_mask":jnp.array(mask,dtype=bool),
                       "ln_cfu0_spiked_mask":jnp.array(~mask,dtype=bool),
                       "ln_cfu0_wt_mask":jnp.array(wt_mask,dtype=bool),
-                      "ln_cfu0_library_masks":jnp.array(_library_masks,dtype=bool)}
+                      "ln_cfu0_library_masks":jnp.array(_library_masks,dtype=bool),
+                      "bulk_fraction":jnp.array(bulk_fraction,dtype=float),
+                      "coresident_idx":jnp.array(coresident_idx,dtype=jnp.int32),
+                      "coresident_n":jnp.array(coresident_n,dtype=jnp.int32),
+                      "congression_theta_rule":self._congression_theta_rule,
+                      "congression_dk_rule":self._congression_dk_rule,
+                      "congression_dk_alpha":self._congression_dk_alpha,
+                      "growth_likelihood":self._growth_likelihood}
 
         # Grab the titrant concentration and log_titrant_conc (1D array from 
         # the tensor labels along dimension 6)
@@ -1074,6 +1417,23 @@ class ModelOrchestrator:
         
         other_data["titrant_conc"] = titrant_conc
         other_data["log_titrant_conc"] = log_titrant_conc
+
+        # The relative theta component's gauge: wt's X is 1 at c_lo and 0 at
+        # c_hi, by default the lowest and highest measured concentration.
+        # The resolved pair goes into settings, so the config records it.
+        if self._theta in _RELATIVE_THETA:
+            if len(wt_loc[0]) != 1:
+                raise ValueError(
+                    f"theta={self._theta!r} is gauged on wt, so the growth "
+                    f"data must contain the genotype 'wt' (found "
+                    f"{len(wt_loc[0])}).")
+            if self._theta_gauge_conc is None:
+                self._theta_gauge_conc = [float(np.min(titrant_conc)),
+                                          float(np.max(titrant_conc))]
+            gauge = np.array(self._theta_gauge_conc, dtype=float)
+            gauge[gauge == 0] = ZERO_CONC_VALUE
+            other_data["theta_gauge_log_conc"] = jnp.asarray(
+                np.log(gauge), dtype=FLOAT_DTYPE)
         other_data["growth_shares_replicates"] = bool(self._growth_shares_replicates)
 
         # Resolve pinned dk_geno values (dk_geno == "pinned") from an
@@ -1123,7 +1483,9 @@ class ModelOrchestrator:
              mut_geno_matrix,
              pair_nnz_pair_idx,
              pair_nnz_geno_idx) = build_mut_geno_matrix(
-                _genotypes, skip_pairs=not self._epistasis
+                _genotypes, skip_pairs=not self._epistasis,
+                mut_labels=self._fixed_mut_labels,
+                pair_labels=self._fixed_pair_labels,
             )
             mut_nnz_mut_idx, mut_nnz_geno_idx = build_mut_sparse_indices(mut_geno_matrix)
             # Expose labels as model attributes for downstream interpretation
@@ -1161,21 +1523,18 @@ class ModelOrchestrator:
                 else:
                     raise ValueError(
                         f"theta='{self._theta}' requires --thermo_data "
-                        f"(path to a CSV with columns 'mut' and one per structure)."
+                        f"(path to a CSV with a 'mut' column and one per structure)."
                     )
             from tfscreen.tfmodel.generative.components.theta.thermo.io import (
-                load_struct_ensemble,
-                load_ddG_prior_csv,
+                load_thermo_data,
             )
-            if self._theta in _ddG_prior_models:
-                _struct_data = load_ddG_prior_csv(
-                    self._thermo_data, mut_labels
-                )
-            else:
-                _pair_labels_for_struct = self.pair_labels if self._epistasis else None
-                _struct_data = load_struct_ensemble(
-                    self._thermo_data, mut_labels, _pair_labels_for_struct
-                )
+            _pair_labels_for_struct = self.pair_labels if self._epistasis else None
+            _struct_data = load_thermo_data(
+                self._thermo_data, mut_labels,
+                pair_labels=_pair_labels_for_struct,
+                theta_name=self._theta,
+                thermo_options=self._thermo_options,
+            )
             _struct_names_tuple = _struct_data["struct_names"]   # tuple; set via .replace()
             growth_data_sources.append({
                 "num_struct":               len(_struct_names_tuple),
@@ -1186,40 +1545,47 @@ class ModelOrchestrator:
             })
 
         # ---------------------------------------------------------------------
-        # binding dataclass
-  
-        # Load in the binding data, creating one block of tensors. This is
-        # only (titrant_conc,theta_group). Use the growth tensor manager to
-        # make sure that the mapping to parameters matches between the growth 
-        # and the binding data. 
-        self.binding_df = _read_binding_df(self._binding_df,self.growth_tm.df)
-        self.binding_tm = _build_binding_tm(self.binding_df)
+        # binding dataclass (absent in a growth-only model)
 
-        # Grab the sizes
-        sizes = {"num_titrant_name":self.binding_tm.tensor_shape[0],
-                 "num_titrant_conc":self.binding_tm.tensor_shape[1],
-                 "num_genotype":self.binding_tm.tensor_shape[2]}
-        other_data = {"scatter_theta":0}
+        if self._has_binding:
 
-        # Grab the titrant concentration and log_titrant_conc (1D array from 
-        # the tensor labels along dimension 6)
-        idx = np.where(np.array(self.binding_tm.tensor_dim_names) == "titrant_conc")[0][0]
-        titrant_conc = np.array(self.binding_tm.tensor_dim_labels[idx])
-        log_titrant_conc = titrant_conc.copy()
-        log_titrant_conc[log_titrant_conc == 0] = ZERO_CONC_VALUE
-        log_titrant_conc = np.log(log_titrant_conc)
+            # Load in the binding data, creating one block of tensors. This is
+            # only (titrant_conc,theta_group). Use the growth tensor manager to
+            # make sure that the mapping to parameters matches between the
+            # growth and the binding data.
+            self.binding_df = _read_binding_df(self._binding_df,self.growth_tm.df)
+            self.binding_tm = _build_binding_tm(self.binding_df)
 
-        other_data["titrant_conc"] = titrant_conc
-        other_data["log_titrant_conc"] = log_titrant_conc
+            # Grab the sizes
+            sizes = {"num_titrant_name":self.binding_tm.tensor_shape[0],
+                     "num_titrant_conc":self.binding_tm.tensor_shape[1],
+                     "num_genotype":self.binding_tm.tensor_shape[2]}
+            other_data = {"scatter_theta":0}
 
-        binding_data_sources = [self.binding_tm.tensors,sizes,other_data]
+            # Grab the titrant concentration and log_titrant_conc (1D array
+            # from the tensor labels along dimension 6)
+            idx = np.where(np.array(self.binding_tm.tensor_dim_names) == "titrant_conc")[0][0]
+            titrant_conc = np.array(self.binding_tm.tensor_dim_labels[idx])
+            log_titrant_conc = titrant_conc.copy()
+            log_titrant_conc[log_titrant_conc == 0] = ZERO_CONC_VALUE
+            log_titrant_conc = np.log(log_titrant_conc)
+
+            other_data["titrant_conc"] = titrant_conc
+            other_data["log_titrant_conc"] = log_titrant_conc
+
+            binding_data_sources = [self.binding_tm.tensors,sizes,other_data]
+            binding_genotypes = self.binding_tm.tensor_dim_labels[-1]
+        else:
+            self.binding_df = None
+            self.binding_tm = None
+            binding_genotypes = np.array([], dtype=object)
 
         # ---------------------------------------------------------------------
         # Create full-batch data (source of truth for indices and shapes) 
        
         # Pass None as batch_size to get full indices and scale factors of 1.0
         full_batch_data = _setup_batching(self.growth_tm.tensor_dim_labels[-1],
-                                          self.binding_tm.tensor_dim_labels[-1],
+                                          binding_genotypes,
                                           batch_size=None)
         
         # If mini-batching is requested, pre-calculate the scale vector that 
@@ -1228,7 +1594,7 @@ class ModelOrchestrator:
             
             # Use the helper to find indices and scale factor for the target batch size
             scaling_info = _setup_batching(self.growth_tm.tensor_dim_labels[-1],
-                                           self.binding_tm.tensor_dim_labels[-1],
+                                           binding_genotypes,
                                            self._batch_size)
             
             # Create a full-sized vector with these scale factors
@@ -1250,22 +1616,29 @@ class ModelOrchestrator:
         growth_batch_data["geno_theta_idx"] = np.arange(full_batch_data["batch_size"],dtype=int)
         growth_data_sources.append(growth_batch_data)
         
-        # Record relevant batch data for the binding dataset
-        binding_batch_data = {}
-        binding_num_binding = full_batch_data["num_binding"]
-        binding_batch_data["batch_idx"] = full_batch_data["batch_idx"][:binding_num_binding]
-        binding_batch_data["batch_size"] = binding_num_binding
-        binding_batch_data["scale_vector"] = full_batch_data["scale_vector"][:binding_num_binding]
-        binding_batch_data["geno_theta_idx"] = np.arange(binding_num_binding,dtype=int)
+        if self._has_binding:
 
-        # Apply binding weight: upscale the binding likelihood to compete with
-        # the (typically much larger) growth dataset.  None → auto-compute as
-        # N_growth_rows / N_binding_rows so each binding observation contributes
-        # the same weight as the average growth observation.
-        if self._binding_weight is None:
-            self._binding_weight = len(self.growth_tm.df) / max(len(self.binding_tm.df), 1)
-        binding_batch_data["scale_vector"] = binding_batch_data["scale_vector"] * self._binding_weight
-        binding_data_sources.append(binding_batch_data)
+            # Record relevant batch data for the binding dataset
+            binding_batch_data = {}
+            binding_num_binding = full_batch_data["num_binding"]
+            binding_batch_data["batch_idx"] = full_batch_data["batch_idx"][:binding_num_binding]
+            binding_batch_data["batch_size"] = binding_num_binding
+            binding_batch_data["scale_vector"] = full_batch_data["scale_vector"][:binding_num_binding]
+            binding_batch_data["geno_theta_idx"] = np.arange(binding_num_binding,dtype=int)
+            binding_batch_data["binding_ordinal"] = np.arange(binding_num_binding,dtype=int)
+
+            # Apply binding weight. None -> 1: each binding observation
+            # counts once, as in the full-batch log density (binding
+            # genotypes ride in every batch at scale 1). Until 2026-10-16
+            # None meant N_growth_rows / N_binding_rows, which made the
+            # binding data count as much as the whole growth dataset, so any
+            # growth/binding mismatch distorted growth
+            # (planning/joint-fit-return.md). A config written before then
+            # stores its resolved weight and keeps it.
+            if self._binding_weight is None:
+                self._binding_weight = 1.0
+            binding_batch_data["scale_vector"] = binding_batch_data["scale_vector"] * self._binding_weight
+            binding_data_sources.append(binding_batch_data)
 
         # ---------------------------------------------------------------------
         # Populate dataclasses
@@ -1280,8 +1653,11 @@ class ModelOrchestrator:
             growth_dataclass = growth_dataclass.replace(struct_names=_struct_names_tuple)
 
         # Populate a BindingData flax dataclass with all keys in `sources`
-        binding_dataclass = populate_dataclass(BindingData,
-                                               sources=binding_data_sources)
+        if self._has_binding:
+            binding_dataclass = populate_dataclass(BindingData,
+                                                   sources=binding_data_sources)
+        else:
+            binding_dataclass = None
 
         # ---------------------------------------------------------------------
         # presplit dataclass (optional)
@@ -1412,7 +1788,9 @@ class ModelOrchestrator:
              mut_geno_matrix,
              pair_nnz_pair_idx,
              pair_nnz_geno_idx) = build_mut_geno_matrix(
-                _genotypes, skip_pairs=not self._epistasis
+                _genotypes, skip_pairs=not self._epistasis,
+                mut_labels=self._fixed_mut_labels,
+                pair_labels=self._fixed_pair_labels,
             )
             mut_nnz_mut_idx, mut_nnz_geno_idx = build_mut_sparse_indices(mut_geno_matrix)
             self.mut_labels = mut_labels
@@ -1443,21 +1821,18 @@ class ModelOrchestrator:
                 else:
                     raise ValueError(
                         f"theta='{self._theta}' requires --thermo_data "
-                        f"(path to a CSV with columns 'mut' and one per structure)."
+                        f"(path to a CSV with a 'mut' column and one per structure)."
                     )
             from tfscreen.tfmodel.generative.components.theta.thermo.io import (
-                load_struct_ensemble,
-                load_ddG_prior_csv,
+                load_thermo_data,
             )
-            if self._theta in _ddG_prior_models:
-                _struct_data = load_ddG_prior_csv(
-                    self._thermo_data, self.mut_labels
-                )
-            else:
-                _pair_labels_for_struct = self.pair_labels if self._epistasis else None
-                _struct_data = load_struct_ensemble(
-                    self._thermo_data, self.mut_labels, _pair_labels_for_struct
-                )
+            _pair_labels_for_struct = self.pair_labels if self._epistasis else None
+            _struct_data = load_thermo_data(
+                self._thermo_data, self.mut_labels,
+                pair_labels=_pair_labels_for_struct,
+                theta_name=self._theta,
+                thermo_options=self._thermo_options,
+            )
             _struct_names_tuple = _struct_data["struct_names"]
             binding_data_sources.append({
                 "num_struct":               len(_struct_names_tuple),
@@ -1486,6 +1861,7 @@ class ModelOrchestrator:
             "batch_size":     actual_batch_size,   # static mini-batch target
             "scale_vector":   scale_vector,        # full N; get_batch slices
             "geno_theta_idx": batch_idx,           # full N; get_batch slices
+            "binding_ordinal": batch_idx,          # full N; get_batch slices
         })
 
         binding_dataclass = populate_dataclass(BindingData, sources=binding_data_sources)
@@ -1545,8 +1921,10 @@ class ModelOrchestrator:
                         ("transformation", self._transformation, "growth"),
                         ("theta_growth_noise", self._theta_growth_noise, "growth"),
                         ("growth_noise", self._growth_noise, "growth"),
-                        ("sample_offset", self._sample_offset, "growth"),
-                        ("theta_binding_noise", self._theta_binding_noise, "binding")]
+                        ("sample_offset", self._sample_offset, "growth")]
+            if self._has_binding:
+                load_map.append(("theta_binding_noise",
+                                 self._theta_binding_noise, "binding"))
 
         main_control_kwargs = {"is_guide":False}
         guide_control_kwargs = {"is_guide":True}
@@ -1646,15 +2024,14 @@ class ModelOrchestrator:
                                              component_module.run_model,
                                              component_module.get_population_moments)
             elif key == "transformation":
-                needs_full_population = getattr(
-                    component_module, "NEEDS_FULL_POPULATION_THETA", False
-                )
+                needs_population = getattr(component_module,
+                                           "NEEDS_POPULATION", False)
                 main_control_kwargs[key] = (component_module.define_model,
-                                            component_module.update_thetas,
-                                            needs_full_population)
+                                            component_module.cell_classes,
+                                            needs_population)
                 guide_control_kwargs[key] = (component_module.guide,
-                                             component_module.update_thetas,
-                                             needs_full_population)
+                                             component_module.cell_classes,
+                                             needs_population)
             elif key == "condition_growth":
                 main_control_kwargs[key] = component_module.define_model
                 guide_control_kwargs[key] = component_module.guide
@@ -1678,12 +2055,15 @@ class ModelOrchestrator:
         main_control_kwargs["theta_rescale"] = rescale_fn
         guide_control_kwargs["theta_rescale"] = rescale_fn
 
-        # Set the observables; growth observer is only needed in the full model
-        main_control_kwargs["observe_binding"] = model_registry["observe_binding"].observe
-        guide_control_kwargs["observe_binding"] = model_registry["observe_binding"].guide
+        # Set the observables; the binding observer only when there is binding
+        # data, the growth observer only in the full model
+        if self._has_binding:
+            main_control_kwargs["observe_binding"] = model_registry["observe_binding"].observe
+            guide_control_kwargs["observe_binding"] = model_registry["observe_binding"].guide
         if not self._binding_only:
-            main_control_kwargs["observe_growth"] = model_registry["observe_growth"].observe
-            guide_control_kwargs["observe_growth"] = model_registry["observe_growth"].guide
+            growth_observer = model_registry[_GROWTH_LIKELIHOODS[self._growth_likelihood]]
+            main_control_kwargs["observe_growth"] = growth_observer.observe
+            guide_control_kwargs["observe_growth"] = growth_observer.guide
 
             # Optional side-channel observers -- wired only when their data was
             # supplied. Both borrow growth's genotype batch state and a latent
@@ -1730,7 +2110,7 @@ class ModelOrchestrator:
             )
         else:
             priors_class_kwargs["growth"]["growth_obs"] = \
-                model_registry["observe_growth"].get_priors()
+                model_registry[_GROWTH_LIKELIHOODS[self._growth_likelihood]].get_priors()
             if self._base_growth_df is not None:
                 priors_class_kwargs["growth"]["base_growth"] = \
                     model_registry["observe_base_growth"].get_priors(
@@ -1743,8 +2123,11 @@ class ModelOrchestrator:
                 )
             growth_priors = populate_dataclass(GrowthPriors,
                                                sources=priors_class_kwargs["growth"])
-        binding_priors = populate_dataclass(BindingPriors,
-                                            sources=priors_class_kwargs["binding"])
+        if self._has_binding:
+            binding_priors = populate_dataclass(BindingPriors,
+                                                sources=priors_class_kwargs["binding"])
+        else:
+            binding_priors = None
         priors = populate_dataclass(PriorsClass,
                                     sources=dict(theta=priors_class_kwargs["theta"]["theta"],
                                                  growth=growth_priors,
@@ -1859,6 +2242,143 @@ class ModelOrchestrator:
         """The PriorsClass Pytree holding all model priors."""
         return self._priors
 
+    def _build_bulk_fraction(self, spiked_free_mask):
+        """
+        Per-genotype bulk fraction (congression purity), aligned to the
+        growth tensor's genotype axis.
+
+        With a library composition table, each genotype takes the table's
+        ``bulk_fraction``. The ``__unknown__`` bucket (reads that match no
+        designed genotype) is treated as bulk (1.0), as the congression mask
+        treats it; any other genotype missing from the table is an error.
+        Without a table, the legacy binary applies: 0 for spiked genotypes,
+        1 otherwise.
+
+        Parameters
+        ----------
+        spiked_free_mask : numpy.ndarray
+            Boolean, shape (num_genotype,); False for spiked genotypes (the
+            legacy congression mask).
+
+        Returns
+        -------
+        numpy.ndarray
+            Float, shape (num_genotype,), values in [0, 1].
+        """
+
+        if self._library_df is None:
+            return np.where(spiked_free_mask, 1.0, 0.0)
+
+        genotype_idx = self.growth_tm.tensor_dim_names.index("genotype")
+        genotype_names = [str(g) for g in
+                          self.growth_tm.tensor_dim_labels[genotype_idx]]
+
+        table = self._library_df.set_index("genotype")["bulk_fraction"]
+        missing = [g for g in genotype_names
+                   if g not in table.index and g != "__unknown__"]
+        if len(missing) > 0:
+            raise ValueError(
+                f"{len(missing)} genotypes in the growth data are missing from "
+                f"the library composition table ({self._library_file}), e.g. "
+                f"{missing[:5]}. Regenerate it with tfs-configure-model "
+                f"--library_config."
+            )
+
+        values = np.array([1.0 if g == "__unknown__" else float(table[g])
+                           for g in genotype_names])
+        if np.any(~np.isfinite(values)) or np.any((values < 0) | (values > 1)):
+            raise ValueError(
+                f"bulk_fraction in {self._library_file} must be finite and in "
+                f"[0, 1] for every genotype with growth data."
+            )
+        return values
+
+    def _coresident_pool(self, spiked_free_mask):
+        """
+        Probability of each genotype (growth-tensor order) being drawn as a
+        co-resident plasmid.
+
+        Co-residents come from the bulk sub-libraries, so with a library
+        composition table a genotype's weight is its bulk share of the pool,
+        ``pool_fraction * bulk_fraction``. Only genotypes with growth data
+        can be drawn (they are the only ones with theta and dk_geno in the
+        model); library genotypes with no data, mostly dropouts, are left
+        out, which biases the background slightly toward survivors. The
+        ``__unknown__`` bucket is never drawn. Without a table (legacy
+        path), the pool is uniform over non-spiked genotypes.
+
+        Returns
+        -------
+        numpy.ndarray
+            Float, shape (num_genotype,), summing to 1; all zeros when no
+            genotype can be drawn.
+        """
+
+        genotype_idx = self.growth_tm.tensor_dim_names.index("genotype")
+        genotype_names = [str(g) for g in
+                          self.growth_tm.tensor_dim_labels[genotype_idx]]
+
+        if self._library_df is None:
+            weights = np.where(spiked_free_mask, 1.0, 0.0)
+        else:
+            table = self._library_df.set_index("genotype")
+            weights = np.array([
+                float(table.loc[g, "pool_fraction"] * table.loc[g, "bulk_fraction"])
+                if g in table.index else 0.0
+                for g in genotype_names
+            ])
+
+        weights[np.array(genotype_names) == "__unknown__"] = 0.0
+        weights = np.where(np.isfinite(weights) & (weights > 0), weights, 0.0)
+
+        total = weights.sum()
+        return weights / total if total > 0 else weights
+
+    def _draw_coresident_sets(self, spiked_free_mask):
+        """
+        Draw each genotype's fixed co-resident plasmid sets.
+
+        The congression mixture approximates a congressed cell's expected
+        growth by a fixed quadrature over co-resident sets (see
+        planning/congression-physics-plan.md, "Fit design (step 3)"). Sets
+        are stratified by co-resident count: ``congression_sets[n-1]`` sets
+        of ``n`` co-residents each. Every co-resident is an independent draw
+        from ``_coresident_pool`` (a genotype can co-reside with itself).
+        Drawn once, with ``congression_seed``, and never redrawn.
+
+        Returns
+        -------
+        coresident_idx : numpy.ndarray
+            Int, shape (num_genotype, K, N_max), growth-tensor genotype
+            indices; -1 pads sets with fewer than N_max co-residents, and
+            every entry is -1 when the pool is empty. K is the total number
+            of sets and N_max = len(congression_sets).
+        coresident_n : numpy.ndarray
+            Int, shape (K,): the number of co-residents in each set.
+        """
+
+        pool = self._coresident_pool(spiked_free_mask)
+        num_genotype = len(pool)
+        n_max = len(self._congression_sets)
+
+        coresident_n = np.concatenate([
+            np.full(k, n, dtype=int)
+            for n, k in enumerate(self._congression_sets, start=1)
+        ])
+        num_sets = len(coresident_n)
+
+        coresident_idx = np.full((num_genotype, num_sets, n_max), -1, dtype=int)
+        if pool.sum() <= 0 or num_sets == 0:
+            return coresident_idx, coresident_n
+
+        rng = np.random.default_rng(self._congression_seed)
+        draws = rng.choice(num_genotype, size=(num_genotype, num_sets, n_max),
+                           p=pool)
+        slot = np.arange(n_max)[None, None, :]
+        coresident_idx = np.where(slot < coresident_n[None, :, None], draws, -1)
+
+        return coresident_idx, coresident_n
+
     @property
     def library_df(self):
         """
@@ -1897,7 +2417,15 @@ class ModelOrchestrator:
             "growth_shares_replicates": self._growth_shares_replicates,
             "epistasis": self._epistasis,
             "thermo_data": self._thermo_data,
+            "thermo_options": getattr(self, "_thermo_options", None),
             "binding_weight": self._binding_weight,
             "presplit_df": getattr(self, "_presplit_df", None),
             "base_growth_df": getattr(self, "_base_growth_df", None),
+            "congression_sets": list(self._congression_sets),
+            "congression_seed": self._congression_seed,
+            "congression_theta_rule": self._congression_theta_rule,
+            "congression_dk_rule": self._congression_dk_rule,
+            "congression_dk_alpha": self._congression_dk_alpha,
+            "growth_likelihood": self._growth_likelihood,
+            "theta_gauge_conc": self._theta_gauge_conc,
         }

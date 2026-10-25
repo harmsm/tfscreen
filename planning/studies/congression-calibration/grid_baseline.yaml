@@ -1,0 +1,53 @@
+# ---------------------------------------------------------------------------
+# Baseline on the new convergence code and corrected library (congression
+# calibration, step 3.5)
+#
+#   tfs-setup-sim-grid grid_baseline.yaml --out_prefix congression_calibration_baseline
+#   for d in congression_calibration_baseline/run_*/; do (cd "$d" && sbatch run.srun); done
+#
+# Checks that the noise-referenced stop rule (5bf5b78) ends runs cleanly on
+# its own, and whether the converged anchored results (README "Resumed to
+# convergence") hold on the corrected library enumeration (bff2c51).
+# Anchored settings: binding_weight 1, prefit k_scale_ceiling 0.005.
+# 2 lambda x 2 fits x 2 seeds = 8 runs.
+# ---------------------------------------------------------------------------
+
+base_config: simulate_config.yaml
+
+run_name: "lam{{ transformation_poisson_lambda }}__seed{{ seed }}__{{ fit }}_{{ lam_prior }}"
+
+output_file: run.srun
+
+
+simulate:
+
+  - name: lam
+    variants:
+      - transformation_poisson_lambda: 0.0
+      - transformation_poisson_lambda: 1.0
+
+  - name: dk
+    variants:
+      - dk_geno_hyper_loc: -3.5
+        dk_geno_hyper_scale: 0.5
+        dk_geno_hyper_shift: 0.02
+
+  - name: seed
+    variants:
+      - seed: 1
+      - seed: 2
+
+
+template:
+
+  - name: fit
+    variants:
+      - fit: single
+        lam_prior: "off"
+      - fit: mixture
+        lam_prior: matched
+
+  - name: anchor
+    variants:
+      - binding_weight: 1.0
+        k_scale_ceiling: 0.005

@@ -3,6 +3,10 @@
 # Library genetic information
 # ---------------------------------------------------------------------------
 
+# These keys, plus library_mixture below, describe the library. Hand this same
+# file to tfs-process-fastq and to tfs-configure-model --library_config; each
+# tool ignores the keys it does not use.
+
 # Reading frame 0, 1, 2. No reverse (negative) strand allowed.
 reading_frame: 0
 
@@ -35,15 +39,29 @@ tile_combos: ["single-1", "single-2", "double-1-2"]
 # Control sequences (e.g. known variants) added as spikes.  Must be the same
 # length as wt_seq.
 spiked_seqs:
-- gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgatggcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctggcggcgccgtcgcaaattgtcgcggcgattctgtctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg  # k84l
+- gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgatggcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctgcacgcgccgtcgcaaattgtcgcggcgattctgtctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg  # k84l
 - gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgattgcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctgcacgcgccgtcgcaaattgtcgcggcgattctgtctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg  # m42i/k84l
+
+# Optional: simulate (and fit) only a subset of the described genotypes.
+# library_subsample keeps N random genotypes of a sub-library (others whole)
+# and needs its own integer seed; library_genotypes names a file listing
+# every genotype to keep, relative to this file. wt and spiked genotypes are
+# always kept. With library_subsample_depth: full_library (the default) the
+# mixture, transform sizes, reads and PCR templates below describe the full
+# library and each kept sequence keeps its share; as_written applies them to
+# the subsample as given. tfs-configure-model --library_config reads these
+# keys too. See docs/source/simulation.rst, "Subsampling the library".
+# library_subsample:
+#   double-1-2: 200
+# library_subsample_seed: 1
+# library_genotypes: genotypes.txt
+# library_subsample_depth: full_library
 
 # ---------------------------------------------------------------------------
 # Phenotype calculation
 # ---------------------------------------------------------------------------
 
-# Registered theta component name.  Any key in model_registry["theta"] is
-# valid except "_simple" (calibration-only).
+# Theta component: hill_geno, hill_mut or a thermo.* partition-function key.
 #
 # Thermodynamic components (physics-based operator-occupancy model):
 #   "thermo.O2_C12_K5_U0_a.PK"   — dimer with operator architecture O2, 12-mer
@@ -63,9 +81,11 @@ spiked_seqs:
 #                   exact reference curve.
 #
 # Perturbation-based components ignore theta_priors and instead use
-# theta_sim_priors (see below).  They do not call define_model; tfs-simulate
-# will fall back to prior-predictive sampling only for components that lack a
-# simulate() function.
+# theta_sim_priors (see below). Components without their own simulation
+# routine draw theta from the component's prior instead.
+#
+# theta_rescale (optional): 'passthrough' (default) or 'logit', applied to
+# theta before it enters the growth model, as the fit-side component.
 theta_component: "thermo.O2_C12_K5_U0_a.PK"
 
 # Optional: path to structural/thermodynamic data file required by PnnC and
@@ -73,6 +93,17 @@ theta_component: "thermo.O2_C12_K5_U0_a.PK"
 #   .h5 / .hdf5  → HDF5 structural ensemble (PnnC)
 #   .csv         → per-mutation per-structure ddG prior means (PddG)
 # thermo_data: null
+
+# Optional: how to read thermo_data (see docs/source/model-inputs.rst).
+# thermo_options:
+#   ddG_units: kcal/mol      # kT (default), kcal/mol or kJ/mol
+#   residue_offset: 0
+
+# Optional (PddG/PnnC only): SD of the simulated per-structure ddG truth around
+# the thermo_data values, in ddG_units. A number for every structure, or
+# {structure: sd} naming each one. 0 makes the truth the table exactly.
+# Omit for 1 kT per structure. The true SDs go to tfs_sim_ddG_sigma.csv.
+# ddG_truth_sd: 0.5
 
 # Optional: overrides for the theta component's default model hyperparameters.
 # Any key returned by the component's get_hyperparameters() can be overridden.
@@ -136,6 +167,12 @@ theta_component: "thermo.O2_C12_K5_U0_a.PK"
 # Each block defines one set of growth conditions.  The Cartesian product of
 # titrant_conc × t_sel gives one sample per entry.  condition_pre and
 # condition_sel must also appear as keys in the 'growth' section below.
+#
+# To copy a real experiment's layout instead (irregular times, replicates
+# sampled differently), replace condition_blocks with
+#   design: tube_table.csv
+# a tube table in the format tfs-process-counts reads; each replicate then
+# gets exactly its own tubes, under the table's names.
 condition_blocks:
   - library: "kanR"
     titrant_name: "iptg"
@@ -165,9 +202,23 @@ condition_blocks:
 # Growth rate parameters
 # ---------------------------------------------------------------------------
 
-# Linear mapping from operator occupancy (theta) to growth rate k for each
-# condition:  k = m * theta + b.  Every condition_pre and condition_sel that
-# appears in condition_blocks must have an entry here, and vice versa.
+# Mapping from operator occupancy (theta) to growth rate for each condition,
+# in units of 1/minute (times are in minutes). The default linear model is
+#   k = b + A * m * theta + dk_geno
+# An entry can instead set model: power (keys b, a, n) or
+# model: saturation (keys kmin, kmax). Every condition_pre and condition_sel
+# that appears in condition_blocks must have an entry here, and vice versa.
+# A linear entry may add warp_a (> 0) and warp_x0 (default 0.5): growth then
+# follows a logistic warp f(theta), f(0) = 0 and f(1) = 1, for a marker whose
+# growth is a switch-like (large warp_a) or graded function of occupancy; the
+# fit's m_warp, truth written as warp_log_a = log(warp_a) and warp_x0.
+#   kanR+kan: {m: -0.009933, b: 0.0, warp_a: 8.0, warp_x0: 0.5}
+#
+# growth_titrant_scale (s, default 1): growth sees each genotype's curve at
+# s times the nominal titrant concentration, binding at the nominal one (the
+# fit's theta_growth_log_conc_shift = log s, hill_geno). Truth in
+# {out_prefix}_growth_titrant_scale.csv.
+# growth_titrant_scale: 0.5
 growth:
   kanR+kan: {m: -0.009933, b: 0.000000}
   kanR-kan: {m:  0.000808, b: 0.004670}
@@ -190,7 +241,10 @@ dk_geno_hyper_shift: 0.02
 # by inference convention.  Set activity_mut_scale > 0 to draw each mutant
 # genotype's log(A) independently from Normal(log(activity_wt), activity_mut_scale).
 # activity_mut_scale=0 (default) gives all genotypes identical activity, matching
-# the 'fixed' activity inference component.
+# the 'fixed' activity inference component. activity_component (default
+# 'fixed') can instead be 'hierarchical_geno' or 'horseshoe_geno', numpy
+# versions of the fit's priors, tuned by an activity_priors dict; both ignore
+# activity_wt and activity_mut_scale.
 activity_wt: 1.0
 activity_mut_scale: 0.0
 
@@ -214,29 +268,45 @@ library_mixture:
   spiked: 4
 
 # Sigma of the log-normal used to draw initial genotype frequencies.  0 = flat
-# distribution; 1–2 is realistic for a typical transformation.
+# distribution; 1–2 is realistic for a typical transformation.  One number, or
+# one per tile combo (e.g. {double-1-2: 2.0, single-1: 0.8, single-2: 0.8,
+# spiked: 0.5}; a real pool of doubles was much less even than its singles).
 lib_assembly_skew_sigma: 1.25
+
+# Optional: cap on the number of multi-plasmid (congressed) cells simulated one
+# by one; more are represented by a weighted sample of this many. Single-
+# plasmid cells are always merged into one row per genotype, so transform_sizes
+# can be realistic (tens of millions) without this cap only when congression is
+# off. Omit for no cap.
+# max_congressed_cells: 2_000_000
 
 
 # Each bacterium receives a number of plasmids drawn from a zero-truncated
 # Poisson with this lambda.  Set to 0 or null for exactly one plasmid per cell.
 transformation_poisson_lambda: 1.5
 
-# When a cell carries multiple plasmids, growth rates are combined via this
-# function.  Recommended: 'min' for repressors of antibiotic resistance (tightest
-# binder dominates); 'max' for inducers.  Default: 'mean' for all libraries.
-multi_plasmid_combine_fcn:
-  kanR: "min"
-  pheS: "max"
+# How a cell carrying several plasmids gets its growth rate. The cell's theta
+# comes from congression_theta_rule, at each condition: 'homodimer'
+# (logit theta_cell = log of the share-weighted mean of the plasmids'
+# theta odds), 'heterodimer' (closer to the mean logit) or 'max' (the
+# highest-theta plasmid sets theta and TF activity). 'homodimer' and
+# 'heterodimer' need activity 1 (activity_mut_scale 0). Its dk_geno comes
+# from congression_dk_rule, the soft-min family
+# dk_cell = -(1/alpha) log sum_g x_g exp(-alpha dk_g): 'dilution'
+# (alpha -> 0, the share-weighted mean), 'softmin' (finite alpha, set by
+# congression_dk_alpha, in units of 1/dk) or 'min' (alpha -> inf, the worst
+# variant sets the cost). Growth is then computed once from these cell-level
+# values. All three keys are optional; these are the defaults (no alpha).
+congression_theta_rule: homodimer
+congression_dk_rule: dilution
 
-# Colony-forming units per mL at the start of pre-growth.
+# Cells in each tube at the start of pre-growth.
 cfu0: 65_000_000.0
 
-# Per-tube environmental growth-rate noise (hr⁻¹).  Each physical tube gets its
-# own delta_k ~ Normal(0, tube_noise_sigma); the kt contribution per tube is
-# delta_k * (t_pre + t_sel), shared by all genotypes in that tube.  A value of
-# ~0.001–0.002 hr⁻¹ is typical for well-controlled liquid cultures.
-# Set to 0 or null to disable.
+# Per-tube environmental growth-rate noise, in growth-rate units (1/minute
+# here).  Each physical tube gets its own delta_k ~ Normal(0, tube_noise_sigma);
+# the kt contribution per tube is delta_k * (t_pre + t_sel), shared by all
+# genotypes in that tube.  Set to 0 or null to disable.
 tube_noise_sigma: 0.002
 
 # ---------------------------------------------------------------------------
@@ -251,6 +321,9 @@ tube_noise_sigma: 0.002
 #   tau0 = baseline lag (minutes)
 #   k1   = occupancy-dependence of lag (higher = more effect)
 #   k2   = curvature constant (> 0; prevents division by zero)
+# "baranyi" model: rate switches smoothly from k_pre to k_sel around
+#   tau_lag (minutes) with sharpness k_sharp (> 0)
+# "two_pop" model: cells switch irreversibly to k_sel at rate k_trans (> 0)
 growth_transition:
   - condition_pre: "pheS-4CP"
     model: "memory"
@@ -268,27 +341,88 @@ growth_transition:
 # Data collection parameters
 # ---------------------------------------------------------------------------
 
-# Total sequencing reads across all samples.
+# Total sequencing reads across all samples (all replicates together), split
+# evenly over the sequenced tubes.
 total_num_reads: 25_000_000
+
+# Optional: share of each tube's reads that call no library genotype and are
+# reported as __unknown__ (one number, or one per library). Real libraries
+# can lose a large share this way, e.g. to structural variants.
+# unassigned_read_fraction: {kanR: 0.66, pheS: 0.2}
 
 # Fraction of reads re-assigned to a randomly chosen genotype (index hopping).
 # Set to 0 or null to disable.
 prob_index_hop: 0.05
 
-# Random seed for reproducibility.  Set to null for a random seed each run.
+# Random seed for reproducibility.  Set to null for a random seed each run;
+# tfs-simulate --seed overrides it.
 seed: null
+
+# ---------------------------------------------------------------------------
+# Sampling noise (optional; all off when omitted)
+# ---------------------------------------------------------------------------
+
+# Real read counts vary 5-18x more than Poisson at 100-3,000 reads
+# (planning/studies/noise-anatomy/). These switches add the physical sources;
+# each can be turned on alone to measure what it does to a fit.
+#
+# founder_sampling: each tube is seeded with a Poisson number of cells from
+#   each transformant clone (mean cfu0 * frequency), drawn anew for every
+#   tube, so a rare genotype's starting abundance differs between tubes.
+# demographic_growth: given its founders, a clone's cells at harvest are
+#   Gamma(founders, exp(kt)) when it grows and Binomial(founders, exp(kt))
+#   when it shrinks. Needs founder_sampling.
+# shared_transformation: every replicate draws its cells from one library
+#   assembly and transformation (one glycerol stock), as in the real
+#   protocol, instead of redrawing them per replicate.
+# pcr_template_molecules: reads are drawn from this many template molecules
+#   per tube. The count variance grows by about
+#   (reads per tube / templates) * (1 + pcr_amplification_cv^2).
+# pcr_amplification_cv: CV of each template's amplification (PCR
+#   jackpotting). Needs pcr_template_molecules.
+#
+# founder_sampling: true
+# demographic_growth: true
+# shared_transformation: true
+# pcr_template_molecules: 2_000_000
+# pcr_amplification_cv: 1.0
+
+# One OD600 reading per tube, from its true total through an OD600-to-CFU
+# calibration (the one in ../od600/ is synthetic; a lab makes its own with
+# tfs-calibrate-od600). Writes tfs_sim_od600.csv with every tube of every
+# replicate.
+#   calibration:            calibration YAML written by tfs-calibrate-od600
+#   tube_volume_mL:         tube volume; the calibration is per mL (5.0)
+#   num_od_only_replicates: extra replicates with OD600 but no reads (0)
+#   sample_cfu_from_od600:  give the pipeline each tube's total as estimated
+#                           from its OD600, as the lab does, instead of the
+#                           true total (false)
+#
+# od600:
+#   calibration: ../od600/od600_calibration.yaml
+#   tube_volume_mL: 5.0
+#   num_od_only_replicates: 1
+#   sample_cfu_from_od600: true
 
 # ---------------------------------------------------------------------------
 # Binding data simulation (optional)
 # ---------------------------------------------------------------------------
 
-# If present, tfs-simulate also writes a binding CSV with per-genotype theta
-# curves.  titrant_name must match e_name in observable_calc_kwargs.
+# If present, tfs-simulate also writes a binding CSV (tfs_sim_binding.csv)
+# for tfs-configure-model --binding_df.  noise is the Gaussian SD on
+# theta_obs, not clipped to [0, 1] (clip_theta_obs: true restores clipping).
+# choose_by can also be the path to a CSV of Hill parameters (genotype,
+# theta_low, theta_high, log_hill_K, hill_n) that become those genotypes'
+# true phenotypes; it needs a Hill theta component.
 #
 # binding_data:
 #   titrant_name: iptg
 #   titrant_conc: [0, 0.0001, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1.0]
 #   noise: 0.02
+#   # One offset per binding genotype added to its whole curve,
+#   # Normal(0, genotype_offset_sd) (the fit's genotype_offset); truth in
+#   # {out_prefix}_binding_offsets.csv. Default 0.
+#   genotype_offset_sd: 0.1
 #   # Clean, monoclonal controls (pool = spiked_seqs).
 #   #   choose_by: <params file> | stratified | random ; num optional (no file)
 #   spiked_binding:
@@ -308,8 +442,7 @@ seed: null
 # reference-condition growth-rate "measurements" for a subset of genotypes,
 # tied to the per-genotype dk_geno already assigned above and a shared
 # reference rate k_ref. Feeds tfs-configure-model's --base_growth_df, which
-# anchors the hierarchical model's dk_geno/condition_growth identifiability
-# (see CLAUDE.md).
+# anchors the hierarchical model's dk_geno/condition_growth identifiability.
 #
 # k_ref (required): the reference (wt) growth rate, hr^-1.
 # genotypes (optional, default ["wt"]): genotypes to include. Every genotype
@@ -353,8 +486,8 @@ seed: null
 #   presplit_data:
 #
 # ---- What the presplit CSV represents -------------------------------------
-# This simulates the sequencing aliquot taken at t = -t_pre, just before
-# the culture is split into titrant-concentration conditions.  Because it is
+# This simulates the sequencing sample taken at t = -t_pre, just before
+# the culture is split into tubes.  Because it is
 # taken before any pre-selection growth, each ln_cfu value directly
 # constrains ln_cfu0 in the hierarchical model.
 #

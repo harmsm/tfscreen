@@ -97,7 +97,9 @@ class SimData:
 def build_sim_data(library_df,
                    sample_df,
                    thermo_data=None,
-                   skip_pairs=False):
+                   skip_pairs=False,
+                   theta_component=None,
+                   thermo_options=None):
     """
     Build a SimData from the simulation pipeline's core inputs.
 
@@ -121,6 +123,13 @@ def build_sim_data(library_df,
         Skip building pairwise epistasis indices.  Set True for theta
         components that do not model pairwise epistasis to avoid the
         quadratic enumeration over double mutants.
+    theta_component : str or None
+        Theta component name.  When given, a PddG component reads the CSV
+        keeping only (and reordering to) its structures, and the loader is
+        chosen from the component rather than the file extension.
+    thermo_options : dict or None
+        Loader options (ΔΔG units, column map, residue offset, coverage
+        threshold); see ``thermo.io.normalize_thermo_options``.
 
     Returns
     -------
@@ -153,21 +162,15 @@ def build_sim_data(library_df,
         struct_contact_distances=None,
     )
     if thermo_data is not None:
-        path_lower = str(thermo_data).lower()
-        if path_lower.endswith(".csv"):
-            from tfscreen.tfmodel.generative.components.theta.thermo.io import (
-                load_ddG_prior_csv,
-            )
-            raw = load_ddG_prior_csv(thermo_data, mut_labels)
-        else:
-            from tfscreen.tfmodel.generative.components.theta.thermo.io import (
-                load_struct_ensemble,
-            )
-            raw = load_struct_ensemble(
-                h5_path=thermo_data,
-                mut_labels=mut_labels,
-                pair_labels=pair_labels if not skip_pairs else None,
-            )
+        from tfscreen.tfmodel.generative.components.theta.thermo.io import (
+            load_thermo_data,
+        )
+        raw = load_thermo_data(
+            thermo_data, mut_labels,
+            pair_labels=pair_labels if not skip_pairs else None,
+            theta_name=theta_component,
+            thermo_options=thermo_options,
+        )
         struct_kw = dict(
             num_struct=len(raw["struct_names"]),
             struct_names=raw["struct_names"],
@@ -195,3 +198,31 @@ def build_sim_data(library_df,
         pair_nnz_geno_idx=pair_nnz_geno_idx,
         **struct_kw,
     )
+
+
+def with_titrant_conc(sim_data, titrant_conc):
+    """
+    Copy of a SimData evaluated at other titrant concentrations.
+
+    Genotypes, mutations and structural fields are unchanged; only the
+    concentration grid is replaced (sorted unique values, zeros given the
+    same log sentinel as ``build_sim_data``).  A theta component's
+    ``run_model`` on the copy evaluates the same drawn parameters at the new
+    concentrations, e.g. at binding-assay concentrations that differ from
+    the growth concentrations.
+
+    Parameters
+    ----------
+    sim_data : SimData
+    titrant_conc : array-like
+        Concentrations (mM, data units).
+
+    Returns
+    -------
+    SimData
+    """
+    concs = np.sort(np.unique(np.asarray(titrant_conc, dtype=float)))
+    safe_concs = np.where(concs == 0.0, _ZERO_CONC_SENTINEL, concs)
+    return sim_data.replace(num_titrant_conc=len(concs),
+                            titrant_conc=jnp.array(concs),
+                            log_titrant_conc=jnp.array(np.log(safe_concs)))

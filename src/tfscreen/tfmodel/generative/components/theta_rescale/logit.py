@@ -9,6 +9,6 @@ def rescale(theta: jnp.ndarray) -> jnp.ndarray:
 
     Clips theta to [_EPS, 1 - _EPS] before applying the logit so that the
     output is always finite.  The same clipping pattern is used throughout
-    the rest of the theta pipeline (e.g. _congression.py, hill.py).
+    the rest of the theta pipeline (e.g. hill.py).
     """
     return jax.scipy.special.logit(jnp.clip(theta, _EPS, 1.0 - _EPS))

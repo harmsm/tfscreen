@@ -1,7 +1,8 @@
 """
 tfs-summarize-grid — summarize the results of a model grid created by tfs-setup-grid.
 
-Scans every immediate subdirectory of a grid directory for ``combo.json``.
+Scans every immediate subdirectory of a grid directory (tfs-setup-grid or
+tfs-setup-sim-grid) for ``combo.json``.
 For each completed run it reads the component settings and any output files
 present, then writes a flat summary CSV with one row per run.
 
@@ -59,7 +60,10 @@ def summarize_grid(grid_dir, out_prefix=None):
     Summarize a model grid created by tfs-setup-grid.
 
     Scans every immediate subdirectory of *grid_dir* for ``combo.json`` and
-    collects the per-run variable assignments into a summary CSV.
+    collects the per-run variable assignments (configure_model, simulate and
+    template variables) into a summary CSV, with the statistics of the run's
+    ``*_fit_summary.json`` (in the run directory or its ``summary/``, where
+    tfs-summarize-fit writes by default) when there is one.
 
     Parameters
     ----------
@@ -99,8 +103,9 @@ def summarize_grid(grid_dir, out_prefix=None):
 
         row = {"run": name}
 
-        # Flatten configure_model and template variable dicts into the row.
-        for section in ("configure_model", "template"):
+        # Flatten the grid variables (configure_model for a model grid,
+        # simulate for a simulation grid, template for both) into the row.
+        for section in ("configure_model", "simulate", "template"):
             for k, v in (combo.get(section) or {}).items():
                 row[k] = v
 
@@ -110,7 +115,10 @@ def summarize_grid(grid_dir, out_prefix=None):
         )
 
         # Merge fit summary statistics if present.
-        matches = sorted(glob.glob(os.path.join(subdir, "*_fit_summary.json")))
+        # tfs-summarize-fit writes into summary/ by default.
+        matches = (sorted(glob.glob(os.path.join(subdir, "*_fit_summary.json")))
+                   or sorted(glob.glob(os.path.join(subdir, "summary",
+                                                    "*_fit_summary.json"))))
         if matches:
             try:
                 with open(matches[0]) as fh:

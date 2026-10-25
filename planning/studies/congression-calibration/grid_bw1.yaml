@@ -1,0 +1,53 @@
+# ---------------------------------------------------------------------------
+# Binding-weight follow-up to grid.yaml (congression calibration, step 3.5)
+#
+#   tfs-setup-sim-grid grid_bw1.yaml --out_prefix congression_calibration_bw1
+#   for d in congression_calibration_bw1/run_*/; do (cd "$d" && sbatch run.srun); done
+#
+# Tests the binding-weight diagnosis (README "Diagnosis, revised"): the
+# default binding_weight (growth rows / binding rows, ~251 here) lets the
+# mixture trade growth fit for binding fit through its congressed classes.
+# Refit with binding_weight = 1. Same simulations as grid.yaml runs 0001-0003
+# (lambda 0) and 0037-0039 (lambda 1.0): wide dk, seed 1, all growth rows.
+# 2 lambda x 3 fits = 6 runs.
+# ---------------------------------------------------------------------------
+
+base_config: simulate_config.yaml
+
+run_name: "lam{{ transformation_poisson_lambda }}__dkloc{{ dk_geno_hyper_loc }}__seed{{ seed }}__{{ fit }}_{{ lam_prior }}__bw{{ binding_weight }}"
+
+output_file: run.srun
+
+
+simulate:
+
+  - name: lam
+    variants:
+      - transformation_poisson_lambda: 0.0
+      - transformation_poisson_lambda: 1.0
+
+  - name: dk
+    variants:
+      - dk_geno_hyper_loc: -3.5
+        dk_geno_hyper_scale: 0.5
+        dk_geno_hyper_shift: 0.02
+
+  - name: seed
+    variants:
+      - seed: 1
+
+
+template:
+
+  - name: fit
+    variants:
+      - fit: single
+        lam_prior: "off"
+      - fit: mixture
+        lam_prior: matched
+      - fit: mixture
+        lam_prior: measured
+
+  - name: weight
+    variants:
+      - binding_weight: 1.0

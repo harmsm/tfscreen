@@ -262,3 +262,25 @@ def test_mult_scale_constant_rejected():
         extract_theta_epistasis(model, _flat_posteriors(
             np.tile([0.5, 0.6, 0.7, 0.9], (5, 1))),
             scale="mult", scale_constant=2.0)
+
+
+def test_relative_X_epistasis_is_additive_without_in_regime():
+    """hill_relative predicts X (not an occupancy): additive epistasis on X,
+    which may sit outside (0, 1), and no in_regime column."""
+    S = 20
+    X = np.tile([1.0, 0.4, 1.3, -0.2], (S, 1))
+    model = _make_model()
+    model._theta = "hill_relative"
+    post = {"theta_hill_n": np.ones((S, 4)),
+            "theta_log_hill_K": np.zeros((S, 4)),
+            "theta_X_high": X.copy(),
+            "theta_X_low": X.copy()}
+
+    result = extract_theta_epistasis(model, post, scale="add")
+
+    assert "in_regime" not in result.columns
+    assert len(result) == 1
+    row = result.iloc[0]
+    assert row["genotype"] == "A10G/C20D"
+    # 00=wt(1.0), 01=A10G(0.4), 10=C20D(1.3), 11=double(-0.2)
+    assert np.isclose(row["q0.5"], (-0.2 - 1.3) - (0.4 - 1.0), atol=1e-6)

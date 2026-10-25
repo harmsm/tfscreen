@@ -117,3 +117,34 @@ def test_run_simulation_no_output(mocker, mock_config, mock_result_dfs):
     
     mock_setup.assert_called_once_with(None, "tfscreen_")
     assert pd.DataFrame.to_csv.call_count == 0
+
+
+def test_run_simulation_subsample_simulates_the_subsampled_design(
+        mocker, mock_result_dfs, tmp_path):
+    lib_df, pheno_df, theta_df, params_df, sample_df, counts_df = mock_result_dfs
+    cfg = {"library_subsample": {"single": 1}, "total_num_reads": 100}
+    cfg_path = tmp_path / "config.yaml"
+
+    mocker.patch("tfscreen.util.read_yaml", return_value=cfg)
+    mocker.patch("tfscreen.simulate.run_simulation.has_subsample",
+                 return_value=True)
+    sub_lib = pd.DataFrame({"genotype": ["wt"]})
+    mock_build = mocker.patch("tfscreen.simulate.run_simulation.build_library",
+                              return_value=(sub_lib, "summary"))
+    mocker.patch("tfscreen.simulate.run_simulation.subsample_design",
+                 return_value={"total_num_reads": 50, "kept_pool_share": 0.5})
+    mock_lib_pred = mocker.patch(
+        "tfscreen.simulate.run_simulation.library_prediction",
+        return_value=(lib_df, pheno_df, theta_df, params_df, None),
+    )
+    mock_sel = mocker.patch("tfscreen.simulate.run_simulation.selection_experiment",
+                            return_value=(sample_df, counts_df))
+
+    run_simulation(str(cfg_path), None)
+
+    mock_build.assert_called_once_with(cfg, base_dir=str(tmp_path))
+    sim_cf = mock_lib_pred.call_args.args[0]
+    assert sim_cf == {"library_subsample": {"single": 1}, "total_num_reads": 50}
+    assert mock_lib_pred.call_args.kwargs["library_df"] is sub_lib
+    assert cfg["total_num_reads"] == 100          # the config is not changed
+    assert mock_sel.call_args.args[0] is sim_cf

@@ -1,0 +1,164 @@
+#!/bin/bash -l
+#SBATCH --account=harmslab
+#SBATCH --job-name=relative_v4
+#SBATCH --output=run.out
+#SBATCH --error=run.err
+#SBATCH --partition=gpu
+#SBATCH --time=00-12:00:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --gpus=1
+#SBATCH --ntasks-per-node=1
+
+# Relative-X fit study, run 4 (post-fix guide comparison), one run (rendered
+# by tfs-setup-sim-grid from planning/studies/relative-fit/run_v4.srun;
+# built on ../svi-overconfidence/run.srun for the two-stage path and guide
+# diagnostics). Submit from the run directory: sbatch run_v4.srun
+
+# Swap lines if on cluster (module load) or local (XLA_FLAGS to use CPU)
+module load cuda/12.4.1
+#export XLA_FLAGS="--xla_force_host_platform_device_count=8"
+
+set -e
+
+# joint (hill_geno + binding + prefit) or relative (hill_relative, growth only)
+FIT="{{ fit }}"
+# Growth likelihood: counts (default; with a per-tube level offset, and no
+# extra growth noise, which it refuses) or lncfu (with normal_kt growth
+# noise). grid.yaml runs counts only.
+LIKELIHOOD="{{ likelihood | default('counts') }}"
+# component (mean-field component guide), low_rank (low-rank multivariate
+# normal autoguide), map (MAP, then a Laplace posterior), or two_stage /
+# two_stage_low_rank (MAP, Laplace, then conditional SVI refits)
+INFERENCE="{{ inference | default('component') }}"
+# rank of the low-rank guide; empty = numpyro's default (round(sqrt(D)))
+GUIDE_RANK="{{ guide_rank | default('') }}"
+# population SD of log(hill_n), held (theta_log_hill_n_hyper_scale_fixed);
+# empty = learned. Learned, it ran to about 19 on real data (2026-10-01).
+N_SCALE="{{ n_scale | default('') }}"
+
+SEED=$(python -c "import yaml; print(yaml.safe_load(open('tfs_sim_config.yaml'))['seed'])")
+
+# ---------------------------------------------------------------------------
+# 1. Simulate
+# ---------------------------------------------------------------------------
+echo ">>> Simulate (seed=${SEED})"
+tfs-simulate tfs_sim_config.yaml . --seed "${SEED}"
+
+# ---------------------------------------------------------------------------
+# 2. Configure
+# ---------------------------------------------------------------------------
+if [[ "${LIKELIHOOD}" == "counts" ]]; then
+    LIKELIHOOD_ARGS=(--growth_likelihood counts --growth_noise_model zero
+                     --sample_offset_model level)
+else
+    LIKELIHOOD_ARGS=(--growth_likelihood lncfu --growth_noise_model normal_kt
+                     --sample_offset_model zero)
+fi
+
+if [[ "${FIT}" == "relative" ]]; then
+    FIT_ARGS=(--theta_model hill_relative)
+else
+    FIT_ARGS=(--theta_model hill_geno
+              --binding_df tfs_sim_binding.csv
+              --binding_weight 1.0)
+fi
+
+echo ">>> Configure (${FIT}, ${LIKELIHOOD})"
+tfs-configure-model \
+    --growth_df tfs_sim_growth.csv \
+    --presplit_df tfs_sim_presplit.csv \
+    --condition_growth_model linear \
+    --growth_transition_model instant \
+    --ln_cfu0_model hierarchical \
+    --dk_geno_model hierarchical_geno \
+    --activity_model fixed \
+    --theta_rescale_model passthrough \
+    --theta_growth_noise_model zero \
+    --theta_binding_noise_model zero \
+    --transformation_model single \
+    --library_config tfs_sim_config.yaml \
+    --growth_shares_replicates \
+    "${FIT_ARGS[@]}" \
+    "${LIKELIHOOD_ARGS[@]}"
+
+if [[ -n "${N_SCALE}" ]]; then
+    grep -q '^theta.theta_log_hill_n_hyper_scale_fixed,' tfs_configure_priors.csv
+    sed -i "s/^theta.theta_log_hill_n_hyper_scale_fixed,[^,]*/theta.theta_log_hill_n_hyper_scale_fixed,${N_SCALE}/" \
+        tfs_configure_priors.csv
+    echo "log hill_n population SD held at ${N_SCALE}"
+fi
+
+# ---------------------------------------------------------------------------
+# 3. Pre-fit calibration (joint only: it needs binding), fit, posterior
+# ---------------------------------------------------------------------------
+if [[ "${FIT}" == "joint" ]]; then
+    echo ">>> Pre-fit calibration"
+    tfs-prefit-calibration tfs_configure_config.yaml --seed "${SEED}" \
+        --k_scale_ceiling 0.005
+fi
+
+case "${INFERENCE}" in
+    component) INFERENCE_ARGS=() ;;
+    low_rank)  INFERENCE_ARGS=(--guide_type auto_low_rank_multivariate_normal)
+               if [[ -n "${GUIDE_RANK}" ]]; then
+                   INFERENCE_ARGS+=(--guide_rank "${GUIDE_RANK}")
+               fi ;;
+    # a converged MAP took ~130,000 epochs on run 1's run 0002; Laplace
+    # needs it converged (a MAP stopped at a fixed step size had 9 negative
+    # Hessian eigenvalues and gave 95% intervals ~1e10 wide)
+    map)       INFERENCE_ARGS=(--analysis_method map --max_num_epochs 200000) ;;
+    # MAP as for map, then two_stage.py: SVI refits at Laplace draws of k, m
+    # with the component guide (two_stage) or the low-rank autoguide
+    # (two_stage_low_rank)
+    two_stage|two_stage_low_rank)
+               INFERENCE_ARGS=(--analysis_method map --max_num_epochs 200000) ;;
+    *) echo "unknown inference '${INFERENCE}'" >&2; exit 1 ;;
+esac
+
+echo ">>> Fit model (${INFERENCE})"
+tfs-fit-model tfs_configure_config.yaml --seed "${SEED}" "${INFERENCE_ARGS[@]}"
+
+if [[ "${INFERENCE}" != "map" && "${INFERENCE}" != two_stage* ]]; then
+    echo ">>> Guide diagnostics"
+    # diagnostics only; never stops the run
+    python "{{ diagnostics_script }}" tfs_fit_model_checkpoint.pkl \
+        --num_draws 2000 --out_prefix tfs_guide_diagnostics \
+        || echo "guide diagnostics failed" >&2
+fi
+
+if [[ "${INFERENCE}" == two_stage* ]]; then
+    if [[ "${INFERENCE}" == "two_stage_low_rank" ]]; then
+        GUIDE=auto_low_rank_multivariate_normal
+    else
+        GUIDE=component
+    fi
+    echo ">>> Laplace posterior (stage 1)"
+    tfs-sample-posterior tfs_configure_config.yaml tfs_fit_model_checkpoint.pkl \
+        --out_prefix tfs_laplace
+    echo ">>> Conditional fits at Laplace draws of k, m (stage 2)"
+    python "{{ two_stage_script | default('two_stage.py') }}" \
+        --laplace_file tfs_laplace.h5 --num_draws 10 --samples_per_draw 1000 \
+        --seed "${SEED}" --guide_type "${GUIDE}" --out_prefix tfs_posterior
+else
+    echo ">>> Sample posterior"
+    tfs-sample-posterior tfs_configure_config.yaml tfs_fit_model_checkpoint.pkl
+fi
+
+# ---------------------------------------------------------------------------
+# 4. Extract, predict, summarize
+# ---------------------------------------------------------------------------
+echo ">>> Extract parameters"
+tfs-extract-params tfs_configure_config.yaml tfs_posterior.h5
+
+echo ">>> Predict theta"
+tfs-predict-theta tfs_configure_config.yaml tfs_posterior.h5
+
+echo ">>> Predict growth"
+tfs-predict-growth tfs_configure_config.yaml tfs_posterior.h5 \
+    --num_marginal_samples=500
+
+echo ">>> Summarize fit"
+tfs-summarize-fit .
+
+echo ">>> Done"

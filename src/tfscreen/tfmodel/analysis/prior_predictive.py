@@ -53,7 +53,12 @@ def draw_prior(orchestrator, rng_key=0, num_draws=1):
         if site["type"] == "deterministic"
     }
 
-    return_sites = sorted(set(tr.keys()) - observed)
+    # Plate sites also appear in the trace (their value is the index array);
+    # they are neither latents nor predictions.
+    return_sites = sorted(
+        name for name, site in tr.items()
+        if site["type"] in ("sample", "deterministic") and name not in observed
+    )
 
     predictive = Predictive(
         orchestrator.jax_model,

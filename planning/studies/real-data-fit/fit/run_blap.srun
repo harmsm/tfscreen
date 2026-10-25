@@ -1,0 +1,68 @@
+#!/bin/bash -l
+#SBATCH --account=harmslab
+#SBATCH --job-name=tfs_blap
+#SBATCH --output=run.out
+#SBATCH --error=run.err
+#SBATCH --partition=gpulong
+#SBATCH --time=01-00:00:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --gpus=1
+#SBATCH --mem=0
+#SBATCH --ntasks-per-node=1
+
+# Per-genotype (block) Laplace at a finished MAP (2026-10-02; README).
+# Given the shared parameters (k, m, hyperparameters, tube offsets) each
+# genotype's parameters couple to no other genotype, so the Hessian splits
+# into one small block per genotype: B Hessian-vector products per genotype
+# chunk instead of a full Hessian. Shared parameters stay at the MAP, so
+# their uncertainty is left out (k/m intervals are zero width).
+#
+# Submit from a new directory next to the MAP run:
+#   mkdir rel_off_n05_blap && cd rel_off_n05_blap && sbatch --export=ALL,MAP_DIR=../rel_off_n05 ../run_blap.srun
+#
+# With the shared parameters' uncertainty (2026-10-02): SHARED=1 adds one
+# Hessian-vector product per shared parameter (about 314 here) per genotype
+# chunk, draws the shared parameters from their Laplace marginal (the Schur
+# complement) and each genotype from its conditional given them. That is the
+# full Laplace; k/m intervals are no longer zero width.
+#   mkdir rel_off_n05_alap && cd rel_off_n05_alap && sbatch --export=ALL,MAP_DIR=../rel_off_n05,SHARED=1 ../run_blap.srun
+#
+# MAP_DIR: the finished MAP run (config, priors, guesses, library snapshot
+#          and checkpoint are copied from it)
+# GENOTYPE_CHUNK: genotypes per Hessian-vector-product pass (default 20000)
+
+module load cuda/12.4.1
+
+set -e
+
+MAP_DIR="${MAP_DIR:?set MAP_DIR to the MAP run directory}"
+GENOTYPE_CHUNK="${GENOTYPE_CHUNK:-20000}"
+NUM_SAMPLES="${NUM_SAMPLES:-300}"
+SHARED_ARGS=()
+if [[ -n "${SHARED:-}" ]]; then
+    SHARED_ARGS=(--laplace_shared)
+fi
+
+echo ">>> Copy MAP run from ${MAP_DIR} $(date)"
+cp "${MAP_DIR}"/tfs_configure_config.yaml "${MAP_DIR}"/tfs_configure_priors.csv \
+   "${MAP_DIR}"/tfs_configure_guesses.csv "${MAP_DIR}"/tfs_configure_library.csv \
+   "${MAP_DIR}"/tfs_fit_model_checkpoint.pkl .
+
+echo ">>> Block Laplace $(date)"
+/usr/bin/time -v tfs-sample-posterior tfs_configure_config.yaml tfs_fit_model_checkpoint.pkl \
+    --laplace_blocks "${SHARED_ARGS[@]}" --genotype_chunk_size "${GENOTYPE_CHUNK}" \
+    --num_posterior_samples "${NUM_SAMPLES}" --sampling_batch_size 25 \
+    --skip_growth_observations
+
+echo ">>> Extract parameters $(date)"
+tfs-extract-params tfs_configure_config.yaml tfs_posterior.h5
+
+echo ">>> Predict theta/X $(date)"
+tfs-predict-theta tfs_configure_config.yaml tfs_posterior.h5
+
+echo ">>> Predict growth (subset) $(date)"
+tfs-predict-growth tfs_configure_config.yaml tfs_posterior.h5 \
+    --num_marginal_samples=500 --subset_genotypes --genotype_batch_size 2000
+
+echo ">>> Done $(date)"

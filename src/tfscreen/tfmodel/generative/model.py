@@ -5,6 +5,7 @@ from tfscreen.tfmodel.data_class import (
     PriorsClass,
 )
 
+import jax
 import jax.numpy as jnp
 import numpyro as pyro
 
@@ -34,12 +35,14 @@ def jax_model(data: DataClass,
         - growth_noise
         - sample_offset
         - calculate_growth
-        - theta_binding_noise
+        - theta_binding_noise (absent in a growth-only model)
         - theta_growth_noise
-        - observe_binding
+        - observe_binding (absent in a growth-only model)
         - observe_growth
         - is_guide
-        The dictionary can also optionally have `observe_presplit` and/or
+        A growth-only model has ``data.binding = None``; the binding
+        prediction and likelihood are then skipped (static structure, so this
+        is jit-safe). The dictionary can also optionally have `observe_presplit` and/or
         `observe_base_growth` (the side-channel observers, present only when
         their data was supplied), plus `batch_idx` (which overrides whatever
         is in `batch_size`) or `batch_size`.
@@ -50,9 +53,9 @@ def jax_model(data: DataClass,
 
     binding_only = control.get("binding_only", False)
     is_guide = control["is_guide"]
-    theta_model, calc_theta, get_moments = control["theta"]
-    theta_binding_noise_model = control["theta_binding_noise"]
-    binding_observer = control["observe_binding"]
+    theta_model, calc_theta, _ = control["theta"]
+    theta_binding_noise_model = control.get("theta_binding_noise")
+    binding_observer = control.get("observe_binding")
 
     # -------------------------------------------------------------------------
     # Binding-only mode: theta is inferred directly from observed theta values.
@@ -64,7 +67,8 @@ def jax_model(data: DataClass,
         pyro.deterministic("theta_binding_pred", theta_binding)
         binding_pred = theta_binding_noise_model("theta_binding_noise",
                                                  theta_binding,
-                                                 priors.binding.theta_binding_noise)
+                                                 priors.binding.theta_binding_noise,
+                                                 data=data.binding)
         if is_guide:
             binding_observer("binding", data.binding, None)
         else:
@@ -79,7 +83,7 @@ def jax_model(data: DataClass,
     ln_cfu0_model = control["ln_cfu0"]
     activity_model = control["activity"]
     dk_geno_model = control["dk_geno"]
-    transformation_model, transformation_update, transformation_needs_population = \
+    transformation_model, cell_classes, transformation_needs_population = \
         control["transformation"]
     theta_growth_noise_model = control["theta_growth_noise"]
     theta_rescale = control["theta_rescale"]
@@ -104,17 +108,17 @@ def jax_model(data: DataClass,
                         data.growth,
                         priors.theta)
 
-    # Get population moments as anchors for the transformation model
-    anchors = get_moments(theta, data.growth)
-
     # -------------------------------------------------------------------------
-    # Make prediction for the binding experiment
+    # Make prediction for the binding experiment (none in a growth-only model)
 
-    theta_binding = calc_theta(theta,data.binding)
-    pyro.deterministic(f"theta_binding_pred",theta_binding)
-    binding_pred = theta_binding_noise_model("theta_binding_noise",
-                                             theta_binding,
-                                             priors.binding.theta_binding_noise)
+    has_binding = data.binding is not None
+    if has_binding:
+        theta_binding = calc_theta(theta,data.binding)
+        pyro.deterministic(f"theta_binding_pred",theta_binding)
+        binding_pred = theta_binding_noise_model("theta_binding_noise",
+                                                 theta_binding,
+                                                 priors.binding.theta_binding_noise,
+                                                 data=data.binding)
 
     # -------------------------------------------------------------------------
     # Make prediction for the growth experiment
@@ -129,75 +133,43 @@ def jax_model(data: DataClass,
                             data.growth,
                             priors.growth.ln_cfu0)
 
-    # # pleiotropic effect of mutation
-    dk_geno = dk_geno_model("dk_geno",
-                            data.growth,
-                            priors.growth.dk_geno)
+    # pleiotropic effect of mutation and TF activity. When the congression
+    # mixture needs them, the components also return every genotype's value
+    # in library order (None if their latents arrived batch-sized).
+    if transformation_needs_population:
+        dk_geno, dk_population = dk_geno_model("dk_geno",
+                                               data.growth,
+                                               priors.growth.dk_geno,
+                                               return_population=True)
+        activity, activity_population = activity_model("activity",
+                                                       data.growth,
+                                                       priors.growth.activity,
+                                                       return_population=True)
+    else:
+        dk_geno = dk_geno_model("dk_geno",
+                                data.growth,
+                                priors.growth.dk_geno)
+        activity = activity_model("activity",
+                                  data.growth,
+                                  priors.growth.activity)
 
-    # activity
-    activity = activity_model("activity",
-                              data.growth,
-                              priors.growth.activity)
-
-    # theta
-    theta_growth = calc_theta(theta,data.growth)
+    # theta (the genotype's own, before congression), at the titrant the
+    # growth sees (s times nominal, if the theta component has a shift)
+    growth_theta_data = growth_titrant(theta, data.growth)
+    theta_growth = calc_theta(theta, growth_theta_data)
     pyro.deterministic(f"theta_growth_pred",theta_growth)
 
-    # Transformation parameters (lam, mu, sigma)
+    # Transformation parameters (lambda for the mixture; none for single)
     trans_params = transformation_model("transformation",
                                         data.growth,
-                                        priors.growth.transformation,
-                                        anchors=anchors)
+                                        priors.growth.transformation)
 
-    # Correct theta for transformation
-    # theta_growth shape: (..., titrant_name, titrant_conc, geno) or scattered
-    # Result broadcasts to interaction of (rep, pre) and (titrant)
-    # Parameters passed as tuple
-    if transformation_needs_population:
-        # The congression correction's background CDF must be estimated from
-        # the full genotype population, not whatever subset of genotypes is
-        # active in this particular forward pass (a training minibatch, or a
-        # handful of genotypes requested at prediction time) — see
-        # transformation/_congression.py::update_thetas.  When the caller
-        # hasn't supplied one explicitly (data.growth.external_theta_population),
-        # compute it locally by re-running calc_theta over every genotype.
-        # This is only correct when data.growth already spans the full
-        # population, which holds during SVI training (genotype minibatching
-        # never shrinks data.growth.num_genotype — see tensors/batch.py) but
-        # NOT for prediction code paths that subset genotypes; those must
-        # supply external_theta_population themselves.
-        if data.growth.external_theta_population is not None:
-            population_theta_growth = data.growth.external_theta_population
-        else:
-            # Deliberately leave scatter_theta untouched (rather than forcing
-            # it to 0) so population_theta_growth's leading (non-genotype)
-            # dimensions match theta_growth's exactly -- update_thetas relies
-            # on that alignment when broadcasting the correction back onto
-            # theta_growth's shape.
-            num_genotype = data.growth.num_genotype
-            full_population_idx = jnp.arange(num_genotype)
-            full_population_data = data.growth.replace(
-                batch_idx=full_population_idx,
-                geno_theta_idx=full_population_idx,
-            )
-            population_theta_growth = calc_theta(theta, full_population_data)
-
-        corr_theta_growth = transformation_update(
-            theta_growth,
-            params=trans_params,
-            mask=data.growth.congression_mask,
-            population_theta=population_theta_growth,
-        )
-    else:
-        corr_theta_growth = transformation_update(theta_growth,
-                                                  params=trans_params,
-                                                  mask=data.growth.congression_mask)
-
+    # Noise acts on the genotype's own theta, before the cell classes are
+    # built; co-residents use noiseless population values.
     noisy_theta_growth = theta_growth_noise_model("theta_growth_noise",
-                                                  corr_theta_growth,
-                                                  priors.growth.theta_growth_noise)
-
-    rescaled_theta = theta_rescale(noisy_theta_growth)
+                                                  theta_growth,
+                                                  priors.growth.theta_growth_noise,
+                                                  data=data.growth)
 
     # -------------------------------------------------------------------------
     # finalize
@@ -206,6 +178,8 @@ def jax_model(data: DataClass,
     # final tensors. We still need to call growth_transition_model so its latent
     # variables (e.g. memory k1/tau0/k2) get guide sample sites registered.
     if is_guide:
+
+        rescaled_theta = theta_rescale(noisy_theta_growth)
 
         growth_transition_model("growth_transition",
                                 data.growth,
@@ -226,7 +200,8 @@ def jax_model(data: DataClass,
 
         growth_observer("growth", data.growth, None,
                         priors=priors.growth.growth_obs)
-        binding_observer("binding", data.binding, None)
+        if has_binding:
+            binding_observer("binding", data.binding, None)
 
         # Register side-channel guide sites. presplit.guide is a no-op (it
         # introduces no latents); base_growth.guide registers the k_ref
@@ -255,13 +230,26 @@ def jax_model(data: DataClass,
                                  growth=data.growth,
                                  priors=priors.growth.base_growth)
 
-        # calculate observable (all tensors have correct dimensions)
+        # Congression: split each genotype's cells into classes (clean, and
+        # congressed cells carrying co-resident plasmids), each with its own
+        # cell-level theta, activity and dk_geno and a mixture weight. See
+        # transformation/mixture.py.
+        population = None
+        if transformation_needs_population:
+            population = _population(growth_theta_data, theta, calc_theta,
+                                     dk_population, activity_population)
+        classes = cell_classes((noisy_theta_growth, activity, dk_geno),
+                               population, trans_params, data.growth)
+
+        # Grow every class. The class axis leads the growth layout and every
+        # growth component is elementwise, so each is called once.
+        rescaled_theta = theta_rescale(classes.theta)
         g_pre, g_sel = calculate_growth(params=growth_params,
-                                        dk_geno=dk_geno,
-                                        activity=activity,
+                                        dk_geno=classes.dk_geno,
+                                        activity=classes.activity,
                                         theta=rescaled_theta)
 
-        total_growth = growth_transition_model("growth_transition",
+        class_growth = growth_transition_model("growth_transition",
                                                data.growth,
                                                priors.growth.growth_transition,
                                                g_pre=g_pre,
@@ -269,6 +257,11 @@ def jax_model(data: DataClass,
                                                t_pre=data.growth.t_pre,
                                                t_sel=data.growth.t_sel,
                                                theta=rescaled_theta)
+
+        # Mix the classes at the observable level: exp(ln_cfu) adds, rates
+        # do not.
+        total_growth = jax.scipy.special.logsumexp(
+            classes.log_weight + class_growth, axis=0)
 
         sigma_k = growth_noise_model("growth_noise",
                                      data.growth,
@@ -281,12 +274,70 @@ def jax_model(data: DataClass,
         ln_cfu_pred = ln_cfu0 + total_growth + delta_sample
 
         # Register results
-        pyro.deterministic(f"binding_pred", binding_pred)
+        if has_binding:
+            pyro.deterministic(f"binding_pred", binding_pred)
         pyro.deterministic(f"growth_pred", ln_cfu_pred)
 
         # Calculate likelihood
         growth_observer("growth", data.growth, ln_cfu_pred, sigma_k=sigma_k,
                         priors=priors.growth.growth_obs)
-        binding_observer("binding", data.binding, binding_pred)
+        if has_binding:
+            binding_observer("binding", data.binding, binding_pred)
 
 
+def growth_titrant(theta, growth):
+    """
+    The growth data as the theta component should see it: concentrations
+    multiplied by s when the component's parameters carry a growth titrant
+    shift log s (``growth_log_conc_shift``, hill_geno), else unchanged.
+    Binding data are never shifted, so the curve is in binding units.
+    A zero concentration stays zero (its log is a large negative sentinel).
+    """
+    shift = getattr(theta, "growth_log_conc_shift", None)
+    if shift is None:
+        return growth
+    return growth.replace(log_titrant_conc=growth.log_titrant_conc + shift,
+                          titrant_conc=growth.titrant_conc * jnp.exp(shift))
+
+
+def _population(growth, theta, calc_theta, dk_population, activity_population):
+    """
+    Library-ordered theta, activity and dk_geno for every genotype.
+
+    Each comes from ``growth.external_*_population`` when supplied (prediction
+    code that runs a genotype subset, or whose latents are batch-sized
+    substitutions), else is computed here: theta by evaluating the theta
+    component over the full library (valid because genotype mini-batching
+    never shrinks ``num_genotype``; see tensors/batch.py), activity and
+    dk_geno from their components' ``return_population`` values.
+
+    Raises
+    ------
+    ValueError
+        If activity or dk_geno is needed but neither the component nor the
+        data supplies it.
+    """
+    if growth.external_theta_population is not None:
+        theta_population = growth.external_theta_population
+    else:
+        full = jnp.arange(growth.num_genotype)
+        theta_population = calc_theta(
+            theta, growth.replace(batch_idx=full, geno_theta_idx=full))
+
+    if growth.external_dk_population is not None:
+        dk_population = growth.external_dk_population
+    if growth.external_activity_population is not None:
+        activity_population = growth.external_activity_population
+
+    missing = [name for name, value in (("dk_geno", dk_population),
+                                        ("activity", activity_population))
+               if value is None]
+    if missing:
+        raise ValueError(
+            f"The congression mixture needs every genotype's {missing}, but "
+            f"the latents were not library-sized and no "
+            f"external_*_population was supplied. Prediction code that runs "
+            f"a genotype subset must pass them (see analysis/prediction.py)."
+        )
+
+    return theta_population, activity_population, dk_population

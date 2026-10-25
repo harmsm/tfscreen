@@ -151,8 +151,7 @@ def hill_theta_from_fit(fit, concs):
     """Evaluate a genotype's fitted Hill curve at ``concs`` (natural conc).
 
     Reads the theta-curve params out of a :class:`GenotypeFit`'s phenotype
-    block and evaluates :func:`_hill_theta`.  Used by :func:`predict_theta` and
-    by the congression de-attenuation stage.
+    block and evaluates :func:`_hill_theta`.  Used by :func:`predict_theta`.
     """
     pheno = np.asarray(fit.est_t)[fit.pheno_slice]
     theta_low = expit(pheno[1])
@@ -440,15 +439,13 @@ def fits_to_results_df(fits):
     """Assemble the per-genotype results table from a ``fits`` dict.
 
     ``fits`` is ``{(genotype, titrant_name): GenotypeFit}`` (as returned by
-    :func:`fit_phenotypes` or produced by the congression de-attenuation
-    stage).  Returns one row per fit with ``n_obs``, ``converged``, the five
+    :func:`fit_phenotypes`).  Returns one row per fit with ``n_obs``, ``converged``, the five
     natural-space phenotype parameters, and their transformed-space
     estimate/std (``<param>_t``, ``<param>_t_std``).  Dict insertion order is
     preserved.
 
-    Because this reads only ``est_t``/``cov_t``, it produces the same schema
-    whether the fits are raw (Stage 1) or de-attenuated (Stage 1.5), which is
-    how ``tfs-fit-genotypes`` emits the raw and corrected parameter tables.
+    Because this reads only ``est_t``/``cov_t``, it gives the same schema for
+    any fits dict with those fields.
     """
     rows = []
     for (geno, titr), gf in fits.items():
@@ -488,7 +485,7 @@ def predict_theta(fits, growth_df, theta_col="theta"):
         The ln_cfu data (supplies the per-titrant concentration grid).
     theta_col : str
         Name of the output theta column (default ``"theta"``).  Pass a
-        distinct name to concatenate/merge raw and de-attenuated predictions.
+        distinct name to merge predictions from different fits.
 
     Returns
     -------

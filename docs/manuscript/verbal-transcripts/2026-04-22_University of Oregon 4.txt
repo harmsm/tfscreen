@@ -1,0 +1,99 @@
+The next part of the model is the biophysical model for transcription vector binding.
+So for this what we're doing is we take the standard hill model with a binding constant,
+a cooperativity parameter, a bound baseline parameter, and an unoccupied baseline parameter,
+and we fit that to each of the fractional occupancy data.
+We do this in a hierarchical Bayesian context where we are inferring the prior distributions
+for all four of these parameters from the data together.
+The last piece of the mapping for the total function is actually a correction that occurs
+between that biophysical fractional occupancy calculated with the hill model and the theta
+that we feed into our linking function.
+That's actually a correction for multiple transformations.
+So one of the challenges in a high-throughbrit screen like this is that when we transform
+bacteria, most of them pick up one copy of a plasmid, but some pick up more than one.
+We empirically measure this and found that our cells pick up a zero truncated Poisson
+distribution, pick up most of the time one, a very small fraction of the time two, and
+even a smaller fraction of the time three plasmids.
+What this correction parameter does is it actually captures the fact that when we look
+at the growth rate of a cell or the frequency of a different genotypes going up in the population,
+it could be going up because it, in fact, is higher fitness or because that plasmid was
+co-transformed with another plasmid that has high fitness, because the amount of protein
+in each cell is higher than the amount of DNA, and because this is a repressor, things
+that have a higher binding affinity will always win the exhibit a dominance phenotype.
+And so what we need to be able to do is correct for that dominance by asking when a frequency
+of a gene is going up, is it going up because it's being dragged out by another gene, and
+is it going down because it's being dragged down by another gene.
+So to correct for this, we have a sampling from the, we take each theta and then we ask
+what's the probability that it's sampling from another theta, and we use that to effectively
+correct that theta.
+So then if we stack all of these models together, we'll start from the bottom, we have a biophysical
+model of transcription factor occupancy with things like binding constants and hill coefficients.
+Those are things we want to learn.
+We take those values, we run them, and we're sampling hierarchically from their priors.
+We then take that theta, that occupancy, and we feed it through a correction that accounts
+for multiple transformation.
+In this case, it has a single parameter lambda that we learned from all of our data all at
+once with a prior that we set from externally measured co-transformation lambda, so it puts
+on control parameter.
+And then we take this corrected theta and we feed it through our linking function.
+We then learn those parameters to describe the whole data.
+So that's the entire model of stack.
+Let's go through the priors that are on each of these model parameters, and so for the
+linking function, the growth parameters, so the slope in the precondition, the intercept
+in the precondition, the slope in the selection condition, and the growth in the selection
+condition, these terms are all used simple priors.
+That is because they only occur once, there's one across the whole data set, so there's
+no way to learn a collection, learn a hyper, sorry, no way to learn parameters for some
+hyperdistribution from this, right?
+It's just a single simple parameter.
+Likewise, this is true for the tau terms, tau naught, k1, and k2.
+These use simple priors because they are single terms that are used for the entire data set.
+If we look at the correction for multiple transformations, again we have a single simple
+prior on lambda because there's one lambda for the entire data set, so we set that prior
+and then go from there.
+But then pretty much everything else uses a hierarchical priors situation where we're
+learning the prior distribution from the data.
+So we set a broad hyper-prior distribution and then we learn the actual distribution
+from the data.
+So the terms that are used with this kind of prior approach are the delta k genome,
+the log CFU naught, the hill coefficient parameters, so k and then the baseline parameters
+for that all use a hierarchical Bayesian model.
+One last note on the nature of the priors, there's a special case.
+We have several genotypes that we spike in at high concentrations.
+These include wild type as well as a set of controls where we know what their binding
+measurements are.
+These spiked genotypes actually use a standard single prior for log CFU naught, their initial
+concentration, because their initial concentrations are much different than the rest of the population
+and at the same time have their own values, so they're sampled from their own simple priors.
+So what kinds of data do we do our fitting on?
+So this is this big complicated model, how do we learn it?
+So we feed in two types of data into the model.
+The first are the data that I already mentioned, these are growth data that we collect in high
+throughput.
+For our experiment we have 209 mutant cycles corresponding to, I think we get a number,
+but something like 210,000 different genotypes that we measure growth as a function of time
+in different IPTG, canamison, and 4CP concentrations.
+We then take those data and we complement it with some low throughput data which we used
+to measure bindings.
+We measured the fractional occupancy of different genotypes of the lacropressor to the same
+operator in vitro using fluorescence and isotropy.
+We then put both of those data into the hierarchical model and then attempt to find parameters or
+sample parameters that line up with this.
+So how do we actually do that sampling process?
+We use a two-stage process.
+We first start with a simple maximum aposterior I run, where we run a quick optimization to
+get good guesses for the initial parameters.
+We do this actually in two stages.
+We do one fix, fit where we fit our growth parameters, things like tau and the pre-selection
+slope.
+So we do a map run on those, pinning every other parameter and fitting a very simple
+binding model to everything else, sorry, a simple model, and the idea there is to really
+get good initial guesses for those terms.
+We then do unconstrained map on all parameters at once to move away from whatever our starting
+guesses are, to much better starting guesses.
+And then we follow that up with stochastic variance, sorry, stochastic variational inference
+SVI, which we then run until we see convergence for multiple things.
+We do this multiple times with different seeds to make sure that we see convergent results
+on our final outputs.
+But at the end of the day, the key thing that we're pulling out are these hill coefficients
+K, N, and then the baselines, how much is bound in the absence of IPTG, how much is
+bound in the presence of IPTG.

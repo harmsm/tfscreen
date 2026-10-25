@@ -1,10 +1,12 @@
 import os
 import dill
 import numpy as np
+import pandas as pd
 import h5py
 from tfscreen.tfmodel.configuration_io import read_configuration
 from tfscreen.tfmodel.inference.run_inference import RunInference
 from tfscreen.tfmodel.analysis.extraction import extract_parameters
+from tfscreen.tfmodel.inference.model_params import read_model_params
 from tfscreen.util.cli import generalized_main
 
 
@@ -23,7 +25,15 @@ def extract_params(config_file, param_file, out_prefix="tfs_params"):
     ``q0.95``, ``q0.975``, ``q0.99``, ``q0.995``, ``q0.999``.
 
     Writes one CSV per parameter group named ``{out_prefix}_{param_name}.csv``
-    (e.g. tfs_params_activity.csv, tfs_params_theta.csv).
+    (e.g. tfs_params_activity.csv, tfs_params_theta.csv; thermo PddG/PnnC
+    also give one ``ddG_{structure}`` and ``ddG_prior_mean_{structure}``
+    table per structure, both deterministic sites that need a posterior
+    file, plus one ``ddG_sigma`` table of the per-structure SD σ_s keyed by
+    ``structure``; the ΔΔG is computed from the fitted constants,
+    ``thermo/prior.py``). A model with its own learned
+    ``pyro.param`` sites (the thermo PnnC NN weights) also gets
+    ``{out_prefix}_model_params.csv``: one row per element (``parameter``,
+    ``index``, ``value``).
 
     Parameters
     ----------
@@ -69,6 +79,8 @@ def _extract_from_checkpoint(orchestrator, ckpt_path, out_prefix):
 
     constrained = ri._map_params_to_constrained(map_params)
     posteriors = {k: np.expand_dims(np.asarray(v), 0) for k, v in constrained.items()}
+    _write_model_params(ri.model_params(map_params, unconstrained=True),
+                        out_prefix)
 
     print(f"Writing parameter CSVs to {out_prefix}_*.csv...", flush=True)
     param_dfs = extract_parameters(orchestrator, posteriors, q_to_get=[0.5])
@@ -103,12 +115,33 @@ def _extract_from_posteriors(orchestrator, posterior_file, out_prefix):
                   "the '_params.npz' file instead of the posterior .h5 file. "
                   "Extraction of natural parameters may fail.", flush=True)
 
+        _write_model_params(read_model_params(posteriors), out_prefix)
+
         print(f"Extracting parameters to {out_prefix}_*.csv...", flush=True)
         params = extract_parameters(orchestrator, posteriors)
         for p_name, p_df in params.items():
             p_df.to_csv(f"{out_prefix}_{p_name}.csv", index=False)
 
     print("Done.", flush=True)
+
+
+def _write_model_params(params, out_prefix):
+    """
+    Write the model's own learned params (fixed point estimates, no
+    quantiles) to ``{out_prefix}_model_params.csv``, one row per element.
+    """
+    if not params:
+        return
+    rows = []
+    for name in sorted(params):
+        values = np.asarray(params[name])
+        for idx in np.ndindex(values.shape):
+            rows.append({"parameter": name,
+                         "index": ",".join(str(i) for i in idx),
+                         "value": float(values[idx])})
+    out_file = f"{out_prefix}_model_params.csv"
+    pd.DataFrame(rows).to_csv(out_file, index=False)
+    print(f"  Wrote {out_file}", flush=True)
 
 
 def main():

@@ -1,205 +1,476 @@
 ===================
-Processing Raw Data
+Processing raw data
 ===================
 
-A typical TF screen involves growing bacteria transformed with a plasmid-encoded
-library of TF variants under one or more selection conditions (e.g. antibiotic resistance
-driven by a TF-regulated promoter). At each time-point an aliquot is
-plated to measure total colony-forming units (CFU) and deep-sequenced so
-that the absolute abundance of every genotype can be determined. The raw
-inputs to the pipeline are paired-end FASTQ files (one pair per sample) and
-a sample metadata table (``sample_df``) that links each sequenced tube to its
-biological context and its measured CFU count. The pipeline converts read
-counts into per-genotype log-CFU estimates (``ln_cfu``) that feed the
-hierarchical Bayesian growth model.
+A screen grows bacteria carrying a plasmid library of transcription factor
+variants under one or more selection conditions. Each time-point is its own
+tube. Every tube is deep-sequenced, and its total cell count is estimated,
+usually from OD600. Together these give the absolute abundance of every
+genotype in every tube.
 
-There are three primary scripts for processing raw data:
+The raw-data half of the pipeline has four steps:
 
-1. ``tfs-process-fastq``: Analyses paired-end FASTQ files to count the
-   occurrence of each genotype.
-2. ``tfs-process-counts``: Aggregates counts across multiple samples and
-   computes adjusted log-counts (``ln_cfu``) for downstream modelling.
-3. ``tfs-process-presplit``: Like ``tfs-process-counts``, but for the
-   pre-split time-point (before the library is divided into separate
-   selection conditions). The output anchors the initial genotype
-   abundances used by the growth model.
+1. ``tfs-process-fastq`` calls the genotype of every read pair in one
+   tube's FASTQ files and writes a count file for that tube.
+2. ``tfs-calibrate-od600`` fits the lab's OD600-to-CFU calibration. This is
+   done once per reader, plate type, volume and strain, not once per
+   experiment.
+3. You write a tube table that names every sequenced tube and gives its
+   design: library, replicate, conditions, titrant and times. When the
+   data show that a tube's label is wrong, ``tfs-correct-tubes`` applies a
+   documented correction and writes a corrected copy.
+4. ``tfs-process-counts`` combines the count files, the tube table and each
+   tube's OD600 into the growth table that ``tfs-configure-model`` reads.
+   With ``--presplit`` it writes the presplit table instead.
 
-Configuration File (run_config.yaml)
--------------------------------------
+Every flag and default is listed in :doc:`cli`. The model's side of these
+tables is described in :doc:`model-inputs`.
 
-``tfs-process-fastq`` requires a ``run_config.yaml`` file describing the
-library of expected sequences. You can view or download an
-:download:`example run_config.yaml <../../examples/process_raw/library_config.yaml>` file. Expected fields:
+To analyze a screen, :doc:`screen-analysis` runs steps 3 and 4 in order,
+with ``tfs-check-tubes`` to find mislabeled tubes, and then the fit.
 
-* ``reading_frame``: Amino acid reading frame offset (0, 1, or 2).
-* ``first_amplicon_residue``: Amino acid residue number for the first in-frame
-  residue.
-* ``wt_seq``: The wildtype nucleic acid sequence.
-* ``degen_sites``: Degenerate codon pattern the same length as ``wt_seq``
-  (e.g. ``NNT``, ``NNK``, or ``.`` for wildtype).
-* ``tiles``: Contiguous blocks of library components cloned together.
-  ``.`` indicates wildtype; each unique character besides ``.`` defines a
-  tile (blocks must be contiguous).
-* ``expected_5p`` / ``expected_3p``: Flanking sequences immediately upstream
-  and downstream of the amplicon.
-* ``tile_combos``: List of strings such as ``single-x`` or ``double-x-y``,
-  where ``x`` and ``y`` match characters in ``tiles``. ``single-x``
-  specifies all single-mutation variants in tile ``x``; ``double-x-y``
-  specifies all pairwise combinations between tiles ``x`` and ``y``.
-* ``spiked_seqs``: Specific nucleic acid sequences (not part of the combinatorial
-  library) that should be identified as controls.
+One tube per time-point
+-----------------------
 
-tfs-process-fastq
------------------
+The protocol:
 
-Reads paired-end FASTQ files and counts the protein genotype observed in each
-read pair. Each read is matched against the predefined library after quality
-filtering and flanking-sequence detection.
+1. Transform the library.
+2. Grow the transformed culture to a set OD.
+3. Take the ``presplit`` sample and read its OD600.
+4. Dilute the culture by the same factor into every tube, one per
+   condition, titrant concentration and planned time-point. Every tube of a
+   replicate therefore starts from the same known total: the presplit
+   OD600 estimate divided by the dilution factor. For a titration this is a
+   grid. Rows are time-points and columns are IPTG concentrations.
+5. At each time-point, pull every tube in that row. Read each pulled tube's
+   OD600, then spin the tubes down and freeze them at once. The spread in
+   stop time within a row is seconds, which is negligible on the time scale
+   of growth.
+6. After the experiment, process all samples together. Thaw and extract DNA
+   in batches of about 20, so three batches for 60 samples. Then run one
+   PCR block for every sample, then sequence. Record each sample's
+   extraction batch. For the current dataset it was not recorded; batches
+   generally, but not reliably, followed processing order.
 
-**Outputs** (written to ``out_dir``):
+Pre-growth and selection both happen in the tubes, after the split. OD600
+is read on three bioreplicates of the experiment and two are sequenced.
 
-* ``stats_{filename}.csv`` — overall read success/failure statistics.
-* ``counts_{filename}.csv`` — raw counts for each expected genotype.
+Each tube's total CFU comes from its OD600 through an OD-to-CFU
+calibration. The calibration depends on the plate reader, plate, volume and
+strain, so each lab makes its own with ``tfs-calibrate-od600``. A
+calibration gives CFU per mL. The pipeline works in cells in the whole
+tube, so ``tfs-process-counts`` multiplies by the tube's culture volume:
+``ln_cfu`` is ``ln(cfu/mL x tube volume)``. Under the strongest selection a
+tube may never reach the reader's detection threshold. Its OD600 then bounds
+its total from above rather than measuring it.
 
-**Usage:**
+Why tubes and not aliquots: pulling aliquots from a single tube over time
+meant stopping the shaker, pipetting and returning the tube across many
+IPTG conditions. That disturbed the growth trajectories more than the
+tube-to-tube differences of this design do.
 
-.. code-block:: bash
+Consequences for the model:
 
-    tfs-process-fastq <f1_fastq> <f2_fastq> <out_dir> <run_config> [options]
+- A sequenced sample *is* a tube, and the time-points of one condition come
+  from different tubes. Anything that affects a whole tube is independent
+  from one time-point to the next, not carried along a trajectory. That
+  includes its growth environment over ``t_pre + t_sel``, its OD600 reading
+  and its PCR. The model's per-tube offset (``sample_offset``) is indexed
+  the same way, one offset per replicate x time x condition x titrant. The
+  default, ``level``, is a constant shift of the tube's ``ln_cfu`` shared by
+  every genotype in it, with a learned SD. It absorbs the tube's composition
+  offset and any error in its supplied total. ``normal`` is the older
+  alternative, a growth-rate offset scaled by ``t_pre + t_sel``, and
+  ``zero`` adds no offset.
+- A growth difference shared by every cell in a tube changes every
+  genotype's abundance by the same factor, so it does not change the
+  genotype *frequencies* the reads measure. It enters ``ln_cfu`` only
+  through the tube's total CFU. This is why a total smoothed across
+  bioreplicates gives much steadier ``ln_cfu`` trajectories than each tube's
+  own OD600 estimate. Earlier analyses used the pooled mean per condition
+  and time-point.
+- Everything before the split, such as transformation and outgrowth, is
+  shared by all tubes of a replicate. It sets each genotype's starting
+  abundance, ``ln_cfu0``, which the ``presplit`` sample measures directly.
+- No step is shared by the tubes of one row and not by the others. Rows
+  are stopped within seconds and processed with everything else. The one
+  batched step is DNA extraction. Extraction yield does not change a
+  sample's genotype frequencies, so it should not shift ``ln_cfu``. If it
+  matters at all, it is through the amount of template going into PCR,
+  which changes how noisy the counts are.
 
-**Positional arguments:**
-
-* ``f1_fastq``: Path to the read-1 FASTQ file (gzip-compressed accepted).
-* ``f2_fastq``: Path to the read-2 FASTQ file.
-* ``out_dir``: Directory to write output CSV files (created if absent).
-* ``run_config``: Path to the library configuration YAML file.
-
-**Optional arguments:**
-
-* ``--phred_cutoff``: Minimum Phred quality score; bases below this threshold
-  are replaced with ``N`` (default: 10).
-* ``--min_read_length``: Discard reads shorter than this length (default: 50).
-* ``--allowed_num_flank_diffs``: Allowed mismatches when locating 5′ and 3′
-  flanks (default: 1).
-* ``--allowed_diff_from_expected``: Allowed mismatches from library genotypes
-  (default: 2).
-* ``--print_raw_seq``: If set, prints sequence matches to stdout for debugging.
-* ``--max_num_reads``: Stop after this many reads.
-* ``--chunk_size``: Block size for multiprocessing batches.
-* ``--num_workers``: Number of parallel workers (default: available CPUs − 1).
-
-tfs-process-counts
+The library config
 ------------------
 
-Takes the per-sample count CSVs produced by ``tfs-process-fastq``, aggregates
-them according to a sample metadata file, and converts raw counts into
-ln(CFU) values using per-sample CFU estimates.
+One YAML file describes the screened library. Pass the same file to
+``tfs-process-fastq`` and to ``tfs-configure-model --library_config``.
+Nothing checks that the two saw the same file, and a genetics mismatch
+shows up only later, when ``tfs-configure-model`` finds genotypes the
+library does not contain. An example is
+:download:`examples/process_raw/library_config.yaml
+<../../examples/process_raw/library_config.yaml>`.
 
-**Output:** A single CSV file (``output_file``) containing ``ln_cfu`` per
-genotype across all samples, ready for hierarchical modelling.
+``reading_frame``
+    Reading frame of the amplicon: 0, 1 or 2.
+``first_amplicon_residue``
+    Residue number of the first in-frame codon. It sets the numbering of
+    every genotype name, so a wrong value mismatches every mutant.
+``wt_seq``
+    The wildtype DNA sequence of the amplicon.
+``degen_sites``
+    Degenerate codon pattern, the same length as ``wt_seq``: ``.`` for a
+    wildtype base, or a code such as ``nnt`` or ``nnk`` at library codons.
+``tiles``
+    Contiguous blocks of library sites cloned together. ``.`` is wildtype
+    and each other character names a tile. Blocks must be contiguous.
+``expected_5p``, ``expected_3p``
+    Flanking sequences immediately upstream and downstream of the amplicon.
+    Read only by ``tfs-process-fastq``.
+``tile_combos``
+    Which variants the library holds: ``single-x`` is every single mutant in
+    tile ``x`` and ``double-x-y`` every pairwise combination between tiles
+    ``x`` and ``y``.
+``spiked_seqs``
+    DNA sequences of monoclonal controls spiked into the pool. Their
+    genotypes may also occur in the bulk sub-libraries.
+``library_mixture``
+    Relative amount of each sub-library in the pool, keyed by the
+    ``tile_combos`` entries plus ``spiked``. Only ratios matter. Read only by
+    ``tfs-configure-model``, which uses it to compute each genotype's share
+    of the pool and how much of it comes from the bulk libraries. Nothing in
+    the data can check these numbers, so give the best estimate of what
+    went into the pool, not just the design.
 
-**Usage:**
+Any other key is ignored, so a ``tfs-simulate`` config can serve as the
+library config of a simulated experiment.
 
-.. code-block:: bash
+Counting reads: tfs-process-fastq
+---------------------------------
 
-    tfs-process-counts <sample_df> <counts_csv_path> <output_file> [options]
-
-**Positional arguments:**
-
-* ``sample_df``: Path to a CSV file describing samples. Must contain a unique
-  ``sample`` column (used as the row index). Required columns:
-
-  * ``sample`` *(index)* — unique identifier for each sequenced tube; used
-    to match this row to a counts CSV file.
-  * ``library`` — name of the physical library this sample belongs to. Genotypes
-    are filtered and frequency-normalised within each library.
-  * ``sample_ln_cfu`` — natural log of the total colony-forming units (CFU)
-    measured for this tube.
-  * ``sample_ln_cfu_std`` — standard deviation of ``sample_ln_cfu``.
-
-  Instead of ``sample_ln_cfu``/``sample_ln_cfu_std``, you may supply
-  ``sample_ln_cfu_var``, or the linear-space ``sample_cfu`` with
-  ``sample_cfu_std`` (or ``sample_cfu_var``); the log-space columns are then
-  inferred. Log-space columns are used when both are present.
-
-  The following columns are not used by ``tfs-process-counts`` itself but are
-  carried through into the ``ln_cfu`` output and are **required by the growth
-  model** (``tfs-fit-model``):
-
-  * ``replicate`` — integer replicate index distinguishing biological
-    replicates that share the same condition.
-  * ``condition_pre`` — name of the pre-selection growth condition (e.g.
-    ``-kan``). Identifies the baseline growth arm.
-  * ``condition_sel`` — name of the selection condition (e.g. ``+kan``).
-  * ``titrant_name`` — name of the chemical titrant applied (e.g.
-    ``IPTG``). Use a constant placeholder (e.g. ``none``) when no titrant
-    is present.
-  * ``titrant_conc`` — concentration of the titrant (float; 0 for no titrant).
-  * ``t_pre`` — duration (minutes) of pre-selection growth.
-  * ``t_sel`` — duration (minutes) of selection growth.
-
-* ``counts_csv_path``: Directory containing the per-sample count CSV files.
-  Each file is found by globbing
-  ``{counts_glob_prefix}*{sample}*.csv`` within this directory.
-* ``output_file``: Path for the output ln_cfu CSV.
-
-**Optional arguments:**
-
-* ``--counts_glob_prefix``: File prefix used when globbing for count files
-  (default: ``counts``).
-* ``--min_genotype_obs``: Minimum total counts across all samples for a
-  genotype to be retained (default: 10).
-* ``--pseudocount``: Pseudocount added to zero counts before log transformation
-  (default: 1).
-* ``--verbose``: If set, prints a summary of matched samples and file paths.
-
-tfs-process-presplit
---------------------
-
-Processes count files from the pre-split time-point — the single pooled
-sample collected **before** the library is divided into separate selection
-arms. These abundances anchor the initial per-genotype CFU values (``ln_cfu0``)
-in the growth model. The output CSV is passed to ``tfs-fit-model`` via the
-``presplit_df`` argument.
-
-The interface is identical to ``tfs-process-counts``, but ``sample_df`` must
-also include ``replicate`` and ``condition_pre`` columns so that the output
-can be matched to the correct growth conditions.
-
-**Output:** A single CSV file (``output_file``) with columns ``replicate``,
-``condition_pre``, ``genotype``, ``ln_cfu``, and ``ln_cfu_std``.
-
-**Usage:**
+``tfs-process-fastq`` reads one tube's paired FASTQ files, trims each read
+to the amplicon between its flanks, masks low-quality bases and calls the
+protein genotype against every sequence the library config allows. The
+library config comes first:
 
 .. code-block:: bash
 
-    tfs-process-presplit <sample_df> <counts_csv_path> <output_file> [options]
+    tfs-process-fastq library_config.yaml \
+        kanR_kanRpkan_0mM_t0_R1.fastq.gz kanR_kanRpkan_0mM_t0_R2.fastq.gz \
+        --out_dir counts
 
-**Positional arguments:**
+It writes two files into ``--out_dir`` (default ``counts``), named after the
+read-1 file:
 
-* ``sample_df``: Path to a CSV file describing the pre-split samples. Must
-  contain a unique ``sample`` column plus:
+- ``counts_<f1 name>.csv``, with columns ``genotype`` and ``counts``. It has
+  one row for every genotype in the library, zeros included, plus one
+  ``__unknown__`` row. ``__unknown__`` counts read pairs that oriented and
+  trimmed cleanly but matched no library genotype, or matched more than
+  one. It is not a genotype. ``tfs-process-counts`` adds it to the tube's
+  read depth, the denominator of every frequency, and then drops it.
+- ``stats_<f1 name>.csv``, with columns ``success``, ``result``, ``counts``
+  and ``fraction``: how many read pairs ended in each outcome, such as a
+  missing flank, a read too short after quality trimming, or a disagreement
+  between the forward and reverse reads. Check it when a tube has few
+  reads or a large ``__unknown__`` share.
 
-  * ``library`` — physical library name (optional; defaults to ``default`` when
-    absent, but must be consistent with the growth ``sample_df``).
-  * ``replicate`` — replicate index; matched to the growth data.
-  * ``condition_pre`` — pre-selection condition name; matched to the growth
-    data.
-  * ``sample_ln_cfu`` — natural log of the total CFU for this tube.
-  * ``sample_ln_cfu_std`` — standard deviation of ``sample_ln_cfu``.
+``tfs-process-counts`` finds a tube's count file by globbing
+``counts*<sample>*.csv``, so name the FASTQ files after the tubes. Each
+tube's name must match exactly one file. A tube named ``t1`` next to one
+named ``t10`` matches two files and is an error.
 
-  As for ``tfs-process-counts``, these may instead be inferred from
-  ``sample_ln_cfu_var`` or from ``sample_cfu`` with ``sample_cfu_std`` (or
-  ``sample_cfu_var``).
+The main tuning flags are ``--phred_cutoff`` (default 10),
+``--min_read_length`` (default 50), ``--allowed_num_flank_diffs`` (default 1)
+and ``--allowed_diff_from_expected`` (default 2). ``--num_workers`` defaults to
+-1, which uses every CPU but one, and ``--chunk_size`` (default 10000) is the
+number of reads sent to a worker at a time.
 
-* ``counts_csv_path``: Directory containing the per-sample count CSV files.
-* ``output_file``: Path for the output presplit CSV.
+The tube table
+--------------
 
-**Optional arguments:**
+The tube table has one row per sequenced tube. It is a CSV, TSV or Excel
+file.
 
-* ``--counts_glob_prefix``: File prefix for globbing count files (default:
-  ``counts``).
-* ``--min_genotype_obs``: Minimum total counts for a genotype to be retained
-  (default: 10).
-* ``--pseudocount``: Pseudocount added before log transformation (default: 1).
-* ``--verbose``: If set, prints a summary of matched samples and file paths.
+.. list-table::
+   :header-rows: 1
+   :widths: 22 78
+
+   * - Column
+     - Meaning
+   * - ``sample``
+     - Unique tube name, matched to its count file.
+   * - ``library``
+     - The transformed library the tube came from. Optional; ``default``
+       when absent. kanR and pheS libraries are transformed and grown up
+       separately, so they are separate libraries.
+   * - ``replicate``
+     - Biological replicate.
+   * - ``condition_pre``
+     - Growth condition before selection, such as ``kanR-kan``.
+   * - ``t_pre``
+     - Minutes of pre-selection growth.
+   * - ``condition_sel``
+     - Selection condition, such as ``kanR+kan``.
+   * - ``t_sel``
+     - Minutes of selection growth.
+   * - ``titrant_name``
+     - The titrant, such as ``iptg``.
+   * - ``titrant_conc``
+     - Titrant concentration; 0 for none.
+   * - ``od600``
+     - The tube's OD600 reading. Optional; it can come from a separate
+       ``--od600_file`` instead.
+
+``tfs-process-counts`` itself needs only ``sample``, the tube totals and,
+with ``--presplit``, ``replicate`` and ``condition_pre``. Every other column
+is carried through to the output, and ``tfs-configure-model`` needs the
+design columns above. A selection condition is one that never appears as a
+``condition_pre`` within its library; the control arm repeats the
+pre-selection condition as its ``condition_sel``.
+
+Lab-specific cleanup belongs in the lab's own script, before the tube table
+is written: tubes resequenced and pooled, sample sheets merged. tfscreen
+takes the tube table as the record of what each tube is. When the data
+later show that a record is wrong, correct it with ``tfs-correct-tubes``
+(below) rather than editing the table by hand.
+
+Correcting the tube table: tfs-correct-tubes
+--------------------------------------------
+
+Sometimes a tube's contents disagree with its label. In one screen the
+genotype composition of the tube labeled 0.1 uM IPTG looked like a 1 mM
+tube, and the tube labeled 1 mM looked like a low-IPTG tube. A correction
+like that is data: it should say which tubes, what changes, why, who
+decided and when, and it should be applied by a tool so the original
+table stays as it was. ``tfs-correct-tubes`` does that:
+
+.. code-block:: bash
+
+    tfs-correct-tubes tube_table.csv corrections.yaml \
+        --out_prefix tube_table_corrected
+
+The corrections file is YAML and lives with the experiment's data, under
+version control, next to the tube table it corrects:
+
+.. code-block:: yaml
+
+    description: Corrections to the screen's tube table.
+    corrections:
+      - id: pheS-rep2-t82-swap
+        action: swap
+        tubes: [tube_a, tube_b]
+        reason: >
+          Composition QC: the tube labeled 0.1 uM looks like a 1 mM tube
+          and the one labeled 1 mM like a low-IPTG tube.
+        by: A. Researcher
+        date: 2026-10-15
+        evidence: qc/apparent_iptg.csv
+
+``id``, ``action``, ``tubes`` (the tube table's ``sample`` names),
+``reason``, ``by`` and ``date`` are required. ``evidence`` is optional, a
+string or a list; one that names a file, relative to the corrections file,
+is hashed into the provenance. The table ``tfs-check-tubes`` writes, which
+flags tubes whose composition disagrees with their titrant label, is the
+usual evidence for a swap. There are three actions:
+
+- ``swap``: two tubes of one library exchange their design columns.
+- ``relabel``: one tube takes the design values given in ``set``, for
+  example ``set: {t_sel: 125}``. Three relabels express a rotation of three
+  tubes.
+- ``exclude``: one or more tubes are left out.
+
+**What a correction moves.** Only the design columns: ``replicate``,
+``condition_pre``, ``t_pre``, ``condition_sel``, ``t_sel``,
+``titrant_name`` and ``titrant_conc``. Every other column stays with the
+physical sample: its ``sample`` name and so its count file, its OD600 and
+tube totals, its barcodes and sequencing run. That is right however the
+swap happened. If the tubes were swapped at the bench, the reads and the
+OD600 were measured on the culture now known to have the other design. If
+the sample sheet mapped files to the wrong tubes, the count file came from
+the culture whose design is the other label, and that culture's OD600 was
+read when it was pulled. Either way a sample's measurements stay together
+and only its label changes. ``library`` never changes: libraries are
+transformed and grown separately, so a swap between them is refused.
+
+No tube may appear in two corrections, so every correction applies to the
+original table and their order does not matter. The command also refuses
+an unknown tube, a swap that changes nothing, a relabel of a column that
+is not a design column, a result in which two tubes share a library and
+design, an empty ``reason``, ``by`` or ``date``, a table that was already
+corrected, and an output that would overwrite an input.
+
+**Output.** ``{out_prefix}.csv`` is the corrected tube table, in the
+original row order without excluded tubes, plus a ``correction_id`` column
+(empty for tubes no correction touched). Pass it to
+``tfs-process-counts`` in place of the original; ``correction_id`` is
+carried into the growth table. ``{out_prefix}_changes.csv`` has one row per
+changed value or excluded tube, with its original and corrected value.
+``{out_prefix}_provenance.json`` records the run, the SHA-256 of the tube
+table, the corrections file, every evidence file and the corrected table,
+and the corrections themselves.
+
+OD600 calibration
+-----------------
+
+``tfs-calibrate-od600`` fits the calibration from two small experiments, both
+done with the same handling as production samples: same reader, plate type,
+volume and strain.
+
+**Repeated readings of a dilution series.** Read each dilution several
+times, repeating the whole step each time: swirl the culture, pipette into
+the plate, read. The file has one row per reading, with columns
+``dilution`` (relative to the undiluted culture) and ``od600``. The largest
+relative SD across dilutions is the reading noise. The detection threshold
+is midway between the mean readings of the two most dilute samples, where
+the series has flattened onto the reader's floor. ``--detection_threshold``
+overrides it.
+
+**Plate counts of cultures whose OD600 was read.** The file has one row per
+plate, with columns ``od600``, ``colonies``, ``dilution`` (the total dilution
+factor before plating), ``plated_volume_mL``, ``num_dilutions`` and
+``plating_steps``. CFU/mL is ``colonies * dilution / plated_volume_mL``. Its
+relative variance is ``1 / colonies`` for counting plus
+``pipette_rel_error^2`` for each dilution and plating step
+(``--pipette_rel_error``, default 0.02).
+
+A polynomial of CFU/mL in OD600 is fit by weighted least squares
+(``--degree``, default 2):
+
+.. code-block:: bash
+
+    cd examples/od600
+    python make_example_data.py
+    tfs-calibrate-od600 replicates.csv plate_counts.csv --out_prefix od600_calibration
+
+``od600_calibration.yaml`` holds the coefficients and their full covariance,
+the reading noise, the detection threshold and the calibrated OD600 range.
+This is the file ``tfs-process-counts`` reads. ``od600_calibration.pdf``
+shows the dilution series, the fit and the calibrated CFU's relative error.
+The two CSVs hold the per-dilution noise and the per-plate fit with its
+standardized residuals.
+
+The covariance matters. The curve's error is one error shared by every tube
+calibrated with it. It does not average out across tubes and must not be
+treated as independent per-tube noise, so the pipeline keeps it apart from
+the reading noise: ``tfscreen.process_raw.od600.cfu_per_mL_error_components``
+returns the two parts separately, and ``tfs-process-counts`` writes them as
+separate columns.
+
+The files in ``examples/od600/`` are synthetic and show the formats. They
+are not any instrument's calibration; do not use them for real data.
+
+Counts to the growth table: tfs-process-counts
+----------------------------------------------
+
+``tfs-process-counts`` takes the tube table and the directory of count
+files:
+
+.. code-block:: bash
+
+    tfs-process-counts tube_table.csv counts \
+        --od600_file od600.csv \
+        --od600_calibration_file od600_calibration.yaml \
+        --tube_volume_mL 5 \
+        --out_prefix growth
+
+It writes ``growth.csv`` (default ``tfs_growth.csv``) and prints which count
+file it matched to each tube. ``--no_verbose`` turns that listing off.
+
+**Tube totals.** Every tube needs its total cells, given one of two ways.
+The first is OD600. Give one reading per tube, either as ``--od600_file``
+(columns ``sample`` and ``od600``) or as an ``od600`` column in the tube
+table, together with ``--od600_calibration_file`` and ``--tube_volume_mL``.
+The calibration gives CFU per mL and the volume turns that into cells in the
+tube. These columns are then added:
+
+- ``sample_cfu``: cells in the tube.
+- ``sample_cfu_std``: its SD, with the curve and reading errors combined.
+- ``sample_cfu_curve_std``: the calibration curve's part, shared by every
+  tube read through the same calibration.
+- ``sample_cfu_reading_std``: the reading's own part, independent per tube.
+- ``od600_in_calibrated_range``: False for a reading outside the OD600 range
+  the plate counts covered, where the curve is extrapolated.
+
+A reading below the calibration's detection threshold is an error, since
+its total is only an upper bound. Drop those tubes from the tube table.
+
+The second way is to supply the totals yourself, as ``sample_cfu`` with
+``sample_cfu_std`` (or ``sample_cfu_var``) in the tube table, or the log
+forms ``sample_ln_cfu`` with ``sample_ln_cfu_std`` (or
+``sample_ln_cfu_var``). Totals must be cells in the whole tube. Use one
+route for the whole table. A tube table that supplies totals and OD600
+together is an error.
+
+**Several libraries.** All libraries go through one call. Genotypes are
+filtered and filled in within each library: a genotype with fewer than
+``--min_genotype_obs`` reads (default 10) summed over a library's tubes is
+dropped from that library, and a genotype kept in a library gets a row with
+zero counts in every tube of that library where it was not seen.
+
+**Output.** One row per genotype and tube. It carries the tube table's
+columns and the tube totals, plus:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 78
+
+   * - Column
+     - Meaning
+   * - ``genotype``
+     - Genotype name: ``wt``, ``M42I``, ``M42I/K84L``.
+   * - ``counts``
+     - Reads of the genotype in the tube, without pseudocount.
+   * - ``sample_reads``
+     - The tube's total reads, ``__unknown__`` included, without
+       pseudocounts. The count likelihood uses it as the tube's depth.
+   * - ``adjusted_counts``
+     - ``counts + --pseudocount`` (default 1).
+   * - ``frequency``
+     - ``adjusted_counts`` over the tube's read depth plus one pseudocount
+       per genotype.
+   * - ``sample_ln_cfu``, ``sample_ln_cfu_std``
+     - The tube's total in log form.
+   * - ``ln_cfu``, ``ln_cfu_var``
+     - ``ln(frequency) + sample_ln_cfu``, the genotype's cells in the tube,
+       and its variance: binomial sampling of the frequency plus
+       ``sample_ln_cfu_std^2``.
+   * - ``cfu``, ``cfu_var``
+     - The same in linear form.
+
+The model takes this file as it is (``tfs-configure-model --growth_df``). By
+default it observes ``counts`` against ``sample_reads`` and ``sample_ln_cfu``
+rather than ``ln_cfu``; see :doc:`model-inputs`.
+
+**Presplit.** With ``--presplit``, the tube table lists the presplit tubes,
+one per library, replicate and ``condition_pre``, and must have
+``replicate`` and ``condition_pre`` columns. The output, ``tfs_presplit.csv``
+by default, has columns ``library``, ``replicate``, ``condition_pre``,
+``genotype``, ``ln_cfu`` and ``ln_cfu_std``. Pass it to
+``tfs-configure-model --presplit_df``.
+
+A worked example
+----------------
+
+``examples/process_raw/`` holds a small synthetic experiment: two libraries
+(kanR and pheS), each with a selection and a control condition, two IPTG
+concentrations and three time-points, for 24 tubes. ``make_example_data.py``
+writes ``tube_table.csv``, ``od600.csv`` and ``counts/``, the count files in
+the format ``tfs-process-fastq`` writes. It uses the calibration in
+``examples/od600/``:
+
+.. code-block:: bash
+
+    cd examples/process_raw
+    python make_example_data.py
+    tfs-process-counts tube_table.csv counts \
+        --od600_file od600.csv \
+        --od600_calibration_file ../od600/od600_calibration.yaml \
+        --tube_volume_mL 5 \
+        --out_prefix growth
+
+``growth.csv`` is a growth table ready for the next step:
+
+.. code-block:: bash
+
+    tfs-configure-model --growth_df growth.csv --library_config library_config.yaml
+
+The numbers are made up. They show the formats, not a realistic screen.

@@ -104,18 +104,16 @@ def define_model(name: str,
 
     with pyro.plate(f"{name}_titrant_name_plate", data.num_titrant_name, dim=-3):
         with pyro.plate(f"{name}_titrant_conc_plate", data.num_titrant_conc, dim=-2):
-            with pyro.plate("theta_genotype_plate", size=data.batch_size, dim=-1):
-                with pyro.handlers.scale(scale=data.scale_vector):
+            with pyro.plate(f"{name}_genotype_plate", data.num_genotype, dim=-1):
 
-                    logit_theta_offset = pyro.sample(
-                        f"{name}_logit_theta_offset",
-                        dist.Normal(0.0, 1.0)
-                    )
+                logit_theta_offset = pyro.sample(
+                    f"{name}_logit_theta_offset",
+                    dist.Normal(0.0, 1.0)
+                )
 
-    # Guard against full-sized array substitution during initialization or re-runs
-    # with full-sized initial values
-    if logit_theta_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
-        logit_theta_offset = logit_theta_offset[..., data.batch_idx]
+    # Kept at library size (library order); run_model selects the batch's
+    # genotypes through batch_idx, so the full population is available to
+    # callers that evaluate every genotype (the congression background).
 
     # Calculate parameters in logit-space
     # logit_theta_hyper_loc result from plating is (Name, Conc) if rank-minimized,
@@ -194,28 +192,20 @@ def guide(name: str,
                                jnp.ones(param_shape, dtype=float),
                                constraint=dist.constraints.positive)
 
-    # --- 3. Sampling (Sliced by Genotype) ---
+    # --- 3. Sampling (full library; sliced to the batch below) ---
 
     with pyro.plate(f"{name}_titrant_name_plate", data.num_titrant_name, dim=-3):
         with pyro.plate(f"{name}_titrant_conc_plate", data.num_titrant_conc, dim=-2):
-            # Batching on Genotype (dim=-1)
-            with pyro.plate("theta_genotype_plate", size=data.batch_size, dim=-1):
-                with pyro.handlers.scale(scale=data.scale_vector):
+            with pyro.plate(f"{name}_genotype_plate", data.num_genotype, dim=-1):
 
-                    # Slice the last dimension (Genotype) using the batch indices
-                    # The ellipsis (...) preserves the TitrantName and TitrantConc dimensions
-                    batch_locs = offset_locs[..., data.batch_idx]
-                    batch_scales = offset_scales[..., data.batch_idx]
+                logit_theta_offset = pyro.sample(
+                    f"{name}_logit_theta_offset",
+                    dist.Normal(offset_locs, offset_scales)
+                )
 
-                    logit_theta_offset = pyro.sample(
-                        f"{name}_logit_theta_offset",
-                        dist.Normal(batch_locs, batch_scales)
-                    )
-
-    # Guard against full-sized array substitution during initialization or re-runs
-    # with full-sized initial values
-    if logit_theta_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
-        logit_theta_offset = logit_theta_offset[..., data.batch_idx]
+    # Kept at library size (library order); run_model selects the batch's
+    # genotypes through batch_idx, so the full population is available to
+    # callers that evaluate every genotype (the congression background).
 
     # --- 4. Reconstruction (Deterministic) ---
 
@@ -271,8 +261,10 @@ def run_model(theta_param: ThetaParam, data: DataClass) -> jnp.ndarray:
     """
 
     # 1. Select the correct genotypes for this dataset
-    # theta_param.theta: (Name, Conc, Genotypes)
-    theta_base = theta_param.theta[..., data.geno_theta_idx]
+    # theta_param.theta: (Name, Conc, Genotypes), library-ordered.
+    # geno_theta_idx is batch-relative; translating through batch_idx gives
+    # library indices (the hill_geno pattern).
+    theta_base = theta_param.theta[..., data.batch_idx[data.geno_theta_idx]]
 
     # 2. Map concentrations
     # We find the indices of data.titrant_conc in theta_param.concentrations.
@@ -464,9 +456,8 @@ def compute_theta_samples(calc_df, param_posteriors):
     """
     Reconstruct posterior theta samples for the categorical model.
 
-    Does NOT use the ``theta_theta`` deterministic site, which is computed
-    inside a forward batch and only covers ``batch_size`` genotypes in the
-    HDF5 file (not the full genotype set).  Instead, reconstructs theta from
+    Does NOT use the ``theta_theta`` deterministic site (older posterior
+    files store it for only ``batch_size`` genotypes).  Instead, reconstructs theta from
     its three constituent posterior arrays, all of which are correctly stored
     for every genotype:
 

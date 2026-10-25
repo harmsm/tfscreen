@@ -4,6 +4,7 @@ import os
 import dill
 
 from tfscreen.tfmodel.scripts.fit_model_cli import (
+    _optimization_kwargs,
     _run_svi,
     _run_map,
     _run_nuts,
@@ -47,7 +48,7 @@ def test_run_svi_flow_converged(mock_run_inference):
         ri,
         init_params=None,
         out_prefix="test_root",
-        max_num_epochs=500,
+        **_optimization_kwargs(max_num_epochs=500, patience=4),
     )
 
     ri.setup_svi.assert_called_once()
@@ -57,10 +58,13 @@ def test_run_svi_flow_converged(mock_run_inference):
         init_params=None,
         out_prefix="test_root",
         svi_state=None,
-        convergence_tolerance=ANY,
-        convergence_window=ANY,
-        patience=ANY,
-        convergence_check_interval=ANY,
+        convergence_window_steps=2000,
+        patience=4,
+        convergence_z=ANY,
+        loss_rtol=ANY,
+        param_tolerance=ANY,
+        final_step_size=1e-6,
+        step_size_cut=0.1,
         checkpoint_interval=ANY,
         max_num_epochs=500,
         init_param_jitter=ANY,
@@ -93,6 +97,28 @@ def test_run_svi_not_converged_stdout(mock_run_inference, capsys):
     captured = capsys.readouterr()
     assert "SVI run has not yet converged." in captured.out
 
+def test_run_svi_autoguide_drops_init_params(mock_run_inference):
+    """An autoguide starts from init_values; component init_params are dropped
+    (only the model's own params, none here, would be kept)."""
+    _, ri = mock_run_inference
+    ri.model_params.return_value = {}
+    _run_svi(ri, init_params={"a_loc": 1.0}, guide_type="auto_normal",
+             init_values={"a": 1.0})
+    ri.setup_svi.assert_called_once_with(adam_step_size=ANY,
+                                         adam_clip_norm=ANY,
+                                         elbo_num_particles=ANY,
+                                         guide_type="auto_normal",
+                                         guide_kwargs=None,
+                                         init_values={"a": 1.0})
+    assert ri.run_optimization.call_args.kwargs["init_params"] is None
+
+
+def test_run_svi_component_guide_keeps_init_params(mock_run_inference):
+    _, ri = mock_run_inference
+    _run_svi(ri, init_params={"a_loc": 1.0}, guide_type="component")
+    assert ri.run_optimization.call_args.kwargs["init_params"] == {"a_loc": 1.0}
+
+
 # =============================================================================
 # Tests for _run_map
 # =============================================================================
@@ -100,31 +126,25 @@ def test_run_svi_not_converged_stdout(mock_run_inference, capsys):
 def test_run_map_flow(mock_run_inference):
     """Test MAP execution flow."""
     _, ri = mock_run_inference
-    init_params = {"p": 10}
+    init_values = {"p": 10}
     state, params, converged = _run_map(
         ri,
-        init_params=init_params,
+        init_values=init_values,
         out_prefix="test_map",
         max_num_epochs=1000,
     )
 
-    # 1. Setup MAP
+    # 1. Setup MAP: an AutoDelta starting at the given site values
     ri.setup_svi.assert_called_once()
+    assert ri.setup_svi.call_args.kwargs["guide_type"] == "delta"
+    assert ri.setup_svi.call_args.kwargs["init_values"] == init_values
 
     # 2. Run Optimization
     ri.run_optimization.assert_called_once_with(
         "mock_svi_obj",
-        init_params=init_params,
         out_prefix="test_map",
         svi_state=None,
-        convergence_tolerance=ANY,
-        convergence_window=ANY,
-        patience=ANY,
-        convergence_check_interval=ANY,
-        checkpoint_interval=ANY,
         max_num_epochs=1000,
-        init_param_jitter=ANY,
-        epoch_checkpoint_interval=ANY
     )
 
     ri.write_params.assert_called_once_with({"p": 1}, out_prefix="test_map")
@@ -136,7 +156,7 @@ def test_run_map_not_converged(mock_run_inference, capsys):
     """Test MAP not converged message."""
     _, ri = mock_run_inference
     ri.run_optimization.return_value = ("state", {"p": 1}, False)
-    _run_map(ri, init_params={"p": 1})
+    _run_map(ri, init_values={"p": 1})
     captured = capsys.readouterr()
     assert "MAP run converged" not in captured.out
     assert "MAP run has not yet converged" in captured.out
@@ -147,8 +167,11 @@ def test_run_map_not_converged(mock_run_inference, capsys):
 # =============================================================================
 
 @pytest.fixture
-def mock_ri_for_nuts(mocker):
+def mock_ri_for_nuts(mocker, tmp_path, monkeypatch):
     """Minimal ri mock for _run_nuts tests."""
+    # _run_nuts writes a real {out_prefix}_checkpoint.pkl even with a mocked
+    # ri; tests using the default out_prefix would drop it in the cwd.
+    monkeypatch.chdir(tmp_path)
     ri = MagicMock()
     mock_mcmc = MagicMock()
     mock_mcmc.get_samples.return_value = {"param": [1.0, 2.0]}
@@ -170,20 +193,32 @@ def test_run_nuts_calls_run_nuts(mock_ri_for_nuts):
         num_samples=20,
         num_chains=2,
         target_accept_prob=0.8,
+        init_values=None,
+        dense_mass=False,
     )
 
 
-def test_run_nuts_calls_get_nuts_posteriors(mock_ri_for_nuts):
+def test_run_nuts_passes_init_values(mock_ri_for_nuts):
+    """_run_nuts hands the starting site values to ri.run_nuts."""
+    ri = mock_ri_for_nuts
+    values = {"dk_geno_offset": 1.0}
+    _run_nuts(ri, init_values=values, nuts_dense_mass=True)
+    assert ri.run_nuts.call_args.kwargs["init_values"] is values
+    assert ri.run_nuts.call_args.kwargs["dense_mass"] is True
+
+
+def test_run_nuts_calls_get_nuts_posteriors(tmp_path, mock_ri_for_nuts):
     """_run_nuts calls ri.get_nuts_posteriors with the samples and forward_batch_size."""
     ri = mock_ri_for_nuts
     expected_samples = {"param": [1.0, 2.0]}
     ri.run_nuts.return_value.get_samples.return_value = expected_samples
+    out_prefix = str(tmp_path / "myroot")
 
-    _run_nuts(ri, out_prefix="myroot", forward_batch_size=64)
+    _run_nuts(ri, out_prefix=out_prefix, forward_batch_size=64)
 
     ri.get_nuts_posteriors.assert_called_once_with(
         expected_samples,
-        out_prefix="myroot",
+        out_prefix=out_prefix,
         forward_batch_size=64,
     )
 

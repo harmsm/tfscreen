@@ -1,8 +1,10 @@
 """
 Pass-through sample offset: no per-tube noise (delta_sample = 0).
 
-This is the default. All tube-to-tube growth-rate variation is absent;
-noise is captured entirely by data.ln_cfu_std and the Student-T nu.
+The ModelOrchestrator default (so configs written before the count
+likelihood read back unchanged); tfs-configure-model defaults to 'level'.
+All tube-to-tube variation is absent; noise is captured by the likelihood
+alone.
 """
 
 import jax.numpy as jnp

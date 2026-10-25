@@ -9,7 +9,7 @@ from tfscreen.tfmodel.analysis.extraction import extract_parameters
 def mock_model_congression():
     """Create a ModelOrchestrator instance with minimal mocked internals for congression."""
     model = MagicMock(spec=ModelOrchestrator)
-    model._transformation = "logit_norm"
+    model._transformation = "mixture"
     model._theta = "none"
     model._condition_growth = "none"
     model._dk_geno = "none"
@@ -39,38 +39,22 @@ def mock_posteriors_congression():
     """Create mock posterior samples for congression parameters."""
     num_samples = 5
     # lam is (num_samples, 1)
-    # mu, sigma are (num_samples, num_titrant_name, num_titrant_conc, 1)
-    # flattened: (num_samples, num_titrant_name * num_titrant_conc)
     return {
         "transformation_lam": np.ones((num_samples, 1)) * 1.2,
-        "transformation_mu": np.ones((num_samples, 1, 2, 1)) * 0.5,
-        "transformation_sigma": np.ones((num_samples, 1, 2, 1)) * 0.1
     }
 
 def test_extract_parameters_congression(mock_model_congression, mock_posteriors_congression):
-    """Test extracting lam, mu, and sigma."""
+    """The mixture transformation's only parameter is lambda."""
     params = extract_parameters(mock_model_congression, mock_posteriors_congression)
-    
+
     assert "lam" in params
-    assert "mu" in params
-    assert "sigma" in params
-    
-    # Check lam
+    assert "mu" not in params
+    assert "sigma" not in params
+
     lam_df = params["lam"]
     assert len(lam_df) == 1
     assert lam_df.iloc[0]["parameter"] == "lam"
     assert lam_df.iloc[0]["q0.5"] == 1.2
-    
-    # Check mu
-    mu_df = params["mu"]
-    assert len(mu_df) == 2
-    assert set(mu_df["titrant_conc"]) == {0.0, 1.0}
-    assert np.allclose(mu_df["q0.5"], 0.5)
-    
-    # Check sigma
-    sigma_df = params["sigma"]
-    assert len(sigma_df) == 2
-    assert np.allclose(sigma_df["q0.5"], 0.1)
 
 def test_extract_parameters_no_congression(mock_model_congression):
     """Test that congression parameters are NOT extracted when transformation is none."""

@@ -7,6 +7,7 @@ from typing import List, Any
 from tqdm import tqdm
 from tfscreen.tfmodel.inference.posteriors import load_posteriors, get_posterior_samples
 from tfscreen.tfmodel.generative.registry import model_registry
+from tfscreen.tfmodel.analysis.shared_shift import apply_shared_shift
 
 
 @dataclass
@@ -16,6 +17,22 @@ class ExtractionContext:
     mut_labels: List[str]
     pair_labels: List[str]
     growth_shares_replicates: bool
+    theta_priors: Any = None
+    # Binding genotypes in binding-tensor order (None without binding data).
+    binding_genotypes: Any = None
+    # The condition_growth component's priors (static flags such as m_warp).
+    condition_growth_priors: Any = None
+
+
+def _binding_genotypes(orchestrator):
+    """Binding genotype labels in binding-tensor order, or None."""
+    tm = getattr(orchestrator, "binding_tm", None)
+    if tm is None:
+        return None
+    names = list(tm.tensor_dim_names)
+    if "genotype" not in names:
+        return None
+    return [str(g) for g in tm.tensor_dim_labels[names.index("genotype")]]
 
 
 def _extract_param_est(input_df,
@@ -24,7 +41,8 @@ def _extract_param_est(input_df,
                        get_columns,
                        in_run_prefix,
                        param_posteriors,
-                       q_to_get):
+                       q_to_get,
+                       out_names=None):
     """
     Extract parameter estimates and quantiles from posterior samples.
 
@@ -50,12 +68,19 @@ def _extract_param_est(input_df,
     q_to_get : dict
         Dictionary mapping output column names to quantile values (between 0 and 1)
         to extract from the posterior samples.
+    out_names : list of str, optional
+        Output table name for each entry of `params_to_get` (same length).
+        Lets several specs read slices of one site into separately named
+        tables, e.g. the thermo models' (M, S) ``theta_ddG`` into one
+        ``ddG_{structure}`` table per structure.  Defaults to the parameter
+        names.
 
     Returns
     -------
     out_dfs : dict
-        Dictionary mapping each parameter name to a DataFrame containing the
-        requested quantiles for each parameter, with metadata columns.
+        Dictionary mapping each output name (the parameter name unless
+        `out_names` is given) to a DataFrame containing the requested
+        quantiles for each parameter, with metadata columns.
 
     Raises
     ------
@@ -71,9 +96,16 @@ def _extract_param_est(input_df,
           .reset_index(drop=True)
           .copy())
 
+    if out_names is None:
+        out_names = list(params_to_get)
+    if len(out_names) != len(params_to_get):
+        raise ValueError(
+            f"out_names ({len(out_names)}) must match params_to_get "
+            f"({len(params_to_get)}).")
+
     # Go through all parameters requested
     out_dfs = {}
-    for param in params_to_get:
+    for param, out_name in zip(params_to_get, out_names):
 
         # Grab the posterior distribution of this parameters and flatten.
         model_param = f"{in_run_prefix}{param}"
@@ -96,7 +128,7 @@ def _extract_param_est(input_df,
             to_write[q_name] = q[to_write[map_column].values]
 
         # Record the final dataframe
-        out_dfs[param] = to_write.drop(columns=[map_column])
+        out_dfs[out_name] = to_write.drop(columns=[map_column])
 
     return out_dfs
 
@@ -120,8 +152,9 @@ def extract_parameters(orchestrator, posteriors, q_to_get=None):
     q_to_get : dict, optional
         Dictionary mapping output column names to quantile values (between 0 and 1)
         to extract from the posterior samples. If None, a default set of quantiles
-        is used (min, lower_95, lower_std, lower_quartile, median, upper_std,
-        upper_quartile, upper_95, max).
+        is used: the 17 levels of
+        ``tfscreen.tfmodel.inference.posteriors._DEFAULT_QUANTILE_LEVELS``
+        (0.001 to 0.999), written as bare ``q<level>`` columns.
 
     Returns
     -------
@@ -142,6 +175,11 @@ def extract_parameters(orchestrator, posteriors, q_to_get=None):
         mut_labels=orchestrator.mut_labels,
         pair_labels=orchestrator.pair_labels,
         growth_shares_replicates=orchestrator._growth_shares_replicates,
+        theta_priors=getattr(getattr(orchestrator, "priors", None), "theta", None),
+        binding_genotypes=_binding_genotypes(orchestrator),
+        condition_growth_priors=getattr(getattr(getattr(orchestrator, "priors", None),
+                                                "growth", None),
+                                        "condition_growth", None),
     )
 
     component_selections = [
@@ -152,7 +190,11 @@ def extract_parameters(orchestrator, posteriors, q_to_get=None):
         ("activity", orchestrator._activity),
         ("theta", orchestrator._theta),
         ("transformation", orchestrator._transformation),
+        ("sample_offset", getattr(orchestrator, "_sample_offset", "zero")),
     ]
+    if getattr(orchestrator, "_has_binding", False):
+        component_selections.append(
+            ("theta_binding_noise", orchestrator._theta_binding_noise))
 
     extract = []
     for category, selection in component_selections:
@@ -181,7 +223,8 @@ def extract_parameters(orchestrator, posteriors, q_to_get=None):
                                              q_to_get=q_to_get,
                                              **kwargs))
         except KeyError as exc:
-            param_names = kwargs.get("params_to_get", [])
+            param_names = (kwargs.get("out_names")
+                           or kwargs.get("params_to_get", []))
             warnings.warn(
                 f"Skipping extraction of {param_names}: {exc}. "
                 "This can happen with MAP checkpoints because computed "
@@ -194,7 +237,7 @@ def extract_parameters(orchestrator, posteriors, q_to_get=None):
     return params
 
 def extract_theta_curves(orchestrator, posteriors, q_to_get=None, manual_titrant_df=None,
-                         num_samples=100):
+                         num_samples=100, shared_shift=None, shift_seed=0):
     """
     Extract theta curves by sampling from the joint posterior distribution.
 
@@ -213,8 +256,9 @@ def extract_theta_curves(orchestrator, posteriors, q_to_get=None, manual_titrant
     q_to_get : dict, optional
         Dictionary mapping output column names to quantile values (between 0 and 1)
         to extract from the posterior samples. If None, a default set of quantiles
-        is used (min, lower_95, lower_std, lower_quartile, median, upper_std,
-        upper_quartile, upper_95, max).
+        is used: the 17 levels of
+        ``tfscreen.tfmodel.inference.posteriors._DEFAULT_QUANTILE_LEVELS``
+        (0.001 to 0.999), written as bare ``q<level>`` columns.
     manual_titrant_df : pd.DataFrame, optional
         A DataFrame specifying 'titrant_name' and 'titrant_conc' values
         at which to calculate theta. If provided, it overrides the default
@@ -227,6 +271,15 @@ def extract_theta_curves(orchestrator, posteriors, q_to_get=None, manual_titrant
         columns. Sampling is with replacement when ``num_samples`` exceeds the
         total number of posterior samples. Set to ``None`` to suppress sample
         columns and return only quantiles. Default 100.
+    shared_shift : str, pandas.DataFrame or None, optional
+        A shift shared by every non-wt genotype (``genotype``,
+        ``titrant_name``, ``titrant_conc``, ``shift``; the two-stage fit's
+        k uncertainty). Each draw gets one standard-normal multiple of it
+        before quantiles and samples are taken
+        (``analysis.shared_shift.apply_shared_shift``). Needs more than one
+        draw. Default None.
+    shift_seed : int, optional
+        Seed for the shared multiples. Default 0.
 
     Returns
     -------
@@ -255,6 +308,9 @@ def extract_theta_curves(orchestrator, posteriors, q_to_get=None, manual_titrant
 
     calc_df, internal_cols, extra_kwargs = module.build_calc_df(orchestrator, manual_titrant_df)
     theta_samples = module.compute_theta_samples(calc_df, param_posteriors, **extra_kwargs)
+    if shared_shift is not None:
+        theta_samples = apply_shared_shift(theta_samples, calc_df,
+                                           shared_shift, seed=shift_seed)
 
     for q_name, q_val in q_to_get.items():
         calc_df[q_name] = np.quantile(theta_samples, q_val, axis=0)
@@ -275,7 +331,8 @@ def extract_theta_epistasis(orchestrator, posteriors, q_to_get=None,
                             manual_titrant_df=None, scale="logit",
                             scale_constant=1.0,
                             group_by=("titrant_name", "titrant_conc"),
-                            regime_eps=0.01, regime_ci=0.95):
+                            regime_eps=0.01, regime_ci=0.95,
+                            shared_shift=None, shift_seed=0):
     """
     Extract second-order epistasis quantiles from the joint theta posterior.
 
@@ -331,6 +388,13 @@ def extract_theta_epistasis(orchestrator, posteriors, q_to_get=None,
         Central posterior-mass fraction that must lie inside the band for a
         corner to count as in-regime (e.g. 0.95 requires the theta 2.5-97.5%
         interval within ``[regime_eps, 1 - regime_eps]``).  Must be in (0, 1).
+    shared_shift : str, pandas.DataFrame or None, optional
+        A shift shared by every non-wt genotype, added to each joint draw
+        as one standard-normal multiple before epistasis is computed (see
+        ``extract_theta_curves``); the cycle's wt corner does not move, so
+        epistasis keeps one copy of it. Default None.
+    shift_seed : int, optional
+        Seed for the shared multiples. Default 0.
 
     Returns
     -------
@@ -386,6 +450,16 @@ def extract_theta_epistasis(orchestrator, posteriors, q_to_get=None,
             f"'{orchestrator._theta}' does not support this interface."
         )
 
+    # A relative theta component gives X, defined only up to an affine map
+    # (roadmap C8): additive epistasis is the only scale that means anything
+    # until the map to theta is known, and the in_regime band is a theta band.
+    relative = getattr(module, "THETA_SCALE", "theta") == "X"
+    if relative and scale != "add":
+        raise ValueError(
+            f"theta component '{orchestrator._theta}' predicts the "
+            f"wt-relative growth variable X, not an occupancy in (0, 1); only "
+            f"scale='add' applies to it (got scale={scale!r}).")
+
     q_to_get, param_posteriors = load_posteriors(posteriors, q_to_get)
 
     # Joint sample matrix: (num_sample, num_row), rows aligned to calc_df.
@@ -393,6 +467,9 @@ def extract_theta_epistasis(orchestrator, posteriors, q_to_get=None,
         orchestrator, manual_titrant_df)
     theta_samples = module.compute_theta_samples(
         calc_df, param_posteriors, **extra_kwargs)
+    if shared_shift is not None:
+        theta_samples = apply_shared_shift(theta_samples, calc_df,
+                                           shared_shift, seed=shift_seed)
 
     group_by = list(group_by)
 
@@ -414,8 +491,8 @@ def extract_theta_epistasis(orchestrator, posteriors, q_to_get=None,
         cycles = cycles.dropna(subset=idx_cols)
 
     if cycles.empty:
-        return pd.DataFrame(columns=["genotype"] + group_by
-                            + list(q_to_get) + ["in_regime"])
+        return pd.DataFrame(columns=["genotype"] + group_by + list(q_to_get)
+                            + ([] if relative else ["in_regime"]))
 
     idx_00 = cycles["00__row_idx"].values.astype(int)
     idx_10 = cycles["10__row_idx"].values.astype(int)
@@ -435,6 +512,9 @@ def extract_theta_epistasis(orchestrator, posteriors, q_to_get=None,
     out = cycles[["genotype"] + group_by].copy()
     for q_name, q_val in q_to_get.items():
         out[q_name] = np.quantile(ep_samples, q_val, axis=0)
+
+    if relative:
+        return out.sort_values(["genotype"] + group_by).reset_index(drop=True)
 
     # in_regime: are all four cycle corners' theta posteriors inside the
     # resolvable band [regime_eps, 1 - regime_eps]?  Outside it logit(theta)
@@ -522,8 +602,6 @@ def extract_theta_unmeasured(orchestrator, posteriors, target_genotypes,
     theta_priors = orchestrator.priors.theta
     if hasattr(theta_priors, "theta_tf_total_M"):
         extra_kwargs["tf_total"] = float(theta_priors.theta_tf_total_M)
-    if hasattr(theta_priors, "theta_op_total_M"):
-        extra_kwargs["op_total"] = float(theta_priors.theta_op_total_M)
     if hasattr(theta_priors, "theta_conc_unit_scale"):
         extra_kwargs["conc_unit_scale"] = float(theta_priors.theta_conc_unit_scale)
 
@@ -588,8 +666,9 @@ def extract_growth_predictions(orchestrator,
     q_to_get : dict, optional
         Dictionary mapping output column names to quantile values (between 0 and 1)
         to extract from the posterior samples. If None, a default set of quantiles
-        is used (min, lower_95, lower_std, lower_quartile, median, upper_std,
-        upper_quartile, upper_95, max).
+        is used: the 17 levels of
+        ``tfscreen.tfmodel.inference.posteriors._DEFAULT_QUANTILE_LEVELS``
+        (0.001 to 0.999), written as bare ``q<level>`` columns.
     num_samples : int or None, optional
         Randomly select this many joint posterior samples and return them as
         columns ``sample_0``, ``sample_1``, ... alongside the quantile

@@ -1,0 +1,29 @@
+#!/bin/bash -l
+#SBATCH --account=harmslab
+#SBATCH --partition=gpulong
+#SBATCH --time=1-00:00:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --gpus=1
+#SBATCH --mem=0
+#SBATCH --ntasks-per-node=1
+#SBATCH --job-name=ts_warp
+
+# Relative stage 1 with a warped marker (stage1_warp.py). Run from the
+# two-stage validation directory on the cluster:
+#   sbatch --export=ALL,RUN=real,WARP=kanR+kan,TAG=kanR,EXTRA="--drop_tubes pheS+4CP:2:82" .../stage1_warp.srun
+# writes warp_${RUN}_${TAG}/stage1/.
+
+module load cuda/12.4.1
+set -e
+RUN="${RUN:?set RUN (seed1, seed2 or real)}"
+WARP="${WARP:?set WARP (a condition_rep, or none)}"
+TAG="${TAG:?set TAG (output name)}"
+HERE=/gpfs/home/harms/tfscreen/planning/studies
+cd_out=$(pwd)
+echo ">>> warp stage 1 ${RUN} ${WARP} $(date)"
+cd "${HERE}/relative-m"
+python stage1_warp.py "${HERE}/two-stage-validation/two_stage_${RUN}.yaml" \
+    "${cd_out}/run_${RUN}/stage1/km.csv" "${cd_out}/warp_${RUN}_${TAG}" \
+    --warp "${WARP}" ${EXTRA:-}
+echo ">>> Done warp stage 1 ${RUN} ${WARP} $(date)"

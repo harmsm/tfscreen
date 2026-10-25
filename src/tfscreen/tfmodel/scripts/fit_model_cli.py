@@ -1,76 +1,98 @@
 import os
 import dill
+import numpy as np
+import jax.numpy as jnp
 
-import optax
+from tfscreen.tfmodel.inference.run_inference import (
+    RunInference,
+    check_guide_kwargs,
+    resolve_guide_type,
+)
 
-from tfscreen.tfmodel.inference.run_inference import RunInference
-
+from tfscreen.tfmodel.inference.staged_map import (
+    DEFAULT_STAGED_STEP_SIZE,
+    run_staged_map,
+    use_stages,
+)
 from tfscreen.util.cli.generalized_main import generalized_main
 
 from tfscreen.tfmodel.configuration_io import read_configuration
 
+# Starting scale of the variational guide, in each site's unconstrained units:
+# an upper bound on every component-guide scale, and the autoguides'
+# ``init_scale`` for a fresh fit. It has to be small because it is one number
+# for every site: 0.1 on a growth rate (per minute) is 17 ln units over a
+# selection, and at 0.1 SVI started ~1000x above the pre-MAP's loss and
+# re-descended into other optima (relative-fit grid, 2026-09-27). SVI widens
+# the scales itself; the entropy term raises each about e-fold per 1000 Adam
+# steps at step size 1e-3.
+DEFAULT_GUIDE_INIT_SCALE = 1e-4
+
+def _optimization_kwargs(convergence_window_steps=2000,
+                         patience=3,
+                         convergence_z=3.0,
+                         loss_rtol=1e-6,
+                         param_tolerance=0.05,
+                         adam_final_step_size=1e-6,
+                         adam_step_size_cut=0.1,
+                         checkpoint_interval=10,
+                         max_num_epochs=100000,
+                         init_param_jitter=0.0,
+                         epoch_checkpoint_interval=1000):
+    """``RunInference.run_optimization`` keyword arguments from CLI names."""
+    return dict(convergence_window_steps=convergence_window_steps,
+                patience=patience,
+                convergence_z=convergence_z,
+                loss_rtol=loss_rtol,
+                param_tolerance=param_tolerance,
+                final_step_size=adam_final_step_size,
+                step_size_cut=adam_step_size_cut,
+                checkpoint_interval=checkpoint_interval,
+                max_num_epochs=max_num_epochs,
+                init_param_jitter=init_param_jitter,
+                epoch_checkpoint_interval=epoch_checkpoint_interval)
+
 
 def _run_map(ri,
-             init_params,
+             init_values=None,
+             init_params=None,
              checkpoint_file=None,
              out_prefix="tfs",
              adam_step_size=1e-3,
-             adam_final_step_size=1e-6,
-             adam_clip_norm=1.0,
+             adam_clip_norm=None,
              elbo_num_particles=2,
-             convergence_tolerance=1e-5,
-             convergence_window=10,
-             patience=10,
-             convergence_check_interval=2,
-             checkpoint_interval=10,
-             max_num_epochs=100000,
-             init_param_jitter=0.0,
-             epoch_checkpoint_interval=1000):
+             label="MAP",
+             **optimization_kwargs):
     """
-    Run maximum a posteriori (MAP) optimization for hierarchical model inference.
-
-    This function sets up and runs MAP optimization using the provided RunInference
-    object and initial parameters. It manages checkpointing, convergence checking,
-    and writes parameter values to disk. Returns the final optimizer state, parameters,
-    and convergence status.
+    Run maximum a posteriori (MAP) optimization (an AutoDelta guide).
 
     Parameters
     ----------
     ri : RunInference
         RunInference object that manages model setup and optimization routines.
-    init_params : dict
-        Initial parameter values for MAP optimization.
+    init_values : dict or None, optional
+        Constrained site values the MAP starts from (``ri.site_values``).
+        Sites without a value start at the prior median.
+    init_params : dict or None, optional
+        Starting values of the model's own ``pyro.param`` sites (thermo PnnC NN
+        weights; ``ri.model_params``), e.g. an earlier fit's.
     checkpoint_file : str or None, optional
         Path to a checkpoint file to resume optimization from, or None to start fresh.
     out_prefix : str, optional
         Output file root for checkpoints and results (default "tfs").
     adam_step_size : float, optional
         Starting step size for the Adam optimizer (default 1e-3).
-    adam_final_step_size : float, optional
-        Final step size for the Adam optimizer (default 1e-6).
-    adam_clip_norm : float, optional
-        Gradient clipping norm for Adam optimizer (default 1.0).
+    adam_clip_norm : float or None, optional
+        Clip each gradient element to +/- this value (numpyro ClippedAdam).
+        None (default) disables clipping: when gradients are much larger
+        than the clip, an elementwise clip makes Adam follow the gradient's
+        sign, and its fixed point is biased by rare large ELBO penalties.
     elbo_num_particles : int, optional
         Number of particles for ELBO estimation during MAP (default 2).
-    max_num_epochs : int, optional
-        Maximum number of MAP optimization epochs (default 100000).
-    convergence_tolerance : float, optional
-        Relative change in smoothed loss to declare MAP convergence (default 1e-5).
-    convergence_window : int, optional
-        Number of epochs to average for convergence check (default 10).
-    patience : int, optional
-        Number of consecutive checks meeting tolerance to declare convergence
-        (default 10).
-    convergence_check_interval : int, optional
-        Frequency (in epochs) to check for convergence (default 2).
-    checkpoint_interval : int, optional
-        Steps between checkpoints and convergence checks (default 10).
-    init_param_jitter : float, optional
-        Amount of jitter to add to init_params (default 0.0).
-    epoch_checkpoint_interval : int or None, optional
-        Frequency (in epochs) to write numbered epoch checkpoints to a
-        ``checkpoints/`` subdirectory (default 1000). Set to 0 or None to
-        disable.
+    label : str, optional
+        Name of the run in the closing message (default "MAP").
+    **optimization_kwargs
+        Passed to ``ri.run_optimization`` (see ``_optimization_kwargs``).
 
     Notes
     -----
@@ -84,36 +106,24 @@ def _run_map(ri,
     params : dict
         Final optimized parameters from MAP.
     converged : bool
-        True if MAP converged according to the specified tolerance.
+        True if the run converged (see ``RunInference.run_optimization``).
     """
 
-    # Create a learning rate schedule
-    schedule = optax.exponential_decay(
-        init_value=adam_step_size,
-        transition_steps=float(max_num_epochs * ri._iterations_per_epoch),
-        decay_rate=adam_final_step_size / adam_step_size
-    )
-
-     # Create a maximum a posteriori svi object
-    map_obj = ri.setup_svi(adam_step_size=schedule,
+    # Create a maximum a posteriori svi object
+    map_obj = ri.setup_svi(adam_step_size=adam_step_size,
                            adam_clip_norm=adam_clip_norm,
                            elbo_num_particles=elbo_num_particles,
-                           guide_type="delta")
+                           guide_type="delta",
+                           init_values=init_values)
 
     # Run MAP
+    if init_params:
+        optimization_kwargs["init_params"] = init_params
     svi_state, params, converged = ri.run_optimization(
         map_obj,
-        init_params=init_params,
         out_prefix=out_prefix,
         svi_state=checkpoint_file,
-        convergence_tolerance=convergence_tolerance,
-        convergence_window=convergence_window,
-        patience=patience,
-        convergence_check_interval=convergence_check_interval,
-        checkpoint_interval=checkpoint_interval,
-        max_num_epochs=max_num_epochs,
-        init_param_jitter=init_param_jitter,
-        epoch_checkpoint_interval=epoch_checkpoint_interval
+        **optimization_kwargs
     )
 
     # Write the current parameter values
@@ -121,9 +131,9 @@ def _run_map(ri,
 
     # Write convergence information to stdout
     if converged:
-        print("MAP run converged.",flush=True)
+        print(f"{label} run converged.",flush=True)
     else:
-        print("MAP run has not yet converged.",flush=True)
+        print(f"{label} run has not yet converged.",flush=True)
 
     return svi_state, params, converged
 
@@ -132,62 +142,44 @@ def _run_svi(ri,
              checkpoint_file=None,
              out_prefix="tfs",
              adam_step_size=1e-3,
-             adam_final_step_size=1e-6,
-             adam_clip_norm=1.0,
+             adam_clip_norm=None,
              elbo_num_particles=2,
-             convergence_tolerance=1e-5,
-             convergence_window=10,
-             patience=10,
-             convergence_check_interval=2,
-             checkpoint_interval=10,
-             max_num_epochs=100000,
-             init_param_jitter=0.1,
-             epoch_checkpoint_interval=1000):
+             guide_type="component",
+             guide_kwargs=None,
+             init_values=None,
+             **optimization_kwargs):
     """
     Run stochastic variational inference (SVI) for hierarchical model inference.
-
-    This function sets up and runs SVI optimization using the provided RunInference
-    object and initial parameters. It manages checkpointing, convergence checking,
-    and optionally draws posterior samples after convergence.
 
     Parameters
     ----------
     ri : RunInference
         RunInference object that manages model setup and optimization routines.
     init_params : dict or None
-        Initial parameter values for SVI optimization. If None, uses parameters
-        captured during SVI object initialization.
+        Initial component-guide parameters (``ri.component_guide_start``),
+        plus the model's own params (``ri.model_params``). An autoguide,
+        whose parameter names differ, takes only the model's own params.
     checkpoint_file : str or None, optional
         Path to a checkpoint file to resume optimization from, or None to start fresh.
     out_prefix : str, optional
         Output file root for checkpoints and results (default "tfs").
     adam_step_size : float, optional
         Starting step size for the Adam optimizer (default 1e-3).
-    adam_final_step_size : float, optional
-        Final step size for the Adam optimizer (default 1e-6).
-    adam_clip_norm : float, optional
-        Gradient clipping norm for Adam optimizer (default 1.0).
+    adam_clip_norm : float or None, optional
+        Clip each gradient element to +/- this value (numpyro ClippedAdam).
+        None (default) disables clipping: when gradients are much larger
+        than the clip, an elementwise clip makes Adam follow the gradient's
+        sign, and its fixed point is biased by rare large ELBO penalties.
     elbo_num_particles : int, optional
         Number of particles for ELBO estimation during SVI (default 2).
-    convergence_tolerance : float, optional
-        Relative change in loss to declare SVI convergence (default 1e-5).
-    convergence_window : int, optional
-        Number of epochs to average for convergence check (default 10).
-    patience : int, optional
-        Number of consecutive checks meeting tolerance to declare convergence
-        (default 10).
-    convergence_check_interval : int, optional
-        Frequency (in epochs) to check for convergence (default 2).
-    checkpoint_interval : int, optional
-        Frequency (in epochs) between checkpoints (default 10).
-    max_num_epochs : int, optional
-        Maximum number of SVI optimization epochs (default 100000).
-    init_param_jitter : float, optional
-        Amount of jitter to add to init_params (default 0.1).
-    epoch_checkpoint_interval : int or None, optional
-        Frequency (in epochs) to write numbered epoch checkpoints to a
-        ``checkpoints/`` subdirectory (default 1000). Set to 0 or None to
-        disable.
+    guide_type : str, optional
+        Variational family passed to ``ri.setup_svi`` (default 'component').
+    guide_kwargs : dict or None, optional
+        Autoguide options (``rank``, ``init_scale``) passed to ``ri.setup_svi``.
+    init_values : dict or None, optional
+        Constrained site values an autoguide's location starts from.
+    **optimization_kwargs
+        Passed to ``ri.run_optimization`` (see ``_optimization_kwargs``).
 
     Notes
     -----
@@ -205,42 +197,35 @@ def _run_svi(ri,
     svi_params : dict
         Final optimized parameters from SVI.
     converged : bool
-        True if SVI converged according to the specified tolerance.
+        True if the run converged (see ``RunInference.run_optimization``).
     """
 
-    # Create a learning rate schedule
-    schedule = optax.exponential_decay(
-        init_value=adam_step_size,
-        transition_steps=float(max_num_epochs * ri._iterations_per_epoch),
-        decay_rate=adam_final_step_size / adam_step_size
-    )
-
     # Create an svi object
-    svi_obj = ri.setup_svi(adam_step_size=schedule,
+    svi_obj = ri.setup_svi(adam_step_size=adam_step_size,
                            adam_clip_norm=adam_clip_norm,
                            elbo_num_particles=elbo_num_particles,
-                           guide_type="component")
+                           guide_type=guide_type,
+                           guide_kwargs=guide_kwargs,
+                           init_values=init_values)
 
-    # Run svi. Note that `init_params` is not used here, but is required by the
-    # run_optimization method.
+    # init_params are substituted by parameter name, which only the component
+    # guide's names can match; an autoguide starts from init_values instead,
+    # and keeps only the model's own params (thermo PnnC NN weights).
+    if resolve_guide_type(guide_type) != "component":
+        init_params = ri.model_params(init_params) if init_params else None
+        init_params = init_params or None
+
     svi_state, params, converged = ri.run_optimization(
         svi_obj,
         init_params=init_params,
         out_prefix=f"{out_prefix}",
         svi_state=checkpoint_file,
-        convergence_tolerance=convergence_tolerance,
-        convergence_window=convergence_window,
-        patience=patience,
-        convergence_check_interval=convergence_check_interval,
-        checkpoint_interval=checkpoint_interval,
-        max_num_epochs=max_num_epochs,
-        init_param_jitter=init_param_jitter,
-        epoch_checkpoint_interval=epoch_checkpoint_interval
+        **optimization_kwargs
     )
 
     # Write convergence information to stdout (skip when restoring from
     # checkpoint with no additional epochs — convergence is not meaningful).
-    if max_num_epochs > 0:
+    if optimization_kwargs.get("max_num_epochs", 1) > 0:
         if converged:
             print("SVI run converged.",flush=True)
         else:
@@ -249,11 +234,13 @@ def _run_svi(ri,
     return svi_obj, svi_state, params, converged
 
 def _run_nuts(ri,
+              init_values=None,
               out_prefix="tfs",
               nuts_num_warmup=500,
               nuts_num_samples=500,
               nuts_num_chains=1,
               nuts_target_accept_prob=0.9,
+              nuts_dense_mass=False,
               forward_batch_size=512):
     """
     Run NUTS (No-U-Turn Sampler) MCMC inference.
@@ -262,6 +249,9 @@ def _run_nuts(ri,
     ----------
     ri : RunInference
         RunInference object that manages model setup and MCMC routines.
+    init_values : dict or None, optional
+        Constrained site values to start the chains at (default: prior
+        medians).
     out_prefix : str, optional
         Output file root for checkpoints and results (default "tfs").
     nuts_num_warmup : int, optional
@@ -272,6 +262,8 @@ def _run_nuts(ri,
         Number of MCMC chains (default 1).
     nuts_target_accept_prob : float, optional
         Target acceptance probability for NUTS step-size adaptation (default 0.9).
+    nuts_dense_mass : bool, optional
+        Adapt a dense mass matrix (default False, diagonal).
     forward_batch_size : int, optional
         Number of genotypes to process per forward-model batch when computing
         posteriors (default 512).
@@ -285,7 +277,9 @@ def _run_nuts(ri,
     mcmc = ri.run_nuts(num_warmup=nuts_num_warmup,
                        num_samples=nuts_num_samples,
                        num_chains=nuts_num_chains,
-                       target_accept_prob=nuts_target_accept_prob)
+                       target_accept_prob=nuts_target_accept_prob,
+                       init_values=init_values,
+                       dense_mass=nuts_dense_mass)
 
     mcmc_samples = mcmc.get_samples()
 
@@ -305,35 +299,95 @@ def _run_nuts(ri,
     return mcmc_samples
 
 
+def _check_checkpoint_guide(checkpoint_file, guide_type):
+    """Refuse to resume an SVI checkpoint with a different guide."""
+
+    # A missing file is reported by run_optimization when it tries to restore.
+    if not os.path.isfile(checkpoint_file):
+        return
+
+    with open(checkpoint_file, "rb") as f:
+        saved = dill.load(f).get("guide_type") or "component"
+    if saved != guide_type:
+        raise ValueError(
+            f"Checkpoint '{checkpoint_file}' was written with guide_type "
+            f"'{saved}', but guide_type '{guide_type}' was requested. Resume "
+            f"with guide_type='{saved}'."
+        )
+
+
+def _read_init_from(path):
+    """
+    A MAP ``*_params.npz`` (constrained values, as ``write_params`` saves
+    them) as a start.
+
+    Returns
+    -------
+    values : dict
+        The ``{site}_auto_loc`` arrays, for ``site_values``: they take
+        precedence over guesses keyed by site or by guide parameter.
+    others : dict
+        Every other array: the model's own learned params (thermo PnnC NN
+        weights), for ``ri.model_params``.
+    """
+    with np.load(path) as z:
+        values = {k: jnp.asarray(z[k]) for k in z.files if k.endswith("_auto_loc")}
+        others = {k: jnp.asarray(z[k]) for k in z.files
+                  if not k.endswith("_auto_loc")}
+    if not values:
+        raise ValueError(f"init_from '{path}' has no '*_auto_loc' arrays; it "
+                         "should be the *_params.npz of a MAP fit.")
+    print(f"Starting from {len(values)} MAP sites in {path}")
+    return values, others
+
+
 def fit_model(config_file,
               seed=None,
               checkpoint_file=None,
               analysis_method="svi",
+              guide_type="component",
+              guide_rank=None,
+              guide_init_scale=None,
               out_prefix="tfs_fit_model",
               adam_step_size=1e-3,
               adam_final_step_size=1e-6,
-              adam_clip_norm=1.0,
+              adam_step_size_cut=0.1,
+              adam_clip_norm=None,
               elbo_num_particles=2,
-              convergence_tolerance=1e-5,
-              convergence_window=10,
-              patience=10,
-              convergence_check_interval=2,
+              convergence_window_steps=2000,
+              patience=3,
+              convergence_z=3.0,
+              loss_rtol=1e-6,
+              param_tolerance=0.05,
               checkpoint_interval=10,
               max_num_epochs=100000,
               forward_batch_size=512,
-              pre_map_num_epoch=1000,
-              init_param_jitter=0.1,
+              pre_map_num_epoch=10000,
+              init_param_jitter=0.0,
               nuts_num_warmup=500,
               nuts_num_samples=500,
               nuts_num_chains=1,
               nuts_target_accept_prob=0.9,
-              epoch_checkpoint_interval=1000):
+              nuts_dense_mass=False,
+              epoch_checkpoint_interval=1000,
+              init_from=None,
+              stage_offsets="auto",
+              staged_step_size=DEFAULT_STAGED_STEP_SIZE):
     """
     Fit the joint hierarchical model using a previously generated configuration file.
 
     This function extracts estimates of transcription factor fractional occupancy (theta)
     and other latent parameters using Stochastic Variational Inference (SVI) or maximum a
     posteriori (MAP) approaches based on the config.
+
+    Optimization (SVI, MAP and the pre-MAP warm-up) runs in windows of
+    ``convergence_window_steps`` optimizer steps.  After ``patience``
+    consecutive windows without a significant improvement in the loss
+    (against its own noise), the step size is cut by ``adam_step_size_cut``.
+    Once it has reached ``adam_final_step_size``, the run stops after
+    ``patience`` consecutive windows in which the loss has not improved and no
+    parameter has moved (against its posterior or prior width).  Each window
+    is recorded in ``{out_prefix}_convergence.csv``.
 
     Parameters
     ----------
@@ -343,44 +397,84 @@ def fit_model(config_file,
         Random seed for reproducibility. Must be provided if not loading from a checkpoint.
     checkpoint_file : str or None, optional
         Path to a checkpoint file to resume SVI from, or None to start fresh.
+        A resumed run continues at the checkpoint's step size and convergence
+        stage.
     analysis_method : str, optional
         Method for inference. Allowed values are 'svi' (default), 'map', or 'nuts'.
         Case-insensitive. Posterior sampling is not performed; call
         ``tfs-sample-posterior`` after fitting.
+    guide_type : str, optional
+        Variational family for analysis_method 'svi' (default 'component',
+        the guide assembled from the model components).  Also accepts the
+        numpyro autoguides 'auto_normal', 'auto_diagonal_normal',
+        'auto_multivariate_normal', 'auto_low_rank_multivariate_normal' and
+        'delta'; numpyro class names such as 'AutoNormal' work too.  Every
+        guide's location starts at the pre-MAP solution when
+        ``pre_map_num_epoch > 0``, otherwise at the configured guesses.
+        A resumed checkpoint must use the guide it was written with.
+    guide_rank : int, optional
+        Covariance rank for 'auto_low_rank_multivariate_normal' (numpyro's
+        default when omitted).
+    guide_init_scale : float, optional
+        Initial scale of the variational distribution, in each site's
+        unconstrained units (default 1e-4, ``DEFAULT_GUIDE_INIT_SCALE``).
+        For 'component' it caps every guide scale at the start; for an
+        autoguide it is numpyro's ``init_scale`` for a fresh fit (a resumed
+        fit keeps its checkpoint's).  SVI widens the scales itself; a large
+        start throws the pre-MAP point away.  Not accepted by 'delta'.
     out_prefix : str, optional
-        Prefix for all output files: checkpoints, parameter files, and the
-        posterior HDF5 (default 'tfs_fit_model'). Files are named
-        {out_prefix}_checkpoint.pkl, {out_prefix}_params.npz, etc.
+        Prefix for all output files (default 'tfs_fit_model'):
+        {out_prefix}_checkpoint.pkl, {out_prefix}_params.npz,
+        {out_prefix}_losses.txt, {out_prefix}_convergence.csv, the pre-MAP's
+        {out_prefix}_premap_* files, and, for NUTS only, the posterior HDF5.
     adam_step_size : float, optional
         Starting step size for the Adam optimizer (default 1e-3).
     adam_final_step_size : float, optional
-        Final step size for the Adam optimizer (default 1e-6).
-    adam_clip_norm : float, optional
-        Gradient clipping norm for Adam optimizer (default 1.0).
+        Smallest step size (default 1e-6).  Set equal to ``adam_step_size``
+        for a constant step size.
+    adam_step_size_cut : float, optional
+        Factor applied to the step size at each cut (default 0.1).
+    adam_clip_norm : float or None, optional
+        Clip each gradient element to +/- this value (numpyro ClippedAdam).
+        None (default) disables clipping: when gradients are much larger
+        than the clip, an elementwise clip makes Adam follow the gradient's
+        sign, and its fixed point is biased by rare large ELBO penalties.
     elbo_num_particles : int, optional
         Number of particles for ELBO estimation (default 2).
-    convergence_tolerance : float, optional
-        Relative change in loss to declare SVI convergence (default 1e-5).
-    convergence_window : int, optional
-        Number of epochs to average for convergence check (default 10).
+    convergence_window_steps : int, optional
+        Optimizer steps per convergence window (default 2000; at least 10
+        epochs, so with mini-batching every genotype is visited several times
+        per window).
     patience : int, optional
-        Number of consecutive checks meeting tolerance to declare convergence
-        (default 10).
-    convergence_check_interval : int, optional
-        Frequency (in epochs) to check for convergence (default 2).
+        Consecutive windows without loss improvement required for a step-size
+        cut, and (at the final step size) without loss improvement or
+        parameter movement required for stopping (default 3).
+    convergence_z : float, optional
+        Standard errors of change attributed to noise (default 3).
+    loss_rtol : float, optional
+        Loss changes per window below this fraction of the loss count as no
+        change (default 1e-6); matters only for (near-)deterministic losses.
+    param_tolerance : float, optional
+        Parameter movement per window, beyond noise, still counted as no
+        change (default 0.05), in posterior SDs (SVI), prior SDs (MAP), or
+        log/logit units (positive or bounded parameters).
     checkpoint_interval : int, optional
         Frequency (in epochs) between checkpoints (default 10).
     max_num_epochs : int, optional
-        Maximum number of SVI optimization epochs (default 100000).
+        Maximum number of SVI or MAP epochs (default 100000); a cap only.
     forward_batch_size : int, optional
         When getting NUTS posteriors, calculate forward predictions in batches
         of this size (default 512).
     pre_map_num_epoch : int, optional
-        Number of MAP iterations to run prior to SVI (default 1000). Only used
-        if analysis_method is 'svi'.
+        Maximum number of epochs of the MAP warm-up run before SVI or NUTS
+        (default 10000; 0 skips it).  The warm-up stops earlier when it
+        converges.  SVI's guide and NUTS's chains start at its point.  Not
+        used by 'map'.
     init_param_jitter : float, optional
-        Amount of jitter to add after the (optional) MAP run to break symmetry
-        (default 0.1).
+        Multiplicative jitter on the component guide's starting parameters
+        (default 0, none).  Not used by autoguides or MAP.  Leave it off when
+        starting from a pre-MAP: it scales with each value, so 0.1 moves an
+        ln_cfu0 location near 15 by about 1.5 ln units.
     nuts_num_warmup : int, optional
         Number of NUTS warmup steps (default 500). Only used if
         analysis_method is 'nuts'.
@@ -393,11 +487,39 @@ def fit_model(config_file,
     nuts_target_accept_prob : float, optional
         Target acceptance probability for NUTS step-size adaptation
         (default 0.9). Only used if analysis_method is 'nuts'.
+    nuts_dense_mass : bool, optional
+        Adapt a dense mass matrix for NUTS instead of a diagonal one
+        (default False).  Worth it for correlated posteriors of up to a few
+        thousand latents; with a diagonal one the relative fit ran at NUTS's
+        maximum tree depth.  Only used if analysis_method is 'nuts'.
     epoch_checkpoint_interval : int or None, optional
         Frequency (in epochs) to write numbered epoch checkpoints to a
         ``checkpoints/`` subdirectory alongside ``out_prefix`` (default 1000).
         Files are named ``{epoch:07d}_checkpoint.pkl``. Set to 0 or None to
         disable. Raises ``FileExistsError`` if a target file already exists.
+    init_from : str or None, optional
+        A ``*_params.npz`` written by a MAP fit (``{site}_auto_loc`` arrays)
+        to start from instead of the configured guesses, wherever it names a
+        site of this model; other sites start at their guesses. The fit may
+        be of a different model: starting a ``sample_offset: level`` fit from
+        a ``zero`` fit's point, say (the npz can carry
+        ``sample_offset_offset_auto_loc`` to set the offsets too). Refused
+        with ``checkpoint_file``, which sets the start itself.
+    stage_offsets : str, optional
+        'auto' (default), 'on' or 'off'. A MAP with level tube offsets
+        (``sample_offset: level``) started cold can settle in a mode where
+        the offsets carry the population's growth. Staged, it runs three
+        MAPs: the offsets held at 0 ({out_prefix}_stage1_*), the offsets
+        alone with everything else held there ({out_prefix}_stage2_*), and
+        the joint MAP from that point at ``staged_step_size``
+        ({out_prefix}_*). A finished stage is reused when the command is
+        rerun; an interrupted one resumes. 'auto' stages a fresh MAP of a
+        level-offset model (no checkpoint_file, no init_from); 'on' requires
+        one; 'off' fits it in one go.
+    staged_step_size : float, optional
+        Starting step size of the staged MAP's joint stage (default 1e-4):
+        Adam moves every parameter by about a step size per step, and a
+        larger step can carry the start back into the offset mode.
 
     Returns
     -------
@@ -414,6 +536,28 @@ def fit_model(config_file,
 
     analysis_method = analysis_method.lower()
 
+    # Validate guide options before any (slow) fitting starts.
+    guide_type = resolve_guide_type(guide_type)
+    guide_kwargs = {}
+    if guide_rank is not None:
+        guide_kwargs["rank"] = guide_rank
+    if guide_init_scale is not None and guide_type != "component":
+        guide_kwargs["init_scale"] = guide_init_scale
+    if analysis_method != "svi" and (guide_type != "component" or guide_kwargs
+                                     or guide_init_scale is not None):
+        raise ValueError(
+            "guide_type, guide_rank and guide_init_scale apply only to "
+            "analysis_method='svi' ('map' always uses 'delta'; 'nuts' uses no "
+            "guide)."
+        )
+    check_guide_kwargs(guide_type, guide_kwargs)
+    if guide_init_scale is not None and not guide_init_scale > 0:
+        raise ValueError(
+            f"guide_init_scale must be positive (got {guide_init_scale})."
+        )
+    if analysis_method == "svi" and checkpoint_file is not None:
+        _check_checkpoint_guide(checkpoint_file, guide_type)
+
     # Check for existing results to avoid overwriting unless resuming
     if checkpoint_file is None:
         checkpoint_path = f"{out_prefix}_checkpoint.pkl"
@@ -424,7 +568,7 @@ def fit_model(config_file,
                 "the file or change out_prefix."
             )
 
-        if analysis_method == "svi" and pre_map_num_epoch > 0:
+        if analysis_method in ("svi", "nuts") and pre_map_num_epoch > 0:
             premap_path = f"{out_prefix}_premap_checkpoint.pkl"
             if os.path.exists(premap_path):
                 raise FileExistsError(
@@ -432,7 +576,15 @@ def fit_model(config_file,
                     "overwrite, delete the file or change out_prefix."
                 )
 
-    orchestrator, init_params = read_configuration(config_file)
+    if init_from is not None and checkpoint_file is not None:
+        raise ValueError("init_from and checkpoint_file both set the starting "
+                         "point; give one.")
+
+    orchestrator, guesses = read_configuration(config_file)
+    init_from_params = {}
+    if init_from is not None:
+        init_from_values, init_from_params = _read_init_from(init_from)
+        guesses = {**guesses, **init_from_values}
 
     # For posterior mode the seed is optional: the checkpoint restores the PRNG
     # key for SVI checkpoints, and any valid key works for MAP/Laplace sampling.
@@ -441,66 +593,142 @@ def fit_model(config_file,
     # Run SVI / MAP
     ri = RunInference(orchestrator, effective_seed)
 
+    # The model's own learned params (thermo PnnC NN weights) start
+    # where an --init_from fit left them; sample-site values alone would
+    # restart them at their init values.
+    start_params = ri.model_params(init_from_params) if init_from_params else {}
+
+    optimizer_kwargs = dict(adam_step_size=adam_step_size,
+                            adam_clip_norm=adam_clip_norm,
+                            elbo_num_particles=elbo_num_particles)
+    convergence_kwargs = dict(convergence_window_steps=convergence_window_steps,
+                              patience=patience,
+                              convergence_z=convergence_z,
+                              loss_rtol=loss_rtol,
+                              param_tolerance=param_tolerance,
+                              adam_final_step_size=adam_final_step_size,
+                              adam_step_size_cut=adam_step_size_cut)
+
     if analysis_method == "svi":
-        if pre_map_num_epoch > 0 and checkpoint_file is None:
-            _, init_params, _ = _run_map(ri,
-                                         init_params=init_params,
-                                         checkpoint_file=None,
-                                         out_prefix=f"{out_prefix}_premap",
-                                         adam_step_size=adam_step_size,
-                                         adam_final_step_size=adam_final_step_size,
-                                         adam_clip_norm=adam_clip_norm,
-                                         elbo_num_particles=elbo_num_particles,
-                                         convergence_tolerance=convergence_tolerance,
-                                         convergence_window=convergence_window,
-                                         patience=patience,
-                                         checkpoint_interval=pre_map_num_epoch,
-                                         max_num_epochs=pre_map_num_epoch,
-                                         init_param_jitter=0.0,
-                                         epoch_checkpoint_interval=None)
+
+        # Resuming: the checkpoint overwrites the starting point.
+        if checkpoint_file is not None:
+            init_params = guesses
+            init_values = None
+
+        else:
+            # Configured guesses, as site values (they are keyed by site or by
+            # component-guide parameter name).
+            start_values = ri.site_values(guesses)
+
+            if pre_map_num_epoch > 0:
+                _, map_params, _ = _run_map(
+                    ri,
+                    init_values=start_values,
+                    init_params=start_params,
+                    out_prefix=f"{out_prefix}_premap",
+                    label="Pre-MAP",
+                    **optimizer_kwargs,
+                    **_optimization_kwargs(
+                        **convergence_kwargs,
+                        checkpoint_interval=pre_map_num_epoch,
+                        max_num_epochs=pre_map_num_epoch,
+                        epoch_checkpoint_interval=None))
+                # The MAP point replaces the guesses where it has a value,
+                # and its model-side params carry over too.
+                start_values = {**start_values, **ri.site_values(map_params)}
+                start_params = {**start_params, **ri.model_params(map_params)}
+
+            init_scale = (DEFAULT_GUIDE_INIT_SCALE
+                          if guide_init_scale is None else guide_init_scale)
+            if guide_type == "component":
+                init_params = ri.component_guide_start(start_values,
+                                                       guesses=guesses,
+                                                       init_scale=init_scale)
+                init_params = {**init_params, **start_params}
+                init_values = None
+            else:
+                init_params = start_params or None
+                init_values = start_values
+                if guide_type != "delta":
+                    guide_kwargs["init_scale"] = init_scale
 
         return _run_svi(ri,
                         init_params=init_params,
                         checkpoint_file=checkpoint_file,
+                        guide_type=guide_type,
+                        guide_kwargs=guide_kwargs,
+                        init_values=init_values,
                         out_prefix=out_prefix,
-                        adam_step_size=adam_step_size,
-                        adam_final_step_size=adam_final_step_size,
-                        adam_clip_norm=adam_clip_norm,
-                        elbo_num_particles=elbo_num_particles,
-                        convergence_tolerance=convergence_tolerance,
-                        convergence_window=convergence_window,
-                        patience=patience,
-                        convergence_check_interval=convergence_check_interval,
-                        checkpoint_interval=checkpoint_interval,
-                        max_num_epochs=max_num_epochs,
-                        init_param_jitter=init_param_jitter,
-                        epoch_checkpoint_interval=epoch_checkpoint_interval)
+                        **optimizer_kwargs,
+                        **_optimization_kwargs(
+                            **convergence_kwargs,
+                            checkpoint_interval=checkpoint_interval,
+                            max_num_epochs=max_num_epochs,
+                            init_param_jitter=init_param_jitter,
+                            epoch_checkpoint_interval=epoch_checkpoint_interval))
+
+    elif analysis_method == "map" and use_stages(stage_offsets, orchestrator,
+                                                 analysis_method,
+                                                 checkpoint_file=checkpoint_file,
+                                                 init_from=init_from):
+        map_kwargs = dict(**optimizer_kwargs,
+                          **_optimization_kwargs(
+                              **convergence_kwargs,
+                              checkpoint_interval=checkpoint_interval,
+                              max_num_epochs=max_num_epochs,
+                              epoch_checkpoint_interval=epoch_checkpoint_interval))
+        stage_kwargs = dict(map_kwargs, epoch_checkpoint_interval=None)
+        return run_staged_map(orchestrator,
+                              make_ri=lambda m: RunInference(m, effective_seed),
+                              run_map=_run_map,
+                              guesses=guesses,
+                              out_prefix=out_prefix,
+                              map_kwargs=map_kwargs,
+                              stage_map_kwargs=stage_kwargs,
+                              staged_step_size=staged_step_size)
 
     elif analysis_method == "map":
+        init_values = None
+        if checkpoint_file is None:
+            init_values = ri.site_values(guesses)
         return _run_map(ri,
-                        init_params=init_params,
+                        init_values=init_values,
+                        init_params=start_params,
                         checkpoint_file=checkpoint_file,
                         out_prefix=out_prefix,
-                        adam_step_size=adam_step_size,
-                        adam_final_step_size=adam_final_step_size,
-                        adam_clip_norm=adam_clip_norm,
-                        elbo_num_particles=elbo_num_particles,
-                        convergence_tolerance=convergence_tolerance,
-                        convergence_window=convergence_window,
-                        patience=patience,
-                        convergence_check_interval=convergence_check_interval,
-                        checkpoint_interval=checkpoint_interval,
-                        max_num_epochs=max_num_epochs,
-                        init_param_jitter=init_param_jitter,
-                        epoch_checkpoint_interval=epoch_checkpoint_interval)
+                        **optimizer_kwargs,
+                        **_optimization_kwargs(
+                            **convergence_kwargs,
+                            checkpoint_interval=checkpoint_interval,
+                            max_num_epochs=max_num_epochs,
+                            epoch_checkpoint_interval=epoch_checkpoint_interval))
 
     elif analysis_method == "nuts":
+        # Start the chains at the MAP warm-up's point, as SVI does: from
+        # prior medians warmup spends its adaptation getting to the mode.
+        init_values = ri.site_values(guesses)
+        if pre_map_num_epoch > 0:
+            _, map_params, _ = _run_map(
+                ri,
+                init_values=init_values,
+                out_prefix=f"{out_prefix}_premap",
+                label="Pre-MAP",
+                **optimizer_kwargs,
+                **_optimization_kwargs(
+                    **convergence_kwargs,
+                    checkpoint_interval=pre_map_num_epoch,
+                    max_num_epochs=pre_map_num_epoch,
+                    epoch_checkpoint_interval=None))
+            init_values = {**init_values, **ri.site_values(map_params)}
         mcmc_samples = _run_nuts(ri,
+                                 init_values=init_values,
                                  out_prefix=out_prefix,
                                  nuts_num_warmup=nuts_num_warmup,
                                  nuts_num_samples=nuts_num_samples,
                                  nuts_num_chains=nuts_num_chains,
                                  nuts_target_accept_prob=nuts_target_accept_prob,
+                                 nuts_dense_mass=nuts_dense_mass,
                                  forward_batch_size=forward_batch_size)
         return None, mcmc_samples, True
 
@@ -514,15 +742,19 @@ def fit_model(config_file,
 def main():
     return generalized_main(fit_model,
                             manual_arg_types={"config_file":str,
+                                              "adam_clip_norm":float,
                                               "seed":int,
                                               "checkpoint_file":str,
+                                              "guide_rank":int,
+                                              "guide_init_scale":float,
                                               "pre_map_num_epoch":int,
                                               "init_param_jitter":float,
                                               "nuts_num_warmup":int,
                                               "nuts_num_samples":int,
                                               "nuts_num_chains":int,
                                               "nuts_target_accept_prob":float,
-                                              "epoch_checkpoint_interval":int})
+                                              "epoch_checkpoint_interval":int,
+                                              "init_from":str})
 
 if __name__ == "__main__":
     main()

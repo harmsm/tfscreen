@@ -50,8 +50,14 @@ def get_batch(full_data: DataClass, idx: jnp.ndarray) -> DataClass:
             map_condition_pre=full_data.growth.map_condition_pre[...,idx],
             map_condition_sel=full_data.growth.map_condition_sel[...,idx],
             good_mask=full_data.growth.good_mask[...,idx],
-            congression_mask=full_data.growth.congression_mask[...,idx],
         )
+        # Count-likelihood tensors (growth_likelihood == "counts" only).
+        if getattr(full_data.growth, "counts", None) is not None:
+            new_growth = new_growth.replace(
+                counts=full_data.growth.counts[...,idx],
+                ln_sample_reads=full_data.growth.ln_sample_reads[...,idx],
+                sample_ln_cfu=full_data.growth.sample_ln_cfu[...,idx],
+            )
         return full_data.replace(growth=new_growth)
 
     # Binding-only mode: idx is a set of binding-genotype indices.
@@ -62,6 +68,7 @@ def get_batch(full_data: DataClass, idx: jnp.ndarray) -> DataClass:
             batch_idx=idx,
             scale_vector=full_data.binding.scale_vector[idx],
             geno_theta_idx=jnp.arange(batch_size, dtype=jnp.int32),
+            binding_ordinal=idx,
             theta_obs=full_data.binding.theta_obs[..., idx],
             theta_std=full_data.binding.theta_std[..., idx],
             good_mask=full_data.binding.good_mask[..., idx],

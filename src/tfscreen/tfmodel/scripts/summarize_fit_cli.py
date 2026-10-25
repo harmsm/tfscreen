@@ -21,13 +21,21 @@ from tfscreen.util.cli.generalized_main import generalized_main
 def _find_params_or_posterior(run_dir):
     """Return (kind, path) for the best available prediction source in run_dir.
 
-    Preference order: ``*_posterior.h5`` first (richer uncertainty), then
-    ``*_params.npz`` (MAP fallback).  Returns ``(None, None)`` when neither
-    is found.  Warns when multiple files of the same type are present and
-    uses the first alphabetically.
+    Preference order: a posterior ``.h5`` first (richer uncertainty), then
+    ``*_params.npz`` (MAP fallback).  A posterior is ``*_posterior.h5`` or,
+    since ``tfs-sample-posterior`` writes ``{out_prefix}.h5``, any other
+    ``.h5`` that is not a ``tfs-sample-prior`` ground truth
+    (``*_ground_truth.h5``).  Returns ``(None, None)`` when nothing is found.
+    Warns when several candidates of the same kind are present and uses the
+    first alphabetically.
     """
-    for suffix, kind in (("_posterior.h5", "posterior"), ("_params.npz", "params")):
-        matches = sorted(glob.glob(os.path.join(run_dir, f"*{suffix}")))
+    h5 = sorted(glob.glob(os.path.join(run_dir, "*.h5")))
+    named = [p for p in h5 if p.endswith("_posterior.h5")]
+    other = [p for p in h5 if p not in named
+             and not p.endswith("_ground_truth.h5")]
+    candidates = (("posterior", named or other),
+                  ("params", sorted(glob.glob(os.path.join(run_dir, "*_params.npz")))))
+    for kind, matches in candidates:
         if not matches:
             continue
         if len(matches) > 1:
@@ -80,6 +88,31 @@ def _try_plot_theta_fits(binding_df, pred_df, out_prefix):
         warnings.warn(f"Could not generate theta fit plots: {exc}")
 
 
+# Number of randomly chosen extra genotypes whose trajectories are plotted
+# when the run has no binding genotypes to plot.
+_TRAJECTORY_RANDOM_GENOTYPES = 10
+
+
+def _default_trajectory_genotypes(orchestrator,
+                                  num_random=_TRAJECTORY_RANDOM_GENOTYPES,
+                                  seed=0):
+    """
+    Genotypes to plot when there is no binding data to choose them: wt, the
+    spiked genotypes, and a fixed-seed sample of ``num_random`` others (so
+    reruns plot the same ones). Without this a growth-only run would write a
+    trajectory CSV and PDF for every genotype in the library.
+    """
+    tm = orchestrator.growth_tm
+    all_genos = [str(g) for g in tm.tensor_dim_labels[tm.tensor_dim_names.index("genotype")]]
+    spiked = [str(g) for g in (orchestrator.settings.get("spiked_genotypes") or [])]
+    keep = [g for g in ["wt"] + spiked if g in all_genos]
+    keep = list(dict.fromkeys(keep))
+    rest = sorted(set(all_genos) - set(keep))
+    rng = np.random.default_rng(seed)
+    extra = rng.choice(rest, size=min(num_random, len(rest)), replace=False)
+    return keep + sorted(str(g) for g in extra)
+
+
 def _try_plot_trajectories(config_file, config_yaml, run_dir, out_prefix, binding_df):
     """Attempt to generate per-genotype growth trajectory plots.
 
@@ -92,7 +125,7 @@ def _try_plot_trajectories(config_file, config_yaml, run_dir, out_prefix, bindin
     kind, pred_path = _find_params_or_posterior(run_dir)
     if pred_path is None:
         warnings.warn(
-            "No *_posterior.h5 or *_params.npz found in "
+            "No posterior .h5 or *_params.npz found in "
             f"{run_dir}; skipping trajectory plots."
         )
         return
@@ -103,7 +136,10 @@ def _try_plot_trajectories(config_file, config_yaml, run_dir, out_prefix, bindin
 
         orchestrator, _ = read_configuration(config_file)
 
-        genotypes = list(binding_df["genotype"].unique()) if binding_df is not None else None
+        if binding_df is not None:
+            genotypes = list(binding_df["genotype"].unique())
+        else:
+            genotypes = _default_trajectory_genotypes(orchestrator)
 
         pred_df = predict_geno_trajectory_df(
             orchestrator,
@@ -137,6 +173,133 @@ def _find_unique(run_dir, suffix, label, warn_missing=True):
             f"Multiple {label} files found in {run_dir}; using {os.path.basename(matches[0])}"
         )
     return matches[0]
+
+
+def _is_relative_config(config_yaml):
+    """True when the fit's theta component predicts X, not theta."""
+    from tfscreen.tfmodel.generative.registry import model_registry
+
+    components = (config_yaml or {}).get("components", {}) or {}
+    module = model_registry["theta"].get(components.get("theta"))
+    return getattr(module, "THETA_SCALE", "theta") == "X"
+
+
+def _x_gauge(config_yaml, ref_theta_file, run_dir):
+    """
+    What is needed to put simulated truth on a relative fit's X scale.
+
+    Returns None unless the fit's theta component is on the X scale
+    (``hill_relative``). Otherwise a dict with ``gauge`` (c_lo, c_hi), ``wt``
+    ({titrant_name: (theta_wt(c_lo), theta_wt(c_hi))}, from the reference
+    theta file) and ``activity`` (genotype -> simulated activity, from
+    ``*_sim_parameters.csv``; empty when absent, meaning activity 1). Warns
+    and returns None when the truth cannot be mapped.
+    """
+    if not _is_relative_config(config_yaml):
+        return None
+    components = config_yaml.get("components", {}) or {}
+
+    gauge = components.get("theta_gauge_conc")
+    if gauge is None or ref_theta_file is None:
+        warnings.warn("Relative (X-scale) fit without a recorded gauge or a "
+                      "reference theta file; its truth cannot be put on the "
+                      "X scale.")
+        return None
+
+    gt = pd.read_csv(ref_theta_file)
+    theta_col = "theta_obs" if "theta_obs" in gt.columns else "theta"
+    wt = gt[gt["genotype"].astype(str) == "wt"]
+    wt_theta = {}
+    for titrant, rows in wt.groupby("titrant_name"):
+        by_conc = rows.set_index("titrant_conc")[theta_col]
+        values = []
+        for c in gauge:
+            match = by_conc[np.isclose(by_conc.index.values.astype(float), c)]
+            if len(match) == 0:
+                warnings.warn(f"The reference theta file has no wt value at "
+                              f"the gauge concentration {c} ({titrant}); the "
+                              f"truth cannot be put on the X scale.")
+                return None
+            values.append(float(match.iloc[0]))
+        wt_theta[titrant] = tuple(values)
+
+    activity = {}
+    params_file = _find_unique(run_dir, "_sim_parameters.csv",
+                               "sim parameters", warn_missing=False)
+    if params_file is not None:
+        params = pd.read_csv(params_file)
+        if "activity" in params.columns:
+            activity = dict(zip(params["genotype"].astype(str),
+                                params["activity"].astype(float)))
+
+    return {"gauge": gauge, "wt": wt_theta, "activity": activity}
+
+
+def _x_scale_ref(gt_df, x_gauge):
+    """The ``ref`` column of a reference theta table, on the X scale."""
+    from tfscreen.tfmodel.generative.components.theta.hill_relative import (
+        x_scale_truth,
+    )
+    act = x_gauge["activity"]
+    lo = gt_df["titrant_name"].map(lambda t: x_gauge["wt"][t][0])
+    hi = gt_df["titrant_name"].map(lambda t: x_gauge["wt"][t][1])
+    a = gt_df["genotype"].astype(str).map(lambda g: act.get(g, 1.0))
+    return x_scale_truth(gt_df["ref"].values, lo.values, hi.values,
+                         a.values, act.get("wt", 1.0))
+
+
+def _is_tfmodel_config(path):
+    """True when the YAML at ``path`` is a tfmodel config ('data' + 'components')."""
+    try:
+        with open(path) as fh:
+            cfg = yaml.safe_load(fh)
+    except Exception:
+        return False
+    return isinstance(cfg, dict) and "data" in cfg and "components" in cfg
+
+
+def _find_fit_config(run_dir):
+    """Return the tfmodel config in run_dir, or None.
+
+    Grid run directories also hold other ``*_config.yaml`` files (e.g. the
+    simulate config ``tfs_sim_config.yaml``), so a file counts only if it has
+    the 'data' and 'components' sections ``read_configuration`` requires.
+    """
+    matches = sorted(glob.glob(os.path.join(run_dir, "*_config.yaml")))
+    configs = [m for m in matches if _is_tfmodel_config(m)]
+    if not configs:
+        warnings.warn(
+            f"No tfmodel config (*_config.yaml with 'data' and 'components') "
+            f"found in {run_dir}"
+        )
+        return None
+    if len(configs) > 1:
+        warnings.warn(
+            f"Multiple tfmodel config files found in {run_dir}; "
+            f"using {os.path.basename(configs[0])}"
+        )
+    return configs[0]
+
+
+# Losses written by runs other than the main fit: tfs-prefit-calibration
+# ({prefix}_prefit_losses.txt) and the pre-MAP ahead of SVI
+# ({out_prefix}_premap_losses.txt).
+_AUX_LOSSES_RE = re.compile(r"(^|_)(prefit|premap)_losses\.txt$")
+
+
+def _find_fit_losses(run_dir):
+    """Return the main fit's ``*_losses.txt`` in run_dir, or None."""
+    matches = sorted(glob.glob(os.path.join(run_dir, "*_losses.txt")))
+    fit_losses = [m for m in matches
+                  if not _AUX_LOSSES_RE.search(os.path.basename(m))]
+    if not fit_losses:
+        return None
+    if len(fit_losses) > 1:
+        warnings.warn(
+            f"Multiple fit losses files found in {run_dir}; "
+            f"using {os.path.basename(fit_losses[0])}"
+        )
+    return fit_losses[0]
 
 
 def _resolve_path(path, run_dir):
@@ -381,6 +544,47 @@ def _compute_epi_obs(params_df, ref_series, param_name):
     return ep_map.reindex(std_pairs).values
 
 
+def _read_keyed_truth(run_dir, name, key):
+    """
+    Read ``*_sim_{name}.csv`` (per-mutation or per-pair truth) indexed by key.
+
+    Returns None when the file is absent (real data, or a theta model with no
+    per-mutation truth) or unreadable (with a warning).  Pair labels are
+    standardized so they match ``standardize_genotypes`` of a fit's pairs.
+    """
+    path = _find_unique(run_dir, f"_sim_{name}.csv", f"sim {name}",
+                        warn_missing=False)
+    if path is None:
+        return None
+    try:
+        df = pd.read_csv(path)
+    except Exception as exc:
+        warnings.warn(f"Could not load {path}: {exc}")
+        return None
+    if key not in df.columns:
+        warnings.warn(f"{path} has no '{key}' column; ignoring it")
+        return None
+    if key == "pair":
+        from tfscreen.genetics import standardize_genotypes
+        df[key] = standardize_genotypes(df[key])
+    return df.set_index(key)
+
+
+def _compute_keyed_obs(params_df, truth_df, column, key):
+    """Return ref array for a params file joined to keyed truth on ``key``.
+
+    Returns ``None`` when params_df has no ``key`` column.  Rows whose key is
+    absent from the truth receive NaN.
+    """
+    if key not in params_df.columns:
+        return None
+    labels = params_df[key]
+    if key == "pair":
+        from tfscreen.genetics import standardize_genotypes
+        labels = pd.Series(standardize_genotypes(labels), index=params_df.index)
+    return truth_df[column].reindex(labels).values
+
+
 def _try_plot_params_corr(out_df, label, pdf_path):
     """Save a scatter correlation plot of ref vs median for a params CSV.
 
@@ -410,20 +614,66 @@ def _try_plot_params_corr(out_df, label, pdf_path):
         warnings.warn(f"Could not generate parameter correlation plot {pdf_path}: {exc}")
 
 
-def _summarize_params(run_dir, out_prefix):
+# Per-structure ddG truth columns (ddG_{structure}) and the fit's prior-mean
+# tables (ddG_prior_mean_{structure}); see theta/thermo/prior.py.
+_DDG_TRUTH = re.compile(r"ddG_(?!prior_mean_)(.+)")
+_DDG_PRIOR_MEAN = re.compile(r"ddG_prior_mean_(.+)")
+
+
+def _ddG_per_state_identified(config_yaml):
+    """
+    Whether the fit's per-state ΔΔG tables are identified by the data.
+
+    The PddG/PnnC models put their prior on Δln K (``thermo/prior.py``).
+    In the U1 models the projection ``DLNK_PROJ`` is square and the
+    per-state ΔΔG is Δln K mapped back exactly; in the U0 models it is the
+    conditional mean under the per-state prior, whose common-mode component
+    (an equal shift of every state) comes from the prior means, not the
+    data.  Returns True when the config is missing or the theta component
+    has no ``DLNK_PROJ``.
+    """
+    from tfscreen.tfmodel.generative.registry import model_registry
+    from tfscreen.tfmodel.generative.components.theta.thermo.prior import (
+        ddG_per_state_identified,
+    )
+
+    components = (config_yaml or {}).get("components", {}) or {}
+    module = model_registry["theta"].get(components.get("theta"))
+    proj = getattr(module, "DLNK_PROJ", None)
+    return True if proj is None else ddG_per_state_identified(proj)
+
+
+def _summarize_params(run_dir, out_prefix, config_yaml=None):
     """Annotate *_params_*.csv files with ground-truth ref from tfs_sim_parameters.csv.
 
     Scans run_dir for a ``*_sim_parameters.csv`` file.  If absent the function
     returns silently (real-data runs have no ground truth).
 
-    For each non-genotype column in sim_parameters the function checks that a
-    matching ``*_params_{col}.csv`` exists and warns if it does not.
+    For each non-genotype column in sim_parameters (and each column of the
+    per-mutation ``*_sim_mutation_parameters.csv`` and per-pair
+    ``*_sim_pair_parameters.csv`` truth, when present) the function checks
+    that a matching ``*_params_{col}.csv`` exists and warns if it does not.
 
     All ``*_params_*.csv`` files in run_dir are then classified by their
     suffix as *direct* (genotype key), *diff* (``_d_`` infix, mutation key),
-    or *epi* (``_epi_`` infix, pair key).  A ``ref`` column is appended to
-    each file whose parameter name resolves via the transform registry and
-    written to the summary directory under ``{out_prefix}_params_*.csv``.
+    or *epi* (``_epi_`` infix, pair key).  A diff or epi file whose full name
+    (``d_ln_K_op``) is a column of the per-mutation or per-pair truth is
+    joined to it directly on ``mutation`` / ``pair``, as is a direct file
+    named for a per-mutation truth column (the thermo models' per-structure
+    ``ddG_H`` tables).  A prior-mean table ``ddG_prior_mean_H`` is joined to
+    the ``ddG_H`` truth and gets no calibration (it is a point).  When the
+    truth has ``ddG_*`` columns but the fit wrote no ddG tables (a PK fit),
+    a note replaces the per-structure warnings.  For a U0 PddG/PnnC fit
+    (``config_yaml``'s theta component; see :func:`_ddG_per_state_identified`)
+    the per-state ``ddG_H`` tables are still written, with the truth in
+    ``ref_unidentified`` instead of ``ref`` and ``per_state_identified`` =
+    False, and get no plot or calibration: their common mode comes from the
+    prior.  Score those fits on ``d_ln_K_*``.  Otherwise the
+    parameter name resolves via the transform registry: direct files by
+    genotype, diff files as sim[mutation] − sim[wt], epi files as the
+    additive epistasis of the per-genotype truth.  A ``ref`` column is
+    appended to each resolved file and written to the summary directory
+    under ``{out_prefix}_params_*.csv``.
     """
     sim_path = _find_unique(run_dir, "_sim_parameters.csv", "sim_parameters",
                             warn_missing=False)
@@ -445,9 +695,38 @@ def _summarize_params(run_dir, out_prefix):
 
     sim_cols = [c for c in sim_df.columns if c != "genotype"]
 
-    for col in sim_cols:
+    # Per-mutation / per-pair truth (thermodynamic models; tfs-simulate's
+    # mutation_parameters / pair_parameters outputs), keyed like the fit's
+    # d_* / epi_* tables.
+    keyed_truth = {
+        "diff": _read_keyed_truth(run_dir, "mutation_parameters", "mutation"),
+        "epi": _read_keyed_truth(run_dir, "pair_parameters", "pair"),
+    }
+    keyed_cols = [c for t in keyed_truth.values() if t is not None
+                  for c in t.columns]
+
+    # Per-structure ddG truth (PddG/PnnC simulations).  A fit with no ddG
+    # (PK parameterizes d_ln_K directly) writes no ddG tables; that is the
+    # "no structural prior" arm, scored on d_ln_K_*, so say so once instead
+    # of warning per structure.
+    ddG_cols = [c for c in keyed_cols if _DDG_TRUTH.fullmatch(c)]
+    if ddG_cols and not glob.glob(os.path.join(run_dir, "*_params_ddG_*.csv")):
+        print(f"Truth has per-structure ddG ({', '.join(ddG_cols)}) but the "
+              f"fit wrote no *_params_ddG_*.csv; expected for a model "
+              f"without ddG (PK). Its d_ln_K_* are scored instead.")
+        keyed_cols = [c for c in keyed_cols if c not in ddG_cols]
+
+    for col in sim_cols + keyed_cols:
         if not glob.glob(os.path.join(run_dir, f"*_params_{col}.csv")):
             warnings.warn(f"Expected *_params_{col}.csv in {run_dir} but none found")
+
+    # U0 structural fits: per-state ΔΔG is not identified by the data.
+    ddG_identified = _ddG_per_state_identified(config_yaml)
+    if ddG_cols and not ddG_identified:
+        print("The fit's theta component has no unfolded state (U0), so its "
+              "per-state ddG common mode comes from the prior means. The "
+              "ddG_* tables are written with the truth as ref_unidentified "
+              "and are not scored; score d_ln_K_* instead.")
 
     transform_registry = _build_transform_registry(sim_df)
 
@@ -467,10 +746,25 @@ def _summarize_params(run_dir, out_prefix):
         else:
             continue
 
-        if param_name not in transform_registry:
+        key = {"diff": "mutation", "epi": "pair"}.get(kind)
+        full_name = f"{'d' if kind == 'diff' else kind}_{param_name}"
+        truth_df = keyed_truth.get(kind)
+        is_prior_mean = False
+        if kind == "direct":
+            # Per-structure ddG tables (ddG_H, ...) are keyed by mutation and
+            # join the per-mutation truth by name.  A prior-mean table
+            # (ddG_prior_mean_H) is scored against the same truth (ddG_H):
+            # how well the structural prior alone predicts it.
+            m_prior = _DDG_PRIOR_MEAN.fullmatch(param_name)
+            key, truth_df = "mutation", keyed_truth["diff"]
+            full_name = f"ddG_{m_prior.group(1)}" if m_prior else param_name
+            is_prior_mean = m_prior is not None
+        use_keyed = truth_df is not None and full_name in truth_df.columns
+
+        if not use_keyed and param_name not in transform_registry:
             continue
 
-        ref_series = transform_registry[param_name]
+        ref_series = None if use_keyed else transform_registry[param_name]
 
         try:
             params_df = pd.read_csv(param_file)
@@ -480,7 +774,9 @@ def _summarize_params(run_dir, out_prefix):
 
         ref = None
         try:
-            if kind == "direct":
+            if use_keyed:
+                ref = _compute_keyed_obs(params_df, truth_df, full_name, key)
+            elif kind == "direct":
                 ref = _compute_direct_obs(params_df, ref_series)
             elif kind == "diff":
                 ref = _compute_diff_obs(params_df, ref_series)
@@ -494,7 +790,14 @@ def _summarize_params(run_dir, out_prefix):
             continue
 
         out_df = params_df.copy()
-        out_df["ref"] = ref
+        unidentified = (kind == "direct" and use_keyed and not is_prior_mean
+                        and not ddG_identified
+                        and _DDG_TRUTH.fullmatch(full_name) is not None)
+        if unidentified:
+            out_df["ref_unidentified"] = ref
+            out_df["per_state_identified"] = False
+        else:
+            out_df["ref"] = ref
 
         if kind == "epi":
             out_name = f"{out_prefix}_params_epi_{param_name}.csv"
@@ -513,9 +816,56 @@ def _summarize_params(run_dir, out_prefix):
             warnings.warn(f"Could not write {out_name}: {exc}")
             continue
 
+        if unidentified:
+            continue
         pdf_name = out_name.replace(".csv", ".pdf")
         _try_plot_params_corr(out_df, plot_label, pdf_name)
-        _try_calibration(out_df, "ref", out_name[:-4], plot_label)
+        # A prior mean is a point (its quantiles coincide), so it has no
+        # calibration; its r and RMSE against the truth are what count.
+        if not is_prior_mean:
+            _try_calibration(out_df, "ref", out_name[:-4], plot_label)
+
+
+def _summarize_ddG_sigma(run_dir, out_prefix):
+    """Annotate *_params_ddG_sigma.csv with the truth in *_sim_ddG_sigma.csv.
+
+    A PddG/PnnC simulation writes the true per-structure σ_s (the SD of the
+    true ΔΔG about the structural prior mean) as ``*_sim_ddG_sigma.csv``
+    (``structure``, ``ddG_sigma``); a PddG/PnnC fit extracts its σ_s as
+    ``*_params_ddG_sigma.csv``, one row per structure (``thermo/prior.py``).
+    They are joined on ``structure``.  Silently skips without the truth
+    (real data, other models) or when the fit wrote no ddG tables at all (a
+    PK fit; ``_summarize_params`` prints the note for that).  No
+    correlation plot: there are only a handful of structures.
+    """
+    sim_path = _find_unique(run_dir, "_sim_ddG_sigma.csv", "sim ddG_sigma",
+                            warn_missing=False)
+    if sim_path is None:
+        return
+    param_file = _find_unique(run_dir, "_params_ddG_sigma.csv",
+                              "ddG_sigma params", warn_missing=False)
+    if param_file is None:
+        if glob.glob(os.path.join(run_dir, "*_params_ddG_*.csv")):
+            warnings.warn(f"Expected *_params_ddG_sigma.csv in {run_dir} "
+                          f"but none found")
+        return
+    try:
+        truth = pd.read_csv(sim_path).set_index("structure")["ddG_sigma"]
+        params_df = pd.read_csv(param_file)
+        out_df = params_df.copy()
+        out_df["ref"] = truth.reindex(params_df["structure"].astype(str)).values
+    except Exception as exc:
+        warnings.warn(f"Could not join ddG_sigma truth: {exc}")
+        return
+
+    out_name = f"{out_prefix}_params_ddG_sigma.csv"
+    try:
+        out_df.to_csv(out_name, index=False)
+        print(f"Wrote parameter summary to {out_name}")
+    except Exception as exc:
+        warnings.warn(f"Could not write {out_name}: {exc}")
+        return
+    _try_calibration(out_df, "ref", out_name[:-4], "ddG_sigma")
 
 
 # Fit-side extract names for the condition_growth component (see
@@ -525,7 +875,33 @@ def _summarize_params(run_dir, out_prefix):
 _GROWTH_PARAM_NAMES = ["growth_k", "growth_m", "growth_n", "growth_min", "growth_max"]
 
 
-def _summarize_condition_growth_params(run_dir, out_prefix):
+def _x_scale_growth_ref(growth_ref_df, x_gauge):
+    """
+    ``growth_k``/``growth_m`` truth on a relative fit's X scale (roadmap C4:
+    k is wt's growth at c_hi, m its change between the gauge
+    concentrations). Needs a single titrant (the gauge is per titrant, k and
+    m per condition); otherwise warns and blanks both.
+    """
+    from tfscreen.tfmodel.generative.components.theta.hill_relative import (
+        x_scale_growth_truth,
+    )
+    out = growth_ref_df.copy()
+    if not {"growth_k", "growth_m"} <= set(out.columns):
+        return out
+    if len(x_gauge["wt"]) != 1:
+        warnings.warn("growth_k/growth_m truth is not mapped to the X scale "
+                      "with more than one titrant; left blank.")
+        out["growth_k"] = np.nan
+        out["growth_m"] = np.nan
+        return out
+    lo, hi = next(iter(x_gauge["wt"].values()))
+    out["growth_k"], out["growth_m"] = x_scale_growth_truth(
+        out["growth_k"].values, out["growth_m"].values, lo, hi,
+        x_gauge["activity"].get("wt", 1.0))
+    return out
+
+
+def _summarize_condition_growth_params(run_dir, out_prefix, x_gauge=None):
     """Annotate *_params_growth_{name}.csv with ground-truth ref from tfs_sim_growth_parameters.csv.
 
     Scans run_dir for a ``*_sim_growth_parameters.csv`` file (written by
@@ -538,7 +914,8 @@ def _summarize_condition_growth_params(run_dir, out_prefix):
     the configured growth model produces), the function looks for a
     matching ``*_params_{name}.csv`` file, warns if it is absent, and
     otherwise joins the two on ``condition_rep`` and writes the annotated
-    result to ``{out_prefix}_params_{name}.csv``.
+    result to ``{out_prefix}_params_{name}.csv``. For a relative (X-scale)
+    fit, ``x_gauge`` (from ``_x_gauge``) maps the k/m truth onto its scale.
     """
     sim_path = _find_unique(run_dir, "_sim_growth_parameters.csv",
                             "sim growth parameters", warn_missing=False)
@@ -557,6 +934,9 @@ def _summarize_condition_growth_params(run_dir, out_prefix):
             "column; skipping growth param summaries"
         )
         return
+
+    if x_gauge is not None:
+        growth_ref_df = _x_scale_growth_ref(growth_ref_df, x_gauge)
 
     present_param_names = [c for c in _GROWTH_PARAM_NAMES if c in growth_ref_df.columns]
 
@@ -700,7 +1080,7 @@ def _summarize_transformation_lam(run_dir, out_prefix):
     _try_calibration(merged, "ref", out_name[:-4], "transformation_lam")
 
 
-def _summarize_growth_params(run_dir, out_prefix):
+def _summarize_growth_params(run_dir, out_prefix, x_gauge=None):
     """Annotate growth-model parameter files with simulated ground truth.
 
     Handles two independent, optionally-present ground-truth sources
@@ -716,8 +1096,118 @@ def _summarize_growth_params(run_dir, out_prefix):
     base_growth_data); each is silently skipped when its sim-side file
     isn't found.
     """
-    _summarize_condition_growth_params(run_dir, out_prefix)
+    _summarize_condition_growth_params(run_dir, out_prefix, x_gauge)
     _summarize_k_ref(run_dir, out_prefix)
+
+
+# Per-tube offset sites and their SDs, by sample_offset component
+_TUBE_OFFSET_SITES = (("sample_offset_offset", "sample_offset_sigma"),
+                      ("sample_offset_delta_k", "sample_offset_sigma_env"))
+
+
+def _held_offset_sigma(config_yaml, config_file):
+    """The level offsets' held SD (``sigma_fixed`` > 0) from the priors CSV."""
+    if config_yaml is None or config_file is None:
+        return None
+    name = config_yaml.get("priors_file")
+    if not name:
+        return None
+    path = os.path.join(os.path.dirname(config_file), name)
+    if not os.path.exists(path):
+        return None
+    priors = pd.read_csv(path)
+    hit = priors[priors["parameter"].astype(str)
+                 .str.endswith("sample_offset.sigma_fixed")]
+    if len(hit) == 0:
+        return None
+    value = float(hit["value"].iloc[0])
+    return value if value > 0 else None
+
+
+def _summarize_tube_offsets(run_dir, out_prefix, config_yaml, config_file):
+    """
+    Size and structure of the per-tube sample offsets.
+
+    Reads the ``*_sample_offset_offset.csv`` (or ``_delta_k``) that
+    tfs-extract-params writes, takes the prior SD from the extracted sigma
+    or the held ``sigma_fixed``, and writes ``{out_prefix}_tube_offsets.csv``
+    (one row per tube, with ``z``), ``{out_prefix}_tube_offset_trends.csv``
+    (one row per condition) and ``{out_prefix}_tube_offsets.pdf``. Returns
+    the summary dict for the JSON, or None when the fit has no offsets.
+    """
+    from tfscreen.tfmodel.analysis.tube_offsets import (
+        format_tube_offset_summary, tube_offset_diagnostic)
+
+    offset_file = sigma_file = None
+    for site, sigma_site in _TUBE_OFFSET_SITES:
+        offset_file = _find_unique(run_dir, f"_{site}.csv", site,
+                                   warn_missing=False)
+        if offset_file is not None:
+            sigma_file = _find_unique(run_dir, f"_{sigma_site}.csv",
+                                      sigma_site, warn_missing=False)
+            break
+    if offset_file is None:
+        return None
+
+    sigma, sigma_source = None, None
+    if sigma_file is not None:
+        sigma = float(pd.read_csv(sigma_file)["q0.5"].iloc[0])
+        sigma_source = os.path.basename(sigma_file)
+    else:
+        sigma = _held_offset_sigma(config_yaml, config_file)
+        sigma_source = "sigma_fixed" if sigma is not None else None
+
+    tubes, trends, summary = tube_offset_diagnostic(pd.read_csv(offset_file),
+                                                    sigma=sigma)
+    summary["file"] = os.path.basename(offset_file)
+    summary["sigma_source"] = sigma_source
+    print(format_tube_offset_summary(summary, trends))
+
+    for df, suffix in ((tubes, "tube_offsets"), (trends, "tube_offset_trends")):
+        out_name = f"{out_prefix}_{suffix}.csv"
+        try:
+            df.to_csv(out_name, index=False)
+            print(f"Wrote {out_name}")
+        except Exception as exc:
+            warnings.warn(f"Could not write {out_name}: {exc}")
+
+    pdf_file = f"{out_prefix}_tube_offsets.pdf"
+    try:
+        _plot_tube_offsets(tubes, trends, pdf_file)
+        print(f"Wrote tube offset plot to {pdf_file}")
+    except Exception as exc:
+        warnings.warn(f"Could not plot tube offsets: {exc}")
+    return summary
+
+
+def _plot_tube_offsets(tubes, trends, pdf_file):
+    """Offset against titrant, one panel per selection condition, by time."""
+    conds = list(dict.fromkeys(tubes["condition_sel"].astype(str)))
+    ncol = min(3, len(conds))
+    nrow = int(np.ceil(len(conds) / ncol))
+    fig, axes = plt.subplots(nrow, ncol, figsize=(4.5 * ncol, 3.8 * nrow),
+                             squeeze=False)
+    conc = tubes["titrant_conc"].astype(float)
+    floor = conc[conc > 0].min() / 10 if (conc > 0).any() else 1.0
+    y = "z" if "z" in tubes.columns else "offset"
+    t_min, t_max = tubes["t_sel"].min(), tubes["t_sel"].max()
+    for ax, cond in zip(axes.flat, conds):
+        g = tubes[tubes["condition_sel"].astype(str) == cond]
+        sc = ax.scatter(np.maximum(g["titrant_conc"].astype(float), floor),
+                        g[y], c=g["t_sel"], cmap="viridis", vmin=t_min,
+                        vmax=t_max, s=18)
+        ax.axhline(0, color="gray", lw=0.8)
+        ax.set_xscale("log")
+        flag = trends.loc[trends["condition_sel"].astype(str) == cond,
+                          "structured"].any()
+        ax.set_title(cond + (" (trend)" if flag else ""))
+        ax.set_xlabel("titrant (0 drawn at min/10)")
+        ax.set_ylabel("offset / prior SD" if y == "z" else "offset (ln)")
+    for ax in list(axes.flat)[len(conds):]:
+        ax.set_visible(False)
+    fig.colorbar(sc, ax=axes, label="t_sel")
+    fig.savefig(pdf_file)
+    plt.close(fig)
 
 
 def summarize_fit(run_dir,
@@ -747,8 +1237,9 @@ def summarize_fit(run_dir,
       written when a ref theta file is resolved and has matching rows).
     - ``{out_prefix}_theta_corr.pdf`` — two-panel correlation plot for theta
       (training left, test right).
-    - ``{out_prefix}_growth_corr.csv`` — relative symlink to the
-      *_pred_growth.csv in run_dir (only created when that file is present).
+    - ``{out_prefix}_growth_corr.csv`` — a copy of the *_pred_growth.csv in
+      run_dir with ``ln_cfu``/``ln_cfu_std`` renamed ``ref``/``ref_std``
+      (only written when that file is present).
     - ``{out_prefix}_growth_corr.pdf`` — correlation plot for ln_cfu (only
       written when *_pred_growth.csv is present).
     - ``{out_prefix}_{genotype}_theta_fits.csv`` / ``.pdf`` — per-genotype
@@ -759,6 +1250,13 @@ def summarize_fit(run_dir,
       configured and a posterior/params file is found).
     - ``{out_prefix}_losses.pdf`` — training loss curve (only written when
       *_losses.txt is present).
+    - ``{out_prefix}_tube_offsets.csv`` / ``_tube_offset_trends.csv`` /
+      ``_tube_offsets.pdf`` — the per-tube sample offsets in prior SDs and,
+      per condition, their Spearman trend with titrant and with time (only
+      when tfs-extract-params wrote ``*_sample_offset_offset.csv``). A
+      condition whose trend has BH q < 0.05 is flagged ``structured``: the
+      offsets are carrying growth (the offset mode) rather than tube noise.
+      The JSON's ``tube_offsets`` key holds the summary.
 
     Parameters
     ----------
@@ -776,7 +1274,7 @@ def summarize_fit(run_dir,
         argument explicitly to use a theta reference from outside *run_dir*
         or with a non-standard name.
     out_prefix : str, optional
-        Prefix for output files.  Defaults to {run_dir}/tfs_summarize.
+        Prefix for output files.  Defaults to {run_dir}/summary/tfs_summarize.
     """
     run_dir = os.path.abspath(run_dir)
     if out_prefix is None:
@@ -801,9 +1299,9 @@ def summarize_fit(run_dir,
     growth_pred_df = None
 
     # --- Locate files in run_dir ---
-    config_file = _find_unique(run_dir, "_config.yaml", "config")
+    config_file = _find_fit_config(run_dir)
     theta_pred_file = _find_unique(run_dir, "_pred_theta.csv", "theta predictions")
-    losses_file = _find_unique(run_dir, "_losses.txt", "losses", warn_missing=False)
+    losses_file = _find_fit_losses(run_dir)
     growth_pred_file = _find_unique(run_dir, "_pred_growth.csv", "growth predictions",
                                     warn_missing=False)
 
@@ -892,8 +1390,20 @@ def summarize_fit(run_dir,
                                       "ref theta", warn_missing=False)
     metadata["ref_theta_file"] = ref_theta_file
 
+    # A relative fit predicts X, not theta: its truth is mapped onto the X
+    # gauge (roadmap C8).
+    x_gauge = None
+    try:
+        x_gauge = _x_gauge(config_yaml, ref_theta_file, run_dir)
+    except Exception as exc:
+        warnings.warn(f"Could not build the X-scale truth: {exc}")
+    relative = _is_relative_config(config_yaml)
+    metadata["theta_scale"] = "X" if relative else "theta"
+
     # --- Theta test statistics ---
-    if ref_theta_file is not None and pred_df is not None:
+    # (a relative fit whose truth could not be mapped to X is not compared)
+    if (ref_theta_file is not None and pred_df is not None
+            and (x_gauge is not None or not relative)):
         try:
             gt_df = pd.read_csv(ref_theta_file)
             join_cols = ["genotype", "titrant_name", "titrant_conc"]
@@ -909,6 +1419,8 @@ def summarize_fit(run_dir,
                 theta_col = None
             if theta_col is not None:
                 gt_df = gt_df.rename(columns={theta_col: "ref"})
+                if x_gauge is not None:
+                    gt_df["ref"] = _x_scale_ref(gt_df, x_gauge)
             test_merged = pred_df.merge(
                 gt_df[join_cols + ["ref"]],
                 on=join_cols,
@@ -943,6 +1455,14 @@ def summarize_fit(run_dir,
         except Exception as exc:
             warnings.warn(f"Could not compute growth training statistics: {exc}")
 
+    # --- Tube offsets ---
+    tube_offsets = None
+    try:
+        tube_offsets = _summarize_tube_offsets(run_dir, out_prefix,
+                                               config_yaml, config_file)
+    except Exception as exc:
+        warnings.warn(f"Could not summarize tube offsets: {exc}")
+
     # --- Trajectory plots ---
     _try_plot_trajectories(config_file, config_yaml, run_dir, out_prefix, binding_df)
 
@@ -959,6 +1479,7 @@ def summarize_fit(run_dir,
         "growth": {
             "training": growth_training_stats,
         },
+        "tube_offsets": tube_offsets,
     }
     json_file = f"{out_prefix}_fit_summary.json"
     try:
@@ -1078,8 +1599,9 @@ def summarize_fit(run_dir,
         warnings.warn(f"Could not generate loss curve plot: {exc}")
 
     # --- Sim-parameter correlation CSVs ---
-    _summarize_params(run_dir, out_prefix)
-    _summarize_growth_params(run_dir, out_prefix)
+    _summarize_params(run_dir, out_prefix, config_yaml)
+    _summarize_ddG_sigma(run_dir, out_prefix)
+    _summarize_growth_params(run_dir, out_prefix, x_gauge)
     _summarize_transformation_lam(run_dir, out_prefix)
 
     return results

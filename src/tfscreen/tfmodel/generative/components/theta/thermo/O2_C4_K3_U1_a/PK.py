@@ -4,19 +4,19 @@ PK — mutation effects on equilibrium constants inferred from data (lac-dimer-u
 Extends the lac-dimer PK model with a per-mutation unfolding shift (d_ln_K_U).
 All four equilibrium constants (K_op, K_HL, K_E, K_U) are shifted by Δln_K
 values inferred from the observations; no structural information is used.
-Use this when mutations may significantly destabilise the protein and a flat
+Use this when mutations may significantly destabilize the protein and a flat
 θ curve is observed.  Registry name: ``theta_lac_dimer_unfolded_lnK_mut``.
 
 Contrast with PddG (Δln_K derived from user-supplied structural ΔΔG) and PnnC
-(Δln_K derived from NN-predicted structural ΔΔG).  Note that PddG and PnnC in
-this family hold d_ln_K_U = 0 for all mutations by design.
+(Δln_K derived from NN-predicted structural ΔΔG).  In PddG and PnnC,
+d_ln_K_U is not free: it equals ΔΔG_H, since mutations leave U unchanged.
 
 Identical to lac_dimer/lnK_mut.py with one additional scalar parameter:
 
     ln_K_U[g] = ln_K_U_wt + (d_ln_K_U · M)[g]
 
 where K_U = [U]/[H] is the H→U unfolding equilibrium.  In WT K_U << 1.
-Mutations that destabilise the protein increase K_U (positive d_ln_K_U).
+Mutations that destabilize the protein increase K_U (positive d_ln_K_U).
 When K_U dominates the partition function, θ collapses toward zero for all
 effector concentrations regardless of the folded-state equilibria.
 
@@ -28,6 +28,7 @@ values).
 import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
+from tfscreen.tfmodel.generative.components._horseshoe import regularized_scale, HalfCauchy
 import pandas as pd
 from flax.struct import dataclass
 from functools import partial
@@ -36,6 +37,11 @@ from typing import Dict, Any
 from tfscreen.tfmodel.data_class import GrowthData
 from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix, apply_mut_matrix
 from tfscreen.tfmodel.generative.components.theta.thermo.O2_C4_K3_U1_a.thermo import (
+    DEFAULT_CONC_UNIT_SCALE,
+    DEFAULT_LN_K_E_WT_LOC,
+    DEFAULT_LN_K_HL_WT_LOC,
+    DEFAULT_LN_K_OP_WT_LOC,
+    DEFAULT_TF_TOTAL_M,
     ThetaParam,
     _compute_theta,
     _population_moments,
@@ -62,9 +68,10 @@ class ModelPriors:
     theta_ln_K_U_wt_loc: float
     theta_ln_K_U_wt_scale: float
 
-    # Physical concentrations (M)
-    theta_tf_total_M: float
-    theta_op_total_M: float
+    # Total TF (M, monomer units)
+    theta_tf_total_M: float   # M, monomer units; default 1e-5 (thermo/mwc.py)
+    # Factor converting data titrant_conc (mM) to M (1e-3); see thermo.py.
+    theta_conc_unit_scale: float
 
     # HalfNormal scales for mutation delta distributions
     theta_sigma_d_ln_K_op_scale: float
@@ -72,7 +79,7 @@ class ModelPriors:
     theta_sigma_d_ln_K_E_scale: float
     theta_sigma_d_ln_K_U_scale: float
 
-    # Shared regularised horseshoe hyperparameters for pairwise epistasis
+    # Shared regularized horseshoe hyperparameters for pairwise epistasis
     theta_epi_tau_scale: float
     theta_epi_slab_scale: float
     theta_epi_slab_df: float
@@ -122,7 +129,7 @@ def define_model(name: str,
     has_epi = data.num_pair > 0
 
     tf_total = priors.theta_tf_total_M
-    op_total = priors.theta_op_total_M
+    conc_unit_scale = priors.theta_conc_unit_scale
 
     # ── WT parameters ────────────────────────────────────────────────────────
     ln_K_op_wt = pyro.sample(
@@ -154,14 +161,21 @@ def define_model(name: str,
             dist.HalfNormal(priors.theta_sigma_d_ln_K_E_scale))
 
     # ── Mutation delta offsets ────────────────────────────────────────────────
-    with pyro.plate(f"{name}_mutation_scalar_plate", num_mut, dim=-1):
-        d_K_op_off = pyro.sample(f"{name}_d_ln_K_op_offset", dist.Normal(0.0, 1.0))
-        d_K_HL_off = pyro.sample(f"{name}_d_ln_K_HL_offset", dist.Normal(0.0, 1.0))
-        d_K_U_off  = pyro.sample(f"{name}_d_ln_K_U_offset",  dist.Normal(0.0, 1.0))
+    if num_mut > 0:
+        with pyro.plate(f"{name}_mutation_scalar_plate", num_mut, dim=-1):
+            d_K_op_off = pyro.sample(f"{name}_d_ln_K_op_offset", dist.Normal(0.0, 1.0))
+            d_K_HL_off = pyro.sample(f"{name}_d_ln_K_HL_offset", dist.Normal(0.0, 1.0))
+            d_K_U_off  = pyro.sample(f"{name}_d_ln_K_U_offset",  dist.Normal(0.0, 1.0))
 
-    with pyro.plate(f"{name}_titrant_mut_outer_plate", T, dim=-2):
-        with pyro.plate(f"{name}_mutation_plate", num_mut, dim=-1):
-            d_K_E_off = pyro.sample(f"{name}_d_ln_K_E_offset", dist.Normal(0.0, 1.0))
+        with pyro.plate(f"{name}_titrant_mut_outer_plate", T, dim=-2):
+            with pyro.plate(f"{name}_mutation_plate", num_mut, dim=-1):
+                d_K_E_off = pyro.sample(f"{name}_d_ln_K_E_offset", dist.Normal(0.0, 1.0))
+    else:
+        # num_mut == 0 (wt-only library, e.g. a stratified binding
+        # pool): numpyro.plate needs size > 0, so skip the sites.  The
+        # empty offsets scatter to zeros, so every genotype is wt.
+        d_K_op_off = d_K_HL_off = d_K_U_off = jnp.zeros((0,))
+        d_K_E_off = jnp.zeros((T, 0))
 
     # ── Optional epistasis (folded-state K values only) ───────────────────────
     if has_epi:
@@ -173,21 +187,21 @@ def define_model(name: str,
 
         tau_epi = pyro.sample(
             f"{name}_epi_tau",
-            dist.HalfCauchy(priors.theta_epi_tau_scale))
+            HalfCauchy(priors.theta_epi_tau_scale))
         c2_epi = pyro.sample(
             f"{name}_epi_c2",
             dist.InverseGamma(priors.theta_epi_slab_df / 2.0,
                               priors.theta_epi_slab_df * priors.theta_epi_slab_scale ** 2 / 2.0))
 
         with pyro.plate(f"{name}_pair_scalar_plate", num_pair, dim=-1):
-            epi_K_op_lam = pyro.sample(f"{name}_epi_ln_K_op_lambda", dist.HalfCauchy(1.0))
+            epi_K_op_lam = pyro.sample(f"{name}_epi_ln_K_op_lambda", HalfCauchy(1.0))
             epi_K_op_off = pyro.sample(f"{name}_epi_ln_K_op_offset", dist.Normal(0.0, 1.0))
-            epi_K_HL_lam = pyro.sample(f"{name}_epi_ln_K_HL_lambda", dist.HalfCauchy(1.0))
+            epi_K_HL_lam = pyro.sample(f"{name}_epi_ln_K_HL_lambda", HalfCauchy(1.0))
             epi_K_HL_off = pyro.sample(f"{name}_epi_ln_K_HL_offset", dist.Normal(0.0, 1.0))
 
         with pyro.plate(f"{name}_titrant_epi_outer_plate", T, dim=-2):
             with pyro.plate(f"{name}_pair_plate", num_pair, dim=-1):
-                epi_K_E_lam = pyro.sample(f"{name}_epi_ln_K_E_lambda", dist.HalfCauchy(1.0))
+                epi_K_E_lam = pyro.sample(f"{name}_epi_ln_K_E_lambda", HalfCauchy(1.0))
                 epi_K_E_off = pyro.sample(f"{name}_epi_ln_K_E_offset", dist.Normal(0.0, 1.0))
     else:
         pair_scatter = None
@@ -205,7 +219,7 @@ def define_model(name: str,
 
     if has_epi:
         def _lam_tilde(lam):
-            return jnp.sqrt(c2_epi * lam ** 2 / (c2_epi + tau_epi ** 2 * lam ** 2))
+            return regularized_scale(lam, tau_epi, c2_epi)
 
         epi_ln_K_op = epi_K_op_off * tau_epi * _lam_tilde(epi_K_op_lam)
         epi_ln_K_HL = epi_K_HL_off * tau_epi * _lam_tilde(epi_K_HL_lam)
@@ -233,11 +247,13 @@ def define_model(name: str,
 
     # ── Population moments ────────────────────────────────────────────────────
     theta_for_moments = _compute_theta(ln_K_op, ln_K_HL, ln_K_E, ln_K_U,
-                                       data.titrant_conc, tf_total, op_total)
+                                       data.titrant_conc * conc_unit_scale,
+                                tf_total)
     mu, sigma = _population_moments(theta_for_moments, data)
 
     return ThetaParam(ln_K_op=ln_K_op, ln_K_HL=ln_K_HL, ln_K_E=ln_K_E, ln_K_U=ln_K_U,
-                      tf_total=tf_total, op_total=op_total, mu=mu, sigma=sigma)
+                      tf_total=tf_total, mu=mu, sigma=sigma,
+                      conc_unit_scale=conc_unit_scale)
 
 
 # ---------------------------------------------------------------------------
@@ -258,7 +274,7 @@ def guide(name: str,
     has_epi = data.num_pair > 0
 
     tf_total = priors.theta_tf_total_M
-    op_total = priors.theta_op_total_M
+    conc_unit_scale = priors.theta_conc_unit_scale
 
     # ── Variational params for WT K values ────────────────────────────────────
     ln_K_op_wt_loc   = pyro.param(f"{name}_ln_K_op_wt_loc",   jnp.array(priors.theta_ln_K_op_wt_loc))
@@ -330,14 +346,21 @@ def guide(name: str,
         ln_K_E_wt   = pyro.sample(f"{name}_ln_K_E_wt",   dist.Normal(ln_K_E_wt_locs,   ln_K_E_wt_scales))
         sigma_d_K_E = pyro.sample(f"{name}_sigma_d_ln_K_E", dist.LogNormal(sigma_d_K_E_locs, sigma_d_K_E_scales))
 
-    with pyro.plate(f"{name}_mutation_scalar_plate", num_mut, dim=-1):
-        d_K_op_off = pyro.sample(f"{name}_d_ln_K_op_offset", dist.Normal(d_K_op_locs, d_K_op_scales))
-        d_K_HL_off = pyro.sample(f"{name}_d_ln_K_HL_offset", dist.Normal(d_K_HL_locs, d_K_HL_scales))
-        d_K_U_off  = pyro.sample(f"{name}_d_ln_K_U_offset",  dist.Normal(d_K_U_locs,  d_K_U_scales))
+    if num_mut > 0:
+        with pyro.plate(f"{name}_mutation_scalar_plate", num_mut, dim=-1):
+            d_K_op_off = pyro.sample(f"{name}_d_ln_K_op_offset", dist.Normal(d_K_op_locs, d_K_op_scales))
+            d_K_HL_off = pyro.sample(f"{name}_d_ln_K_HL_offset", dist.Normal(d_K_HL_locs, d_K_HL_scales))
+            d_K_U_off  = pyro.sample(f"{name}_d_ln_K_U_offset",  dist.Normal(d_K_U_locs,  d_K_U_scales))
 
-    with pyro.plate(f"{name}_titrant_mut_outer_plate", T, dim=-2):
-        with pyro.plate(f"{name}_mutation_plate", num_mut, dim=-1):
-            d_K_E_off = pyro.sample(f"{name}_d_ln_K_E_offset", dist.Normal(d_K_E_locs, d_K_E_scales))
+        with pyro.plate(f"{name}_titrant_mut_outer_plate", T, dim=-2):
+            with pyro.plate(f"{name}_mutation_plate", num_mut, dim=-1):
+                d_K_E_off = pyro.sample(f"{name}_d_ln_K_E_offset", dist.Normal(d_K_E_locs, d_K_E_scales))
+    else:
+        # num_mut == 0 (wt-only library, e.g. a stratified binding
+        # pool): numpyro.plate needs size > 0, so skip the sites.  The
+        # empty offsets scatter to zeros, so every genotype is wt.
+        d_K_op_off = d_K_HL_off = d_K_U_off = jnp.zeros((0,))
+        d_K_E_off = jnp.zeros((T, 0))
 
     if has_epi:
         tau_epi = pyro.sample(f"{name}_epi_tau", dist.LogNormal(tau_epi_loc, tau_epi_scale))
@@ -362,18 +385,20 @@ def guide(name: str,
 
     if has_epi:
         def _lam_tilde(lam):
-            return jnp.sqrt(c2_epi * lam ** 2 / (c2_epi + tau_epi ** 2 * lam ** 2))
+            return regularized_scale(lam, tau_epi, c2_epi)
 
         ln_K_op = ln_K_op + pair_scatter(epi_K_op_off * tau_epi * _lam_tilde(epi_K_op_lam))
         ln_K_HL = ln_K_HL + pair_scatter(epi_K_HL_off * tau_epi * _lam_tilde(epi_K_HL_lam))
         ln_K_E  = ln_K_E  + pair_scatter(epi_K_E_off  * tau_epi * _lam_tilde(epi_K_E_lam))
 
     theta_for_moments = _compute_theta(ln_K_op, ln_K_HL, ln_K_E, ln_K_U,
-                                       data.titrant_conc, tf_total, op_total)
+                                       data.titrant_conc * conc_unit_scale,
+                                tf_total)
     mu, sigma = _population_moments(theta_for_moments, data)
 
     return ThetaParam(ln_K_op=ln_K_op, ln_K_HL=ln_K_HL, ln_K_E=ln_K_E, ln_K_U=ln_K_U,
-                      tf_total=tf_total, op_total=op_total, mu=mu, sigma=sigma)
+                      tf_total=tf_total, mu=mu, sigma=sigma,
+                      conc_unit_scale=conc_unit_scale)
 
 
 # ---------------------------------------------------------------------------
@@ -382,17 +407,19 @@ def guide(name: str,
 
 def get_hyperparameters() -> Dict[str, Any]:
     p = {}
-    p["theta_ln_K_op_wt_loc"]   = 23.0
+    # Wild-type defaults: see thermo/mwc.py (Sochor 2014 constants and the
+    # 80 µM midpoint calibration at tf_total = 1e-5 M monomer).
+    p["theta_ln_K_op_wt_loc"]   = DEFAULT_LN_K_OP_WT_LOC   # = K_h_o; Sochor: 4.2e8 M⁻¹
     p["theta_ln_K_op_wt_scale"] = 2.0
-    p["theta_ln_K_HL_wt_loc"]   = -9.0
+    p["theta_ln_K_HL_wt_loc"]   = DEFAULT_LN_K_HL_WT_LOC   # = K_h_l; Sochor: 6.3
     p["theta_ln_K_HL_wt_scale"] = 3.0
-    p["theta_ln_K_E_wt_loc"]    = 33.4
+    p["theta_ln_K_E_wt_loc"]    = DEFAULT_LN_K_E_WT_LOC   # = K_l_e, per site (M⁻¹); midpoint 80 µM
     p["theta_ln_K_E_wt_scale"]  = 3.0
     # WT unfolded state: K_U << 1 in WT (ln_K_U ≈ -12 → K_U ≈ 6e-6)
     p["theta_ln_K_U_wt_loc"]    = -12.0
     p["theta_ln_K_U_wt_scale"]  = 3.0
-    p["theta_tf_total_M"]  = 6.5e-7
-    p["theta_op_total_M"]  = 2.5e-8
+    p["theta_tf_total_M"]  = DEFAULT_TF_TOTAL_M   # M, monomer units (5e-6 M dimer)
+    p["theta_conc_unit_scale"] = DEFAULT_CONC_UNIT_SCALE   # titrant_conc mM → M
     p["theta_sigma_d_ln_K_op_scale"]  = 1.0
     p["theta_sigma_d_ln_K_HL_scale"]  = 1.0
     p["theta_sigma_d_ln_K_E_scale"]   = 1.0
@@ -407,9 +434,9 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, Any]:
     T = data.num_titrant_name
     M = data.num_mutation
     g = {}
-    g[f"{name}_ln_K_op_wt"]       = jnp.array(23.0)
-    g[f"{name}_ln_K_HL_wt"]       = jnp.array(-9.0)
-    g[f"{name}_ln_K_E_wt"]        = jnp.full(T, 33.4)
+    g[f"{name}_ln_K_op_wt"]       = jnp.array(DEFAULT_LN_K_OP_WT_LOC)
+    g[f"{name}_ln_K_HL_wt"]       = jnp.array(DEFAULT_LN_K_HL_WT_LOC)
+    g[f"{name}_ln_K_E_wt"]        = jnp.full(T, DEFAULT_LN_K_E_WT_LOC)
     g[f"{name}_ln_K_U_wt"]        = jnp.array(-12.0)
     g[f"{name}_sigma_d_ln_K_op"]  = jnp.array(0.5)
     g[f"{name}_sigma_d_ln_K_HL"]  = jnp.array(0.5)
@@ -446,7 +473,7 @@ def predict_unmeasured(
     q_to_get,
     *,
     tf_total,
-    op_total,
+    conc_unit_scale=1.0,
 ):
     """Predict theta for unmeasured genotypes (lac_dimer_unfolded/lnK_mut)."""
     import numpy as np
@@ -502,12 +529,12 @@ def predict_unmeasured(
     ln_K_E_rows  = ln_K_E_geno[:, titrant_idx, geno_idx]
     ln_K_U_rows  = ln_K_U_geno[:, geno_idx]
 
-    conc = calc_df["titrant_conc"].values.copy().astype(float)
+    conc = calc_df["titrant_conc"].values.copy().astype(float) * conc_unit_scale
     conc[conc == 0] = _ZERO_CONC_VALUE
 
     theta_samples = _solve_theta_np(
         ln_K_op_rows, ln_K_HL_rows, ln_K_E_rows, ln_K_U_rows,
-        conc, tf_total, op_total,
+        conc, tf_total,
     )
 
     theta_samples[:, ~is_valid[geno_idx]] = np.nan

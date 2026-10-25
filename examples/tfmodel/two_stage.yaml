@@ -1,0 +1,47 @@
+# Example configuration for tfs-fit-two-stage (planning/two-stage-fit.md).
+#
+#   tfs-fit-two-stage two_stage.yaml --out_dir two_stage
+#
+# Top-level keys are tfs-configure-model's arguments, under the same names;
+# file paths are relative to this file. The two-stage fit needs the
+# growth-only relative model (theta_model: hill_relative, linear growth)
+# with one k and m per condition (growth_shares_replicates: true). It sets
+# the transformation itself: stage 1 fits the congression mixture, stage 2
+# does not.
+
+# --- Data ---
+growth_df: tfs_growth.csv              # tfs-process-counts output
+library_config: library_config.yaml    # the library YAML used to call the counts
+
+# --- Model (as for tfs-configure-model) ---
+theta_model: hill_relative
+growth_shares_replicates: true
+batch_size: 4096
+allow_missing_spikes: true
+growth_priors: growth_priors_loose.csv # loose per-condition k/m priors for stage 1
+set_priors:
+  - sigma_fixed=0.17
+  - theta_log_hill_n_hyper_scale_fixed=0.5
+skip_model_stats: true
+
+# --- Two-stage settings ---
+two_stage:
+  # Congression lambda prior (mean, std), required: the measured value. For
+  # the dev-data screen, 0.357 with a likelihood-ratio 95% CI of 0.156-0.674,
+  # about 0.38 +- 0.15 as a mean and SD.
+  transformation_lambda: [0.38, 0.15]
+  seed: 1
+  num_posterior_samples: 500
+  consistency: true            # stage 2 on one library alone; --no_consistency skips
+  consistency_library: kanR    # default: the first library alphabetically
+  predict_epistasis: false
+  # Experimental: k's uncertainty in X (jackknife + k-shift refits). Off:
+  # on simulations the shift came out a third or less of the true one
+  # (planning/studies/two-stage-validation/, run 2).
+  kshift: false
+  jackknife_subsamples: 30     # stage 1 refits for k's uncertainty
+  jackknife_drop_frac: 0.2     # share of tubes dropped per refit
+  kshift_step_size: 1.0e-5     # the k-shift refits' starting step size
+  kshift_control: true         # a third refit with k unchanged; kshift/drift.csv
+  fit: {}                      # extra tfs-fit-model arguments
+  posterior: {}                # extra tfs-sample-posterior arguments

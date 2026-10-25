@@ -91,6 +91,7 @@ def mock_sim_priors(wt_params):
     sp.epi_tau_scale  = 0.0   # no epistasis by default in tests
     sp.epi_slab_scale = 2.0
     sp.epi_slab_df    = 4.0
+    sp.max_hill_n     = None  # no Hill coefficient limit by default
     return sp
 
 
@@ -400,6 +401,41 @@ class TestBuildThetaGcOverrideHillMut:
         )
         expected_wt = _hill_theta(0.99, 0.01, -4.1, 2.0, log_conc)
         assert not np.allclose(result["A47V/K84L"], expected_wt)
+
+    def test_max_hill_n_caps_assembled_hill_n(self, wt_params, mock_sim_priors):
+        """max_hill_n limits every assembled genotype's Hill coefficient."""
+        genotypes = ["wt"] + [f"M{i}A" for i in range(2, 42)]
+        sim_data = _make_sim_data_for_genotypes(genotypes)
+        log_conc = np.array(sim_data.log_titrant_conc)
+        mock_sim_priors.sigma_d_log_n = 3.0
+
+        _, free = build_theta_gc_override_hill_mut(
+            {"wt": wt_params}, genotypes, sim_data, mock_sim_priors,
+            log_conc, np.random.default_rng(3))
+        mock_sim_priors.max_hill_n = 4.0
+        result, capped = build_theta_gc_override_hill_mut(
+            {"wt": wt_params}, genotypes, sim_data, mock_sim_priors,
+            log_conc, np.random.default_rng(3))
+
+        n_free = np.array([free[g]["hill_n"] for g in genotypes])
+        n_capped = np.array([capped[g]["hill_n"] for g in genotypes])
+        assert n_free.max() > 4.0
+        np.testing.assert_allclose(n_capped, np.minimum(n_free, 4.0), rtol=1e-6)
+        # theta is built from the capped value
+        g = genotypes[int(np.argmax(n_free))]
+        p = capped[g]
+        np.testing.assert_allclose(
+            result[g], _hill_theta(p["theta_low"], p["theta_high"],
+                                   p["log_hill_K"], 4.0, log_conc), rtol=1e-5)
+
+    def test_max_hill_n_nonpositive_raises(self, wt_params, mock_sim_priors, rng):
+        genotypes = ["wt", "M2A"]
+        sim_data = _make_sim_data_for_genotypes(genotypes)
+        mock_sim_priors.max_hill_n = 0.0
+        with pytest.raises(ValueError, match="max_hill_n"):
+            build_theta_gc_override_hill_mut(
+                {"wt": wt_params}, genotypes, sim_data, mock_sim_priors,
+                np.array(sim_data.log_titrant_conc), rng)
 
     def test_unmeasured_mut_uses_prior(self, wt_params, mock_sim_priors, rng):
         """A mutation not in the CSV gets a random delta from the prior."""

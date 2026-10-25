@@ -6,6 +6,8 @@ import pytest
 import numpy as np
 import pandas as pd
 
+from tfscreen.tfmodel.generative.components.theta.thermo import mwc
+
 from tfscreen.tfmodel.generative.components.theta.thermo.O2_C4_K3_U0_a.PK import (
     predict_unmeasured as lnK_mut_predict,
 )
@@ -23,14 +25,14 @@ PAIR_LABELS = ["K84L/M42I"]
 
 TITRANT_NAMES = ["IPTG"]
 
-# Physical constants matching the lnK_mut defaults
-TF_TOTAL = 6.5e-7
-OP_TOTAL = 2.5e-8
+# Physical constants matching the PK defaults (tf_total in M, monomer units;
+# concentrations below are used as M, conc_unit_scale left at 1.0)
+TF_TOTAL = mwc.DEFAULT_TF_TOTAL_M
 
-# Biophysically plausible WT values (matching lnK_mut get_hyperparameters defaults)
-WT_LN_K_OP = 23.0
-WT_LN_K_HL = -9.0
-WT_LN_K_E  = 33.4
+# WT values matching the PK get_hyperparameters defaults
+WT_LN_K_OP = mwc.DEFAULT_LN_K_H_O
+WT_LN_K_HL = mwc.DEFAULT_LN_K_H_L
+WT_LN_K_E  = mwc.DEFAULT_LN_K_E_C4
 
 
 def _make_titrant_df(concs=None):
@@ -89,7 +91,6 @@ def _common_kwargs(post, pair_labels=None):
         param_posteriors=post,
         q_to_get={"median": 0.5, "lower": 0.025, "upper": 0.975},
         tf_total=TF_TOTAL,
-        op_total=OP_TOTAL,
     )
 
 
@@ -203,7 +204,6 @@ class TestLnKNnPriorPredict:
             param_posteriors=post,
             q_to_get={"median": 0.5},
             tf_total=TF_TOTAL,
-            op_total=OP_TOTAL,
         )
         result = lnK_nn_predict(**kw)
         assert len(result) == 4   # 2 genotypes × 2 titrants
@@ -239,7 +239,6 @@ class TestLnKNnPriorPredict:
             pair_labels=[],
             q_to_get={"median": 0.5},
             tf_total=TF_TOTAL,
-            op_total=OP_TOTAL,
         )
         res_nn  = lnK_nn_predict(param_posteriors=post_nn,  **kw)
         res_mut = lnK_mut_predict(param_posteriors=post_mut, **kw)
@@ -247,3 +246,41 @@ class TestLnKNnPriorPredict:
         np.testing.assert_allclose(
             res_nn["median"].values, res_mut["median"].values, atol=1e-5
         )
+
+
+# ---------------------------------------------------------------------------
+# PddG — the same (S, M) d_ln_K_E assembly as PnnC
+# ---------------------------------------------------------------------------
+
+from tfscreen.tfmodel.generative.components.theta.thermo.O2_C4_K3_U0_a.PddG import (
+    predict_unmeasured as pddg_predict,
+)
+
+
+class TestPddGPredict:
+
+    def test_matches_pnnc_assembly(self):
+        post = _make_lnK_nn_posteriors(T=1, M=2, S=8, seed=4)
+        res_ddg = pddg_predict(**_common_kwargs(post))
+        res_nn = lnK_nn_predict(**_common_kwargs(post))
+        assert len(res_ddg) == 4 * 4
+        np.testing.assert_allclose(res_ddg["median"].values,
+                                   res_nn["median"].values, atol=1e-6)
+
+    def test_conc_unit_scale_converts_mM_to_M(self):
+        post = _make_lnK_nn_posteriors(T=1, M=2, S=8, seed=5)
+        kw_M = _common_kwargs(post)
+        res_M = pddg_predict(**kw_M)
+
+        kw_mM = _common_kwargs(post)
+        kw_mM["manual_titrant_df"] = _make_titrant_df(
+            concs=[0.0, 1e-3, 1e-2, 1e-1])          # same concentrations in mM
+        res_mM = pddg_predict(conc_unit_scale=1e-3, **kw_mM)
+
+        np.testing.assert_allclose(res_mM["median"].values,
+                                   res_M["median"].values, atol=1e-6)
+        assert np.isfinite(res_M.loc[res_M["genotype"] == "wt", "median"]).all()
+        # Without the scale the mM numbers are read as M: a different curve.
+        res_unscaled = pddg_predict(**kw_mM)
+        assert not np.allclose(res_unscaled["median"].values,
+                               res_M["median"].values, atol=1e-3)

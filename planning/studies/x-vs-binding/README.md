@@ -1,0 +1,163 @@
+# Growth X against in vitro binding theta
+
+**Question.** Does the two-stage fit's growth X follow in vitro binding
+theta for the genotypes we measured, and does it follow it the same way
+in each selection marker? Which X level does binding support when fits
+disagree (the k-shift refits moved every mutant by +0.3 against wt,
+`planning/studies/two-stage-validation/`)?
+
+**Decision it feeds.** How to replace the two-stage fit's k shift
+(`planning/two-stage-fit.md` step 4) and whether the pheS disagreement is
+growth physics or a fit problem (`planning/offset-mode-growth-transition.md`).
+
+## Inputs
+
+- Binding: `planning/dev-data/binding/2026-10-15_binding.csv` (gitignored,
+  C10). Nine genotypes, theta per well normalized to day-of internal
+  controls, mostly at 2 and 20 uM repressor dimer; wt at 0.02-120 uM. A
+  work in progress (more replicates coming).
+- Growth X: the real run of `planning/studies/two-stage-validation/`
+  (`run_real/`): stage 2 (both libraries), `consistency/` (kanR alone)
+  and `consistency_pheS/` (pheS alone), all with k and m pinned at
+  stage 1.
+- wt monoculture rates and the processed growth tables:
+  `planning/dev-data/processed/`.
+
+Spikes (user, 2026-10-15): wt, M42I, H74A, K84L, M42I/H74A, M42I/K84L,
+H74A/K84L, M42I/H74A/K84L and D88A, mixed evenly and spiked into the
+growth culture at single tile 1 : single tile 2 : doubles : spikes =
+100 : 100 : 1000 : 1, as `processed/library_config.yaml` has it. Of the
+binding genotypes, G65H and V95N are bulk only. All nine have at least
+1e5 reads.
+
+## How to run
+
+```bash
+python x_vs_binding.py ../../dev-data/binding/2026-10-15_binding.csv ../two-stage-validation/run_real ../../dev-data/processed --out out
+```
+
+Binding theta goes onto the X gauge through wt at the same protein
+concentration, `(theta - theta_wt(1 mM)) / (theta_wt(0) - theta_wt(1 mM))`.
+Outputs in `out/` (gitignored): `x_vs_binding.csv`, `summary.csv`,
+`wt_rates.csv` and `YYYY-MM-DD_x-vs-binding.pdf` (per-genotype curves, X
+against gauged theta, wt's rates).
+
+## Commit
+
+The commit that adds this study.
+
+## Results
+
+### Run 1 (2026-10-15)
+
+**At 2 uM protein, kanR's X follows binding with no correction.** Mutant
+rows (6 genotypes at 2 uM, 8 at 20 uM):
+
+| protein | fit | X - gauged theta, mean | rms | affine rms | r |
+|---|---|---|---|---|---|
+| 2 uM | kanR alone | -0.03 | 0.12 | 0.09 | 0.89 |
+| 2 uM | both libraries | -0.10 | 0.15 | 0.09 | 0.89 |
+| 2 uM | pheS alone | -0.20 | 0.32 | 0.24 | 0.67 |
+| 20 uM | kanR alone | -0.16 | 0.32 | 0.27 | 0.63 |
+| 20 uM | both libraries | -0.23 | 0.36 | 0.27 | 0.64 |
+| 20 uM | pheS alone | -0.33 | 0.44 | 0.30 | 0.70 |
+
+The 2026-10-01 comparison (`planning/dev-data/real_fit`, theta
+interpolated to 10 uM, the old full-library X) found no affine map (rms
+0.30). H74A, H74A/K84L, K84L, M42I/H74A and G65H now sit on their 2 uM
+curves. D88A and V95N, measured only at 20 uM, match that.
+
+**wt's curve has the 20 uM midpoint.** Its growth X falls at about
+30 uM IPTG, as its 20 uM binding does, where its 2 uM binding falls at
+about 3 uM. The mutants' levels match 2 uM. One protein concentration
+does not reproduce both.
+
+**M42I** grows as if less repressed than its 2 uM binding at 0-1 uM IPTG
+(X 0.3-0.4 below), the same direction as before.
+
+**Binding supports stage 2's level, not the refits'.** The k-shift
+control moved every mutant's X by about +0.32 over stage 2, which would
+take the 2 uM mean difference from -0.10 to about +0.2, against kanR
+alone's -0.03.
+
+**The pheS-only fit is degenerate at wt, but that is not why pheS
+disagrees.** Its wt X falls from 1 to 0 between 0 and 1 uM IPTG, where
+wt's own library trajectories fall between 10 and 30 uM. Refitting pheS
+alone with wt's curve held at stage 2's (K 0.0238 mM, n 0.753;
+`theta_wt_hill_K_fixed`/`_n_fixed`, `consistency_pheS_wtheld/`) fixed
+wt's curve and changed nothing else: mutants' X against the first pheS
+fit r 0.996, slope 0.99. Against kanR alone, deep genotypes, the held
+fit gives slope 0.52, intercept +0.24 (X 0.17 lower at 0 IPTG, 0.17
+higher at 1 mM; 18% of rows beyond 2 SD, median z -0.04). The pheS
+compression is real.
+
+**Binding sides with kanR.** At 2 uM, X minus gauged theta:
+
+| | kanR | pheS (wt held) |
+|---|---|---|
+| H74A | +0.07 | -0.33 |
+| H74A/K84L | -0.01 | -0.50 |
+| K84L | -0.03 | -0.25 |
+| M42I/H74A | 0.00 | -0.27 |
+| G65H | -0.06 | +0.10 |
+| M42I | -0.14 | -0.11 |
+
+pheS puts the weak binders below X = 0: they grow worse in 4CP than wt
+does at 1 mM IPTG, though their in vitro occupancy (and their kanR X)
+stays above wt's there. Relative to every mutant, wt does better in 4CP
+when derepressed than its occupancy says. Since X is gauged on wt, the
+pheS anomaly is wt's, or a pheS response that is not one function of
+occupancy for wt and the mutants alike.
+
+**wt's library rates are too noisy to settle the pheS question.** The
+slope of wt's ln_cfu over the selection, per replicate, scatters by
+0.006-0.015 per minute (tube totals from single OD600 readings). In
+pheS+4CP wt's library rate averages 0.024 at 0-3 uM IPTG and 0.015 at
+30 uM-1 mM, against the monoculture's 0.016 and 0.004: a smaller drop in
+the library, but at about one SE per IPTG level.
+
+**Next.** Find why wt does better in 4CP than the mutants at the same or
+lower occupancy (see the two-stage validation README). Repeat with the
+replicated binding data.
+
+### Run 2 (2026-10-18): does M42I's inverted order survive the two-stage X?
+
+The 2026-10-01 "no map" found M42I's growth K about half of wt's while its
+binding K is about 10x wt's, and growth curves broader than binding, both
+on X compressed 1.47x by the doubles and shared by both markers
+(`planning/findings-ledger.md`, Open item 2). `hill_compare.py` fits a
+four-parameter Hill curve to each genotype's predicted X (median, eight
+IPTG concentrations) from this study's two-stage run (stage 2, both
+libraries; `consistency/`, kanR alone) and to its mean binding theta at 2
+and 20 uM. The pheS-alone fit is left out: it is degenerate at wt (run 1).
+K is trusted only for curves with amplitude >= 0.35 in every source: wt,
+M42I, M42I/H74A, D88A, V95N (G65H, H74A, K84L and H74A/K84L are nearly flat
+in growth or binding).
+
+K over wt's K:
+
+| genotype | X, kanR alone | X, both | binding 2 uM | binding 20 uM |
+|---|---|---|---|---|
+| wt (K) | 21 uM | 23 uM | 2.6 uM | 21 uM |
+| M42I | 0.18 | 0.22 | 3.6 | 5.3 |
+| M42I/H74A | 0.056 | 0.056 | 0.52 | 0.55 |
+| D88A | 4.3 | 4.7 | - | 9.2 |
+| V95N | 2.2 | 2.0 | - | 3.2 |
+
+- **M42I's inversion survives and is larger:** in growth it responds at
+  about a fifth of wt's IPTG, in binding at 4-5 times wt's (a factor of
+  20-30 apart; 2026-10-01 had about 20).
+- **M42I/H74A** keeps the binding order but sits 10x lower in growth.
+  D88A and V95N keep it within 2x.
+- **wt's growth midpoint equals its 20 uM binding midpoint** (21 uM); its
+  2 uM binding midpoint is 8x lower.
+- **Growth curves stay broader:** n 0.7-0.95 on the kanR-only X for most
+  genotypes (V95N 1.9, M42I/H74A 1.2), against 1.9-3.2 in binding at 20 uM
+  and 1.2-1.9 at 2 uM.
+
+So the two facts the "no map" rested on are not artifacts of the
+compressed, shared X. Both genotypes carrying M42I respond at lower IPTG in
+vivo than in vitro, relative to wt. One reading (a hypothesis, not tested):
+a genotype-specific in vivo factor such as repressor level, since binding K
+rises with protein (wt 2.6 to 21 uM from 2 to 20 uM protein).
+

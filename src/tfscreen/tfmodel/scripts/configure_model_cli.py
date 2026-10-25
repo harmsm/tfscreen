@@ -1,5 +1,16 @@
 from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
 from tfscreen.tfmodel.configuration_io import write_configuration
+from tfscreen.tfmodel.priors_edit import (
+    GROWTH_PIN_FIELDS,
+    GROWTH_PRIOR_FIELDS,
+    GROWTH_PRIOR_PREFIX,
+    apply_prior_overrides,
+    apply_priors_updates,
+    condition_rep_labels,
+    growth_prior_updates,
+    growth_priors_from_wt_rates,
+    parse_prior_overrides,
+)
 from tfscreen.tfmodel.model_stats import (
     count_model_dimensions,
     format_model_stats,
@@ -13,6 +24,7 @@ from tfscreen.genetics import (
     standardize_genotypes,
     write_library_composition,
 )
+from tfscreen.genetics.library_subsample import subsample_record
 
 import numpy as np
 import pandas as pd
@@ -121,7 +133,100 @@ def check_genotypes_in_library(library_genotypes, data_df, label,
     )
 
 
-def configure_model(binding_df,
+def check_spikes_in_data(composition, growth_df, allow_missing=False):
+    """
+    Fail unless every spiked genotype of the library has growth data.
+
+    A spike named in the library config but absent from the counts usually
+    means the reads were called with a different library config (a spike
+    list or codon that disagrees with the real spikes).
+
+    Parameters
+    ----------
+    composition : pandas.DataFrame
+        ``library_composition_table`` output (``genotype``, ``in_spiked_origin``).
+    growth_df : str or pandas.DataFrame
+        Growth data with a ``genotype`` column.
+    allow_missing : bool
+        Print the missing spikes instead of raising.
+    """
+    spikes = set(composition.loc[composition["in_spiked_origin"].astype(bool),
+                                 "genotype"])
+    if not spikes or growth_df is None:
+        return
+    df = read_dataframe(growth_df)
+    observed = set(pd.unique(np.asarray(standardize_genotypes(df["genotype"]))))
+    missing = sorted(spikes - observed)
+    if not missing:
+        return
+    msg = (f"{len(missing)} of {len(spikes)} spiked genotypes in "
+           f"library_config have no growth data: {missing}. Check that the "
+           f"counts were called with this library config "
+           f"(tfs-process-fastq).")
+    if not allow_missing:
+        raise ValueError(msg + " Pass --allow_missing_spikes if these spikes "
+                         "really dropped out.")
+    print(f"warning: {msg}", flush=True)
+
+
+def _edit_priors(orchestrator, priors_path, set_priors=None, growth_priors=None,
+                 growth_priors_wt_rates=None, growth_priors_sd_floor=0.002,
+                 condition_growth_model="linear", theta_model=None):
+    """Apply --growth_priors, --growth_priors_wt_rates and --set_priors."""
+    if growth_priors is not None or growth_priors_wt_rates is not None:
+        if orchestrator.growth_tm is None:
+            raise ValueError("growth_priors need growth data.")
+        if condition_growth_model != "linear":
+            raise ValueError("growth_priors and growth_priors_wt_rates support "
+                             "condition_growth_model 'linear' only.")
+        table = None
+        if growth_priors is not None:
+            table = read_dataframe(growth_priors)
+        if growth_priors_wt_rates is not None:
+            if theta_model != "hill_relative":
+                raise ValueError("growth_priors_wt_rates sets k and m on the "
+                                 "relative X gauge; it needs theta_model "
+                                 "'hill_relative'.")
+            gauge = orchestrator.settings["theta_gauge_conc"]
+            wt = growth_priors_from_wt_rates(read_dataframe(growth_priors_wt_rates),
+                                             gauge, sd_floor=growth_priors_sd_floor)
+            if table is None:
+                table = wt
+            else:
+                if "replicate" in table.columns:
+                    raise ValueError("growth_priors_wt_rates cannot be combined "
+                                     "with a per-replicate growth_priors table.")
+                table = table.set_index("condition_rep")
+                wt = wt.set_index("condition_rep")
+                table = wt.combine_first(table).reset_index()
+
+        priors_df = pd.read_csv(priors_path)
+        scalar = priors_df[priors_df.get("flat_index", pd.Series(np.nan, index=priors_df.index)).isna()]
+        defaults = {}
+        for fields in GROWTH_PRIOR_FIELDS.values():
+            for f in fields:
+                row = scalar[scalar["parameter"] == GROWTH_PRIOR_PREFIX + f]
+                if row.empty:
+                    raise ValueError(f"Priors CSV has no '{GROWTH_PRIOR_PREFIX + f}' row.")
+                value = row["value"].iloc[0]
+                if f in GROWTH_PIN_FIELDS:
+                    # Flags may be written as 0/1 or True/False.
+                    value = str(value).strip().lower() in ("1", "1.0", "true")
+                defaults[f] = float(value)
+
+        labels = condition_rep_labels(orchestrator)
+        updates = growth_prior_updates(table, labels, defaults)
+        apply_priors_updates(priors_path, updates, cond_rep_labels=labels,
+                             backup=False)
+
+    if set_priors:
+        resolved = apply_prior_overrides(priors_path,
+                                         parse_prior_overrides(set_priors))
+        for name, value in resolved.items():
+            print(f"  prior {name} = {value:g}", flush=True)
+
+
+def configure_model(binding_df=None,
                     growth_df=None,
                     presplit_df=None,
                     base_growth_df=None,
@@ -130,20 +235,37 @@ def configure_model(binding_df,
                     growth_transition_model="instant",
                     ln_cfu0_model="hierarchical",
                     dk_geno_model="hierarchical_geno",
-                    activity_model="horseshoe_geno",
+                    activity_model="fixed",
                     theta_model="hill_geno",
                     transformation_model="single",
                     transformation_lambda=None,
+                    congression_theta_rule="homodimer",
+                    congression_dk_rule="dilution",
+                    congression_dk_alpha=None,
+                    congression_sets=None,
                     theta_rescale_model="passthrough",
                     theta_growth_noise_model="zero",
                     theta_binding_noise_model="zero",
                     growth_noise_model="zero",
+                    sample_offset_model="level",
+                    growth_likelihood="counts",
+                    theta_gauge_conc=None,
                     library_config=None,
                     growth_shares_replicates=False,
                     epistasis=False,
                     thermo_data=None,
+                    thermo_ddG_units=None,
+                    thermo_temperature_K=None,
+                    thermo_column_map=None,
+                    thermo_residue_offset=None,
+                    thermo_max_missing_fraction=None,
                     batch_size=1024,
                     binding_weight=None,
+                    set_priors=None,
+                    growth_priors=None,
+                    growth_priors_wt_rates=None,
+                    growth_priors_sd_floor=0.002,
+                    allow_missing_spikes=False,
                     skip_model_stats=False):
     """
     Build and write the YAML configuration files needed by tfs-fit-model.
@@ -155,15 +277,19 @@ def configure_model(binding_df,
     for a growth model, {out_prefix}_library.csv (the per-genotype library
     composition resolved from library_config).
 
-    When only binding_df is provided (no growth_df), a binding-only model is
-    configured that infers theta directly from observed binding measurements
-    rather than from bacterial growth data.
+    At least one of growth_df and binding_df is required. With both, the
+    joint growth + binding model is configured. With only binding_df, a
+    binding-only model infers theta directly from the binding measurements.
+    With only growth_df, a growth-only model infers theta from growth alone
+    (no binding likelihood, so theta_binding_noise_model must stay 'zero'
+    and binding_weight unset; tfs-prefit-calibration needs binding and
+    refuses such a config).
 
     Parameters
     ----------
-    binding_df : str
+    binding_df : str, optional
         Path to the binding data CSV file (theta vs. titrant measurements per
-        genotype). Required.
+        genotype). When omitted, a growth-only model is configured.
     growth_df : str, optional
         Path to the growth data CSV file (ln_cfu measurements per genotype,
         replicate, and timepoint). When omitted, a binding-only model is
@@ -196,7 +322,9 @@ def configure_model(binding_df,
     ln_cfu0_model : str, optional
         Model to use to describe ln_cfu0, the initial populations of genotypes
         in each replicate. Allowed values are 'hierarchical' (default) or
-        'hierarchical_factored'.
+        'hierarchical_factored'. The latter shares each genotype's baseline
+        across pre-conditions and is refused when they come from different
+        libraries (kanR and pheS are grown up separately).
     dk_geno_model : str, optional
         Model to use to describe dk_geno, the pleiotropic effect of a genotype
         on growth, independent of occupancy. Allowed values are
@@ -205,8 +333,9 @@ def configure_model(binding_df,
     activity_model : str, optional
         Model to use to describe activity, a scalar multiplied against
         occupancy that defines how strongly a genotype alters transcription
-        given its occupancy. Allowed values are 'fixed', 'hierarchical_geno',
-        'horseshoe_geno' (default), 'hierarchical_mut', or 'horseshoe_mut'.
+        given its occupancy. Allowed values are 'fixed' (default; activity 1
+        for every genotype), 'hierarchical_geno', 'horseshoe_geno',
+        'hierarchical_mut', or 'horseshoe_mut'.
     theta_model : str, optional
         Model to use to describe theta, the fractional occupancy of a genotype
         on the transcription factor binding site. Allowed values are
@@ -216,16 +345,45 @@ def configure_model(binding_df,
         'thermo.O2_C4_K3_U0_a.PddG', 'thermo.O2_C12_K5_U0_a.PK',
         'thermo.O2_C12_K5_U0_a.PnnC', 'thermo.O2_C12_K5_U0_a.PddG', and
         their O2_C4_K3_U1_a / O2_C12_K5_U1_a unfolded equivalents).
+        'hill_relative' fits growth alone on a wt-relative scale X instead
+        of theta (wt's X is 1 at the low and 0 at the high gauge
+        concentration, theta_gauge_conc). It takes no binding_df, and
+        requires activity 'fixed', theta_rescale 'passthrough', linear
+        condition growth, theta_growth_noise 'zero' and, with the
+        'mixture' transformation, congression_theta_rule 'max'.
     transformation_model : str, optional
-        Model for transformation correction. Allowed values are 'single'
-        (default), 'empirical', or 'logit_norm'.
+        Model for congression. Allowed values are 'single' (default; one
+        plasmid per cell) or 'mixture' (clean and congressed cells mixed at
+        the observable level). 'empirical' and 'logit_norm' were removed.
     transformation_lambda : list or tuple, optional
         ``(mean, std)`` -- the experimentally measured congression lambda,
         in linear space (e.g. ``(0.36, 0.05)``). Required when
-        ``transformation_model`` is 'empirical' or 'logit_norm'; forbidden
+        ``transformation_model`` is 'mixture'; forbidden
         when it is 'single'. Used to moment-match a LogNormal prior for the
         transformation's lambda parameter, replacing the manual step of
         hand-editing the priors/guesses CSVs with rescaled log-space values.
+    congression_theta_rule : str, optional
+        How the 'mixture' transformation builds a congressed cell's theta
+        from its plasmids' thetas: 'homodimer' (default), 'heterodimer' or
+        'max'. The homodimer and heterodimer rules require activity_model
+        'fixed'. Ignored by 'single'.
+    congression_dk_rule : str, optional
+        How the 'mixture' transformation builds a congressed cell's dk_geno
+        from its plasmids': 'dilution' (default; the share-weighted mean),
+        'softmin' (with congression_dk_alpha) or 'min' (the worst variant
+        sets the cost). Ignored by 'single'.
+    congression_dk_alpha : float, optional
+        alpha for congression_dk_rule 'softmin' (> 0, in units of 1/dk):
+        ``dk_cell = -(1/alpha) log sum_g x_g exp(-alpha dk_g)``. Required by
+        'softmin', refused by the other rules.
+    congression_sets : list of int, optional
+        With the 'mixture' transformation, the number of fixed co-resident
+        sets drawn per genotype, by co-resident count: entry n-1 is the
+        number of sets with n co-resident plasmids (the mixture's
+        quadrature over a congressed cell's partners). None keeps the
+        orchestrator's default, 12 3 1 (16 sets). Each set is one cell class
+        grown through the whole model, so the cost of a fit grows with the
+        total. Written to the config.
     theta_rescale_model : str, optional
         Rescaling applied to theta before it enters the growth model. Allowed
         values are 'passthrough' (default, identity) or 'logit' (maps theta to
@@ -236,12 +394,37 @@ def configure_model(binding_df,
         'logit_normal'.
     theta_binding_noise_model : str, optional
         Model to use for stochastic experimental noise in theta measured by
-        binding. Allowed values are 'zero' (default) or 'beta'.
+        binding. Allowed values are 'zero' (default), 'beta' or
+        'genotype_offset' (one offset per binding genotype, the same at every
+        titrant concentration, with a learned scale: an in vivo/in vitro
+        difference or a curve's day-normalization error).
     growth_noise_model : str, optional
         Model for additive growth-rate noise. 'zero' (default) adds no noise;
         'normal_kt' learns a global sigma_k that inflates the observation scale
         in quadrature with ln_cfu_std, capturing biological variability in
         growth rates not explained by theta or dk_geno.
+    sample_offset_model : str, optional
+        Per-tube offset shared by every genotype in a tube. 'level'
+        (default) adds one ln_cfu offset per tube with a learned, constant
+        SD (the tube's composition offset and any error in its supplied
+        total, including the tube's own growth noise); 'zero' adds none;
+        'normal' adds a per-tube growth-rate offset scaled by elapsed time.
+        With growth_likelihood 'counts', an error in a tube's supplied total
+        otherwise moves every genotype in it.
+    growth_likelihood : str, optional
+        How growth data are observed: 'counts' (default; negative binomial
+        on the read counts, with a learned dispersion whose variance has a
+        part proportional to the mean and a quadratic part; no pseudocount)
+        or 'lncfu' (Student-t on ln_cfu). 'counts' needs a 'counts' column,
+        each tube's total reads ('sample_reads', or 'adjusted_counts' and
+        'frequency' to derive it) and total cells ('sample_ln_cfu', or
+        'sample_cfu' with its uncertainty), and growth_noise_model 'zero'.
+        It cut theta RMSE by 35-60% against 'lncfu' on simulations
+        (planning/studies/count-likelihood/).
+    theta_gauge_conc : list of float, optional
+        ``c_lo c_hi``: the titrant concentrations at which theta_model
+        'hill_relative' pins wt's X to 1 and 0. Default: the lowest and
+        highest concentration in growth_df. Refused by other theta models.
     library_config : str, optional
         Path to the library YAML describing the screened library -- the same
         file handed to ``tfs-process-fastq``.  Required whenever ``growth_df``
@@ -272,21 +455,80 @@ def configure_model(binding_df,
         structure containing pre-computed ΔΔG prior means; the required
         structure columns depend on the topology -- ``O2_C4_*`` models use
         (``H``, ``HD``, ``L``, ``LE2``) while ``O2_C12_*`` models use
-        (``H``, ``HO``, ``L``, ``LO``, ``HE2``, ``LE2``).
+        (``H``, ``HO``, ``L``, ``LO``, ``HE2``, ``LE2``).  ``Mutation`` or
+        ``mutation`` may name the mutation column, an unnamed index column
+        is dropped and other columns are ignored.  ΔΔG_X shifts state X's
+        free energy (positive destabilises X).  The loader prints how many
+        library mutations the file covers and fails on zero coverage or on
+        wt residues that disagree with the library.
+    thermo_ddG_units : str, optional
+        Unit of the PddG CSV's ΔΔG values: ``kT`` (default; used as-is),
+        ``kcal/mol`` or ``kJ/mol`` (divided by RT at load).
+    thermo_temperature_K : float, optional
+        Temperature for that conversion. Default 298.15.
+    thermo_column_map : str, optional
+        ``model_name=csv_column`` pairs, comma-separated (e.g. ``HD=HO``),
+        naming the CSV column that supplies a model structure.
+    thermo_residue_offset : int, optional
+        Added to the file's residue numbers (CSV labels or HDF5
+        ``residue_nums``) to give the library numbering, e.g. 1 for a
+        0-based file. Default 0.
+    thermo_max_missing_fraction : float, optional
+        Warn when more than this fraction of library mutations has no ΔΔG
+        in the CSV. Default 0.1.
+        These five are stored in the config as ``components.thermo_options``.
     batch_size : int, optional
         Mini-batch size for SVI. Defaults to 1024. Set to None to use the full
         dataset as a single batch.
     binding_weight : float, optional
-        Multiplicative scale applied to the binding log-likelihood at every SVI
-        step.  Because growth data typically outnumber binding observations by
-        several orders of magnitude, the binding likelihood contributes a
-        negligible gradient signal unless it is upweighted.  When None
-        (default), the weight is auto-computed as
-        ``N_growth_rows / N_binding_rows`` so that each binding observation
-        contributes the same total weight as the average growth observation.
-        Pass an explicit positive float to override this heuristic.  The
-        resolved value (never None) is saved in the YAML so that
-        ``tfs-fit-model`` applies the same weight without recomputing it.
+        Multiplicative scale applied to the binding log-likelihood. None
+        (default) is 1: each binding observation counts once, the
+        likelihood of the data as measured. Until 2026-10-16 the default was
+        ``N_growth_rows / N_binding_rows``, which made the binding data
+        count as much as the whole growth dataset; pass that ratio to
+        reproduce an older configuration. The resolved value (never None)
+        is saved in the YAML, so a config written before the change keeps
+        its weight.
+    set_priors : list of str, optional
+        ``name=value`` pairs that set scalar priors in
+        {out_prefix}_priors.csv, so the file is never edited by hand. A name
+        is a full row name (``theta.theta_log_hill_n_hyper_scale_fixed``) or
+        a unique dotted suffix of one (``theta_log_hill_n_hyper_scale_fixed``,
+        ``sample_offset.sigma_fixed``). An unknown or ambiguous name is an
+        error. Common uses: ``sigma_fixed=0.17`` holds the level tube
+        offsets' SD; ``theta_log_hill_n_hyper_scale_fixed=0.5`` holds the
+        population SD of log(hill_n) (and, for hill_relative,
+        ``theta_X_low_hyper_scale_fixed``, ``theta_X_delta_hyper_scale_fixed``,
+        ``theta_log_hill_K_hyper_scale_fixed``); for the PddG/PnnC thermo
+        models, ``theta_ddG_sigma_fixed=1.69`` holds every structure's
+        ΔΔG scale σ_s at 1.69 kT.
+    growth_priors : str, optional
+        CSV of per-condition growth priors for linear condition growth: a
+        ``condition_rep`` column (and ``replicate``, if conditions are not
+        shared across replicates) plus any of ``k_loc``, ``k_scale``,
+        ``m_loc``, ``m_scale``, and the 0/1 flags ``k_pinned``, ``m_pinned``,
+        which hold that condition's k or m at its loc instead of fitting it
+        (say, one marker's k and m held at an independent estimate while the
+        other's are fitted). Conditions or values it leaves out keep the
+        defaults. Use it where tfs-prefit-calibration does not run (a
+        growth-only model); the pre-fit overwrites k_loc and m_loc.
+    growth_priors_wt_rates : str, optional
+        CSV of wt monoculture growth rates (``condition_sel``,
+        ``titrant_conc``, ``rate_mean``, ``rate_sd``, ``num_replicates``),
+        for theta_model 'hill_relative' only. For each listed condition,
+        k = the rate at the high gauge concentration and m = the rate at the
+        low one minus k, each with the standard error of the mean as SD
+        (floored at growth_priors_sd_floor). List only the conditions where
+        the monoculture stands for the library's wt. Overrides
+        growth_priors for the conditions it lists.
+    growth_priors_sd_floor : float, optional
+        Smallest k and m prior SD (per minute) derived from
+        growth_priors_wt_rates. Default 0.002.
+    allow_missing_spikes : bool, optional
+        By default, a spiked genotype named in library_config with no growth
+        data is an error: it usually means the counts were called with a
+        different library config. Pass this to only report it (a spike can
+        drop out of a real experiment).
     skip_model_stats : bool, optional
         Skip the pre-fit parameter/observation accounting. By default a
         summary is printed to stdout and written to
@@ -300,13 +542,18 @@ def configure_model(binding_df,
     -------
     None
     """
-    if binding_df is None:
-        raise ValueError("binding_df must be provided")
+    if binding_df is None and growth_df is None:
+        raise ValueError("At least one of binding_df and growth_df must be "
+                         "provided.")
 
     binding_only = growth_df is None
     if not binding_only:
         check_component_compatibility(condition_growth_model, theta_rescale_model)
 
+    if congression_sets is not None and transformation_model == "single":
+        raise ValueError("congression_sets sets the congression mixture's "
+                         "co-resident draws; it needs transformation_model "
+                         "'mixture'.")
     if transformation_model != "single" and transformation_lambda is None:
         raise ValueError(
             f"transformation_model='{transformation_model}' requires "
@@ -343,14 +590,35 @@ def configure_model(binding_df,
             check_genotypes_in_library(set(composition["genotype"]),
                                        data_df, label)
 
+        check_spikes_in_data(composition, growth_df,
+                             allow_missing=allow_missing_spikes)
+
         library_file = f"{out_prefix}_library.csv"
         write_library_composition(composition, library_file)
         print(f"Wrote library composition to {library_file}", flush=True)
 
+        library_yaml = read_yaml(library_config)
         library_meta = {
             "source": library_config if isinstance(library_config, str) else "<dict>",
-            "library_mixture": read_yaml(library_config)["library_mixture"],
+            "library_mixture": library_yaml["library_mixture"],
         }
+        # A subsampled library (tfs-simulate's library_genotypes /
+        # library_subsample): the snapshot holds only the kept genotypes.
+        subsample = subsample_record(library_yaml)
+        if subsample is not None:
+            library_meta["subsample"] = subsample
+            print(f"Library subsample: {len(composition)} genotypes kept "
+                  f"({subsample})", flush=True)
+
+    # Structural-input loader options; None keeps the old behaviour and
+    # leaves the written config's thermo_options null.
+    thermo_options = {k: v for k, v in (
+        ("ddG_units", thermo_ddG_units),
+        ("temperature_K", thermo_temperature_K),
+        ("column_map", thermo_column_map),
+        ("residue_offset", thermo_residue_offset),
+        ("max_missing_fraction", thermo_max_missing_fraction),
+    ) if v is not None} or None
 
     # Initialize model to build mappings and get guesses
     orchestrator = ModelOrchestrator(growth_df,
@@ -366,14 +634,23 @@ def configure_model(binding_df,
                      theta=theta_model,
                      transformation=transformation_model,
                      transformation_lambda=transformation_lambda,
+                     congression_theta_rule=congression_theta_rule,
+                     congression_dk_rule=congression_dk_rule,
+                     congression_dk_alpha=congression_dk_alpha,
+                     **({} if congression_sets is None
+                        else {"congression_sets": [int(v) for v in congression_sets]}),
                      theta_rescale=theta_rescale_model,
                      theta_growth_noise=theta_growth_noise_model,
                      theta_binding_noise=theta_binding_noise_model,
                      growth_noise=growth_noise_model,
+                     sample_offset=sample_offset_model,
+                     growth_likelihood=growth_likelihood,
+                     theta_gauge_conc=theta_gauge_conc,
                      library_file=library_file,
                      growth_shares_replicates=growth_shares_replicates,
                      epistasis=epistasis,
                      thermo_data=thermo_data,
+                     thermo_options=thermo_options,
                      batch_size=batch_size,
                      binding_weight=binding_weight)
 
@@ -385,10 +662,20 @@ def configure_model(binding_df,
     write_configuration(orchestrator=orchestrator,
                         out_prefix=out_prefix,
                         growth_df_path=growth_path,
-                        binding_df_path=binding_df if isinstance(binding_df, str) else "binding.csv",
+                        binding_df_path=(None if binding_df is None else
+                                         binding_df if isinstance(binding_df, str)
+                                         else "binding.csv"),
                         presplit_df_path=presplit_path,
                         base_growth_df_path=base_growth_path,
                         library_meta=library_meta)
+
+    _edit_priors(orchestrator, f"{out_prefix}_priors.csv",
+                 set_priors=set_priors,
+                 growth_priors=growth_priors,
+                 growth_priors_wt_rates=growth_priors_wt_rates,
+                 growth_priors_sd_floor=growth_priors_sd_floor,
+                 condition_growth_model=condition_growth_model,
+                 theta_model=theta_model)
 
     # Pre-fit accounting: how many parameters, how many observations, and
     # which genotypes are individually under-determined.
@@ -400,15 +687,27 @@ def configure_model(binding_df,
 def main():
     return generalized_main(configure_model,
                             manual_arg_types={"binding_df":str,
+                                              "congression_dk_alpha":float,
                                               "growth_df":str,
                                               "presplit_df":str,
                                               "base_growth_df":str,
                                               "library_config":str,
                                               "thermo_data":str,
+                                              "thermo_ddG_units":str,
+                                              "thermo_temperature_K":float,
+                                              "thermo_column_map":str,
+                                              "thermo_residue_offset":int,
+                                              "thermo_max_missing_fraction":float,
                                               "batch_size":int,
                                               "binding_weight":float,
-                                              "transformation_lambda":float},
-                            manual_arg_nargs={"transformation_lambda":2})
+                                              "set_priors":str,
+                                              "transformation_lambda":float,
+                                              "congression_sets":int,
+                                              "theta_gauge_conc":float},
+                            manual_arg_nargs={"set_priors":"+",
+                                              "transformation_lambda":2,
+                                              "congression_sets":"+",
+                                              "theta_gauge_conc":2})
 
 if __name__ == "__main__":
     main()

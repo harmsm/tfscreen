@@ -12,14 +12,14 @@ from tfscreen.tfmodel.generative.registry import model_registry
 # ModelOrchestrator arguments. We want to make sure every entry in the 
 # model_registry is tested at least once. 
 SMOKE_CONFIGS = [
-    # Default-ish config
+    # Default-ish config (homodimer congression rule, activity fixed at 1)
     {
         "condition_growth":"linear",
-        "transformation":"empirical",
+        "transformation":"mixture",
         "theta":"hill_geno",
         "growth_transition":"instant",
         "dk_geno":"hierarchical_geno",
-        "activity":"horseshoe_geno",
+        "activity":"fixed",
         "ln_cfu0":"hierarchical",
         "theta_growth_noise":"zero",
         "theta_binding_noise":"zero"
@@ -27,26 +27,29 @@ SMOKE_CONFIGS = [
     # test other condition growth and transformation
     {
         "condition_growth":"linear",
-        "transformation":"logit_norm",
+        "transformation":"mixture",
         "theta":"categorical_geno",
         "growth_transition":"memory",
         "dk_geno":"fixed",
         "activity":"hierarchical_geno",
+        "congression_theta_rule":"max",   # learned activity needs the max rule
         "theta_growth_noise":"beta",
         "theta_binding_noise":"beta"
     },
     # test other transition and transformation
     {
         "condition_growth":"power",
-        "transformation":"logit_norm",
+        "transformation":"mixture",
         "theta":"hill_geno",
         "growth_transition":"baranyi",
         "activity":"fixed",
+        "congression_theta_rule":"heterodimer",
     },
-    # test power and saturation
+    # test power and saturation (and learned horseshoe activity)
     {
         "condition_growth":"power",
         "transformation":"single",
+        "activity":"horseshoe_geno",
     },
     {
         "condition_growth":"saturation",
@@ -120,10 +123,19 @@ def test_model_svi_smoke(growth_smoke_csv,
     initialized and a few steps of optimization can be performed without error.
     """
     out_prefix = os.path.join(tmpdir, "smoke_test")
-    
+
+    # hierarchical_factored shares a genotype's baseline across condition_pre,
+    # which the orchestrator refuses when they come from different libraries
+    # (the smoke data's kanR and pheS): run it on a one-library copy.
+    growth = growth_smoke_csv
+    if config.get("ln_cfu0") == "hierarchical_factored":
+        import pandas as pd
+        growth = pd.read_csv(growth_smoke_csv)
+        growth["library"] = "kanR"
+
     # Initialize ModelOrchestrator
     model = ModelOrchestrator(
-        growth_df=growth_smoke_csv,
+        growth_df=growth,
         binding_df=binding_smoke_csv,
         batch_size=None, # Use all data for smoke test
         **config
@@ -132,8 +144,12 @@ def test_model_svi_smoke(growth_smoke_csv,
     # Initialize RunInference
     inference = RunInference(model=model, seed=42)
     
-    # Setup SVI
-    svi = inference.setup_svi(adam_step_size=1e-3)
+    # Setup SVI. beta theta_growth_noise's per-observation latent is
+    # batch-shaped, which no autoguide (AutoDelta included) can fit -- see
+    # inference/batch_safety.py -- so exercise it through the component guide.
+    guide_type = ("component" if config.get("theta_growth_noise") == "beta"
+                  else "delta")
+    svi = inference.setup_svi(adam_step_size=1e-3, guide_type=guide_type)
     
     # Run a very short optimization
     # We only run for a few steps to verify it doesn't crash

@@ -15,7 +15,6 @@ from tfscreen.tfmodel.model_orchestrator import (
     _build_growth_tm,
     _build_binding_tm,
     _setup_batching,
-    _check_theta_transformation_compatibility,
     get_batch
 )
 from tfscreen.tfmodel.generative.components.growth.linear import _parse_condition_label
@@ -411,9 +410,10 @@ def test_initialize_classes_logic(mocker):
         "growth_transition": {"instant": MagicMock(), "linear": MagicMock()},
         "ln_cfu0": {"hierarchical": MagicMock()},
         "dk_geno": {"hierarchical_geno": MagicMock()},
-        "activity": {"hierarchical_geno": MagicMock(), "horseshoe_geno": MagicMock()},
+        "activity": {"hierarchical_geno": MagicMock(), "horseshoe_geno": MagicMock(),
+                     "fixed": MagicMock()},
         "theta": {"categorical_geno": MagicMock(), "hill_geno": MagicMock(), "fixed": MagicMock()},
-        "transformation": {"logit_norm": MagicMock(), "single": MagicMock()},
+        "transformation": {"mixture": MagicMock(), "single": MagicMock()},
         "theta_rescale": {"passthrough": MagicMock()},
         "theta_growth_noise": {"zero": MagicMock(), "logit_normal": MagicMock()},
         "theta_binding_noise": {"zero": MagicMock()},
@@ -427,7 +427,7 @@ def test_initialize_classes_logic(mocker):
                 tfscreen.tfmodel.model_orchestrator.model_registry[k][sub_k].get_priors.return_value = {}
                 tfscreen.tfmodel.model_orchestrator.model_registry[k][sub_k].get_guesses.return_value = {}
 
-        model = ModelOrchestrator("g.csv", "b.csv", theta="categorical_geno", transformation="logit_norm", condition_growth="independent", growth_transition="instant")
+        model = ModelOrchestrator("g.csv", "b.csv", theta="categorical_geno", transformation="single", condition_growth="independent", growth_transition="instant")
         assert model._theta == "categorical_geno"
 
 
@@ -489,7 +489,7 @@ def test_initialize_classes_forwards_presplit_to_declaring_component(mocker):
         "dk_geno": {"hierarchical_geno": MagicMock()},
         "activity": {"hierarchical_geno": MagicMock()},
         "theta": {"categorical_geno": MagicMock()},
-        "transformation": {"logit_norm": MagicMock()},
+        "transformation": {"single": MagicMock()},
         "theta_rescale": {"passthrough": MagicMock()},
         "theta_growth_noise": {"zero": MagicMock()},
         "theta_binding_noise": {"zero": MagicMock()},
@@ -508,7 +508,7 @@ def test_initialize_classes_forwards_presplit_to_declaring_component(mocker):
 
         ModelOrchestrator(
             "g.csv", "b.csv",
-            theta="categorical_geno", transformation="logit_norm",
+            theta="categorical_geno", transformation="single",
             condition_growth="independent", growth_transition="instant",
             ln_cfu0="hierarchical", activity="hierarchical_geno",
             theta_growth_noise="zero",
@@ -530,7 +530,7 @@ def test_dk_geno_pinned_requires_pins_file():
     """
     dk_geno='pinned' without dk_geno_pins_file must raise before any data
     I/O happens (mirrors
-    test_model_orchestrator_rejects_categorical_geno_with_empirical:
+    test_model_orchestrator_refuses_retired_transformations:
     "g.csv"/"b.csv" are never touched).
     """
     with pytest.raises(ValueError, match="requires dk_geno_pins_file"):
@@ -667,15 +667,15 @@ def test_transformation_lambda_wrong_length_raises():
     with pytest.raises(ValueError, match="mean, std"):
         ModelOrchestrator(
             "g.csv", "b.csv",
-            transformation="empirical",
+            transformation="mixture",
             transformation_lambda=(0.36,),
         )
 
 
 class _SpyTransformationModule:
     """
-    Thin real-object wrapper around a transformation component (logit_norm/
-    empirical), recording what get_priors/get_guesses were actually called
+    Thin real-object wrapper around a transformation component (mixture),
+    recording what get_priors/get_guesses were actually called
     with.
 
     inspect.signature(component_module.get_priors) must see the real
@@ -723,7 +723,7 @@ def _build_orchestrator_with_transformation_spy(mocker, spy, transformation_lamb
         "dk_geno": {"hierarchical_geno": MagicMock()},
         "activity": {"hierarchical_geno": MagicMock()},
         "theta": {"hill_geno": MagicMock()},
-        "transformation": {"logit_norm": spy},
+        "transformation": {"mixture": spy},
         "theta_rescale": {"passthrough": MagicMock()},
         "theta_growth_noise": {"zero": MagicMock()},
         "theta_binding_noise": {"zero": MagicMock()},
@@ -741,10 +741,11 @@ def _build_orchestrator_with_transformation_spy(mocker, spy, transformation_lamb
 
         return ModelOrchestrator(
             "g.csv", "b.csv",
-            theta="hill_geno", transformation="logit_norm",
+            theta="hill_geno", transformation="mixture",
             transformation_lambda=transformation_lambda,
             condition_growth="independent", growth_transition="instant",
             activity="hierarchical_geno", theta_growth_noise="zero",
+            congression_theta_rule="max",
         )
 
 
@@ -752,9 +753,9 @@ def test_transformation_lambda_wired_into_component_priors_and_guesses(mocker):
     """End-to-end: transformation_lambda=(mean, std) must reach the real component's
     get_priors(lam_mean=..., lam_std=...) and get_guesses(..., lam_mean=...)
     via signature-based dispatch in _initialize_classes."""
-    from tfscreen.tfmodel.generative.components.transformation import logit_norm as real_logit_norm
+    from tfscreen.tfmodel.generative.components.transformation import mixture as real_mixture
 
-    spy = _SpyTransformationModule(real_logit_norm)
+    spy = _SpyTransformationModule(real_mixture)
     model = _build_orchestrator_with_transformation_spy(mocker, spy, (0.3572, 0.13))
 
     assert spy.priors_calls == [(0.3572, 0.13)]
@@ -769,9 +770,9 @@ def test_transformation_lambda_omitted_falls_back_to_placeholder(mocker):
     lam_mean=lam_std=None) rather than being skipped -- it falls back to
     its own placeholder prior rather than ModelOrchestrator refusing to
     build the model."""
-    from tfscreen.tfmodel.generative.components.transformation import logit_norm as real_logit_norm
+    from tfscreen.tfmodel.generative.components.transformation import mixture as real_mixture
 
-    spy = _SpyTransformationModule(real_logit_norm)
+    spy = _SpyTransformationModule(real_mixture)
     model = _build_orchestrator_with_transformation_spy(mocker, spy, None)
 
     assert spy.priors_calls == [(None, None)]
@@ -781,17 +782,16 @@ def test_transformation_lambda_omitted_falls_back_to_placeholder(mocker):
 
 @pytest.mark.parametrize("transformation_key, expected_needs_population", [
     ("single", False),
-    ("logit_norm", False),
-    ("empirical", True),
+    ("mixture", True),
 ])
 def test_transformation_control_kwargs_carry_needs_population_flag(
         mocker, transformation_key, expected_needs_population):
     """
     main_control_kwargs["transformation"] must be a 3-tuple whose third
     element reflects the *real* transformation component's
-    NEEDS_FULL_POPULATION_THETA flag (empirical=True; single/logit_norm=False)
-    — this is the wiring jax_model relies on to decide whether it needs a
-    population-wide theta reference for the congression correction.
+    NEEDS_POPULATION flag (mixture=True; single=False) — this is the wiring
+    jax_model relies on to decide whether it needs library-wide theta,
+    activity and dk_geno for the congression mixture.
     """
     import tfscreen.tfmodel.generative.components.transformation as transformation_pkg
 
@@ -811,14 +811,11 @@ def test_transformation_control_kwargs_carry_needs_population_flag(
         "growth_transition": {"instant": MagicMock()},
         "ln_cfu0": {"hierarchical": MagicMock()},
         "dk_geno": {"hierarchical_geno": MagicMock()},
-        "activity": {"horseshoe_geno": MagicMock()},
-        # Use a mocked "hill_geno" stand-in (not "categorical_geno") so this
-        # wiring test doesn't trip the real theta/transformation compatibility
-        # check exercised separately below.
+        "activity": {"horseshoe_geno": MagicMock(), "fixed": MagicMock()},
         "theta": {"hill_geno": MagicMock()},
         "transformation": {transformation_key: real_transformation_module},
         "theta_rescale": {"passthrough": MagicMock()},
-        "theta_growth_noise": {"logit_normal": MagicMock()},
+        "theta_growth_noise": {"zero": MagicMock(), "logit_normal": MagicMock()},
         "theta_binding_noise": {"zero": MagicMock()},
         "growth_noise": {"zero": MagicMock()},
         "sample_offset": {"zero": MagicMock()},
@@ -846,61 +843,68 @@ def test_transformation_control_kwargs_carry_needs_population_flag(
 
 
 # ---------------------------------------------------------------------------
-# _check_theta_transformation_compatibility
+# Retired transformation components
 # ---------------------------------------------------------------------------
 
-def test_check_theta_transformation_compatibility_rejects_categorical_geno_empirical():
-    """categorical_geno cannot supply a full-population theta reference, so
-    pairing it with transformation='empirical' must raise, not silently
-    reproduce the population-CDF bug."""
-    with pytest.raises(ValueError, match="categorical_geno.*empirical|empirical.*categorical_geno"):
-        _check_theta_transformation_compatibility("categorical_geno", "empirical")
-
-
-@pytest.mark.parametrize("transformation_key", ["single", "logit_norm"])
-def test_check_theta_transformation_compatibility_allows_categorical_geno_elsewhere(
-        transformation_key):
-    """categorical_geno is fine with transformation models that don't need a
-    population-wide theta reference."""
-    _check_theta_transformation_compatibility("categorical_geno", transformation_key)
-
-
-@pytest.mark.parametrize("theta_key", ["hill_geno", "hill_mut", "some_thermo_variant"])
-def test_check_theta_transformation_compatibility_allows_other_theta_with_empirical(
-        theta_key):
-    """Any theta component other than the known-incompatible ones must be
-    allowed with transformation='empirical' (including forward-compatibility
-    with theta components this check has never heard of)."""
-    _check_theta_transformation_compatibility(theta_key, "empirical")
-
-
-def test_model_orchestrator_rejects_categorical_geno_with_empirical():
+@pytest.mark.parametrize("name,match", [
+    ("empirical", "replaced by 'mixture'"),
+    ("logit_norm", "has been removed"),
+])
+@pytest.mark.parametrize("binding_only", [False, True])
+def test_model_orchestrator_refuses_retired_transformations(name, match,
+                                                            binding_only):
     """
-    End-to-end: constructing a ModelOrchestrator with the incompatible pair
-    must raise before any data loading happens (no growth_df/binding_df I/O
-    needed for this to fire — "g.csv"/"b.csv" are never touched).
+    A config naming a retired transformation fails before any data I/O
+    ("g.csv"/"b.csv" are never touched), with a message saying what
+    replaced it, so an old config cannot silently switch physics.
     """
-    with pytest.raises(ValueError, match="categorical_geno"):
-        ModelOrchestrator(
-            "g.csv", "b.csv",
-            theta="categorical_geno",
-            transformation="empirical",
-        )
+    with pytest.raises(ValueError, match=match):
+        ModelOrchestrator("g.csv", "b.csv", transformation=name,
+                          binding_only=binding_only)
 
 
-def test_check_theta_transformation_compatibility_binding_only_skips_check():
-    """
-    In binding-only mode jax_model returns before ever reaching the
-    transformation/congression code path (see generative/model.py's early
-    `if binding_only: ... return`), so the transformation setting is inert
-    and categorical_geno + empirical must be allowed.  Regression test for
-    the smoke-test failure where tfs-configure-model's binding-only pipeline
-    (theta="categorical_geno", transformation left at its "empirical"
-    default) was incorrectly rejected by this check.
-    """
-    _check_theta_transformation_compatibility(
-        "categorical_geno", "empirical", binding_only=True
-    )
+# ---------------------------------------------------------------------------
+# Congression theta rule
+# ---------------------------------------------------------------------------
+
+def test_model_orchestrator_refuses_unknown_congression_theta_rule():
+    with pytest.raises(ValueError, match="congression_theta_rule must be one of"):
+        ModelOrchestrator("g.csv", "b.csv", congression_theta_rule="min")
+
+
+@pytest.mark.parametrize("rule", ["homodimer", "heterodimer"])
+def test_model_orchestrator_partition_rules_need_fixed_activity(rule):
+    """The partition-function rules mix variants' occupancies and require
+    activity 1; refused before any data I/O."""
+    with pytest.raises(ValueError, match="requires TF activity 1"):
+        ModelOrchestrator("g.csv", "b.csv", transformation="mixture",
+                          activity="horseshoe_geno",
+                          congression_theta_rule=rule)
+
+
+def test_model_orchestrator_refuses_unknown_congression_dk_rule():
+    with pytest.raises(ValueError, match="congression_dk_rule must be one of"):
+        ModelOrchestrator("g.csv", "b.csv", congression_dk_rule="max")
+
+
+@pytest.mark.parametrize("alpha", [None, 0.0, -2.0, float("inf"), "x"])
+def test_model_orchestrator_softmin_needs_positive_finite_alpha(alpha):
+    with pytest.raises(ValueError, match="needs a finite"):
+        ModelOrchestrator("g.csv", "b.csv", congression_dk_rule="softmin",
+                          congression_dk_alpha=alpha)
+
+
+@pytest.mark.parametrize("rule", ["dilution", "min"])
+def test_model_orchestrator_other_dk_rules_refuse_alpha(rule):
+    with pytest.raises(ValueError, match="only used by"):
+        ModelOrchestrator("g.csv", "b.csv", congression_dk_rule=rule,
+                          congression_dk_alpha=10.0)
+
+
+def test_check_congression_dk_alpha_casts():
+    from tfscreen.tfmodel.model_orchestrator import _check_congression_dk_alpha
+    assert _check_congression_dk_alpha("softmin", "100") == 100.0
+    assert _check_congression_dk_alpha("dilution", None) is None
 
 
 def test_model_class_properties(initialized_model_class):
@@ -933,6 +937,13 @@ def test_model_class_properties(initialized_model_class):
     model._thermo_data = None
     model._binding_weight = 1.0
     model._base_growth_df = "bg.csv"
+    model._congression_sets = (12, 3, 1)
+    model._congression_seed = 0
+    model._congression_theta_rule = "homodimer"
+    model._congression_dk_rule = "softmin"
+    model._congression_dk_alpha = 50.0
+    model._growth_likelihood = "lncfu"
+    model._theta_gauge_conc = None
 
     assert ModelOrchestrator.jax_model.fget(model) == "jm"
     assert ModelOrchestrator.jax_model_guide.fget(model) == "jmg"
@@ -940,6 +951,9 @@ def test_model_class_properties(initialized_model_class):
     assert ModelOrchestrator.priors.fget(model) == "p"
     assert ModelOrchestrator.init_params.fget(model) == "ip"
     assert ModelOrchestrator.settings.fget(model)["activity"] == "a"
+    assert ModelOrchestrator.settings.fget(model)["congression_theta_rule"] == "homodimer"
+    assert ModelOrchestrator.settings.fget(model)["congression_dk_rule"] == "softmin"
+    assert ModelOrchestrator.settings.fget(model)["congression_dk_alpha"] == 50.0
     assert ModelOrchestrator.settings.fget(model)["theta"] == "t"
     assert ModelOrchestrator.settings.fget(model)["transformation"] == "tr"
     assert ModelOrchestrator.settings.fget(model)["transformation_lambda"] is None
@@ -964,7 +978,7 @@ def test_extract_parameters_full(initialized_model_class):
     model._condition_growth = "hierarchical"
     model._dk_geno = "hierarchical_geno"
     model._activity = "hierarchical_geno"
-    model._transformation = "logit_norm"
+    model._transformation = "mixture"
     model.growth_tm.df = pd.DataFrame({
         "genotype": ["wt"], "titrant_name": ["T"], 
         "replicate": [1], "condition_pre": ["A"],
@@ -974,7 +988,9 @@ def test_extract_parameters_full(initialized_model_class):
     })
     model.growth_tm.map_groups = {"condition_rep": pd.DataFrame({"replicate":[1], "condition_rep":["A"], "map_condition_rep":[0]})}
     model.growth_tm.tensor_dim_names = ["replicate", "time", "condition_pre", "condition_sel", "titrant_name", "titrant_conc", "genotype"]
-    model.growth_tm.tensor_dim_labels = [[], [], [], [], [], [1.0], []]
+    # the axes ln_cfu0's extraction keys rows by (replicate, condition_pre,
+    # genotype) must carry the table's labels
+    model.growth_tm.tensor_dim_labels = [[1], [], ["A"], [], [], [1.0], ["wt"]]
     
     post = {
         "theta_hill_n": np.zeros((1, 1, 1)), "theta_log_hill_K": np.zeros((1, 1, 1)), 
@@ -1184,11 +1200,11 @@ def _make_model_for_binding_weight(mocker, n_growth, n_binding, binding_weight=N
     return ModelOrchestrator("g.csv", "b.csv", binding_weight=binding_weight)
 
 
-def test_binding_weight_auto_computed(mocker):
-    """binding_weight=None should be resolved to N_growth / N_binding after init."""
-    n_growth, n_binding = 1000, 10
-    model = _make_model_for_binding_weight(mocker, n_growth, n_binding)
-    assert model._binding_weight == pytest.approx(n_growth / n_binding)
+def test_binding_weight_default_is_one(mocker):
+    """binding_weight=None resolves to 1 (each binding row counts once),
+    not N_growth / N_binding (the default until 2026-10-16)."""
+    model = _make_model_for_binding_weight(mocker, 1000, 10)
+    assert model._binding_weight == 1.0
 
 
 def test_binding_weight_explicit_preserved(mocker):
@@ -1207,7 +1223,7 @@ def test_binding_weight_explicit_in_settings(mocker):
     model._dk_geno = "hierarchical_geno"
     model._activity = "horseshoe_geno"
     model._theta = "hill_geno"
-    model._transformation = "empirical"
+    model._transformation = "mixture"
     model._theta_rescale = "passthrough"
     model._theta_growth_noise = "zero"
     model._theta_binding_noise = "zero"
@@ -1222,7 +1238,7 @@ def test_binding_weight_explicit_in_settings(mocker):
 
 
 def test_binding_weight_auto_in_settings(mocker):
-    """Auto-computed weight (not None) should appear in settings after init."""
+    """The resolved default weight (1, not None) appears in settings."""
     n_growth, n_binding = 500, 25
     model = _make_model_for_binding_weight(mocker, n_growth, n_binding)
     model._binding_only = False
@@ -1232,7 +1248,7 @@ def test_binding_weight_auto_in_settings(mocker):
     model._dk_geno = "hierarchical_geno"
     model._activity = "horseshoe_geno"
     model._theta = "hill_geno"
-    model._transformation = "empirical"
+    model._transformation = "mixture"
     model._theta_rescale = "passthrough"
     model._theta_growth_noise = "zero"
     model._theta_binding_noise = "zero"
@@ -1242,7 +1258,7 @@ def test_binding_weight_auto_in_settings(mocker):
     model._thermo_data = None
     model._batch_size = None
     s = ModelOrchestrator.settings.fget(model)
-    assert s["binding_weight"] == pytest.approx(n_growth / n_binding)
+    assert s["binding_weight"] == 1.0
 
 
 def test_binding_weight_applied_to_scale_vector(mocker):
@@ -1446,6 +1462,7 @@ class TestConditionLabelExtraction:
         orchestrator.growth_df = growth_df
         orchestrator._data = MagicMock()
         orchestrator._binding_only = False
+        orchestrator._has_binding = True
         orchestrator._batch_size = None
         orchestrator._condition_growth = "linear"
         orchestrator._growth_transition = "instant"
@@ -2361,3 +2378,32 @@ class TestBaseGrowthDf:
             )
 
         assert model_no_base_growth._priors.growth.base_growth is None
+
+
+# ---------------------------------------------------------------------------
+# hierarchical_factored ln_cfu0 across libraries
+# ---------------------------------------------------------------------------
+
+def _factored_df(libraries):
+    """Two pre-conditions per replicate, from the given libraries."""
+    return pd.DataFrame({
+        "replicate": [1, 1, 2, 2],
+        "condition_pre": ["kanR-kan", "pheS-4CP"] * 2,
+        "library": libraries * 2,
+    })
+
+
+def test_factored_ln_cfu0_refused_across_libraries():
+    from tfscreen.tfmodel.model_orchestrator import _check_factored_ln_cfu0
+    with pytest.raises(ValueError, match="different libraries"):
+        _check_factored_ln_cfu0("hierarchical_factored",
+                                _factored_df(["kanR", "pheS"]))
+
+
+def test_factored_ln_cfu0_allowed_within_one_library():
+    from tfscreen.tfmodel.model_orchestrator import _check_factored_ln_cfu0
+    _check_factored_ln_cfu0("hierarchical_factored", _factored_df(["kanR", "kanR"]))
+    # other ln_cfu0 models and data without a library column are not checked
+    _check_factored_ln_cfu0("hierarchical", _factored_df(["kanR", "pheS"]))
+    _check_factored_ln_cfu0("hierarchical_factored",
+                            _factored_df(["kanR", "pheS"]).drop(columns="library"))

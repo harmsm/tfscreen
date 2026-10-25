@@ -1,0 +1,170 @@
+#!/bin/bash -l
+#SBATCH --account=harmslab
+#SBATCH --job-name=tfs_real
+#SBATCH --output=run.out
+#SBATCH --error=run.err
+#SBATCH --partition=gpu
+#SBATCH --time=01-00:00:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --gpus=1
+#SBATCH --mem=384G
+#SBATCH --ntasks-per-node=1
+
+# First real-data joint fit of the dev-data screen (planning/dev-data).
+# Submit from a run directory next to inputs/, one per arm:
+#
+#   mkdir svi && cd svi && sbatch --export=ALL,ARM=svi ../run.srun
+#   mkdir map && cd map && sbatch --export=ALL,ARM=map ../run.srun
+#
+# Offset variants (2026-09-29; see README):
+#   sbatch --export=ALL,ARM=map,SIGMA_FIXED=0.17,BATCH_SIZE=4096 ../run.srun
+#   sbatch --export=ALL,ARM=map,OFFSET_MODEL=zero,BATCH_SIZE=4096 ../run.srun
+#   sbatch --export=ALL,ARM=svi,OFFSET_MODEL=zero,BATCH_SIZE=4096 ../run.srun
+#   sbatch --export=ALL,ARM=map,OFFSET_MODEL=zero,BATCH_SIZE=4096,N_SCALE=0.5 ../run.srun
+#
+# INIT_FROM: an npz for tfs-fit-model --init_from; unlike WARM, configure
+#            and prefit still run. Offsets + held n from the best points
+#            (2026-10-01; make_init_npz.py). INIT_REF: a run whose MAP
+#            the start should equal (check_warm.py stops the job if not):
+#   sbatch --export=ALL,ARM=map,SIGMA_FIXED=0.17,N_SCALE=0.5,BATCH_SIZE=4096,INIT_FROM=../inputs/init_n05_warm.npz,INIT_REF=../map_nooffset_n05,ADAM_STEP=1e-4 ../run.srun
+#
+# Warm start (2026-09-30; see README): a level-offset MAP started at the
+# no-offset MAP's point. Build the directory first with make_warm_start.py,
+# then from inside it:
+#   sbatch --export=ALL,ARM=map,WARM=1,ADAM_STEP=1e-4 ../run.srun
+# WARM=1 skips configure and prefit (the directory already has them), checks
+# the start with check_warm.py and fits with --init_from warm_init.npz.
+#
+# Locally (smoke test): ARM=svi GROWTH=../inputs/growth_smoke.csv.gz
+#   MAX_EPOCHS=2000 bash ../run.srun  (drop the module line first)
+#
+# ARM:     svi (component-guide SVI) or map (MAP; point estimates, which
+#          put the high-IPTG plateau near truth on simulations where SVI
+#          collapses it; planning/studies/svi-overconfidence/)
+# GROWTH:  growth table (default the full library)
+# N_SCALE: hold the population SD of log(hill_n) at this value
+#          (theta_log_hill_n_hyper_scale_fixed). Learned, it ran to about 19
+#          and n to 0.01-13 on the first real-data fits (README, 2026-10-01).
+
+module load cuda/12.4.1
+
+set -e
+
+ARM="${ARM:-svi}"
+GROWTH="${GROWTH:-../inputs/growth.csv.gz}"
+MAX_EPOCHS="${MAX_EPOCHS:-}"
+SEED="${SEED:-20260929}"
+# per-tube offsets: level (default) or zero; SIGMA_FIXED holds the level
+# offsets' SD instead of learning it (e.g. 0.17, the per-tube OD600 scatter)
+OFFSET_MODEL="${OFFSET_MODEL:-level}"
+SIGMA_FIXED="${SIGMA_FIXED:-}"
+BATCH_SIZE="${BATCH_SIZE:-1024}"
+WARM="${WARM:-}"
+N_SCALE="${N_SCALE:-}"
+INIT_FROM="${INIT_FROM:-}"
+INIT_REF="${INIT_REF:-}"
+ADAM_STEP="${ADAM_STEP:-}"
+EPOCH_ARGS=()
+if [[ -n "${MAX_EPOCHS}" ]]; then
+    EPOCH_ARGS=(--max_num_epochs "${MAX_EPOCHS}")
+fi
+
+if [[ -z "${WARM}" ]]; then
+echo ">>> Configure (${ARM}; growth ${GROWTH}) $(date)"
+tfs-configure-model \
+    --growth_df "${GROWTH}" \
+    --binding_df ../inputs/binding_df_10uM.csv \
+    --library_config ../inputs/library_config.yaml \
+    --growth_likelihood counts \
+    --sample_offset_model "${OFFSET_MODEL}" \
+    --batch_size "${BATCH_SIZE}" \
+    --growth_noise_model zero \
+    --condition_growth_model linear \
+    --growth_transition_model instant \
+    --ln_cfu0_model hierarchical \
+    --dk_geno_model hierarchical_geno \
+    --activity_model fixed \
+    --theta_model hill_geno \
+    --theta_rescale_model passthrough \
+    --theta_growth_noise_model zero \
+    --theta_binding_noise_model zero \
+    --transformation_model single \
+    --growth_shares_replicates \
+    --binding_weight 1.0
+
+if [[ -n "${SIGMA_FIXED}" ]]; then
+    grep -q '^growth.sample_offset.sigma_fixed,' tfs_configure_priors.csv
+    sed -i "s/^growth.sample_offset.sigma_fixed,[^,]*/growth.sample_offset.sigma_fixed,${SIGMA_FIXED}/" \
+        tfs_configure_priors.csv
+    echo "sample_offset sigma held at ${SIGMA_FIXED}"
+    grep '^growth.sample_offset' tfs_configure_priors.csv
+fi
+
+if [[ -n "${N_SCALE}" ]]; then
+    grep -q '^theta.theta_log_hill_n_hyper_scale_fixed,' tfs_configure_priors.csv
+    sed -i "s/^theta.theta_log_hill_n_hyper_scale_fixed,[^,]*/theta.theta_log_hill_n_hyper_scale_fixed,${N_SCALE}/" \
+        tfs_configure_priors.csv
+    echo "log hill_n population SD held at ${N_SCALE}"
+    grep '^theta.theta_log_hill_n' tfs_configure_priors.csv
+fi
+
+echo ">>> Pre-fit calibration $(date)"
+tfs-prefit-calibration tfs_configure_config.yaml --seed "${SEED}" \
+    --k_scale_ceiling 0.005
+else
+echo ">>> Warm start: checking the start against ../map_nooffset_b $(date)"
+python ../check_warm.py ../map_nooffset_b warm_init.npz
+fi
+
+NUM_SAMPLES="${NUM_SAMPLES:-300}"
+case "${ARM}" in
+    svi) FIT_ARGS=()
+         SAMPLE_ARGS=(--num_posterior_samples "${NUM_SAMPLES}") ;;
+    # the MAP point only: a Laplace needs the full Hessian, out of reach at
+    # millions of parameters
+    map) FIT_ARGS=(--analysis_method map)
+         SAMPLE_ARGS=(--map_point) ;;
+    *) echo "unknown ARM '${ARM}'" >&2; exit 1 ;;
+esac
+
+if [[ -n "${WARM}" ]]; then
+    FIT_ARGS+=(--init_from warm_init.npz)
+fi
+if [[ -n "${INIT_FROM}" ]]; then
+    FIT_ARGS+=(--init_from "${INIT_FROM}")
+    if [[ -n "${INIT_REF}" ]]; then
+        echo ">>> Checking the start against ${INIT_REF} $(date)"
+        python ../check_warm.py "${INIT_REF}" "${INIT_FROM}"
+    fi
+fi
+if [[ -n "${ADAM_STEP}" ]]; then
+    FIT_ARGS+=(--adam_step_size "${ADAM_STEP}")
+fi
+
+echo ">>> Fit (${ARM}) $(date)"
+tfs-fit-model tfs_configure_config.yaml --seed "${SEED}" \
+    "${FIT_ARGS[@]}" "${EPOCH_ARGS[@]}"
+
+echo ">>> Sample posterior $(date)"
+# 25 draws per batch and a peak-memory log (/usr/bin/time -v, "Maximum
+# resident set size" in run.err): the first SVI run was OOM-killed on the
+# host at 128 GB assembling a 100-draw batch
+/usr/bin/time -v tfs-sample-posterior tfs_configure_config.yaml tfs_fit_model_checkpoint.pkl \
+    --sampling_batch_size "${SAMPLING_BATCH:-25}" \
+    --skip_growth_observations \
+    "${SAMPLE_ARGS[@]}"
+
+echo ">>> Extract parameters $(date)"
+tfs-extract-params tfs_configure_config.yaml tfs_posterior.h5
+
+echo ">>> Predict theta $(date)"
+tfs-predict-theta tfs_configure_config.yaml tfs_posterior.h5
+
+# one block of 2,000 genotypes (binding and spiked always in it), for
+# the observed-vs-predicted check; the whole library would be ~140 GB of CSV
+echo ">>> Predict growth (subset) $(date)"
+tfs-predict-growth tfs_configure_config.yaml tfs_posterior.h5 \
+    --num_marginal_samples=500 --subset_genotypes --genotype_batch_size 2000
+
+echo ">>> Done $(date)"

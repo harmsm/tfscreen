@@ -680,6 +680,51 @@ class TestSimulateEpi:
 # The fix guards the plate block with `if num_mut > 0` and returns zero-shape
 # offset arrays when M=0.  These tests lock in that behaviour.
 
+class TestSimulateMaxHillN:
+    """SimPriors.max_hill_n caps the simulated Hill coefficient."""
+
+    def _params(self, **overrides):
+        params = get_sim_hyperparameters()
+        params.update(sigma_d_log_n=3.0, epi_tau_scale=1.0, epi_slab_scale=5.0)
+        params.update(overrides)
+        return params
+
+    def test_default_is_no_limit(self):
+        assert get_sim_hyperparameters()["max_hill_n"] is None
+        assert SimPriors(**{k: v for k, v in get_sim_hyperparameters().items()
+                            if k != "max_hill_n"}).max_hill_n is None
+
+    def test_limit_caps_hill_n(self, mock_data_epi):
+        free = SimPriors(**self._params())
+        capped = SimPriors(**self._params(max_hill_n=4.0))
+        # First seed whose uncapped draw exceeds the limit (the fixture has
+        # only a few genotypes).
+        for seed in range(50):
+            _, p_free = simulate("theta", mock_data_epi, free, jax.random.PRNGKey(seed))
+            if np.asarray(p_free.hill_n).max() > 4.0:
+                break
+        else:
+            pytest.fail("no draw exceeded the limit")
+        _, p_cap = simulate("theta", mock_data_epi, capped, jax.random.PRNGKey(seed))
+        n_free = np.asarray(p_free.hill_n)
+        n_cap = np.asarray(p_cap.hill_n)
+        assert n_cap.max() <= 4.0 + 1e-5
+        np.testing.assert_allclose(n_cap, np.minimum(n_free, 4.0), rtol=1e-6)
+
+    def test_limit_applies_to_theta(self, mock_data_epi):
+        """theta_gc is computed from the capped Hill coefficient."""
+        data = mock_data_epi._replace(scatter_theta=0)
+        capped = SimPriors(**self._params(max_hill_n=4.0))
+        theta_gc, theta_param = simulate("theta", data, capped, jax.random.PRNGKey(5))
+        np.testing.assert_allclose(np.asarray(run_model(theta_param, data))[0],
+                                   theta_gc.T, rtol=1e-5, atol=1e-6)
+
+    def test_nonpositive_limit_raises(self, mock_data_epi):
+        with pytest.raises(ValueError, match="max_hill_n"):
+            simulate("theta", mock_data_epi, SimPriors(**self._params(max_hill_n=0.0)),
+                     jax.random.PRNGKey(0))
+
+
 @pytest.fixture
 def mock_data_no_mutation():
     """1 genotype (wt only), 0 mutations, 0 pairs — the stratified pool case."""

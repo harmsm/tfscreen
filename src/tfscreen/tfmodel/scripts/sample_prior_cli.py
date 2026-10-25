@@ -34,9 +34,9 @@ def sample_prior(config_file,
 
     ``<out_prefix>_NNN_growth.csv``
         Synthetic growth DataFrame with ``ln_cfu`` replaced by prior
-        predictions.  When ``--noise`` is set (the default), observation
-        noise drawn from ``Normal(0, ln_cfu_std)`` is added.  This file
-        can be passed directly to ``tfs-fit-model`` as training data.
+        predictions.  Observation noise drawn from ``Normal(0, ln_cfu_std)``
+        is added unless ``--no_noise`` is given.  Pass it to
+        ``tfs-configure-model --growth_df`` to fit it.
 
     ``<out_prefix>_NNN_ground_truth.h5``
         The latent parameters used to generate that dataset, in the same

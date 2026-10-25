@@ -1,3 +1,6 @@
+import warnings
+
+import numpy as np
 import pandas as pd
 from tfscreen.tfmodel.configuration_io import read_configuration
 from tfscreen.tfmodel.inference.checkpoint_io import resolve_param_file
@@ -9,6 +12,38 @@ from tfscreen.tfmodel.generative.registry import model_registry
 from tfscreen.util.cli import generalized_main, read_lines
 
 
+_NON_VALUE_COLUMNS = ("titrant_conc", "in_training_data")
+
+
+def warn_nonfinite_theta(result_df, max_listed=10):
+    """
+    Warn if any predicted theta value is NaN or infinite.
+
+    A non-finite theta in any posterior draw makes every quantile of that
+    row NaN. Until 2026-10-11 the thermodynamic theta overflowed on extreme
+    Laplace draws and whole genotypes were written as NaN without a word.
+
+    Returns the number of rows with a non-finite value.
+    """
+    value_cols = [c for c in result_df.columns
+                  if c not in _NON_VALUE_COLUMNS
+                  and pd.api.types.is_numeric_dtype(result_df[c])]
+    if not value_cols:
+        return 0
+    bad = ~np.isfinite(result_df[value_cols].to_numpy(dtype=float)).all(axis=1)
+    n_bad = int(bad.sum())
+    if n_bad:
+        genos = pd.unique(result_df.loc[bad, "genotype"]).tolist()
+        listed = ", ".join(str(g) for g in genos[:max_listed])
+        more = (f" and {len(genos) - max_listed} more"
+                if len(genos) > max_listed else "")
+        warnings.warn(f"{n_bad} of {len(result_df)} predicted theta rows "
+                      f"({len(genos)} genotype(s): {listed}{more}) have NaN "
+                      f"or infinite values; they are written as they are.",
+                      RuntimeWarning, stacklevel=2)
+    return n_bad
+
+
 def predict_theta(config_file,
                   param_file,
                   out_prefix="tfs_pred_theta",
@@ -17,7 +52,9 @@ def predict_theta(config_file,
                   titrant_concs_file=None,
                   only_files=False,
                   num_samples=0,
-                  genotype_batch_size=2000):
+                  genotype_batch_size=2000,
+                  shared_shift=None,
+                  shift_seed=0):
     """
     Predict operator occupancy (theta) from a fitted hierarchical model.
 
@@ -39,6 +76,10 @@ def predict_theta(config_file,
     (genotype, titrant_name, titrant_conc) triple was in the training data,
     0 otherwise.
 
+    A relative theta component (``hill_relative``) predicts the wt-relative
+    growth variable X, not theta; its output gets a column ``theta_scale``
+    with the value ``X`` so nothing downstream takes it for an occupancy.
+
     Parameters
     ----------
     config_file : str
@@ -47,14 +88,14 @@ def predict_theta(config_file,
         Path to a posterior .h5 file produced by tfs-sample-posterior, or a
         MAP checkpoint .pkl file produced by tfs-fit-model.
 
-        When a .pkl file is supplied the output contains a single ``point_est``
-        column with no uncertainty information.
+        When a .pkl file is supplied the output has a single ``q0.5`` column
+        (the MAP point) and no uncertainty.
 
         To obtain uncertainty estimates from a MAP fit, first run
-        tfs-sample-posterior on the .pkl checkpoint; it will construct a
-        Laplace (Hessian-based) posterior approximation and write a .h5 file.
-        Passing that .h5 here produces the full quantile columns (median,
-        lower_95, upper_95, etc.).
+        tfs-sample-posterior on the .pkl checkpoint; it builds a Laplace
+        approximation and writes a .h5 file. Passing that .h5 here gives the
+        full ladder of bare ``q<level>`` quantile columns (``q0.025``,
+        ``q0.5``, ``q0.975``, ...).
 
         NUTS and SVI checkpoints are not supported directly; run
         tfs-sample-posterior first.
@@ -82,13 +123,25 @@ def predict_theta(config_file,
         Default False.
     num_samples : int or None, optional
         Number of joint posterior samples to include as sample_0 … sample_N-1
-        columns alongside the quantile columns. Set to None for quantiles only.
-        Default 0.
+        columns alongside the quantile columns. 0 (default) writes quantiles
+        only.
     genotype_batch_size : int, optional
         When predicting unmeasured genotypes, process this many at a time to
         cap the memory used by the epistasis pair-indicator matrix
         (batch_size × N_pair × 4 bytes).  Smaller values reduce peak memory
         at the cost of more iterations.  Default 2000.
+    shared_shift : str or None, optional
+        CSV of a shift shared by every non-wt genotype (columns genotype,
+        titrant_name, titrant_conc, shift), written by the two-stage fit:
+        the X change from one standard deviation of stage 1's k. Each
+        posterior draw gets one standard-normal multiple of it, the same
+        for every row, before quantiles are taken, so each genotype's
+        interval carries k's uncertainty while differences between
+        genotypes keep only what does not cancel. wt (fixed by the X gauge)
+        does not move. Needs a posterior file with draws (not a MAP
+        checkpoint) and training genotypes only. Default None.
+    shift_seed : int, optional
+        Seed for the shared per-draw multiples. Default 0.
     """
     if (titrant_names_file is None) != (titrant_concs_file is None):
         raise ValueError(
@@ -156,6 +209,12 @@ def predict_theta(config_file,
     # Decide extraction path.
     out_of_training = [g for g in requested_genotypes if g not in training_genotypes]
 
+    if out_of_training and shared_shift is not None:
+        raise ValueError(
+            "shared_shift applies to training genotypes only; "
+            f"{len(out_of_training)} requested genotype(s) were not in the "
+            "training data.")
+
     if out_of_training:
         module = model_registry.get("theta", {}).get(orchestrator._theta)
         if module is None or not hasattr(module, "predict_unmeasured"):
@@ -193,6 +252,8 @@ def predict_theta(config_file,
             manual_titrant_df=manual_titrant_df,
             num_samples=num_samples,
             q_to_get=q_to_get,
+            shared_shift=shared_shift,
+            shift_seed=shift_seed,
         )
         # extract_theta_curves returns all training genotypes when manual_titrant_df
         # has no 'genotype' column; filter to the requested subset.
@@ -205,6 +266,12 @@ def predict_theta(config_file,
         axis=1,
     )
 
+    theta_scale = getattr(model_registry["theta"].get(orchestrator._theta),
+                          "THETA_SCALE", "theta")
+    if theta_scale != "theta":
+        result_df["theta_scale"] = theta_scale
+
+    warn_nonfinite_theta(result_df)
     out_file = f"{out_prefix}.csv"
     result_df.to_csv(out_file, index=False)
     print(f"Wrote {len(result_df)} rows to {out_file}", flush=True)
@@ -217,7 +284,8 @@ def main():
                                        "titrant_concs_file": str,
                                        "only_files": bool,
                                        "num_samples": int,
-                                       "genotype_batch_size": int})
+                                       "genotype_batch_size": int,
+                                       "shared_shift": str})
 
 
 if __name__ == "__main__":

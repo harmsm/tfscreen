@@ -60,9 +60,9 @@ Create a YAML file with a top-level ``structures:`` mapping from short
 structure names to PDB file paths, plus ``n_chains_bearing_mut`` (the number
 of chains that carry each mutation: ``1`` for a monomer, ``2`` for a
 homodimer). The structure names must match what the downstream theta
-component expects. For the four-state (``O2_C4_*``) topologies the required
-keys are ``H``, ``HD``, ``L``, and ``LE2``, representing the four
-thermodynamic states:
+component expects. For the ``O2_C4_*`` models the required keys are ``H``,
+``HD``, ``L``, and ``LE2``, the four structures of their ΔΔG basis (HD is H
+bound to operator DNA, LE2 is L with both effector sites filled):
 
 .. code-block:: yaml
 
@@ -162,6 +162,13 @@ For each structure name ``{name}`` the file contains a group with:
 ``{name}/n_chains_bearing_mut``
     ``int32`` scalar: the ``n_chains_bearing_mut`` value from the input YAML.
 
+``{name}/wt_aa``
+    ``str`` (L,): the one-letter wild-type residue at each residue number,
+    read from the PDB (``X`` when unknown). Optional; files written before
+    it existed still load. When present, the loader checks it against the
+    library's wild-type residues and stops on a mismatch, which usually
+    means the PDB and the library number residues differently.
+
 Using the HDF5 File in a Run Config
 ------------------------------------
 
@@ -170,14 +177,19 @@ selecting a ``PnnC`` theta component:
 
 .. code-block:: bash
 
-    tfs-configure-model binding.csv --growth_df growth.csv \
+    tfs-configure-model --binding_df binding.csv --growth_df growth.csv \
         --theta_model thermo.O2_C4_K3_U0_a.PnnC \
-        --thermo_data ensemble.h5
+        --thermo_data ensemble.h5 \
+        --library_config library_config.yaml
 
-The path is saved into ``tfs_configure_config.yaml`` as the top-level
-``thermo_data`` key and read by ``tfscreen.tfmodel.generative.components.theta.thermo.io.load_struct_ensemble``
+The path is saved into ``tfs_configure_config.yaml`` under
+``components.thermo_data`` and read by ``tfscreen.tfmodel.generative.components.theta.thermo.io.load_struct_ensemble``
 at model-build time; you do not need to edit the config by hand. See
 ``configure_model_cli.py``'s ``thermo_data`` docstring for the full set of
 registry keys and their structure-name requirements (``PddG`` models instead
 take a hand-supplied ΔΔG CSV via the same flag — see
 ``load_ddG_prior_csv``).
+
+Every library residue must be in every structure. If the PDB numbering is
+offset from the library's, ``--thermo_residue_offset N`` adds N to the file's
+residue numbers.

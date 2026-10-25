@@ -1,237 +1,467 @@
-=================
-Model Input Data
-=================
+============
+Model inputs
+============
 
-``tfs-configure-model`` (see :doc:`analysis`, Step 1) accepts up to five
-pieces of experimental input. Only ``binding_df`` is strictly required;
-everything else is optional and adds additional constraints to the
-model. This page describes what each input contributes to the fit, the
-rough amount of data that is useful in practice, and how it is passed in.
+``tfs-configure-model`` builds a model from data files and a few
+experimental numbers, and writes the configuration ``tfs-fit-model``
+reads. This page describes what each input contributes to the fit and how
+to pass it. The commands that produce the data files are in
+:doc:`process-raw`, every flag is in :doc:`cli`, and the model components
+are in :doc:`model`.
+
+At least one of ``--growth_df`` and ``--binding_df`` is required. Both are
+flags. With both, the joint model is configured; with growth only, a
+growth-only model; with binding only, a binding-only model.
 
 .. list-table::
    :header-rows: 1
-   :widths: 20 15 65
+   :widths: 26 24 50
 
-   * - Input
-     - Required?
+   * - Flag
+     - When
      - What it anchors
-   * - ``binding_df``
-     - Yes
-     - Absolute scale/shape of *θ*, independent of growth
-   * - ``growth_df``
-     - No (binding-only model if omitted)
-     - ln_cfu\ :sub:`0`, dk_geno, activity, and *θ* jointly, via growth rate
-   * - ``base_growth_df``
-     - No
-     - The condition-growth baseline / dk_geno identifiability confound
-   * - ``presplit_df``
-     - No
-     - ln_cfu\ :sub:`0` directly, from pre-split sequencing counts
-   * - ``transformation_lambda``
-     - No (required by some ``transformation_model`` choices)
-     - The congression-correction prior
+   * - ``--growth_df``
+     - The screen itself
+     - ``ln_cfu0``, ``dk_geno``, activity and *θ* jointly, through growth
+   * - ``--library_config``
+     - Required with growth data
+     - Spiked genotypes, purity and pool shares for the congression model
+   * - ``--binding_df``
+     - Optional
+     - The absolute scale and shape of *θ*
+   * - ``--presplit_df``
+     - Optional
+     - ``ln_cfu0`` directly, from the presplit tube
+   * - ``--base_growth_df``
+     - Optional
+     - The growth baseline against ``dk_geno``
+   * - ``--transformation_lambda``
+     - Required by ``mixture``
+     - The congression rate
+   * - ``--theta_gauge_conc``
+     - ``hill_relative`` only
+     - Where wt's relative X is 1 and 0
+   * - ``--thermo_data``
+     - Thermodynamic *θ* models
+     - Structural features of each mutation
+   * - ``--thermo_ddG_units``, ``--thermo_temperature_K``,
+       ``--thermo_column_map``, ``--thermo_residue_offset``,
+       ``--thermo_max_missing_fraction``
+     - Optional
+     - How ``--thermo_data`` is read: ΔΔG units, column names, residue
+       numbering, coverage warning
+   * - ``--set_priors``, ``--growth_priors``, ``--growth_priors_wt_rates``
+     - Optional
+     - Prior values, without editing the priors CSV
 
-Binding Data (``binding_df``)
-==============================
+Growth data
+-----------
 
-**Role**
+``--growth_df`` is the table ``tfs-process-counts`` writes (or
+``tfs-simulate`` for a simulated experiment). It is the high-throughput
+part of the experiment: one sequencing run reports every genotype in a
+tube, so a screen has hundreds of thousands of rows. Growth identifies each
+genotype's starting abundance, its pleiotropic growth effect ``dk_geno``, its
+activity and its occupancy *θ* through
 
-Direct, low-throughput measurements of operator occupancy (*θ*) as a
-function of titrant concentration, independent of any growth-rate
-observation. Because it measures *θ* directly rather than through the
-growth likelihood, binding data anchors the absolute scale and shape of
-the occupancy curve — resolving degeneracies (e.g. between *θ* and
-activity *A*) that growth data alone cannot separate. It is the only
-required input to ``tfs-configure-model``: with ``growth_df`` omitted, a
-binding-only model is configured that infers *θ* from ``binding_df``
-alone.
+``ln_cfu = ln_cfu0 + (k_pre + dk_geno + m_pre·A·θ)·t_pre + (k_sel + dk_geno + m_sel·A·θ)·t_sel``
 
-**Scale**
-
-Binding curves are comparatively expensive to collect, so useful fits
-typically rely on **dozens** of measured genotype/titrant curves (e.g. a
-handful of calibration genotypes each measured across ~5-10 titrant
-concentrations) rather than a full library. Because growth data typically
-outnumber binding rows by several orders of magnitude, the binding
-log-likelihood is upweighted by ``binding_weight`` (auto-computed as
-``N_growth_rows / N_binding_rows`` unless overridden) so each binding
-observation carries a comparable gradient contribution to the average
-growth observation.
-
-**Format**
-
-A CSV (or ``pd.DataFrame``) with one row per (genotype, titrant_name,
-titrant_conc) measurement:
+The model reads these columns:
 
 .. list-table::
    :header-rows: 1
-   :widths: 25 75
+   :widths: 26 74
 
    * - Column
      - Meaning
    * - ``genotype``
-     - Genotype string (``wt``, ``M42I``, ``M42I/K84L``, ...)
+     - Genotype name.
+   * - ``library``
+     - The transformed library. Two libraries may share condition names.
+   * - ``replicate``
+     - Biological replicate; 1 when absent.
+   * - ``condition_pre``, ``condition_sel``
+     - Pre-selection and selection conditions.
+   * - ``t_pre``, ``t_sel``
+     - Minutes of pre-selection and selection growth.
+   * - ``titrant_name``, ``titrant_conc``
+     - Titrant and its concentration.
+   * - ``ln_cfu``, ``ln_cfu_var``
+     - The genotype's cells in the tube, in log form, and its variance.
+       ``ln_cfu_std`` may be given instead of the variance, or ``cfu`` with
+       ``cfu_std`` or ``cfu_var``.
+   * - ``counts``
+     - Reads of the genotype in the tube. Count likelihood only.
+   * - ``sample_reads``
+     - The tube's total reads, ``__unknown__`` included. Count likelihood
+       only. Older files without it can supply ``adjusted_counts`` and
+       ``frequency``, from which it is derived about 1% high, by the same
+       factor for every genotype in a tube.
+   * - ``sample_ln_cfu``
+     - The tube's total cells, in log form. Count likelihood only.
+       ``sample_cfu`` with ``sample_cfu_std`` or ``sample_cfu_var`` works
+       too.
+
+**Likelihood.** The default, ``--growth_likelihood counts``, observes the
+reads directly. Each genotype's count in a tube is negative binomial with
+mean equal to the tube's reads times the genotype's predicted frequency,
+and a learned dispersion whose variance has a part proportional to the mean
+and a quadratic part. There is no pseudocount, so a genotype with zero
+reads is an observation rather than a floor. Real counts vary several times
+more than Poisson, and the dispersion describes that. The count likelihood
+needs ``--growth_noise_model zero``, the default. It pairs with the default
+``--sample_offset_model level``: one ``ln_cfu`` offset per tube, shared by
+every genotype in it, with a learned SD. A tube's total enters the count
+likelihood as given, so the level offset is what absorbs an error in it.
+The SD columns of the totals are not used. ``--set_priors sigma_fixed=0.17``
+holds that SD instead of learning it. On simulations the count likelihood
+cut the RMSE of *θ* by 35 to 60% against the alternative.
+
+The alternative, ``--growth_likelihood lncfu``, observes each row's
+``ln_cfu`` with a Student-t likelihood whose scale is the row's
+``ln_cfu`` SD. It needs none of the count columns.
+
+Binding data
+------------
+
+``--binding_df`` holds direct, low-throughput measurements of *θ* against
+titrant concentration. Because they measure *θ* without going through
+growth, they fix its absolute scale and shape and separate effects growth
+alone cannot, such as *θ* against activity *A*. Useful fits rely on dozens
+of curves, a handful of genotypes each measured at 5 to 10 concentrations.
+Growth rows outnumber binding rows by orders of magnitude. The binding
+log-likelihood is weighted by ``--binding_weight``, 1 by default, so each
+binding observation counts once. ``tfs-process-binding`` makes this table
+from a lab table of single measurements.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 26 74
+
+   * - Column
+     - Meaning
+   * - ``genotype``
+     - Genotype name.
    * - ``titrant_name``
-     - Name of the titrant (matches ``growth_df`` naming when both are used)
+     - Titrant; it must match the growth table's naming.
    * - ``titrant_conc``
-     - Titrant concentration (float)
+     - Titrant concentration.
    * - ``theta_obs``
-     - Measured fractional occupancy, in [0, 1]
+     - Measured fractional occupancy.
    * - ``theta_std``
-     - Standard deviation / uncertainty of ``theta_obs``
+     - SD of ``theta_obs``.
 
-Passed as the required positional argument:
-
-.. code-block:: bash
-
-    tfs-configure-model binding.csv --growth_df growth.csv
-
-Growth Data (``growth_df``)
-==============================
-
-**Role**
-
-High-throughput growth-rate observations (``ln_cfu`` over time, per
-genotype/replicate/condition), produced by ``tfs-process-counts`` or
-``tfs-simulate``. This is the primary data source: it is what makes the
-approach *high-throughput*, and it jointly identifies ln_cfu\ :sub:`0`,
-``dk_geno`` (pleiotropic growth effect), activity, and *θ* through the
-growth likelihood
-``ln_cfu = ln_cfu0 + (k_pre + dk_geno + m_pre·A·θ)·t_pre + (k_sel + dk_geno + m_sel·A·θ)·t_sel``.
-Omitting it configures a binding-only model (see above).
-
-**Scale**
-
-Growth data is cheap per-genotype relative to binding data, since a
-single sequencing run reports abundances for the whole library
-simultaneously. Useful fits typically involve **hundreds of thousands**
-of rows — the product of library size (thousands of genotypes),
-replicates, conditions, titrant concentrations, and timepoints.
-
-**Format**
-
-A CSV with exactly the schema produced by ``tfs-process-counts`` /
-``tfs-simulate``; see :doc:`process-raw` for the full column
-specification (``genotype``, ``library``, ``replicate``,
-``condition_pre``, ``condition_sel``, ``titrant_name``, ``titrant_conc``,
-``t_pre``, ``t_sel``, ``ln_cfu``, ``ln_cfu_std``).
-
-Passed via the optional flag:
+In a joint model, binding rows whose genotype and titrant do not appear in
+the growth table are dropped with a message.
 
 .. code-block:: bash
 
-    tfs-configure-model binding.csv --growth_df growth.csv
+    tfs-configure-model --binding_df binding.csv --growth_df growth.csv \
+        --library_config library_config.yaml
 
-base_growth Data (``base_growth_df``)
-========================================
+Without binding data, growth fixes *θ* only up to an affine map: the growth
+slope ``m`` and baseline ``k`` absorb any rescaling of *θ*, so its absolute
+scale rests on the priors. A growth-only model has no binding likelihood,
+so ``--theta_binding_noise_model`` stays ``zero`` and ``--binding_weight``
+stays unset. ``tfs-prefit-calibration`` calibrates the growth link on the
+binding genotypes, so it refuses a growth-only model. The growth-only route
+is ``--theta_model hill_relative`` with its growth priors set from wt
+monoculture rates; see `Prior inputs`_ and :doc:`fitting`.
 
-**Role**
+Library description
+-------------------
 
-Direct, reference-condition growth-rate measurements for a small subset
-of genotypes (``wt`` at minimum). The ``condition_growth`` components'
-per-condition baseline (*k*) and the per-genotype pleiotropic effect
-(``dk_geno``) are only jointly identified up to an additive constant —
-``k += C, dk_geno -= C`` leaves the growth likelihood unchanged. Because
-``dk_geno`` is fixed to 0 for ``wt``, a direct measurement of wt's growth
-rate anchors the new ``k_ref`` scalar via
-``rate_obs ~ Normal(k_ref + dk_geno, rate_std)``, resolving this
-identifiability confound. See the **Per-condition growth priors** section
-of ``CLAUDE.md`` for the full mechanism (this is the complementary,
-insufficient-alone anchor; per-condition priors pinned during
-``tfs-prefit-calibration`` are the primary fix).
+``--library_config`` is the library YAML, the same file given to
+``tfs-process-fastq``; its keys are described in :doc:`process-raw`. It is
+required with growth data and refused without it.
 
-**Scale**
+``tfs-configure-model`` resolves it into ``{out_prefix}_library.csv``, one row
+per genotype with ``is_wt``, ``in_spiked_origin`` (encoded by a spiked
+sequence), ``pool_fraction`` (its expected share of the pool) and
+``bulk_fraction`` (the share of its cells that come from the bulk,
+congression-prone sub-libraries rather than from a monoclonal spike).
+``tfs-fit-model`` reads this snapshot, never the YAML, so the CSV is the
+place to override the design's numbers. ``in_spiked_origin`` sets which
+genotypes get the spiked ``ln_cfu0`` prior. ``bulk_fraction`` and
+``pool_fraction`` feed the ``mixture`` congression model.
 
-Small. ``wt`` is required after filtering against ``growth_df``; beyond
-that, ``base_growth_df`` may cover anywhere from just ``wt`` up to a
-handful of additional genotypes. Multiple rows for the same genotype are
-combined via inverse-variance weighting.
+Two checks run against the data. Every genotype in the growth, presplit and
+base-growth tables must be in the library; a mismatch usually means the
+counts were called with a different config, and a residue-numbering
+difference mismatches nearly every mutant. Every spiked genotype must have
+growth data; a missing spike also usually means a different config.
+``--allow_missing_spikes`` turns the second check into a warning, for a
+spike that really dropped out.
 
-**Format**
+``library_mixture`` cannot be checked: no data file ever saw it. It is
+recorded as given in the configuration's ``library`` block, and that record
+is its only defense. Give the best estimate of what went into the pool.
 
-.. list-table::
-   :header-rows: 1
-   :widths: 25 75
+A simulation's library YAML can restrict the library to a subsample
+(``library_genotypes``, ``library_subsample``; see :doc:`simulation`). Given
+that same YAML, ``tfs-configure-model`` builds the snapshot from the same
+subset, with the composition the simulation used, and records the
+subsample keys under ``library.subsample``.
 
-   * - Column
-     - Meaning
-   * - ``genotype``
-     - Genotype string; rows not present in ``growth_df`` are dropped
-   * - ``rate``
-     - Measured reference-condition growth rate
-   * - ``rate_std``
-     - Standard deviation of ``rate``. **Must be strictly positive** — a
-       value of 0 (e.g. from an unset ``noise`` in simulated data) causes
-       a division-by-zero that surfaces as a NaN-prior crash the first
-       time the model is traced (at ``tfs-prefit-calibration`` or
-       ``tfs-fit-model``, not at ``tfs-configure-model`` time).
+Presplit data
+-------------
 
-Passed via the optional flag:
+``--presplit_df`` holds the abundances measured in the presplit tube, before
+the culture was divided into tubes (t = -t_pre). It constrains each covered
+genotype's starting abundance ``ln_cfu0`` directly instead of leaving it to
+the extrapolation of the growth fit. It is cheap, one tube per library,
+replicate and pre-selection condition, so it can cover the whole library.
 
-.. code-block:: bash
-
-    tfs-configure-model binding.csv --growth_df growth.csv \
-        --base_growth_df base_growth.csv
-
-Pre-split Data (``presplit_df``)
-===================================
-
-**Role**
-
-Sequencing-derived abundance measurements taken *before* the library is
-divided into separate selection conditions (t = -t_pre). Genotypes it
-covers get a direct constraint on their initial population
-(ln_cfu\ :sub:`0`) instead of relying solely on the extrapolation implicit
-in the growth-rate fit.
-
-**Scale**
-
-Ideally the whole library, since it is collected from a single pooled
-sample at one timepoint (cheap relative to a full growth time-course).
-Genotypes present in ``growth_df`` but absent from ``presplit_df`` are
-not an error — they are kept and their ln_cfu\ :sub:`0` is masked out of
-this constraint.
-
-**Format**
-
-Produced by ``tfs-process-presplit``; see :doc:`process-raw` for the full
-column specification (``library``, ``replicate``, ``condition_pre``,
-``genotype``, ``ln_cfu``, ``ln_cfu_std``).
-
-Passed via the optional flag:
+``tfs-process-counts --presplit`` writes it, with columns ``library``,
+``replicate``, ``condition_pre``, ``genotype``, ``ln_cfu`` and ``ln_cfu_std``.
+Rows for genotypes not in the growth table are dropped. Genotypes in the
+growth table but not in the presplit table are kept and simply have no
+presplit constraint.
 
 .. code-block:: bash
 
-    tfs-configure-model binding.csv --growth_df growth.csv \
+    tfs-configure-model --growth_df growth.csv --library_config library_config.yaml \
         --presplit_df presplit.csv
 
-transformation_lambda
-========================
+Base growth data
+----------------
 
-**Role**
+``--base_growth_df`` holds direct growth-rate measurements in a reference
+condition for a few genotypes, wt at minimum. The condition baselines ``k``
+and the genotype effects ``dk_geno`` are identified only up to a shared
+constant: ``k + C`` with ``dk_geno - C`` leaves the growth likelihood
+unchanged. wt's ``dk_geno`` is fixed at 0, so a measurement of wt's rate
+pins a reference rate ``k_ref`` through
+``rate ~ Normal(k_ref + dk_geno, rate_std)``. This anchor is complementary;
+the per-condition priors set by ``tfs-prefit-calibration``, or by
+``--growth_priors``, are the main fix.
 
-Not a data file — a single experimentally measured ``(mean, std)`` pair
-describing plasmid congression (multiple plasmids entering one cell
-during transformation), in linear space (e.g. ``(0.36, 0.05)``). It is
-used to moment-match a LogNormal prior for the transformation model's
-lambda parameter, replacing the manual step of hand-editing the priors
-and guesses CSVs with rescaled log-space values. See
-:ref:`model-components`'s Transformation Correction section for what the
-``empirical``/``logit_norm``/``single`` models each do with it.
+.. list-table::
+   :header-rows: 1
+   :widths: 26 74
 
-**Scale**
+   * - Column
+     - Meaning
+   * - ``genotype``
+     - Genotype name. Rows not in the growth table are dropped, and wt must
+       remain.
+   * - ``rate``
+     - Measured growth rate in the reference condition, per minute.
+   * - ``rate_std``
+     - SD of ``rate``. It must be greater than 0.
 
-A single measurement (one mean, one uncertainty) from an independent
-congression-rate experiment — not a per-genotype or per-row dataset.
-
-**Format**
-
-Passed directly as two floats via ``--transformation_lambda``, required
-when ``--transformation_model`` is ``empirical`` or ``logit_norm``, and
-forbidden (must be omitted) when it is ``single``:
+Several rows for one genotype are combined by inverse-variance weighting.
 
 .. code-block:: bash
 
-    tfs-configure-model binding.csv --growth_df growth.csv \
-        --transformation_model empirical \
-        --transformation_lambda 0.36 0.05
+    tfs-configure-model --growth_df growth.csv --library_config library_config.yaml \
+        --base_growth_df base_growth.csv
+
+Congression rate
+----------------
+
+``--transformation_lambda MEAN STD`` is not a data file. It is a measured
+congression rate, the tendency of a transformed cell to take up more than
+one plasmid, as a mean and SD in linear space. It sets a LogNormal prior on
+the ``mixture`` transformation's lambda. It is required when
+``--transformation_model`` is ``mixture`` and refused when it is ``single``,
+the default.
+
+Lambda is the rate of a zero-truncated Poisson. A transformant, a cell that
+took up at least one plasmid and survived selection, carries ``M`` plasmids
+with ``P(M = m) = Poisson(m; lambda) / (1 - exp(-lambda))``. A measured mean
+number of distinct plasmids per transformant,
+``E[M] = lambda / (1 - exp(-lambda))``, has to be converted to lambda first.
+This is the same lambda as the simulator's
+``transformation_poisson_lambda``.
+
+.. code-block:: bash
+
+    tfs-configure-model --binding_df binding.csv --growth_df growth.csv \
+        --library_config library_config.yaml \
+        --transformation_model mixture --transformation_lambda 0.36 0.05
+
+Relative-X gauge
+----------------
+
+``--theta_gauge_conc C_LO C_HI`` applies only to ``--theta_model
+hill_relative``, which fits growth alone on a wt-relative scale X: wt's X is
+1 at ``C_LO`` and 0 at ``C_HI``. The default is the lowest and highest
+titrant concentration in the growth table, and the resolved values are
+written to the configuration. Other theta models refuse the flag.
+
+Structural data
+---------------
+
+``--thermo_data`` is required by the ``PddG`` and ``PnnC`` thermodynamic
+theta models and ignored by the others. For ``PnnC`` models it is the HDF5
+file written by ``scripts/generate_struct_ensemble.py``; see
+:doc:`ligandmpnn-features`. For ``PddG`` models it is a CSV with a mutation
+column and one column of prior mean ΔΔG per structure: ``H``, ``HD``, ``L``
+and ``LE2`` for the ``O2_C4`` models, and ``H``, ``HO``, ``L``, ``LO``,
+``HE2`` and ``LE2`` for the ``O2_C12`` models.
+
+The mutation column may be called ``mut``, ``Mutation`` or ``mutation``, with
+labels like ``H29A``. An unnamed pandas index column is dropped. Columns the
+model does not use are ignored, and the loader prints their names. A missing
+structure column is an error that lists the columns found.
+``--thermo_column_map HD=HO`` reads a model structure from a column with
+another name. Rows that are not single mutations are skipped.
+
+**Units and sign.** ΔΔG\ :sub:`X` is the change a mutation makes to the free
+energy of state X, so a positive value destabilizes X. For an equilibrium
+constant K\ :sub:`A→B` = [B]/[A] the models use
+Δln K\ :sub:`A→B` = ΔΔG\ :sub:`A` − ΔΔG\ :sub:`B`, which needs ΔΔG in units of
+kT. By default the CSV values are used as they are, in kT.
+``--thermo_ddG_units kcal/mol`` (or ``kJ/mol``) divides them by RT once at
+load, at ``--thermo_temperature_K`` (default 298.15 K). At 298 K one kcal/mol
+is 1.69 kT, so kcal/mol values read as kT understate every effect by that
+factor. A predictor that reports folding ΔG, where negative means more
+stable, must be sign-flipped first.
+
+**Projection.** The effector constants are per site, and a doubly liganded
+structure XE2 has weight K\ :sub:`x_e`\ :sup:`2`\ ·e\ :sup:`2` relative to X,
+so ΔΔG\ :sub:`X` − ΔΔG\ :sub:`XE2` is twice Δln K\ :sub:`x_e`. The models
+map ΔΔG to constant shifts as follows:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 35 40
+
+   * - Constant
+     - ``O2_C12`` structures
+     - ``O2_C4`` structures
+   * - K\ :sub:`h_l` (C4: K\ :sub:`HL`)
+     - ΔΔG\ :sub:`H` − ΔΔG\ :sub:`L`
+     - ΔΔG\ :sub:`H` − ΔΔG\ :sub:`L`
+   * - K\ :sub:`h_o` (C4: K\ :sub:`op`)
+     - ΔΔG\ :sub:`H` − ΔΔG\ :sub:`HO`
+     - ΔΔG\ :sub:`H` − ΔΔG\ :sub:`HD`
+   * - K\ :sub:`h_e`
+     - (ΔΔG\ :sub:`H` − ΔΔG\ :sub:`HE2`)/2
+     - fixed at 0
+   * - K\ :sub:`l_o`
+     - ΔΔG\ :sub:`L` − ΔΔG\ :sub:`LO`
+     - fixed at 0
+   * - K\ :sub:`l_e` (C4: K\ :sub:`E`)
+     - (ΔΔG\ :sub:`L` − ΔΔG\ :sub:`LE2`)/2
+     - (ΔΔG\ :sub:`L` − ΔΔG\ :sub:`LE2`)/2
+   * - K\ :sub:`u` (``U1`` only)
+     - ΔΔG\ :sub:`H`
+     - ΔΔG\ :sub:`H`
+
+Before 2026-10-11 the ``O2_C4`` K\ :sub:`E` row was ΔΔG\ :sub:`L` −
+ΔΔG\ :sub:`LE2`, for a two-effector M\ :sup:`-2` constant.
+
+**Numbering and coverage.** The loader matches CSV labels to the library's
+mutations and prints how many it covers. It stops with an error when the
+CSV covers none of them, or when the CSV's wild-type residue at a library
+position differs from the library's. Both usually mean the two number
+residues differently. The error suggests the offset that lines them up, and
+``--thermo_residue_offset N`` adds N to every CSV residue number, for
+example 1 for a 0-based file. A library mutation absent from the CSV gets a
+prior mean of 0, no structural prediction. When more than
+``--thermo_max_missing_fraction`` of them (default 0.1) are absent, a
+warning lists them.
+
+The ``PnnC`` HDF5 path applies the same residue offset. Every library
+residue must be present in every structure, since there is no neutral
+feature value for a missing one. When the file stores ``wt_aa``, the wt
+residues are checked against the library too.
+
+The five ``--thermo_*`` flags are stored in the configuration as
+``components.thermo_options``. A configuration without it reads the file as
+before: kT, file numbering, model column names.
+
+A fit uses the CSV values as the prior means of each mutation's ΔΔG and
+estimates one SD σ_s per structure for how far the true ΔΔG stray from
+them, ΔΔG ~ Normal(CSV value, σ_s). The data see only the constants, so the
+fit puts this prior on the constant shifts it implies: each mutation's
+Δln K is multivariate normal around the projected CSV values, with the
+covariance that per-structure scatter produces. σ_s has a LogNormal prior
+whose median is 1 kT and whose 95% range is about 0.1 to 10 kT
+(``theta_ddG_sigma_loc`` = 0 and ``theta_ddG_sigma_scale`` = 1.2 in the
+priors file, in log kT). Every σ_s is identified by how the constants vary
+together, in every model. The fit starts at the projected CSV values and
+σ_s = 1 kT. Under MAP, σ_s settles near the scatter of the fitted constants
+about the CSV. A σ_s that runs toward 0 means the data cannot resolve the
+constants more finely than the CSV gives them, not that the CSV is exact.
+This can happen when the data are weak.
+
+To hold σ_s at a known value instead of estimating it, set
+``theta_ddG_sigma_fixed`` to that value in kT, for example
+``--set_priors theta_ddG_sigma_fixed=1.69``. The value is in kT whatever
+``--thermo_ddG_units`` says. Every structure gets the same value; there is
+no per-structure hold. The fit then has no σ_s parameters, the LogNormal
+prior is unused, and the extracted ``ddG_sigma`` table reports the held
+value. The default 0 estimates σ_s. A held σ_s suits a simulation study
+that compares a fit told the true noise with one that estimates it.
+
+The fit reports a per-structure ΔΔG for each mutation. In the models with
+an unfolded state (``U1``) it follows from the constants exactly. In the
+models without one (``U0``) every constant is a difference of structures, so
+a shift shared by all structures changes nothing the data see. There the
+reported ΔΔG is the most probable per-structure ΔΔG given the constants and
+the prior, and its shared shift comes from the CSV, not from the data.
+Compare U0 fits on their constants. To test whether the structural prior
+helps, simulate with the simulate-config key ``ddG_truth_sd`` (see
+:doc:`simulation`), which sets how far the simulated truth sits from the
+same CSV, and fit with the unchanged CSV.
+
+Prior inputs
+------------
+
+``tfs-configure-model`` writes every prior at its component default into
+``{out_prefix}_priors.csv``. Three flags change it at configure time, so the
+file is never edited by hand. Growth priors are applied first, then
+``--set_priors``.
+
+**--set_priors name=value ...** sets scalar priors. A name is a full row
+name of the priors CSV, such as
+``growth.sample_offset.sigma_fixed``, or a dotted suffix that matches
+exactly one row, such as ``sigma_fixed``. An unknown or ambiguous name is an
+error, and per-condition priors are set with ``--growth_priors`` instead.
+Common uses: ``sigma_fixed=0.17`` holds the SD of the level tube offsets;
+``theta_log_hill_n_hyper_scale_fixed=0.5`` holds the population SD of
+``log(hill_n)``; for ``hill_relative``, ``theta_X_low_hyper_scale_fixed``,
+``theta_X_delta_hyper_scale_fixed`` and
+``theta_log_hill_K_hyper_scale_fixed`` hold the population SDs of its other
+parameters; for the ``PddG`` and ``PnnC`` models,
+``theta_ddG_sigma_fixed`` holds the per-structure ΔΔG scale σ_s (full name
+``theta.theta_ddG_sigma_fixed``). A value of 0 leaves the SD learned.
+
+**--growth_priors table.csv** sets per-condition priors for ``linear``
+condition growth. The table has a ``condition_rep`` column, the condition
+name as it appears in ``condition_pre`` or ``condition_sel``, and any of
+``k_loc``, ``k_scale``, ``m_loc`` and ``m_scale``, in rates per minute. With
+a ``replicate`` column each row applies to one replicate; without it, to
+every replicate. Conditions and values the table leaves out keep the
+defaults, and a condition the model does not have is an error.
+``m_scale`` sets the scale for selective and non-selective conditions
+alike. Use it where ``tfs-prefit-calibration`` does not run, such as a
+growth-only model; the pre-fit overwrites ``k_loc`` and ``m_loc``.
+
+.. code-block:: text
+
+    condition_rep,k_loc,k_scale,m_loc,m_scale
+    kanR+kan,0.015,0.002,-0.010,0.003
+    kanR-kan,0.020,0.002,,
+
+**--growth_priors_wt_rates rates.csv** derives those priors for
+``hill_relative`` from wt monoculture growth rates. The columns are
+``condition_sel``, ``titrant_conc``, ``rate_mean``, ``rate_sd`` and
+``num_replicates``, with one row at each gauge concentration for every
+listed condition. In the X gauge wt grows at ``k`` at ``C_HI`` and at
+``k + m`` at ``C_LO``, so ``k`` is the rate at ``C_HI`` and ``m`` is the rate at
+``C_LO`` minus ``k``. Each SD is the standard error of the replicate mean,
+floored at ``--growth_priors_sd_floor`` (default 0.002 per minute). List only
+the conditions where the monoculture stands for the library's wt. These
+values override a ``--growth_priors`` table for the conditions they list,
+and they cannot be combined with a per-replicate table.
+
+.. code-block:: bash
+
+    tfs-configure-model --growth_df growth.csv --library_config library_config.yaml \
+        --theta_model hill_relative \
+        --growth_priors_wt_rates wt_rates.csv \
+        --set_priors sigma_fixed=0.17 theta_log_hill_n_hyper_scale_fixed=0.5

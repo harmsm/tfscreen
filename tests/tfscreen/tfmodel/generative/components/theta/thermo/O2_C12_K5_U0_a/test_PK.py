@@ -226,7 +226,7 @@ def test_get_hyperparameters_has_required_keys():
         "theta_ln_K_l_o_wt_loc", "theta_ln_K_l_o_wt_scale",
         "theta_ln_K_h_e_wt_loc", "theta_ln_K_h_e_wt_scale",
         "theta_ln_K_l_e_wt_loc", "theta_ln_K_l_e_wt_scale",
-        "theta_tf_total_M", "theta_op_total_M",
+        "theta_tf_total_M",
         "theta_sigma_d_ln_K_h_l_scale", "theta_sigma_d_ln_K_h_o_scale",
         "theta_sigma_d_ln_K_l_o_scale",
         "theta_sigma_d_ln_K_h_e_scale", "theta_sigma_d_ln_K_l_e_scale",
@@ -242,8 +242,7 @@ def test_get_priors_type():
 
 def test_get_priors_physical_constants():
     p = get_priors()
-    assert p.theta_tf_total_M == pytest.approx(6.5e-7)
-    assert p.theta_op_total_M == pytest.approx(2.5e-8)
+    assert p.theta_tf_total_M == pytest.approx(1e-5)
 
 
 def test_get_priors_matches_hyperparameters():
@@ -528,12 +527,11 @@ class TestGuide:
         sample_names = {k for k, v in tr.items() if v["type"] == "sample"}
         assert not any("epi" in k for k in sample_names)
 
-    def test_tf_op_totals_preserved(self, mock_data_no_epi):
+    def test_tf_total_preserved(self, mock_data_no_epi):
         priors = get_priors()
         with seed(rng_seed=0):
             tp = guide("theta", mock_data_no_epi, priors)
-        assert tp.tf_total == pytest.approx(6.5e-7)
-        assert tp.op_total == pytest.approx(2.5e-8)
+        assert tp.tf_total == pytest.approx(1e-5)
 
     def test_variational_params_registered_no_epi(self, mock_data_no_epi):
         priors = get_priors()

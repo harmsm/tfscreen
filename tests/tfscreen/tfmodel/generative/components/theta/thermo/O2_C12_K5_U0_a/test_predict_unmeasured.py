@@ -24,8 +24,7 @@ PAIR_LABELS = ["K84L/M42I"]
 TITRANT_NAMES = ["IPTG"]
 
 # Physical constants (monomer units for tf_total, consistent with MWC convention)
-TF_TOTAL = 6.5e-7
-OP_TOTAL = 2.5e-8
+TF_TOTAL = 1e-5
 CONC_SCALE = 1e-3   # concentrations in mM → M
 
 # Biophysically plausible WT values (from lnK_mut get_hyperparameters defaults)
@@ -102,7 +101,6 @@ def _common_kwargs(post, pair_labels=None):
         param_posteriors=post,
         q_to_get={"median": 0.5, "lower": 0.025, "upper": 0.975},
         tf_total=TF_TOTAL,
-        op_total=OP_TOTAL,
         conc_unit_scale=CONC_SCALE,
     )
 
@@ -211,7 +209,6 @@ class TestMwcLnKNnPriorPredict:
             param_posteriors=post,
             q_to_get={"median": 0.5},
             tf_total=TF_TOTAL,
-            op_total=OP_TOTAL,
             conc_unit_scale=CONC_SCALE,
         )
         result = lnK_nn_predict(**kw)
@@ -252,7 +249,6 @@ class TestMwcLnKNnPriorPredict:
             pair_labels=[],
             q_to_get={"median": 0.5},
             tf_total=TF_TOTAL,
-            op_total=OP_TOTAL,
             conc_unit_scale=CONC_SCALE,
         )
         res_nn  = lnK_nn_predict(param_posteriors=post_nn,  **kw)

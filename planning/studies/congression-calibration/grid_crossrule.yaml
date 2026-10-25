@@ -1,0 +1,73 @@
+# ---------------------------------------------------------------------------
+# Cross-rule validation (congression physics plan, step 4)
+#
+#   tfs-setup-sim-grid grid_crossrule.yaml --out_prefix congression_calibration_crossrule
+#   for d in congression_calibration_crossrule/run_*/; do (cd "$d" && sbatch run.srun); done
+#
+# Simulate with the max or the homodimer theta rule; fit each simulation
+# with `single` and with the mixture under each rule (matched lambda prior).
+# Lambda 0.357 (the real library) and 1.0 x seeds 1-2; otherwise the
+# settings of grid_baseline.yaml. 24 runs. The simulate-max / fit-max cells
+# repeat runs from grid_measured.yaml and grid_baseline.yaml, so the grid
+# stands on its own.
+#
+# Summaries: against `single` (fit_theta_rule na), and homodimer against
+# max on the same simulation:
+#
+#   tfs-summarize-calibration congression_calibration_crossrule \
+#       --out_prefix calib/crossrule \
+#       --baseline fit=single lam_prior=off fit_theta_rule=na
+#   tfs-summarize-calibration congression_calibration_crossrule \
+#       --out_prefix calib/crossrule_vs_max --baseline fit_theta_rule=max
+# ---------------------------------------------------------------------------
+
+base_config: simulate_config.yaml
+
+run_name: "lam{{ transformation_poisson_lambda }}__sim{{ congression_theta_rule }}__seed{{ seed }}__{{ fit }}_{{ fit_theta_rule }}"
+
+output_file: run.srun
+
+
+simulate:
+
+  - name: lam
+    variants:
+      - transformation_poisson_lambda: 0.357
+      - transformation_poisson_lambda: 1.0
+
+  - name: sim_rule
+    variants:
+      - congression_theta_rule: max
+      - congression_theta_rule: homodimer
+
+  - name: dk
+    variants:
+      - dk_geno_hyper_loc: -3.5
+        dk_geno_hyper_scale: 0.5
+        dk_geno_hyper_shift: 0.02
+
+  - name: seed
+    variants:
+      - seed: 1
+      - seed: 2
+
+
+template:
+
+  # fit_theta_rule "na": `single` has no theta rule (run.srun ignores it).
+  - name: fit
+    variants:
+      - fit: single
+        lam_prior: "off"
+        fit_theta_rule: na
+      - fit: mixture
+        lam_prior: matched
+        fit_theta_rule: max
+      - fit: mixture
+        lam_prior: matched
+        fit_theta_rule: homodimer
+
+  - name: anchor
+    variants:
+      - binding_weight: 1.0
+        k_scale_ceiling: 0.005

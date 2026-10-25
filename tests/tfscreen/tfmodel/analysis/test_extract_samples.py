@@ -92,8 +92,7 @@ def _lac_dimer_mut_model():
     })
     model.growth_tm = mock_tm
     model.training_tm = mock_tm
-    model.priors.theta.theta_tf_total_M = 6.5e-7
-    model.priors.theta.theta_op_total_M = 2.5e-8
+    model.priors.theta.theta_tf_total_M = 1e-5
     return model
 
 

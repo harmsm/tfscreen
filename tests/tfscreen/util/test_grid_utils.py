@@ -1,15 +1,23 @@
 """
-Unit tests for tfscreen.util.grid_utils.
-
-The relativize_node / relativize_config_paths / relativize_template_vars
-functions are already covered in
-tests/tfscreen/tfmodel/scripts/test_setup_grid_cli.py, so this file focuses
-on the remaining helpers: sanitize, make_jinja_env, and make_run_name.
+Unit tests for tfscreen.util.grid_utils: sanitize, make_jinja_env,
+make_run_name and the input-staging helpers (InputStager,
+check_no_outside_paths, stage_template_vars, render_run_template).
 """
+
+import os
 
 import pytest
 
-from tfscreen.util.grid_utils import sanitize, make_jinja_env, make_run_name
+from tfscreen.util.grid_utils import (
+    INPUTS_DIRNAME,
+    InputStager,
+    check_no_outside_paths,
+    make_jinja_env,
+    make_run_name,
+    render_run_template,
+    sanitize,
+    stage_template_vars,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -133,3 +141,119 @@ class TestMakeRunName:
     def test_bad_template_raises_value_error(self):
         with pytest.raises(ValueError, match="run_name template error"):
             make_run_name("{% for %}", {}, 0)
+
+
+# ---------------------------------------------------------------------------
+# InputStager
+# ---------------------------------------------------------------------------
+
+def _write(path, text):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as fh:
+        fh.write(text)
+    return str(path)
+
+
+class TestInputStager:
+    def test_copies_once_and_returns_run_relative_path(self, tmp_path):
+        src = _write(tmp_path / "data" / "growth.csv", "g")
+        stager = InputStager(tmp_path / "grid", "tfs-test")
+        rel = stager.stage(src, "x")
+        assert rel == os.path.join("..", INPUTS_DIRNAME, "growth.csv")
+        assert stager.stage(src, "x") == rel
+        assert os.listdir(tmp_path / "grid" / INPUTS_DIRNAME) == ["growth.csv"]
+        run_dir = tmp_path / "grid" / "run_0001"
+        run_dir.mkdir()
+        assert open(os.path.join(run_dir, rel)).read() == "g"
+
+    def test_same_name_different_file_gets_suffix(self, tmp_path):
+        a = _write(tmp_path / "a" / "growth.csv", "a")
+        b = _write(tmp_path / "b" / "growth.csv", "b")
+        stager = InputStager(tmp_path / "grid", "tfs-test")
+        assert stager.stage(a, "x").endswith("growth.csv")
+        rel_b = stager.stage(b, "x")
+        assert rel_b.endswith("growth_2.csv")
+        assert open(tmp_path / "grid" / INPUTS_DIRNAME / "growth_2.csv").read() == "b"
+
+    def test_never_overwrites_changed_existing_copy(self, tmp_path):
+        old = _write(tmp_path / "grid" / INPUTS_DIRNAME / "growth.csv", "old")
+        src = _write(tmp_path / "data" / "growth.csv", "new")
+        rel = InputStager(tmp_path / "grid", "tfs-test").stage(src, "x")
+        assert rel.endswith("growth_2.csv")
+        assert open(old).read() == "old"
+
+    def test_reuses_identical_existing_copy(self, tmp_path):
+        _write(tmp_path / "grid" / INPUTS_DIRNAME / "growth.csv", "same")
+        src = _write(tmp_path / "data" / "growth.csv", "same")
+        rel = InputStager(tmp_path / "grid", "tfs-test").stage(src, "x")
+        assert rel.endswith(os.sep + "growth.csv")
+
+    def test_missing_file_raises(self, tmp_path):
+        with pytest.raises(FileNotFoundError, match="my key"):
+            InputStager(tmp_path, "tfs-test").stage(str(tmp_path / "no.csv"), "my key")
+
+    def test_directory_raises(self, tmp_path):
+        with pytest.raises(ValueError, match="directory"):
+            InputStager(tmp_path, "tfs-test").stage(str(tmp_path), "my key")
+
+    def test_dry_run_copies_nothing(self, tmp_path):
+        src = _write(tmp_path / "data" / "growth.csv", "g")
+        InputStager(tmp_path / "grid", "tfs-test", dry_run=True).stage(src, "x")
+        assert not os.path.exists(tmp_path / "grid")
+
+
+# ---------------------------------------------------------------------------
+# check_no_outside_paths
+# ---------------------------------------------------------------------------
+
+class TestCheckNoOutsidePaths:
+    def test_known_key_allowed(self, tmp_path):
+        f = _write(tmp_path / "g.csv", "x")
+        check_no_outside_paths({"growth_df": f}, [("growth_df",)], str(tmp_path), "")
+
+    def test_unknown_absolute_file_raises(self, tmp_path):
+        f = _write(tmp_path / "g.csv", "x")
+        with pytest.raises(ValueError, match="a.b.*HINT"):
+            check_no_outside_paths({"a": {"b": f}}, [], str(tmp_path), "HINT")
+
+    def test_unknown_relative_file_raises(self, tmp_path):
+        _write(tmp_path / "g.csv", "x")
+        with pytest.raises(ValueError, match="g.csv"):
+            check_no_outside_paths({"a": ["g.csv"]}, [], str(tmp_path), "")
+
+    def test_per_key_source_dirs(self, tmp_path):
+        _write(tmp_path / "base" / "g.csv", "x")
+        cfg = {"a": "g.csv", "b": "g.csv"}
+        dirs = {"a": str(tmp_path), "b": str(tmp_path / "base")}
+        with pytest.raises(ValueError, match="'b'"):
+            check_no_outside_paths(cfg, [], dirs, "")
+
+    def test_non_paths_pass(self, tmp_path):
+        check_no_outside_paths({"a": "linear", "b": 1, "c": [0.1, None]},
+                               [], str(tmp_path), "")
+
+
+# ---------------------------------------------------------------------------
+# stage_template_vars / render_run_template
+# ---------------------------------------------------------------------------
+
+class TestStageTemplateVars:
+    def test_file_values_staged_others_untouched(self, tmp_path):
+        _write(tmp_path / "genos.txt", "wt")
+        stager = InputStager(tmp_path / "grid", "tfs-test")
+        out = stage_template_vars(
+            {"f": "genos.txt", "seed": 1, "label": "x", "here": "."},
+            str(tmp_path), stager)
+        assert out == {"f": os.path.join("..", INPUTS_DIRNAME, "genos.txt"),
+                       "seed": 1, "label": "x", "here": "."}
+
+    def test_directory_value_raises(self, tmp_path):
+        (tmp_path / "d").mkdir()
+        with pytest.raises(ValueError, match="directory"):
+            stage_template_vars({"f": "d"}, str(tmp_path),
+                                InputStager(tmp_path, "tfs-test"))
+
+    def test_render_names_run_on_undefined(self):
+        tmpl = make_jinja_env(strict=True).from_string("{{ missing }}")
+        with pytest.raises(ValueError, match="run_0007"):
+            render_run_template(tmpl, {}, "run_0007")

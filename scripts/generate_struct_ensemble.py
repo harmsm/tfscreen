@@ -22,6 +22,9 @@ structure_names              — str dataset : names of all structures in this f
 {name}/dist_matrix           — float32 (L, L)  : min Cα-Cα distance in Å across
                                all chain-pair combinations
 {name}/n_chains_bearing_mut  — int32 scalar    : chains that carry a mutation
+{name}/wt_aa                 — str     (L,)    : one-letter wt residue at each
+                               residue number ('X' if unknown); the loader
+                               checks it against the library's wt residues
 
 Input YAML format
 -----------------
@@ -111,6 +114,35 @@ def _parse_pdb_ca(pdb_path):
     if not chains:
         raise ValueError(f"No Cα atoms found in {pdb_path!r}")
     return chains
+
+
+_THREE_TO_ONE = {
+    'ALA': 'A', 'CYS': 'C', 'ASP': 'D', 'GLU': 'E', 'PHE': 'F', 'GLY': 'G',
+    'HIS': 'H', 'ILE': 'I', 'LYS': 'K', 'LEU': 'L', 'MET': 'M', 'ASN': 'N',
+    'PRO': 'P', 'GLN': 'Q', 'ARG': 'R', 'SER': 'S', 'THR': 'T', 'VAL': 'V',
+    'TRP': 'W', 'TYR': 'Y', 'MSE': 'M', 'HSD': 'H', 'HSE': 'H', 'HSP': 'H',
+    'HID': 'H', 'HIE': 'H', 'HIP': 'H',
+}
+
+
+def _parse_pdb_wt_aa(pdb_path, unique_resnums):
+    """
+    One-letter residue at each residue number, from the first Cα ATOM record
+    with that number in any chain ('X' when absent or non-canonical).
+    """
+    found = {}
+    with open(pdb_path) as fh:
+        for line in fh:
+            if not line.startswith('ATOM') or line[12:16].strip() != 'CA':
+                continue
+            try:
+                resnum = int(line[22:26])
+            except ValueError:
+                continue
+            if resnum not in found:
+                found[resnum] = _THREE_TO_ONE.get(line[17:20].strip(), 'X')
+    return np.array([found.get(int(r), 'X') for r in unique_resnums],
+                    dtype=object)
 
 
 def _build_min_dist_matrix(ca_chains, unique_resnums):
@@ -450,6 +482,8 @@ def main():
                 'residue_nums':         unique_resnums,
                 'dist_matrix':          dist_matrix,
                 'n_chains_bearing_mut': np.int32(n_chains),
+                'wt_aa':                _parse_pdb_wt_aa(pdb_path,
+                                                         unique_resnums.tolist()),
             }
 
     # ------------------------------------------------------------------
@@ -473,6 +507,8 @@ def main():
             grp.create_dataset('residue_nums',         data=arrays['residue_nums'])
             grp.create_dataset('dist_matrix',          data=arrays['dist_matrix'])
             grp.create_dataset('n_chains_bearing_mut', data=arrays['n_chains_bearing_mut'])
+            grp.create_dataset('wt_aa', data=arrays['wt_aa'].astype(str).tolist(),
+                               dtype=h5py.string_dtype())
 
     print(f"\nWrote HDF5:            {args.out}")
 

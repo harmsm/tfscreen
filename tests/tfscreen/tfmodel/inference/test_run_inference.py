@@ -6,7 +6,12 @@ import pandas as pd
 import numpyro
 import numpyro.distributions as dist
 import h5py
-from tfscreen.tfmodel.inference.run_inference import RunInference
+from tfscreen.tfmodel.inference.run_inference import (
+    LAPLACE_MIN_EIGENVALUE,
+    RunInference,
+    laplace_eigenvalue_floor,
+    resolve_guide_type,
+)
 import os
 import dill
 import optax
@@ -15,6 +20,13 @@ from numpyro.infer.svi import SVIState
 
 from numpyro.infer.svi import SVIState
 from flax import struct
+
+@pytest.fixture(autouse=True)
+def _run_in_tmp_path(tmp_path, monkeypatch):
+    # Many tests below call run_optimization / _write_checkpoint with the
+    # default out_prefix ("tfs"), which writes checkpoint/loss files into the
+    # cwd. Run every test from its own tmp dir so nothing leaks into the repo.
+    monkeypatch.chdir(tmp_path)
 
 @struct.dataclass
 class MockData:
@@ -59,116 +71,6 @@ def test_setup_svi():
     svi = ri.setup_svi(guide_type="delta")
     assert isinstance(svi.guide, AutoDelta)
     
-def test_run_optimization(tmpdir, mocker):
-    model = MockModel()
-    ri = RunInference(model, seed=42)
-    
-    out_prefix = os.path.join(tmpdir, "test")
-    
-    # Mock jax and svi methods to avoid actual execution
-    mocker.patch("jax.jit", side_effect=lambda x: x)
-    # Mock scan_fn or just lax.scan
-    mocker.patch("jax.lax.scan", return_value=("state", jnp.array([1.0, 0.9])))
-    
-    mock_svi = mocker.Mock()
-    mock_svi.init.return_value = "state"
-    mock_svi.update.return_value = ("state", 1.0)
-    mock_svi.get_params.return_value = {"p": jnp.array(1.0)}
-    
-    # Mock get_key to avoid randomness issues in tests
-    mocker.patch.object(ri, "get_key", return_value=jnp.array([0, 42]))
-    
-    state, params, converged = ri.run_optimization(
-        mock_svi, 
-        max_num_epochs=10, 
-        convergence_check_interval=1,
-        checkpoint_interval=1,
-        out_prefix=out_prefix,
-        convergence_tolerance=0.01,
-        patience=1
-    )
-    
-    assert state is not None
-    assert "p" in params
-    assert isinstance(converged, bool)
-    assert os.path.exists(f"{out_prefix}_losses.bin")
-    assert os.path.exists(f"{out_prefix}_losses.txt")
-
-def test_run_optimization_no_patch_scan(mocker):
-    model = MockModel()
-    ri = RunInference(model, seed=42)
-    # 228: svi_state is None
-    mocker.patch("jax.jit", side_effect=lambda x: x)
-    mock_svi = mocker.Mock()
-    # Use jnp array instead of string for state
-    state = jnp.array([0.0])
-    mock_svi.init.return_value = state
-    mock_svi.update.return_value = (state, 1.0)
-    mock_svi.get_params.return_value = {"p": jnp.array(1.0)}
-    
-    # 236-241: scan_fn
-    # Don't patch lax.scan, let it run
-    # 228: Call jitter
-    ri.run_optimization(mock_svi, max_num_epochs=2, convergence_check_interval=1, checkpoint_interval=1, init_params={"p": jnp.array(1.0)})
-    assert len(ri._loss_deque) > 0
-
-def test_run_optimization_svi_state_types(tmpdir, mocker):
-    model = MockModel()
-    ri = RunInference(model, seed=42)
-    mocker.patch("jax.jit", side_effect=lambda x: x)
-    mock_svi = mocker.Mock()
-    mock_svi.init.return_value = jnp.array([0.0])
-    mock_svi.update.return_value = (jnp.array([0.0]), 1.0)
-    mock_svi.get_params.return_value = {"p": jnp.array(1.0)}
-    
-    # 269: Passing a non-string, non-None state
-    ri.run_optimization(mock_svi, svi_state=jnp.array([1.0]), max_num_epochs=1)
-    
-    # 265-266: Passing an invalid string
-    with pytest.raises(ValueError, match="is not valid"):
-        ri.run_optimization(mock_svi, svi_state="invalid_path_to_svi_state", max_num_epochs=1)
-
-def test_run_optimization_convergence(mocker):
-    model = MockModel()
-    ri = RunInference(model, seed=42)
-    
-    mocker.patch("jax.jit", side_effect=lambda x: x)
-    # Return losses that decrease and then stabilize
-    losses = np.concatenate([np.linspace(100, 10, 50), np.ones(50) * 10])
-    mocker.patch("jax.lax.scan", return_value=("state", jnp.array(losses)))
-    
-    mock_svi = mocker.Mock()
-    mock_svi.init.return_value = "state"
-    mock_svi.update.return_value = ("state", 10.0)
-    mock_svi.get_params.return_value = {"p": jnp.array(1.0)}
-    
-    state, params, converged = ri.run_optimization(
-        mock_svi, 
-        max_num_epochs=100, 
-        convergence_check_interval=1,
-        checkpoint_interval=1,
-        convergence_tolerance=1e-1,
-        convergence_window=1,
-        patience=1
-    )
-    # It might not converge in exactly this setup due to how scan returns, 
-    # but it covers the logic in _update_loss_deque and _check_convergence
-    assert converged in [True, False]
-
-def test_run_optimization_nan_explosion(mocker):
-    model = MockModel()
-    ri = RunInference(model, seed=42)
-    
-    mocker.patch("jax.jit", side_effect=lambda x: x)
-    mocker.patch("jax.lax.scan", return_value=("state", jnp.array([1.0])))
-    
-    mock_svi = mocker.Mock()
-    mock_svi.init.return_value = "state"
-    mock_svi.get_params.return_value = {"p": jnp.array(np.nan)}
-    
-    with pytest.raises(RuntimeError, match="model exploded"):
-        ri.run_optimization(mock_svi, max_num_epochs=1, convergence_check_interval=1, checkpoint_interval=1)
-
 # =============================================================================
 # get_posteriors — real model + component guide, no Predictive mocking
 # =============================================================================
@@ -414,32 +316,6 @@ def test_concat_genotype_chunks_negative_axis():
     np.testing.assert_array_equal(merged, expected)
 
 
-def test_run_optimization_restore(tmpdir, mocker):
-    model = MockModel()
-    ri = RunInference(model, seed=42)
-    out_prefix = os.path.join(tmpdir, "test_restore")
-    
-    # Create a valid checkpoint
-    state = SVIState(None, None, None) if ri.get_key().size > 0 else SVIState(None, None)
-    try:
-        state = SVIState(None, None, None)
-    except:
-        state = SVIState(None, None)
-    
-    ri._write_checkpoint(state, out_prefix)
-    checkpoint_file = f"{out_prefix}_checkpoint.pkl"
-    
-    mocker.patch("jax.jit", side_effect=lambda x: x)
-    mocker.patch("jax.lax.scan", return_value=(state, jnp.array([1.0])))
-    
-    mock_svi = mocker.Mock()
-    mock_svi.init.return_value = state
-    mock_svi.update.return_value = (state, 1.0)
-    mock_svi.get_params.return_value = {"p": jnp.array(1.0)}
-    
-    # Run with checkpoint path
-    ri.run_optimization(mock_svi, svi_state=checkpoint_file, max_num_epochs=1, convergence_check_interval=1, checkpoint_interval=1)
-
 def test_write_params(tmpdir):
     model = MockModel()
     ri = RunInference(model, seed=42)
@@ -472,7 +348,7 @@ def test_write_losses_txt_has_header(tmpdir):
     assert os.path.exists(txt_path)
     with open(txt_path) as fh:
         first_line = fh.readline().strip()
-    assert first_line == "epoch,loss,relative_change"
+    assert first_line == "epoch,loss,step,step_size"
 
 
 def test_write_losses_txt_format(tmpdir):
@@ -485,107 +361,19 @@ def test_write_losses_txt_format(tmpdir):
 
     # Simulate one interval having completed
     ri._current_step = ri._iterations_per_epoch  # epoch 1
-    ri._relative_change = 0.123
-    ri._write_losses(np.array([42.0, 43.0]), out_prefix)
+    ri._step_size = 1e-3
+    ri._write_losses(np.array([42.0, 43.0, 50.0]), out_prefix)
 
     with open(f"{out_prefix}_losses.txt") as fh:
         lines = [l.strip() for l in fh if l.strip()]
 
-    assert lines[0] == "epoch,loss,relative_change"
-    # Second line: epoch=1, loss=last value (43.0), relative_change=0.123
+    assert lines[0] == "epoch,loss,step,step_size"
+    # Second line: epoch=1, loss=median of the block (43.0), step, step size
     parts = lines[1].split(",")
     assert int(parts[0]) == 1
     assert float(parts[1]) == pytest.approx(43.0)
-    assert float(parts[2]) == pytest.approx(0.123)
-
-
-def test_update_loss_deque_all_constant():
-    """Constant losses produce relative_change=0 via zero numerator."""
-    model = MockModel()
-    ri = RunInference(model, seed=42)
-    from collections import deque
-    ri._loss_deque = deque(maxlen=200)
-    ri._update_loss_deque(np.ones(200))
-    assert ri._relative_change == 0.0
-
-
-def test_update_loss_deque_uses_total_improvement():
-    """Metric is normalized by total improvement, not current loss magnitude."""
-    model = MockModel()
-    ri = RunInference(model, seed=42)
-    from collections import deque
-
-    # Deque of size 4; warm-up: old_half=[100,90], new_half=[80,70]
-    ri._loss_deque = deque(maxlen=4)
-    ri._update_loss_deque([100.0, 90.0, 80.0, 70.0])
-
-    # loss_start = mean([100,90]) = 95; loss_best = mean([80,70]) = 75
-    # denom = |95 - 75| = 20; numerator = |95 - 75| = 20 → metric = 1.0
-    assert ri._loss_start == pytest.approx(95.0)
-    assert ri._loss_best == pytest.approx(75.0)
-    assert ri._relative_change == pytest.approx(1.0)
-
-
-def test_update_loss_deque_sign_change():
-    """Metric is robust when the loss function crosses zero."""
-    model = MockModel()
-    ri = RunInference(model, seed=42)
-    from collections import deque
-
-    ri._loss_deque = deque(maxlen=4)
-    ri._update_loss_deque([10.0, 5.0, -5.0, -10.0])
-
-    # loss_start = 7.5; loss_best = -7.5; denom = 15; metric = 15/15 = 1.0
-    assert ri._relative_change == pytest.approx(1.0)
-    assert ri._loss_start == pytest.approx(7.5)
-    assert ri._loss_best == pytest.approx(-7.5)
-
-
-def test_update_loss_deque_loss_start_fixed_after_first_check():
-    """loss_start is captured once at the end of warm-up and never updated."""
-    model = MockModel()
-    ri = RunInference(model, seed=42)
-    from collections import deque
-
-    ri._loss_deque = deque(maxlen=4)
-    ri._update_loss_deque([100.0, 90.0, 80.0, 70.0])
-    first_loss_start = ri._loss_start
-
-    ri._update_loss_deque([60.0, 50.0])
-    assert ri._loss_start == first_loss_start
-
-
-def test_update_loss_deque_warmup_returns_inf():
-    """Returns inf while the deque is not yet full."""
-    model = MockModel()
-    ri = RunInference(model, seed=42)
-    from collections import deque
-    ri._loss_deque = deque(maxlen=10)
-    ri._update_loss_deque([1.0, 2.0, 3.0])
-    assert ri._relative_change == np.inf
-
-
-def test_loss_state_reset_at_run_start(mocker):
-    """_loss_start and _loss_best are reset each time run_optimization begins."""
-    model = MockModel()
-    ri = RunInference(model, seed=42)
-
-    # Simulate stale state from a previous run
-    ri._loss_start = 999.0
-    ri._loss_best = -999.0
-
-    mocker.patch("jax.jit", side_effect=lambda x: x)
-    mocker.patch("jax.lax.scan", return_value=("state", jnp.array([1.0])))
-    mock_svi = mocker.Mock()
-    mock_svi.init.return_value = "state"
-    mock_svi.update.return_value = ("state", 1.0)
-    mock_svi.get_params.return_value = {"p": jnp.array(1.0)}
-
-    ri.run_optimization(mock_svi, max_num_epochs=1,
-                        convergence_check_interval=1, checkpoint_interval=1)
-
-    # After the run resets state, _loss_start must not retain the stale value
-    assert ri._loss_start != 999.0
+    assert int(parts[2]) == ri._iterations_per_epoch
+    assert float(parts[3]) == pytest.approx(1e-3)
 
 
 def test_get_site_names(mocker):
@@ -651,6 +439,130 @@ def test_setup_svi_invalid_guide_type():
     with pytest.raises(ValueError, match="not recognized"):
         ri.setup_svi(guide_type="bad_guide")
 
+
+# -----------------------------------------------------------------------------
+# Autoguide batch-safety guard in run_optimization
+# -----------------------------------------------------------------------------
+
+_SMOKE_DATA = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..", "..", "..", "smoke-tests", "test_data",
+)
+
+
+def _smoke_orchestrator(**kwargs):
+    from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+    return ModelOrchestrator(
+        growth_df=os.path.join(_SMOKE_DATA, "growth-smoke.csv"),
+        binding_df=os.path.join(_SMOKE_DATA, "binding-smoke.csv"),
+        batch_size=6,
+        **kwargs,
+    )
+
+
+def _svi_with_guide(ri, guide):
+    from numpyro.infer import SVI, Trace_ELBO
+    from numpyro.optim import ClippedAdam
+    return SVI(ri.model.jax_model, guide, ClippedAdam(step_size=1e-3),
+               loss=Trace_ELBO())
+
+
+def test_run_optimization_refuses_any_autoguide(tmpdir):
+    """The guard keys off AutoGuide, not a particular guide class."""
+    from numpyro.infer.autoguide import AutoNormal
+    ri = RunInference(_smoke_orchestrator(theta_growth_noise="beta"), seed=0)
+    svi = _svi_with_guide(ri, AutoNormal(ri.model.jax_model))
+    with pytest.raises(ValueError, match="'AutoNormal' cannot fit"):
+        ri.run_optimization(svi, max_num_epochs=1,
+                            out_prefix=os.path.join(tmpdir, "refused"))
+
+
+def test_check_autoguide_reports_dense_guide_size(capsys):
+    from numpyro.infer.autoguide import AutoMultivariateNormal
+    ri = RunInference(_smoke_orchestrator(), seed=0)
+    ri._check_autoguide(AutoMultivariateNormal(ri.model.jax_model))
+    assert "latent dimensions" in capsys.readouterr().out
+
+
+def test_check_autoguide_warns_on_large_dense_guide(monkeypatch):
+    from numpyro.infer.autoguide import AutoMultivariateNormal
+    from tfscreen.tfmodel.inference import run_inference
+    monkeypatch.setattr(run_inference, "_DENSE_GUIDE_WARN_GB", 0.0)
+    ri = RunInference(_smoke_orchestrator(), seed=0)
+    with pytest.warns(UserWarning, match="auto_low_rank_multivariate_normal"):
+        ri._check_autoguide(AutoMultivariateNormal(ri.model.jax_model))
+
+
+@pytest.mark.parametrize("guide_type,cls_name", [
+    ("delta", "AutoDelta"),
+    ("auto_normal", "AutoNormal"),
+    ("auto_diagonal_normal", "AutoDiagonalNormal"),
+    ("auto_multivariate_normal", "AutoMultivariateNormal"),
+    ("auto_low_rank_multivariate_normal", "AutoLowRankMultivariateNormal"),
+])
+def test_setup_svi_builds_autoguide(guide_type, cls_name):
+    from numpyro.infer import autoguide
+    ri = RunInference(MockModel(), seed=42)
+    svi = ri.setup_svi(guide_type=guide_type)
+    assert isinstance(svi.guide, getattr(autoguide, cls_name))
+    assert ri._guide_type == guide_type
+
+
+@pytest.mark.parametrize("alias,canonical", [
+    ("AutoNormal", "auto_normal"),
+    ("AUTO_NORMAL", "auto_normal"),
+    ("AutoDelta", "delta"),
+    ("auto_delta", "delta"),
+    ("autolowrankmultivariatenormal", "auto_low_rank_multivariate_normal"),
+    ("Component", "component"),
+])
+def test_resolve_guide_type_aliases(alias, canonical):
+    assert resolve_guide_type(alias) == canonical
+
+
+def test_setup_svi_forwards_guide_kwargs():
+    ri = RunInference(MockModel(), seed=42)
+    svi = ri.setup_svi(guide_type="auto_low_rank_multivariate_normal",
+                       guide_kwargs={"rank": 3, "init_scale": 0.05})
+    assert svi.guide.rank == 3
+    assert svi.guide._init_scale == 0.05
+    assert ri._guide_kwargs == {"rank": 3, "init_scale": 0.05}
+
+
+@pytest.mark.parametrize("guide_type,kwargs", [
+    ("auto_normal", {"rank": 3}),
+    ("delta", {"init_scale": 0.1}),
+    ("component", {"init_scale": 0.1}),
+])
+def test_setup_svi_rejects_unaccepted_kwargs(guide_type, kwargs):
+    ri = RunInference(MockModel(), seed=42)
+    with pytest.raises(ValueError, match="not accepted"):
+        ri.setup_svi(guide_type=guide_type, guide_kwargs=kwargs)
+
+
+def test_setup_svi_component_rejects_init_values():
+    ri = RunInference(MockModel(), seed=42)
+    with pytest.raises(ValueError, match="init_values"):
+        ri.setup_svi(guide_type="component", init_values={"a": 1.0})
+
+
+def test_setup_svi_init_values_become_init_loc_fn():
+    ri = RunInference(MockModel(), seed=42)
+    values = {"global_p": 1.0}
+    svi = ri.setup_svi(guide_type="auto_normal", init_values=values)
+    assert svi.guide.init_loc_fn.keywords["values"] is values
+
+
+def test_checkpoint_records_guide(tmpdir):
+    ri = RunInference(MockModel(), seed=42)
+    ri.setup_svi(guide_type="auto_normal", guide_kwargs={"init_scale": 0.2})
+    out_prefix = os.path.join(tmpdir, "guide_meta")
+    ri._write_checkpoint({"dummy": np.zeros(2)}, out_prefix)
+    with open(f"{out_prefix}_checkpoint.pkl", "rb") as f:
+        saved = dill.load(f)
+    assert saved["guide_type"] == "auto_normal"
+    assert saved["guide_kwargs"] == {"init_scale": 0.2}
+
 def test_restore_checkpoint_current_step(tmpdir):
     """_restore_checkpoint restores _current_step when present in checkpoint."""
     model = MockModel()
@@ -676,77 +588,6 @@ def test_restore_checkpoint_current_step(tmpdir):
     restored = ri._restore_checkpoint(checkpoint_file)
     assert ri._current_step == 999
     assert isinstance(restored, SVIState)
-
-
-def test_checkpoint_round_trips_convergence_state(tmpdir):
-    """_write_checkpoint saves loss_start/loss_best; _restore_checkpoint loads them."""
-    model = MockModel()
-    ri = RunInference(model, seed=42)
-    out_prefix = os.path.join(tmpdir, "test_conv")
-
-    ri._loss_start = -12345.0
-    ri._loss_best = -99999.0
-
-    try:
-        state = SVIState(None, None, None)
-    except Exception:
-        state = SVIState(None, None)
-
-    ri._write_checkpoint(state, out_prefix)
-
-    # Fresh instance simulates a restart
-    ri2 = RunInference(model, seed=0)
-    assert ri2._loss_start is None
-    assert ri2._loss_best == np.inf
-
-    ri2._restore_checkpoint(f"{out_prefix}_checkpoint.pkl")
-    assert ri2._loss_start == pytest.approx(-12345.0)
-    assert ri2._loss_best == pytest.approx(-99999.0)
-
-
-def test_checkpoint_missing_convergence_state_uses_defaults(tmpdir):
-    """Old checkpoints without loss_start/loss_best leave defaults intact."""
-    model = MockModel()
-    ri = RunInference(model, seed=42)
-    out_prefix = os.path.join(tmpdir, "test_old")
-
-    try:
-        state = SVIState(None, None, None)
-    except Exception:
-        state = SVIState(None, None)
-
-    import dill as _dill
-    checkpoint_file = f"{out_prefix}_checkpoint.pkl"
-    with open(checkpoint_file, "wb") as f:
-        _dill.dump({'svi_state': state, 'main_key': ri._main_key}, f)
-
-    ri._restore_checkpoint(checkpoint_file)
-    assert ri._loss_start is None   # default — not present in old checkpoint
-    assert ri._loss_best == np.inf  # default
-
-def test_run_optimization_1d_block_idx(mocker):
-    """1D block_idx is reshaped to 2D before passing to fast_scan."""
-
-    class MockModel1D(MockModel):
-        def get_random_idx(self, key=None, num_batches=1):
-            # Always return a 1D array regardless of num_batches
-            return np.array([0])
-
-    model = MockModel1D()
-    ri = RunInference(model, seed=42)
-
-    mocker.patch("jax.jit", side_effect=lambda x: x)
-    mocker.patch("jax.lax.scan", return_value=("state", jnp.array([1.0])))
-
-    mock_svi = mocker.Mock()
-    mock_svi.init.return_value = "state"
-    mock_svi.update.return_value = ("state", 1.0)
-    mock_svi.get_params.return_value = {"p": jnp.array(1.0)}
-
-    # Should not raise; the reshape path is exercised
-    ri.run_optimization(mock_svi, max_num_epochs=1,
-                        convergence_check_interval=1,
-                        checkpoint_interval=1)
 
 
 # =============================================================================
@@ -802,6 +643,30 @@ def test_map_params_to_constrained_values_finite():
 # =============================================================================
 # get_map_posteriors
 # =============================================================================
+
+def _batch_sized_map_params(model, batch_size):
+    """MAP params whose genotype latent is batch-sized (pre-fix checkpoint)."""
+    ri, map_params = _laplace_map_params(model)
+    aliased = dict(map_params)
+    aliased["geno_p_auto_loc"] = map_params["geno_p_auto_loc"][..., :batch_size]
+    return ri, aliased
+
+
+def test_get_map_posteriors_rejects_batch_sized_latent(tmpdir):
+    """A genotype latent shorter than the library is refused, not clipped."""
+    ri, aliased = _batch_sized_map_params(LaplaceModel(num_genotype=5), 3)
+    with pytest.raises(ValueError, match="mini-batch position"):
+        ri.get_map_posteriors(aliased, out_prefix=str(tmpdir.join("aliased")))
+
+
+def test_get_laplace_posteriors_rejects_batch_sized_latent(tmpdir):
+    """The Laplace path refuses it too, before computing the Hessian."""
+    ri, aliased = _batch_sized_map_params(LaplaceModel(num_genotype=5), 3)
+    with pytest.raises(ValueError, match="mini-batch position"):
+        ri.get_laplace_posteriors(aliased,
+                                  out_prefix=str(tmpdir.join("aliased")),
+                                  num_posterior_samples=2)
+
 
 def test_get_map_posteriors_creates_h5(tmpdir):
     """get_map_posteriors writes an HDF5 posterior file."""
@@ -1090,44 +955,6 @@ def test_get_laplace_posteriors_non_auto_loc_keys_ignored(tmpdir):
     assert os.path.exists(f"{out_prefix}_posterior.h5")
 
 
-def test_get_laplace_posteriors_negative_eigenvalues_no_nan(tmpdir, mocker):
-    """An indefinite Hessian (negative eigenvalues) must not produce NaN posteriors.
-
-    Regression test: a MAP solution at a saddle point has negative Hessian
-    eigenvalues.  The old code (jitter + jnp.linalg.inv) left the covariance
-    non-PD in float32, causing jax.random.multivariate_normal to return all-NaN.
-    The fix uses numpy float64 eigendecomposition, clamps negative eigenvalues
-    to 1e-3, and samples via z @ L^T instead of multivariate_normal.
-
-    LaplaceModel(num_genotype=2) has D=3 unconstrained parameters
-    (1 global_p + 2 geno_p), so a 3x3 Hessian is injected.
-    """
-    model = LaplaceModel(num_genotype=2)
-    ri, map_params = _laplace_map_params(model)
-
-    # 3x3 symmetric matrix with one clearly negative eigenvalue (-5).
-    bad_H = jnp.array([[10., 0., 0.],
-                        [ 0., -5., 0.],
-                        [ 0.,  0.,  8.]])
-
-    # jax.hessian(fn)(x): patch so that jax.hessian(pe_fn) returns a callable
-    # that ignores x and returns bad_H regardless of fn/x.
-    mocker.patch("jax.hessian", return_value=lambda x: bad_H)
-
-    out_prefix = str(tmpdir.join("laplace_negeig"))
-    ri.get_laplace_posteriors(
-        map_params=map_params,
-        out_prefix=out_prefix,
-        num_posterior_samples=20,
-        sampling_batch_size=10,
-        forward_batch_size=2,
-    )
-
-    with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
-        for k in hf.keys():
-            assert not np.any(np.isnan(hf[k][:])), f"NaN found in posterior key '{k}'"
-
-
 # =============================================================================
 # get_nuts_posteriors
 # =============================================================================
@@ -1396,170 +1223,424 @@ def test_write_epoch_checkpoint_atomic_no_tmp_left(tmpdir):
 
 
 # =============================================================================
-# run_optimization — epoch checkpoint integration
+# compute_hessian_sigmas: takes constrained MAP values (svi.get_params)
 # =============================================================================
 
-def _optimization_mocks(mocker):
-    """Shared mock setup for run_optimization epoch checkpoint tests."""
-    mocker.patch("jax.jit", side_effect=lambda x: x)
-    mocker.patch("jax.lax.scan", return_value=("state", jnp.array([1.0])))
-    mock_svi = mocker.Mock()
-    mock_svi.init.return_value = "state"
-    mock_svi.update.return_value = ("state", 1.0)
-    mock_svi.get_params.return_value = {"p": jnp.array(1.0)}
-    return mock_svi
+def test_compute_hessian_sigmas_takes_constrained_values():
+    """
+    run_optimization returns svi.get_params(), which AutoDelta constrains.
+    compute_hessian_sigmas must map those back to unconstrained space; it
+    used to take them as unconstrained, so a positive site was evaluated at
+    exp(value) (the pre-fit's k_scale came out NaN on the count likelihood,
+    2026-09-27). With s ~ LogNormal(1, 0.5), log s is Normal(1, 0.5): at the
+    MAP s = e the unconstrained sigma is 0.5 and the constrained one e / 2.
+    """
+    def model(data, priors):
+        numpyro.sample("s", dist.LogNormal(1.0, 0.5))
+        numpyro.sample("x", dist.Normal(0.0, 2.0))
+
+    m = MockModel(num_genotype=1)
+    m.jax_model = model
+    ri = RunInference(m, seed=0)
+
+    # confirm what AutoDelta's get_params hands over
+    svi = ri.setup_svi(guide_type="delta",
+                       init_values={"s": float(np.e), "x": 0.0})
+    state = svi.init(ri.get_key(), data=m.data, priors=m.priors)
+    params = svi.get_params(state)
+    assert float(params["s_auto_loc"]) == pytest.approx(np.e, rel=1e-5)
+
+    out = ri.compute_hessian_sigmas(params)
+    assert float(out["s"]["map"]) == pytest.approx(np.e, rel=1e-5)
+    assert float(out["s"]["sigma"]) == pytest.approx(np.e * 0.5, rel=1e-3)
+    assert float(out["x"]["sigma"]) == pytest.approx(2.0, rel=1e-3)
 
 
-def test_run_optimization_epoch_checkpoint_creates_dir(tmpdir, mocker):
-    """A checkpoints/ directory is created next to out_prefix when interval is set."""
-    model = MockModel()
-    ri = RunInference(model, seed=42)
-    mock_svi = _optimization_mocks(mocker)
-    out_prefix = os.path.join(str(tmpdir), "myrun")
+def test_run_nuts_starts_at_given_values(mocker):
+    """
+    run_nuts starts every chain at the given constrained site values and
+    falls back to prior medians (it once handed initialize_model's ParamInfo
+    tuple to init_to_value, which matched no site).
+    """
+    from unittest.mock import MagicMock
 
-    ri.run_optimization(
-        mock_svi,
-        out_prefix=out_prefix,
-        max_num_epochs=1,
-        convergence_check_interval=1,
-        checkpoint_interval=1,
-        epoch_checkpoint_interval=1,
-    )
+    import numpyro.distributions as dist
 
-    assert os.path.isdir(os.path.join(str(tmpdir), "checkpoints"))
-
-
-def test_run_optimization_epoch_checkpoint_file_written(tmpdir, mocker):
-    """An epoch checkpoint file is written after the first epoch."""
-    model = MockModel()
-    ri = RunInference(model, seed=42)
-    mock_svi = _optimization_mocks(mocker)
-    out_prefix = os.path.join(str(tmpdir), "myrun")
-
-    ri.run_optimization(
-        mock_svi,
-        out_prefix=out_prefix,
-        max_num_epochs=1,
-        convergence_check_interval=1,
-        checkpoint_interval=1,
-        epoch_checkpoint_interval=1,
-    )
-
-    checkpoints_dir = os.path.join(str(tmpdir), "checkpoints")
-    pkl_files = [f for f in os.listdir(checkpoints_dir) if f.endswith(".pkl")]
-    assert len(pkl_files) >= 1
+    ri = RunInference.__new__(RunInference)
+    ri._seed = 0
+    ri.model = MagicMock()
+    ri.model.data.num_genotype = 3
+    nuts = mocker.patch("numpyro.infer.NUTS")
+    mcmc = mocker.patch("numpyro.infer.MCMC")
+    mcmc.return_value.get_extra_fields.return_value = {}
+    ri.run_nuts(num_warmup=1, num_samples=1, init_values={"a": 2.5},
+                dense_mass=True)
+    assert nuts.call_args.kwargs["dense_mass"] is True
+    strategy = nuts.call_args.kwargs["init_strategy"]
+    site = {"type": "sample", "is_observed": False, "name": "a",
+            "fn": dist.Normal(0.0, 1.0), "value": None, "kwargs": {}}
+    assert float(strategy(site)) == 2.5
+    # the full data set goes in as one batch
+    ri.model.get_batch.assert_called_once()
 
 
-def test_run_optimization_epoch_checkpoint_correct_epoch_number(tmpdir, mocker):
-    """The epoch number in the filename matches step // iterations_per_epoch."""
-    model = MockModel()
-    ri = RunInference(model, seed=42)
-    mock_svi = _optimization_mocks(mocker)
-    out_prefix = os.path.join(str(tmpdir), "myrun")
+def test_report_nuts_diagnostics(capsys):
+    """Worst split R-hat and least n_eff, skipping constant sites."""
+    from unittest.mock import MagicMock
 
-    ri.run_optimization(
-        mock_svi,
-        out_prefix=out_prefix,
-        max_num_epochs=2,
-        convergence_check_interval=1,
-        checkpoint_interval=1,
-        epoch_checkpoint_interval=1,
-    )
-
-    checkpoints_dir = os.path.join(str(tmpdir), "checkpoints")
-    # MockModel: num_genotype=10, batch=1 → _iterations_per_epoch=10.
-    # After epoch 1: step=10, epoch=1 → 0000001_checkpoint.pkl
-    assert os.path.exists(os.path.join(checkpoints_dir, "0000001_checkpoint.pkl"))
+    rng = np.random.default_rng(0)
+    mixed = rng.normal(size=(2, 200))
+    stuck = np.stack([rng.normal(0, 1, 200), rng.normal(5, 1, 200)])
+    mcmc = MagicMock()
+    mcmc.get_samples.return_value = {"good": mixed, "bad": stuck,
+                                     "fixed": np.zeros((2, 200))}
+    RunInference._report_nuts_diagnostics(mcmc)
+    out = capsys.readouterr().out
+    assert "max split R-hat" in out and "(bad)" in out
+    assert "inf" not in out
 
 
-def test_run_optimization_epoch_checkpoint_disabled_when_none(tmpdir, mocker):
-    """No epoch checkpoints dir is created when epoch_checkpoint_interval=None."""
-    model = MockModel()
-    ri = RunInference(model, seed=42)
-    mock_svi = _optimization_mocks(mocker)
-    out_prefix = os.path.join(str(tmpdir), "myrun")
+# ---------------------------------------------------------------------------
+# laplace_eigenvalue_floor
+# ---------------------------------------------------------------------------
 
-    ri.run_optimization(
-        mock_svi,
-        out_prefix=out_prefix,
-        max_num_epochs=2,
-        convergence_check_interval=1,
-        checkpoint_interval=1,
-        epoch_checkpoint_interval=None,
-    )
-
-    assert not os.path.isdir(os.path.join(str(tmpdir), "checkpoints"))
-
-
-def test_run_optimization_epoch_checkpoint_disabled_when_zero(tmpdir, mocker):
-    """No epoch checkpoints are written when epoch_checkpoint_interval=0."""
-    model = MockModel()
-    ri = RunInference(model, seed=42)
-    mock_svi = _optimization_mocks(mocker)
-    out_prefix = os.path.join(str(tmpdir), "myrun")
-
-    ri.run_optimization(
-        mock_svi,
-        out_prefix=out_prefix,
-        max_num_epochs=2,
-        convergence_check_interval=1,
-        checkpoint_interval=1,
-        epoch_checkpoint_interval=0,
-    )
-
-    assert not os.path.isdir(os.path.join(str(tmpdir), "checkpoints"))
+def test_laplace_eigenvalue_floor_uses_prior_curvature():
+    """A direction flatter than the prior (or negative) gets the prior's curvature."""
+    rng = np.random.default_rng(0)
+    q, _ = np.linalg.qr(rng.normal(size=(3, 3)))
+    prior_precision = np.array([4.0, 100.0, 1.0])
+    curvature = np.einsum("ij,i,ij->j", q, prior_precision, q)
+    eigenvalues = np.array([-50.0, 1e6, 0.5 * curvature[2]])
+    floored, n = laplace_eigenvalue_floor(eigenvalues, q, prior_precision)
+    assert n == 2
+    assert floored[0] == pytest.approx(curvature[0])
+    assert floored[1] == pytest.approx(1e6)          # well-determined: kept
+    assert floored[2] == pytest.approx(curvature[2])
 
 
-def test_run_optimization_epoch_checkpoint_file_exists_error(tmpdir, mocker):
-    """FileExistsError propagates when an epoch checkpoint already exists."""
-    model = MockModel()
-    ri = RunInference(model, seed=42)
-    mock_svi = _optimization_mocks(mocker)
-    out_prefix = os.path.join(str(tmpdir), "myrun")
+def test_laplace_eigenvalue_floor_bounds_leak_into_other_elements():
+    """
+    A negative eigenvalue no longer inflates every element it touches.
 
-    ri.run_optimization(
-        mock_svi,
-        out_prefix=out_prefix,
-        max_num_epochs=1,
-        convergence_check_interval=1,
-        checkpoint_interval=1,
-        epoch_checkpoint_interval=1,
-    )
-
-    # A second run pointing at the same checkpoints/ directory must raise.
-    ri2 = RunInference(MockModel(), seed=7)
-    mock_svi2 = mocker.Mock()
-    mock_svi2.init.return_value = "state"
-    mock_svi2.update.return_value = ("state", 1.0)
-    mock_svi2.get_params.return_value = {"p": jnp.array(1.0)}
-
-    with pytest.raises(FileExistsError, match="checkpoint.pkl"):
-        ri2.run_optimization(
-            mock_svi2,
-            out_prefix=out_prefix,
-            max_num_epochs=1,
-            convergence_check_interval=1,
-            checkpoint_interval=1,
-            epoch_checkpoint_interval=1,
-        )
+    The old flat floor of 1e-3 gave such a direction a variance of 1000, so
+    an element with a 3% share of it (the growth slope m, seed 8 of the
+    two-stage grid) had an SD near 1.
+    """
+    theta = 0.03
+    v = np.array([[np.cos(theta), -np.sin(theta)],
+                  [np.sin(theta), np.cos(theta)]])
+    eigenvalues = np.array([-10.0, 1e6])     # direction 0 mostly element 0
+    prior_precision = np.array([1.0, 1e4])
+    floored, _ = laplace_eigenvalue_floor(eigenvalues, v, prior_precision)
+    cov = v @ np.diag(1.0 / floored) @ v.T
+    old = v @ np.diag(1.0 / np.maximum(eigenvalues, 1e-3)) @ v.T
+    assert np.sqrt(old[1, 1]) > 0.5
+    assert np.sqrt(cov[1, 1]) < 0.05
 
 
-def test_run_optimization_epoch_checkpoint_dir_alongside_out_prefix(tmpdir, mocker):
-    """checkpoints/ is placed in the same directory as out_prefix, not the cwd."""
-    subdir = tmpdir.mkdir("subdir")
-    model = MockModel()
-    ri = RunInference(model, seed=42)
-    mock_svi = _optimization_mocks(mocker)
-    out_prefix = os.path.join(str(subdir), "run")
+def test_laplace_eigenvalue_floor_minimum():
+    floored, n = laplace_eigenvalue_floor(np.array([-1.0]), np.eye(1),
+                                          np.array([0.0]))
+    assert floored[0] == pytest.approx(LAPLACE_MIN_EIGENVALUE)
+    assert n == 1
 
-    ri.run_optimization(
-        mock_svi,
-        out_prefix=out_prefix,
-        max_num_epochs=1,
-        convergence_check_interval=1,
-        checkpoint_interval=1,
-        epoch_checkpoint_interval=1,
-    )
 
-    assert os.path.isdir(os.path.join(str(subdir), "checkpoints"))
-    assert not os.path.isdir(os.path.join(str(tmpdir), "checkpoints"))
+# =============================================================================
+# Block (per-genotype) Laplace
+# =============================================================================
+
+@struct.dataclass
+class BlockData:
+    batch_idx: jnp.ndarray
+    y: jnp.ndarray            # (num_genotype, 2) observations
+    num_genotype: int = struct.field(pytree_node=False, default=0)
+    coupled: bool = struct.field(pytree_node=False, default=False)
+
+
+def _block_jax_model(data, priors):
+    """Shared mu; per-genotype (a, b) in a library-sized plate, sliced by
+    batch_idx; two observations per genotype that correlate a and b. With
+    ``coupled`` each observation also sees the library mean of a, so the
+    genotype blocks are not separable."""
+    mu = numpyro.sample("mu", dist.Normal(0., 1.))
+    with numpyro.plate("block_genotype_plate", data.num_genotype, dim=-1):
+        a = numpyro.sample("a", dist.Normal(mu, 1.))
+        b = numpyro.sample("b", dist.Normal(0., 1.))
+    a_b, b_b = a[data.batch_idx], b[data.batch_idx]
+    if data.coupled:
+        a_b = a_b + jnp.mean(a)
+    y = data.y[data.batch_idx]
+    with numpyro.plate("obs_genotype_plate", data.batch_idx.shape[0], dim=-1):
+        numpyro.sample("y1", dist.Normal(a_b + b_b, 0.3), obs=y[:, 0])
+        numpyro.sample("y2", dist.Normal(a_b - 2.0 * b_b, 0.2), obs=y[:, 1])
+
+
+class BlockModel:
+    def __init__(self, num_genotype=6, coupled=False, seed=3):
+        rng = np.random.default_rng(seed)
+        self.data = BlockData(num_genotype=num_genotype,
+                              batch_idx=jnp.arange(num_genotype),
+                              y=jnp.asarray(rng.normal(size=(num_genotype, 2))),
+                              coupled=coupled)
+        self.priors = {}
+        self.jax_model = _block_jax_model
+        self.jax_model_guide = lambda data, priors: None
+
+    def get_batch(self, data, indices):
+        return data.replace(batch_idx=jnp.asarray(indices))
+
+    def get_random_idx(self, key=None, num_batches=1):
+        if num_batches == 1:
+            return np.array([0])
+        return np.zeros((num_batches, 1), dtype=int)
+
+
+def _block_setup(model):
+    import jax.flatten_util
+    ri, map_params = _laplace_map_params(model)
+    unc = {k[:-len("_auto_loc")]: jnp.asarray(v) for k, v in map_params.items()
+           if k.endswith("_auto_loc")}
+    flat, unravel = jax.flatten_util.ravel_pytree(unc)
+    G = model.data.num_genotype
+    kw = {"priors": model.priors,
+          "data": ri._unscaled_batch(model.data, jnp.arange(G))}
+    return ri, map_params, unc, flat, unravel, kw
+
+
+def test_block_laplace_factors_match_full_hessian_blocks():
+    """Each block's covariance is the inverse of the matching diagonal block
+    of the full Hessian: given mu, genotypes do not couple."""
+    from numpyro.infer.util import potential_energy
+    model = BlockModel()
+    ri, _, unc, flat, unravel, kw = _block_setup(model)
+    dim_map = ri._get_genotype_dim_map()
+    elem_idx, L = ri.block_laplace_factors(unc, dim_map, model.data, flat,
+                                           unravel, kw)
+    assert elem_idx.shape == (6, 2) and L.shape == (6, 2, 2)
+    pe = lambda f: potential_energy(model.jax_model, [], kw, unravel(f))
+    H = ri._chunked_hessian(pe, flat, 64)
+    for g in range(6):
+        hb = H[np.ix_(elem_idx[g], elem_idx[g])]
+        np.testing.assert_allclose(L[g] @ L[g].T, np.linalg.inv(hb),
+                                   rtol=1e-4, atol=1e-6)
+        # the observations correlate a and b, so the blocks are not diagonal
+        assert abs(hb[0, 1]) > 1.0
+
+
+def test_block_laplace_factors_chunking_matches():
+    model = BlockModel(num_genotype=7)
+    ri, _, unc, flat, unravel, kw = _block_setup(model)
+    dim_map = ri._get_genotype_dim_map()
+    e1, L1 = ri.block_laplace_factors(unc, dim_map, model.data, flat, unravel, kw)
+    e2, L2 = ri.block_laplace_factors(unc, dim_map, model.data, flat, unravel, kw,
+                                      genotype_chunk_size=3)
+    np.testing.assert_array_equal(e1, e2)
+    np.testing.assert_allclose(np.einsum("gij,gkj->gik", L1, L1),
+                               np.einsum("gij,gkj->gik", L2, L2), rtol=1e-5)
+
+
+def test_block_laplace_factors_refuse_coupled_genotypes():
+    model = BlockModel(coupled=True)
+    ri, _, unc, flat, unravel, kw = _block_setup(model)
+    with pytest.raises(ValueError, match="coupled"):
+        ri.block_laplace_factors(unc, ri._get_genotype_dim_map(), model.data,
+                                 flat, unravel, kw)
+
+
+def test_get_laplace_posteriors_block_holds_shared_and_varies_genotypes(tmpdir):
+    model = BlockModel()
+    ri, map_params, *_ = _block_setup(model)
+    out = str(tmpdir.join("block"))
+    ri.get_laplace_posteriors(map_params, out_prefix=out,
+                              num_posterior_samples=400,
+                              sampling_batch_size=100,
+                              forward_batch_size=6,
+                              block_genotypes=True)
+    with h5py.File(f"{out}_posterior.h5", "r") as hf:
+        mu, a = hf["mu"][...], hf["a"][...]
+    np.testing.assert_allclose(mu, float(map_params["mu_auto_loc"]), atol=1e-6)
+    assert a.shape == (400, 6)
+    assert np.all(a.std(axis=0) > 0.01)
+    np.testing.assert_allclose(a.mean(axis=0),
+                               np.asarray(map_params["a_auto_loc"]), atol=0.1)
+
+
+def _arrowhead_covariance(elem_idx, L_blocks, shared_idx, L_shared, response):
+    """Dense covariance implied by the arrowhead factors."""
+    G, B = elem_idx.shape
+    D = G * B + shared_idx.size
+    cov = np.zeros((D, D))
+    css = L_shared @ L_shared.T
+    cov[np.ix_(shared_idx, shared_idx)] = css
+    for g in range(G):
+        Mg = np.asarray(response[g], dtype=float)
+        cov[np.ix_(elem_idx[g], shared_idx)] = -Mg @ css
+        cov[np.ix_(shared_idx, elem_idx[g])] = -(Mg @ css).T
+        for h in range(G):
+            Mh = np.asarray(response[h], dtype=float)
+            block = Mg @ css @ Mh.T
+            if g == h:
+                block = block + L_blocks[g] @ L_blocks[g].T
+            cov[np.ix_(elem_idx[g], elem_idx[h])] = block
+    return cov
+
+
+@pytest.mark.parametrize("chunk", [None, 3])
+def test_arrowhead_laplace_matches_full_laplace(chunk):
+    """Genotype blocks plus their coupling to the shared mu reproduce the
+    inverse of the full Hessian, chunked or not (the chunked sum counts the
+    priors once per chunk and must take the surplus back out)."""
+    from numpyro.infer.util import potential_energy
+    model = BlockModel(num_genotype=7)
+    ri, _, unc, flat, unravel, kw = _block_setup(model)
+    factors = ri.arrowhead_laplace_factors(unc, ri._get_genotype_dim_map(),
+                                           model.data, flat, unravel, kw,
+                                           genotype_chunk_size=chunk)
+    elem_idx, L_blocks, shared_idx, L_shared, response = factors
+    assert shared_idx.size == 1 and response.shape == (7, 2, 1)
+    pe = lambda f: potential_energy(model.jax_model, [], kw, unravel(f))
+    H = ri._chunked_hessian(pe, flat, 64)
+    np.testing.assert_allclose(_arrowhead_covariance(*factors),
+                               np.linalg.inv(H), rtol=1e-4, atol=1e-6)
+
+
+def test_get_laplace_posteriors_block_shared_varies_shared(tmpdir):
+    model = BlockModel()
+    ri, map_params, unc, flat, unravel, kw = _block_setup(model)
+    from numpyro.infer.util import potential_energy
+    pe = lambda f: potential_energy(model.jax_model, [], kw, unravel(f))
+    cov = np.linalg.inv(ri._chunked_hessian(pe, flat, 64))
+    out = str(tmpdir.join("arrow"))
+    ri.get_laplace_posteriors(map_params, out_prefix=out,
+                              num_posterior_samples=4000,
+                              sampling_batch_size=500,
+                              forward_batch_size=6,
+                              block_genotypes=True, block_shared=True)
+    with h5py.File(f"{out}_posterior.h5", "r") as hf:
+        mu, a = hf["mu"][...], hf["a"][...]
+    # ravel_pytree orders sites a, b, mu
+    i_mu, i_a = 12, np.arange(6)
+    assert mu.std() == pytest.approx(np.sqrt(cov[i_mu, i_mu]), rel=0.1)
+    # a follows mu: its draws correlate with mu's as the full Laplace says
+    sd_a = np.sqrt(np.diag(cov)[i_a])
+    want = cov[i_mu, i_a] / (np.sqrt(cov[i_mu, i_mu]) * sd_a)
+    got = [np.corrcoef(mu, a[:, g])[0, 1] for g in range(6)]
+    np.testing.assert_allclose(got, want, atol=0.08)
+
+
+def test_block_shared_needs_block_genotypes(tmpdir):
+    model = BlockModel()
+    ri, map_params, *_ = _block_setup(model)
+    with pytest.raises(ValueError, match="block_genotypes"):
+        ri.get_laplace_posteriors(map_params, out_prefix=str(tmpdir.join("x")),
+                                  block_shared=True)
+
+
+def test_unscaled_batch_removes_minibatch_scale():
+    """A model configured with batch_size below the library weights each
+    growth likelihood by num_genotype / batch_size even at full batch;
+    the Laplace must see each observation once."""
+    orch = _smoke_orchestrator()
+    ri = RunInference(orch, seed=0)
+    G = orch.data.num_genotype
+    data = jax.device_put(orch.data)
+    scaled = orch.get_batch(data, jnp.arange(G))
+    assert float(jnp.max(scaled.growth.scale_vector)) > 1.0
+    unscaled = ri._unscaled_batch(data, jnp.arange(G))
+    np.testing.assert_array_equal(np.asarray(unscaled.growth.scale_vector), 1.0)
+
+
+# =============================================================================
+# Laplace edge cases
+# =============================================================================
+
+def test_get_laplace_posteriors_reports_negative_eigenvalues(tmpdir, mocker,
+                                                             capsys):
+    """A saddle-point MAP is named in the log, and the negative direction is
+    floored at the prior's curvature (Normal(0, 1) priors: precision 1)."""
+    model = LaplaceModel(num_genotype=2)
+    ri, map_params = _laplace_map_params(model)
+    bad_H = np.diag([10.0, -5.0, 8.0])
+    mocker.patch.object(ri, "_chunked_hessian", return_value=bad_H)
+    out_prefix = str(tmpdir.join("laplace_saddle"))
+    ri.get_laplace_posteriors(map_params=map_params, out_prefix=out_prefix,
+                              num_posterior_samples=2000,
+                              sampling_batch_size=1000,
+                              forward_batch_size=2)
+    out = capsys.readouterr().out
+    assert "1 negative Hessian eigenvalues" in out
+    assert "min=-5.000e+00" in out
+    assert "1 of 3 eigenvalues raised" in out
+    with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
+        geno = hf["geno_p"][...]
+    # ravel order: geno_p[0], geno_p[1], global_p; geno_p[0] has curvature
+    # 10, geno_p[1] the floored -5 -> prior precision 1
+    assert np.std(geno[:, 0]) == pytest.approx(np.sqrt(0.1), rel=0.1)
+    assert np.std(geno[:, 1]) == pytest.approx(1.0, rel=0.1)
+
+
+def test_laplace_prior_precision_falls_back_for_mismatched_shape(monkeypatch):
+    """An element whose prior SD cannot be broadcast onto it gets
+    LAPLACE_MIN_EIGENVALUE; the others get their prior's precision."""
+    import tfscreen.tfmodel.inference.run_inference as ri_mod
+    real = ri_mod.site_unconstrained_prior_sds
+
+    def wrong_shape_for_a(sites):
+        sds = dict(real(sites))
+        sds["a"] = np.ones(4)   # a is library-sized (6)
+        return sds
+
+    monkeypatch.setattr(ri_mod, "site_unconstrained_prior_sds",
+                        wrong_shape_for_a)
+    model = BlockModel()
+    ri, _, unc, flat, unravel, kw = _block_setup(model)
+    D = flat.shape[0]
+    prec = ri._laplace_prior_precision(unc, kw, D)
+    assert prec.shape == (D,) == (13,)
+    # ravel order: a (6), b (6), mu
+    np.testing.assert_allclose(prec[:6], LAPLACE_MIN_EIGENVALUE)
+    np.testing.assert_allclose(prec[6:], 1.0, rtol=1e-4)
+
+
+def test_block_laplace_factors_refuse_model_without_genotype_parameters():
+    model = BlockModel()
+    ri, _, unc, flat, unravel, kw = _block_setup(model)
+    with pytest.raises(ValueError, match="same number of parameters"):
+        ri.block_laplace_factors(unc, {}, model.data, flat, unravel, kw)
+
+
+def test_arrowhead_holds_negative_shared_directions(mocker, capsys):
+    """A negative direction of the Schur complement is held at the MAP: no
+    variance, named in the log and in held_shared_directions."""
+    model = BlockModel()
+    ri, _, unc, flat, unravel, kw = _block_setup(model)
+    real = ri._genotype_hessian_parts
+
+    def negative_shared(*args, **kwargs):
+        elem_idx, blocks, shared_idx, coupling, shared_block = real(*args,
+                                                                    **kwargs)
+        return (elem_idx, blocks, shared_idx, coupling,
+                shared_block - 1e3 * np.eye(shared_block.shape[0]))
+
+    mocker.patch.object(ri, "_genotype_hessian_parts",
+                        side_effect=negative_shared)
+    elem_idx, L_blocks, shared_idx, L_shared, response = \
+        ri.arrowhead_laplace_factors(unc, ri._get_genotype_dim_map(),
+                                     model.data, flat, unravel, kw)
+    out = capsys.readouterr().out
+    assert "1 of 1 directions of the Schur complement negative" in out
+    assert "eigenvalue" in out and "mu[0]" in out
+    np.testing.assert_allclose(L_shared @ L_shared.T, 0.0, atol=1e-12)
+    held = ri.held_shared_directions
+    assert list(held["parameter"]) == ["mu[0]"]
+    assert held["direction"].iloc[0] == 0
+    assert held["eigenvalue"].iloc[0] < 0
+    assert abs(held["loading"].iloc[0]) == pytest.approx(1.0)
+
+
+def test_report_nuts_diagnostics_survives_failure(capsys):
+    from unittest.mock import MagicMock
+    mcmc = MagicMock()
+    mcmc.get_samples.side_effect = RuntimeError("no chains")
+    RunInference._report_nuts_diagnostics(mcmc)
+    assert "NUTS: diagnostics unavailable (no chains)" in capsys.readouterr().out

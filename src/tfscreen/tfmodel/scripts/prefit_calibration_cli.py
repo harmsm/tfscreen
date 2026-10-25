@@ -63,13 +63,16 @@ import tempfile
 import numpy as np
 import pandas as pd
 import jax.numpy as jnp
-import optax
 
 import yaml
 
 from numpyro.handlers import seed, trace
 
 import tfscreen
+from tfscreen.tfmodel.priors_edit import (
+    apply_priors_updates,
+    condition_rep_labels,
+)
 from tfscreen.util.cli.generalized_main import generalized_main
 from tfscreen.tfmodel.inference.run_inference import RunInference
 from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
@@ -341,7 +344,7 @@ def _build_calibration_model(orchestrator_prod, growth_df_cal, binding_df_cal):
         settings[k] = v
     # transformation is forced to "single" above, which carries no lambda
     # parameter; drop any production transformation_lambda (set when the production
-    # transformation is "empirical"/"logit_norm") so it doesn't get passed
+    # transformation is "mixture") so it doesn't get passed
     # through to a "single" calibration model.
     settings["transformation_lambda"] = None
     settings["spiked_genotypes"] = None
@@ -349,9 +352,10 @@ def _build_calibration_model(orchestrator_prod, growth_df_cal, binding_df_cal):
     # it has to be dropped alongside spiked_genotypes.
     settings["library_file"] = None
     # Equal weighting: the calibration MAP must learn the binding→growth
-    # linkage from both data sources together.  The production binding_weight
-    # (N_growth_prod / N_binding_prod, often >> 1) would drown the binding
-    # signal, so we reset to 1.0 here.
+    # linkage from both data sources together.  A production config may
+    # store a large binding_weight (N_growth_prod / N_binding_prod, the
+    # default before 2026-10-16), which would drown the growth signal, so
+    # we reset to 1.0 here.
     settings["binding_weight"] = 1.0
 
     # dk_geno: the calibration MAP must not *learn* dk_geno from
@@ -890,111 +894,9 @@ def _resolve_scale_bounds(condition_growth_choice,
     return bounds
 
 
-def _condition_rep_labels(orchestrator):
-    """
-    Per-condition label frame (``condition_rep`` and, when present,
-    ``replicate``) ordered by ``map_condition_rep`` — i.e. the same order as
-    the per-condition MAP arrays.  Returns ``None`` when no condition_rep map
-    is available.  Used to tag per-condition prior rows so the loader can
-    name-join them back to the production condition order.
-    """
-    growth_tm = getattr(orchestrator, "growth_tm", None)
-    if growth_tm is None:
-        return None
-    crm = growth_tm.map_groups.get("condition_rep")
-    if crm is None or getattr(crm, "empty", True):
-        return None
-    sorted_map = crm.sort_values("map_condition_rep").reset_index(drop=True)
-    cols = [c for c in ("replicate", "condition_rep") if c in sorted_map.columns]
-    if not cols:
-        return None
-    return sorted_map[cols].reset_index(drop=True)
-
-
-def _apply_priors_updates(priors_path, prior_updates, cond_rep_labels=None):
-    """
-    Apply prior updates to the production priors CSV.  Writes a ``.bak`` copy
-    first.  Rows whose ``parameter`` is not in ``prior_updates`` are preserved.
-
-    Two kinds of update value are supported:
-
-    * **scalar** (float) — overwrites the ``value`` of the matching
-      ``parameter`` row in place (unchanged behaviour).  A warning is logged
-      if no row matches.
-    * **array** (1-D ``np.ndarray``) — a per-condition prior (e.g.
-      ``condition_growth.k_loc``).  Any existing rows for that parameter are
-      dropped and replaced with one indexed row per condition, tagged with the
-      ``condition_rep`` (and ``replicate``) labels from ``cond_rep_labels`` so
-      the loader can name-join them back to the model's condition order.
-
-    Parameters
-    ----------
-    priors_path : str
-        Path to the production priors CSV.
-    prior_updates : dict[str, float | np.ndarray]
-        Update values keyed by dotted parameter name.
-    cond_rep_labels : pandas.DataFrame or None
-        Per-condition label columns (``condition_rep`` and, when present,
-        ``replicate``) ordered by ``map_condition_rep`` — i.e. matching the
-        order of the per-condition MAP arrays.  Required to label array
-        updates; when absent, array rows carry only ``flat_index``.
-    """
-    if not prior_updates:
-        return
-    df = pd.read_csv(priors_path)
-    if "parameter" not in df.columns or "value" not in df.columns:
-        raise ValueError(
-            f"Priors CSV {priors_path} is missing required 'parameter' / "
-            "'value' columns."
-        )
-
-    scalar_updates = {}
-    array_updates = {}
-    for row_name, new_val in prior_updates.items():
-        arr = np.asarray(new_val)
-        if arr.ndim == 0:
-            scalar_updates[row_name] = float(arr)
-        else:
-            array_updates[row_name] = arr
-
-    matched = set()
-
-    # Scalar overwrites (in place).
-    for row_name, new_val in scalar_updates.items():
-        mask = df["parameter"] == row_name
-        if mask.any():
-            df.loc[mask, "value"] = new_val
-            matched.add(row_name)
-
-    missing = sorted(set(scalar_updates) - matched)
-    if missing:
-        print(
-            f"  warning: {len(missing)} prior update(s) had no matching row "
-            f"in {priors_path}: {missing}",
-            file=sys.stderr,
-        )
-
-    # Array updates: drop existing rows for the parameter, append indexed rows.
-    if array_updates:
-        new_frames = []
-        for row_name, arr in array_updates.items():
-            flat_val = np.asarray(arr).flatten()
-            df = df[df["parameter"] != row_name]
-            row_df = pd.DataFrame({"parameter": row_name,
-                                   "value": flat_val,
-                                   "flat_index": range(len(flat_val))})
-            if (cond_rep_labels is not None
-                    and len(cond_rep_labels) == len(flat_val)):
-                for col in ("replicate", "condition_rep"):
-                    if col in cond_rep_labels.columns:
-                        row_df[col] = cond_rep_labels[col].to_numpy()
-            new_frames.append(row_df)
-            matched.add(row_name)
-        df = pd.concat([df] + new_frames, ignore_index=True)
-
-    shutil.copy2(priors_path, priors_path + ".bak")
-    df.to_csv(priors_path, index=False)
-    print(f"Updated {len(matched)} priors row(s) in {priors_path}")
+# Shared with tfs-configure-model (--growth_priors, --set_priors).
+_condition_rep_labels = condition_rep_labels
+_apply_priors_updates = apply_priors_updates
 
 
 def _apply_guesses_updates(guesses_path, guess_updates):
@@ -1094,47 +996,45 @@ def _resolve_csv_paths(config_file):
 # ---------------------------------------------------------------------------
 
 def _run_calibration_map(ri,
-                         init_params,
+                         init_values,
                          out_prefix,
                          checkpoint_file,
                          adam_step_size,
                          adam_final_step_size,
+                         adam_step_size_cut,
                          adam_clip_norm,
                          elbo_num_particles,
-                         convergence_tolerance,
-                         convergence_window,
+                         convergence_window_steps,
                          patience,
-                         convergence_check_interval,
+                         convergence_z,
+                         loss_rtol,
+                         param_tolerance,
                          checkpoint_interval,
                          max_num_epochs,
-                         init_param_jitter,
                          epoch_checkpoint_interval):
     """Set up a MAP SVI optimizer and run it; return ``(svi_state, params,
     converged)``.  Behaviour mirrors ``fit_model._run_map`` but
     the ``always_get_posterior`` plumbing is dropped (the pre-fit only
     consumes MAP point estimates and Hessian-derived sigmas)."""
-    schedule = optax.exponential_decay(
-        init_value=adam_step_size,
-        transition_steps=float(max_num_epochs * ri._iterations_per_epoch),
-        decay_rate=adam_final_step_size / adam_step_size,
-    )
-    map_obj = ri.setup_svi(adam_step_size=schedule,
+    map_obj = ri.setup_svi(adam_step_size=adam_step_size,
                            adam_clip_norm=adam_clip_norm,
                            elbo_num_particles=elbo_num_particles,
-                           guide_type="delta")
+                           guide_type="delta",
+                           init_values=init_values)
 
     svi_state, params, converged = ri.run_optimization(
         map_obj,
-        init_params=init_params,
         out_prefix=out_prefix,
         svi_state=checkpoint_file,
-        convergence_tolerance=convergence_tolerance,
-        convergence_window=convergence_window,
+        convergence_window_steps=convergence_window_steps,
         patience=patience,
-        convergence_check_interval=convergence_check_interval,
+        convergence_z=convergence_z,
+        loss_rtol=loss_rtol,
+        param_tolerance=param_tolerance,
+        final_step_size=adam_final_step_size,
+        step_size_cut=adam_step_size_cut,
         checkpoint_interval=checkpoint_interval,
         max_num_epochs=max_num_epochs,
-        init_param_jitter=init_param_jitter,
         epoch_checkpoint_interval=epoch_checkpoint_interval
     )
 
@@ -1159,15 +1059,16 @@ def run_prefit_calibration(config_file,
                            out_prefix="tfs_prefit",
                            adam_step_size=1e-3,
                            adam_final_step_size=1e-6,
-                           adam_clip_norm=1.0,
+                           adam_step_size_cut=0.1,
+                           adam_clip_norm=None,
                            elbo_num_particles=2,
-                           convergence_tolerance=1e-5,
-                           convergence_window=10,
-                           patience=10,
-                           convergence_check_interval=2,
+                           convergence_window_steps=2000,
+                           patience=3,
+                           convergence_z=3.0,
+                           loss_rtol=1e-6,
+                           param_tolerance=0.05,
                            checkpoint_interval=10,
                            max_num_epochs=100000,
-                           init_param_jitter=0.0,
                            epoch_checkpoint_interval=0,
                            k_scale_floor=_DEFAULT_K_SCALE_FLOOR,
                            m_scale_floor=_DEFAULT_M_SCALE_FLOOR,
@@ -1215,28 +1116,38 @@ def run_prefit_calibration(config_file,
     adam_step_size : float, optional
         Starting step size for the Adam optimizer (default 1e-3).
     adam_final_step_size : float, optional
-        Final step size for the Adam optimizer (default 1e-6).
-    adam_clip_norm : float, optional
-        Gradient clipping norm for the Adam optimizer (default 1.0).
+        Smallest step size for the Adam optimizer (default 1e-6).  The step
+        size is cut by ``adam_step_size_cut`` each time the fit plateaus, and
+        the run converges at the first plateau at this size.
+    adam_step_size_cut : float, optional
+        Factor applied to the step size at each cut (default 0.1).
+    adam_clip_norm : float or None, optional
+        Clip each gradient element to +/- this value (numpyro ClippedAdam).
+        None (default) disables clipping: when gradients are much larger
+        than the clip, an elementwise clip makes Adam follow the gradient's
+        sign, and its fixed point is biased by rare large ELBO penalties.
     elbo_num_particles : int, optional
         Number of particles for ELBO estimation (default 2).
-    convergence_tolerance : float, optional
-        Relative change in loss to declare MAP convergence (default 1e-5).
-    convergence_window : int, optional
-        Number of epochs to average when checking convergence (default 10).
+    convergence_window_steps : int, optional
+        Optimizer steps per convergence window (default 2000; at least 10
+        epochs).
     patience : int, optional
-        Number of consecutive convergence checks that must pass before
-        declaring convergence (default 10).
-    convergence_check_interval : int, optional
-        Frequency (in epochs) at which convergence is checked (default 2).
+        Consecutive windows without loss improvement required for a step-size
+        cut, and (at the final step size) without loss improvement or
+        parameter movement required for convergence (default 3).
+    convergence_z : float, optional
+        Standard errors of change attributed to noise (default 3).
+    loss_rtol : float, optional
+        Loss changes per window below this fraction of the loss count as no
+        change (default 1e-6).
+    param_tolerance : float, optional
+        Parameter movement per window, beyond noise, still counted as no
+        change (default 0.05), in prior SDs (or log/logit units for positive
+        or bounded parameters).
     checkpoint_interval : int, optional
         Frequency (in epochs) between checkpoint writes (default 10).
     max_num_epochs : int, optional
-        Maximum number of MAP optimization epochs (default 100000).
-    init_param_jitter : float, optional
-        Jitter added to initial parameters to break symmetry (default 0.0).
-        The pre-fit benefits from determinism given a seed, so this is 0
-        by default (unlike tfs-fit-model which defaults to 0.1).
+        Maximum number of MAP optimization epochs (default 100000); a cap only.
     epoch_checkpoint_interval : int or None, optional
         Frequency (in epochs) to write numbered epoch checkpoints to a
         ``checkpoints/`` subdirectory (default 0). Set to 0 or None to
@@ -1285,6 +1196,17 @@ def run_prefit_calibration(config_file,
     if seed is None and checkpoint_file is None:
         raise ValueError("seed must be provided unless loading from a checkpoint.")
 
+    # The calibration fits the growth-theta link on genotypes that have both
+    # growth and binding data, so a growth-only model has nothing to fit.
+    with open(config_file, "r") as fh:
+        _data_paths = (yaml.safe_load(fh) or {}).get("data", {})
+    if not _data_paths.get("binding"):
+        raise ValueError(
+            f"{config_file} is a growth-only model (no binding data). "
+            f"tfs-prefit-calibration calibrates the growth-theta link on the "
+            f"genotypes that have binding measurements, so it needs binding "
+            f"data. Fit a growth-only model with tfs-fit-model directly.")
+
     # 1. Resolve production config and CSV targets.
     priors_path, guesses_path = _resolve_csv_paths(config_file)
     orchestrator_prod, _ = read_configuration(config_file)
@@ -1308,22 +1230,28 @@ def run_prefit_calibration(config_file,
     effective_seed = seed if seed is not None else 0
     ri = RunInference(orchestrator_cal, effective_seed)
 
+    # Start from the configured guesses (resuming: from the checkpoint).
+    init_values = None
+    if checkpoint_file is None:
+        init_values = ri.site_values(orchestrator_cal.init_params)
+
     svi_state, params, converged = _run_calibration_map(
         ri,
-        init_params=orchestrator_cal.init_params,
+        init_values=init_values,
         out_prefix=out_prefix,
         checkpoint_file=checkpoint_file,
         adam_step_size=adam_step_size,
         adam_final_step_size=adam_final_step_size,
+        adam_step_size_cut=adam_step_size_cut,
         adam_clip_norm=adam_clip_norm,
         elbo_num_particles=elbo_num_particles,
-        convergence_tolerance=convergence_tolerance,
-        convergence_window=convergence_window,
+        convergence_window_steps=convergence_window_steps,
         patience=patience,
-        convergence_check_interval=convergence_check_interval,
+        convergence_z=convergence_z,
+        loss_rtol=loss_rtol,
+        param_tolerance=param_tolerance,
         checkpoint_interval=checkpoint_interval,
         max_num_epochs=max_num_epochs,
-        init_param_jitter=init_param_jitter,
         epoch_checkpoint_interval=epoch_checkpoint_interval
     )
 
@@ -1393,9 +1321,9 @@ def main():
     return generalized_main(
         run_prefit_calibration,
         manual_arg_types={"config_file": str,
+                          "adam_clip_norm": float,
                           "seed": int,
                           "checkpoint_file": str,
-                          "init_param_jitter": float,
                           "k_scale_floor": float,
                           "m_scale_floor": float,
                           "k_scale_ceiling": float,

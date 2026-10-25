@@ -92,7 +92,7 @@ def test_cli_writes_model_with_wt_ref(tmp_path):
 
     out_prefix = str(tmp_path / "emp")
     build_empirical(str(growth_csv), seed=0,
-                             calibration_file=str(calib_csv),
+                             growth_calibration_file=str(calib_csv),
                              out_prefix=out_prefix)
 
     # Both artifacts written (model is a single self-contained JSON).
@@ -114,7 +114,7 @@ def test_cli_writes_model_with_wt_ref(tmp_path):
 
 
 def test_cli_orchestrates_configure_and_prefit(mocker, tmp_path):
-    """Without --calibration_file, the CLI runs configure_model + prefit."""
+    """Without --growth_calibration_file, the CLI runs configure_model + prefit."""
     growth_csv = tmp_path / "growth.csv"
     binding_csv = tmp_path / "binding.csv"
     _build_growth_df().to_csv(growth_csv, index=False)
@@ -152,7 +152,7 @@ def test_cli_orchestrates_configure_and_prefit(mocker, tmp_path):
         }, f)
 
     build_empirical(
-        str(growth_csv), binding_file=str(binding_csv), out_prefix=out_prefix,
+        str(growth_csv), binding_df=str(binding_csv), out_prefix=out_prefix,
         library_config=str(library_config), seed=5)
 
     # configure_model wired with the experimental inputs and fixed prefix.
@@ -181,3 +181,27 @@ def test_cli_requires_binding_or_calibration(tmp_path):
     with pytest.raises(ValueError, match="binding data is required"):
         build_empirical(str(growth_csv), seed=0,
                                  out_prefix=str(tmp_path / "emp"))
+
+
+def test_congression_lambda_is_retired(tmp_path):
+    with pytest.raises(TypeError, match="congression_lambda"):
+        build_empirical("growth.csv", seed=0, congression_lambda=1.0,
+                        out_prefix=str(tmp_path / "emp"))
+
+
+def test_cli_requires_seed_for_prefit(tmp_path):
+    growth_csv = tmp_path / "growth.csv"
+    _build_growth_df().to_csv(growth_csv, index=False)
+    with pytest.raises(ValueError, match="seed is required"):
+        build_empirical(str(growth_csv), out_prefix=str(tmp_path / "emp"))
+
+
+@pytest.mark.filterwarnings("ignore:.*found in sys.modules:RuntimeWarning")
+def test_cli_module_runs_as_script(monkeypatch):
+    import runpy
+    import sys
+    monkeypatch.setattr(sys, "argv", ["tfs-build-empirical", "--help"])
+    with pytest.raises(SystemExit) as exc:
+        runpy.run_module("tfscreen.simulate.scripts.build_empirical_cli",
+                         run_name="__main__")
+    assert exc.value.code == 0

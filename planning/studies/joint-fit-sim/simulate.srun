@@ -1,0 +1,42 @@
+#!/bin/bash -l
+#SBATCH --account=harmslab
+#SBATCH --job-name=jfsim_sim
+#SBATCH --partition=gpu
+#SBATCH --time=06:00:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --gpus=1
+#SBATCH --mem=0
+#SBATCH --ntasks-per-node=1
+
+# One simulation of the joint-fit simulation test
+# (planning/studies/joint-fit-sim). Run from the study's cluster directory:
+#
+#   sbatch --export=ALL,ARM=joint,SEED=1 --output=sim_joint.out simulate.srun
+#
+#   ARM   joint | null (make_sim.py)
+#   SEED  simulation seed (default 1)
+#   BASE  base simulate config (default: full-sized-sims-3/sim_realistic_s2)
+#
+# Writes sim_${ARM}_s${SEED}/. The direct growth table only (--no_write_raw):
+# stage 1 reads tfs_sim_growth.csv, which tfs-process-counts reproduces row
+# for row from the raw output. The simulation takes about 90 minutes.
+
+module load cuda/12.4.1
+set -e
+ARM="${ARM:?set ARM}"
+SEED="${SEED:-1}"
+BASE="${BASE:-/gpfs/projects/harmslab/harms/studies/full-sized-sims-3/sim_realistic_s2/simulate_config.yaml}"
+STUDY=/gpfs/home/harms/tfscreen/planning/studies/joint-fit-sim
+OUT="sim_${ARM}_s${SEED}"
+
+if [[ -f "${OUT}/tfs_sim_binding.csv" ]]; then
+    echo ">>> ${OUT}: simulated, skipped"
+    exit 0
+fi
+echo ">>> make_sim ${ARM} ${SEED} $(date)"
+python "${STUDY}/make_sim.py" "${BASE}" "${OUT}" --arm "${ARM}" --seed "${SEED}"
+cd "${OUT}"
+echo ">>> simulate $(date)"
+tfs-simulate simulate_config.yaml --out_prefix tfs_sim --seed "${SEED}" --no_write_raw
+echo ">>> done $(date)"

@@ -14,30 +14,32 @@ version = { attr = "tfscreen.__version__.__version__" }
 [project]
 name = "tfscreen"
 dynamic = ["version"]
+# Floors: the oldest versions the test suite has passed with (the
+# maintainer's environment, 2026-10-20); CI tests the newest releases.
 dependencies = [
-  "numpy",
-  "pandas",
-  "openpyxl",
-  "matplotlib",
-  "tqdm",
-  "statsmodels",
-  "PyYAML",
-  "corner",
-  "numba",
-"pybktree",
-  "pyfastx",
-  "optax",
-  "numpyro>=0.19.0",
-  "dill",
-  "flax",
-  "jax",
-  "jaxlib",
-  "h5py",
-  "scipy",
-  "jinja2",
+  "numpy>=2.3",
+  "pandas>=2.3",
+  "openpyxl>=3.1",
+  "matplotlib>=3.10",
+  "tqdm>=4.67",
+  "statsmodels>=0.14.6",
+  "PyYAML>=6.0",
+  "corner>=2.2",
+  "numba>=0.63",
+  "pybktree>=1.1",
+  "pyfastx>=2.2",
+  "optax>=0.2.6",
+  "numpyro>=0.22",
+  "dill>=0.4",
+  "flax>=0.12.2",
+  "jax>=0.11.2",
+  "jaxlib>=0.11.2",
+  "h5py>=3.15",
+  "scipy>=1.16",
+  "jinja2>=3.1.4",
 ]
 
-requires-python = ">=3.11"
+requires-python = ">=3.12"  # jax 0.11 and newer need 3.12
 authors = [{ name = "Mike Harms", email = "harms@uoregon.edu" }]
 maintainers = [{ name = "Mike Harms", email = "harms@uoregon.edu" }]
 description = "Simulate or analyze a high-throughput screen of a transcription factor library"
@@ -54,11 +56,22 @@ keywords = [
 classifiers = [
   "Development Status :: 5 - Production/Stable",
   "Programming Language :: Python",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
 ]
 
 [project.urls]
 Repository = "https://github.com/harmslab/tfscreen.git"
 "Bug Tracker" = "https://github.com/harmslab/tfscreen/issues"
+
+[tool.coverage.run]
+branch = true
+source = ["tfscreen"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
 
 [tool.pytest.ini_options]
 markers = [
@@ -66,16 +79,24 @@ markers = [
 ]
 
 [project.optional-dependencies]
-test = ["coverage", "flake8", "pytest", "genbadge", "pytest-mock"]
+test = ["coverage", "diff-cover", "flake8", "pytest", "genbadge", "pytest-mock",
+        "pytest-xdist", "pytest-cov"]
 docs = ["pydata-sphinx-theme"]
+# GPU jax on Linux (pip's plain jax is CPU-only there); match the CUDA the
+# cluster's driver supports.
+cuda12 = ["jax[cuda12]>=0.11.2"]
 
 [project.scripts]
 tfs-process-fastq = "tfscreen.process_raw.scripts.process_fastq_cli:main"
 tfs-process-counts = "tfscreen.process_raw.scripts.process_counts_cli:main"
-tfs-process-presplit = "tfscreen.process_raw.scripts.process_presplit_cli:main"
+tfs-calibrate-od600 = "tfscreen.process_raw.scripts.calibrate_od600_cli:main"
+tfs-check-tubes = "tfscreen.process_raw.scripts.check_tubes_cli:main"
+tfs-correct-tubes = "tfscreen.process_raw.scripts.correct_tubes_cli:main"
+tfs-process-binding = "tfscreen.process_raw.scripts.process_binding_cli:main"
 tfs-configure-model = "tfscreen.tfmodel.scripts.configure_model_cli:main"
 tfs-prefit-calibration = "tfscreen.tfmodel.scripts.prefit_calibration_cli:main"
 tfs-fit-model = "tfscreen.tfmodel.scripts.fit_model_cli:main"
+tfs-fit-two-stage = "tfscreen.tfmodel.scripts.fit_two_stage_cli:main"
 tfs-fit-genotypes = "tfscreen.tfmodel.scripts.fit_genotypes_cli:main"
 tfs-sample-posterior = "tfscreen.tfmodel.scripts.sample_posterior_cli:main"
 tfs-sample-prior = "tfscreen.tfmodel.scripts.sample_prior_cli:main"
@@ -86,13 +107,10 @@ tfs-predict-epistasis = "tfscreen.tfmodel.scripts.predict_epistasis_cli:main"
 tfs-cat-response = "tfscreen.analysis.scripts.cat_response_cli:main"
 tfs-extract-epistasis = "tfscreen.analysis.scripts.extract_epistasis_cli:main"
 tfs-compare-runs = "tfscreen.analysis.scripts.compare_runs_cli:main"
-tfs-diagnose-nan = "tfscreen.tfmodel.scripts.diagnose_nan_cli:main"
+tfs-summarize-calibration = "tfscreen.analysis.scripts.summarize_calibration_cli:main"
 tfs-simulate = "tfscreen.simulate.scripts.simulate_cli:main"
-tfs-report-cfu0 = "tfscreen.simulate.scripts.report_cfu0_cli:main"
 tfs-build-empirical = "tfscreen.simulate.scripts.build_empirical_cli:main"
 tfs-setup-sim-grid = "tfscreen.simulate.scripts.setup_sim_grid_cli:main"
 tfs-setup-grid = "tfscreen.tfmodel.scripts.setup_grid_cli:main"
 tfs-summarize-grid = "tfscreen.tfmodel.scripts.summarize_grid_cli:main"
-tfs-subset-genotypes = "tfscreen.tfmodel.scripts.subset_genotypes_cli:main"
 tfs-summarize-fit = "tfscreen.tfmodel.scripts.summarize_fit_cli:main"
-tfs-summarize-sbc = "tfscreen.tfmodel.scripts.summarize_sbc_cli:main"

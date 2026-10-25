@@ -1,3 +1,5 @@
+from collections import namedtuple
+
 import pytest
 import jax
 import jax.numpy as jnp
@@ -216,3 +218,49 @@ def test_guide_sigma_scale_constraint(name, priors, fx_calc):
         )
     scale_val = guide_trace[f"{name}_sigma_logit_scale"]["value"]
     assert float(scale_val) > 0.0
+
+
+# ---------------------------------------------------------------------------
+# Library-size sampling under genotype mini-batching
+# ---------------------------------------------------------------------------
+
+_BatchData = namedtuple("_BatchData", ["num_genotype", "batch_idx"])
+
+
+@pytest.fixture
+def batch_data():
+    # 5-genotype library; fx_calc's 3 columns are genotypes 4, 0 and 2.
+    return _BatchData(num_genotype=5, batch_idx=jnp.array([4, 0, 2]))
+
+
+@pytest.mark.parametrize("fn", [define_model, guide])
+def test_epsilon_sampled_at_library_size(fn, name, priors, fx_calc, batch_data):
+    with seed(rng_seed=0):
+        tr = trace(fn).get_trace(name=name, fx_calc=fx_calc, priors=priors,
+                                 data=batch_data)
+    assert tr[f"{name}_epsilon"]["value"].shape == (2, 5)
+
+
+@pytest.mark.parametrize("fn", [define_model, guide])
+def test_epsilon_sliced_to_batch_order(fn, name, priors, fx_calc, batch_data):
+    epsilon = jnp.array([[0.0, 1.0, 2.0, 3.0, 4.0],
+                         [-1.0, -2.0, -3.0, -4.0, -5.0]])
+    substituted = substitute(fn, data={f"{name}_sigma_logit": jnp.array(1.0),
+                                       f"{name}_epsilon": epsilon})
+    out = seed(substituted, rng_seed=0)(name=name, fx_calc=fx_calc,
+                                        priors=priors, data=batch_data)
+    logit = jnp.log(fx_calc / (1.0 - fx_calc))
+    expected = jax.nn.sigmoid(logit + epsilon[:, batch_data.batch_idx])
+    assert jnp.allclose(out, expected, atol=1e-6)
+
+
+def test_presliced_epsilon_used_directly(name, priors, fx_calc, batch_data):
+    """A batch-sized substitution (posterior forward pass) is not re-sliced."""
+    epsilon = jnp.full(fx_calc.shape, 0.5)
+    substituted = substitute(define_model,
+                             data={f"{name}_sigma_logit": jnp.array(1.0),
+                                   f"{name}_epsilon": epsilon})
+    out = seed(substituted, rng_seed=0)(name=name, fx_calc=fx_calc,
+                                        priors=priors, data=batch_data)
+    logit = jnp.log(fx_calc / (1.0 - fx_calc))
+    assert jnp.allclose(out, jax.nn.sigmoid(logit + 0.5), atol=1e-6)
