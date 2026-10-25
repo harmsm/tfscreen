@@ -29,6 +29,22 @@ fall into two kinds:
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-24
+
+The release for the first manuscript on the 2026 screen: someone in the lab
+can take a screen from per-tube read counts to per-genotype *X* curves with
+95% intervals through one command, `tfs-fit-two-stage`, documented in
+"Analyzing a screen" (`docs/source/screen-analysis.rst`). On simulations of
+that screen the deep genotypes' intervals cover the truth 0.88-0.91 of the
+time up to 1e5 reads and 0.76-0.81 above. tfscreen now needs Python 3.12 or
+newer.
+
+The entries come in two groups. The first covers 2026-10-03 to
+2026-10-24: the two-stage fit, its validation and results table, tube checks
+and corrections, dependency floors, and the experimental joint
+growth/binding pieces, which the two-stage fit refuses. The second, from
+"Changes up to 2026-10-03" on, is the release as summarized then.
+
 ### Fixed
 
 - **`--shared_shift` works under pandas 3.** `shared_shift.row_shifts`
@@ -426,7 +442,7 @@ fall into two kinds:
   model's preferred optimum, with IPTG-structured offsets and unphysical
   k/m. Filed: `planning/offset-mode-growth-transition.md`.
 
-## [0.5.0] - 2026-10-03
+### Changes up to 2026-10-03
 
 A modeling release and an interface release. The model changes (the
 congression mixture, the count likelihood, the growth-only relative fit, tube

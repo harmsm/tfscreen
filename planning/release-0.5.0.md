@@ -209,12 +209,18 @@ of the release.
 
 ## Release mechanics
 
-20. [ ] CHANGELOG: fold `[Unreleased]` into the existing `[0.5.0]`
+20. [x] CHANGELOG: fold `[Unreleased]` into the existing `[0.5.0]`
     section and change its date (2026-10-03) to the release date. 0.5.0
     was never tagged or shared in the lab (user, 2026-10-19): the bump
     came before the two-stage work, so the release stays 0.5.0 and
     `__version__` is already right. Add an upgrade note: the removed
     commands and the configs that no longer load.
+    Done 2026-10-24: `[0.5.0] - 2026-10-24` opens with a new summary,
+    then the entries since 2026-10-03, then "Changes up to 2026-10-03"
+    (the earlier summary and entries); `[Unreleased]` is empty. The
+    upgrade notes are in the release notes draft
+    (`.claude/2026-10-24_release-notes-v0.5.0.md`). If the tag date
+    differs, change the section's date.
 21. [ ] Full test suite, with `--runslow` and the smoke tests. Run lint.
 22. [ ] Tag v0.5.0 and write GitHub release notes. Install that tag on
     the cluster.
