@@ -136,3 +136,26 @@ def test_binding_only_minibatch_reads_its_genotypes():
     diff = (np.asarray(tr["binding_pred"]["value"])
             - np.asarray(tr["theta_binding_pred"]["value"]))
     np.testing.assert_allclose(diff[0, 0], [n - 1, 0.0], atol=1e-6)
+
+
+def test_no_data_gives_one_offset_per_position():
+    """Without BindingData the plate is fx_calc's last axis, read in order."""
+    fx = jnp.zeros((1, 2, 3))
+    z = jnp.array([1.0, 2.0, 3.0])
+    values = {f"{NAME}_offset_scale": jnp.asarray(0.5), f"{NAME}_offset_z": z}
+    tr = _run(go.define_model, NAME, fx, go.get_priors(), None, values=values)
+    assert tr[f"{NAME}_offset_z"]["value"].shape == (3,)
+    res = substitute(seed(go.define_model, 0), data=values)(
+        NAME, fx, go.get_priors(), None)
+    np.testing.assert_allclose(res, np.broadcast_to(0.5 * z, (1, 2, 3)))
+
+
+def test_data_without_ordinal_reads_offsets_in_order():
+    fx = jnp.zeros((1, 1, 2))
+    data = _Data(2, [0, 1])
+    data.binding_ordinal = None
+    res = substitute(seed(go.define_model, 0),
+                     data={f"{NAME}_offset_scale": jnp.asarray(1.0),
+                           f"{NAME}_offset_z": jnp.array([4.0, 5.0])})(
+        NAME, fx, go.get_priors(), data)
+    np.testing.assert_allclose(res[0, 0], [4.0, 5.0])

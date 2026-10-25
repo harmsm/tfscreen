@@ -355,3 +355,26 @@ def test_stratified_ignores_simulate_path():
 
     assert not simulate_called, "simulate() must not be called from sample_theta_stratified"
     assert mock_module.run_model.call_count == 2 * pool_size
+
+
+def test_per_state_truth_conditions_accepts_integer_key():
+    """An integer seed gives the same per-state truth as its PRNGKey."""
+    import jax
+    import types
+    from tfscreen.simulate.sample_theta import _per_state_truth_conditions
+
+    proj = np.array([[1.0, -1.0], [0.0, 1.0]])
+    module = types.SimpleNamespace(DLNK_PROJ=proj)
+    trace = {
+        "theta_dlnK": {"type": "sample", "value": np.zeros((3, 2))},
+        "theta_ddG_sigma": {"type": "sample", "value": np.array([0.5, 2.0])},
+        "theta_ddG_prior_mean": {"type": "deterministic",
+                                 "value": np.arange(6.0).reshape(3, 2)},
+    }
+    ddG_int, cond_int = _per_state_truth_conditions(module, trace, {}, 11)
+    ddG_key, cond_key = _per_state_truth_conditions(
+        module, trace, {}, jax.random.PRNGKey(11))
+    np.testing.assert_array_equal(ddG_int, ddG_key)
+    np.testing.assert_allclose(cond_int["theta_dlnK"], ddG_int @ proj.T,
+                               rtol=1e-6)
+    np.testing.assert_array_equal(cond_int["theta_ddG_sigma"], [0.5, 2.0])

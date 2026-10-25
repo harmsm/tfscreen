@@ -739,3 +739,63 @@ def test_raw_output_reports_dropped_tubes(patched_simulation, _stub_raw_output,
     out = capsys.readouterr().out
     assert "Wrote the raw experiment: t.csv, c/, o.csv, cal.yaml" in out
     assert "OD600 below the detection threshold): ['tube0003']" in out
+
+
+# ---------------------------------------------------------------------------
+# binding offsets and the growth titrant scale truth
+# ---------------------------------------------------------------------------
+
+def test_binding_offsets_and_growth_titrant_scale_written(tmp_path):
+    """genotype_offset_sd writes the offset truth and shifts theta_obs;
+    growth_titrant_scale writes log s."""
+    import numpy as np
+
+    lib_df, pheno_df, theta_df, params_df, sample_df, counts_df, growth_df = _make_mock_dfs()
+    binding_theta_df = pd.DataFrame({"genotype": ["wt", "wt"],
+                                     "titrant_conc": [0.0, 1.0],
+                                     "theta_true": [0.9, 0.1]})
+    cfg = {"seed": 0, "growth": {}, "growth_titrant_scale": 2.0,
+           "binding_data": {"titrant_name": "iptg", "titrant_conc": [0.0, 1.0],
+                            "noise": 0.0, "genotype_offset_sd": 0.1}}
+
+    written = {}
+
+    def capture_csv(self_df, path, **kwargs):
+        written[os.path.basename(str(path))] = self_df.copy()
+
+    with patch("tfscreen.util.read_yaml", return_value=cfg), \
+         patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
+               return_value=(lib_df, pheno_df, theta_df, params_df,
+                             binding_theta_df, None, None)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
+               return_value=(sample_df, counts_df)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
+               return_value=growth_df), \
+         patch.object(pd.DataFrame, "to_csv", capture_csv):
+        run_simulation_from_config("config.yaml",
+                                   out_prefix=str(tmp_path / "tfs_sim"),
+                                   num_replicates=1)
+
+    offsets = written["tfs_sim_binding_offsets.csv"]
+    assert offsets["genotype"].tolist() == ["wt"]
+    binding = written["tfs_sim_binding.csv"]
+    np.testing.assert_allclose(binding["theta_obs"].to_numpy(),
+                               np.array([0.9, 0.1]) + offsets["offset"].iloc[0])
+
+    scale = written["tfs_sim_growth_titrant_scale.csv"]
+    assert scale["parameter"].tolist() == ["growth_log_conc_shift"]
+    assert scale["ref"].iloc[0] == pytest.approx(np.log(2.0))
+
+
+def test_binding_offset_and_scale_outputs_join_the_existence_guard(tmp_path):
+    cfg = {"seed": 0, "growth": {}, "growth_titrant_scale": 2.0,
+           "binding_data": {"titrant_name": "iptg", "titrant_conc": [0.0],
+                            "genotype_offset_sd": 0.1}}
+    for name in ("binding_offsets", "growth_titrant_scale"):
+        path = tmp_path / f"tfs_sim_{name}.csv"
+        path.write_text("x\n")
+        with patch("tfscreen.util.read_yaml", return_value=dict(cfg)):
+            with pytest.raises(FileExistsError, match=f"tfs_sim_{name}.csv"):
+                run_simulation_from_config("config.yaml",
+                                           out_prefix=str(tmp_path / "tfs_sim"))
+        path.unlink()

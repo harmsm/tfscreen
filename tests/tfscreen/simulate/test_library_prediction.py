@@ -467,3 +467,39 @@ def test_unsupported_theta_component_raises(mocker, tmp_path):
 
     with pytest.raises(ValueError, match="hill"):
         library_prediction(cf="config.yaml")
+
+
+# ---------------------------------------------------------------------------
+# _select_own_theta_spiked
+# ---------------------------------------------------------------------------
+
+def _own_theta_table():
+    rows = []
+    for g, vals in {"wt": [0.9, 0.1], "A1B": [0.8, 0.5], "C2D": [0.2, 0.1]}.items():
+        for c, v in zip([0.0, 1.0], vals):
+            rows.append({"genotype": g, "titrant_conc": c, "theta": v})
+    return pd.DataFrame(rows)
+
+
+def test_select_own_theta_spiked_num_none_measures_every_spike():
+    import numpy as np
+    from tfscreen.simulate.library_prediction import _select_own_theta_spiked
+
+    rows = _select_own_theta_spiked(["A1B", "C2D", "E3F"], None,
+                                    "stratified", _own_theta_table(),
+                                    [0.0, 1.0], "iptg",
+                                    np.random.default_rng(0))
+    assert [(r["genotype"], r["titrant_conc"]) for r in rows] == [
+        ("A1B", 0.0), ("A1B", 1.0), ("C2D", 0.0), ("C2D", 1.0)]
+    assert rows[1]["theta_true"] == 0.5
+    assert all(r["titrant_name"] == "iptg" for r in rows)
+
+
+def test_select_own_theta_spiked_unknown_mode_raises():
+    import numpy as np
+    from tfscreen.simulate.library_prediction import _select_own_theta_spiked
+
+    with pytest.raises(ValueError, match="Unknown spiked_binding choose_by: 'bogus'"):
+        _select_own_theta_spiked(["A1B", "C2D"], 1, "bogus",
+                                 _own_theta_table(), [0.0, 1.0], "iptg",
+                                 np.random.default_rng(0))

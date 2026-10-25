@@ -876,3 +876,118 @@ class TestPredictConditionRepSites:
         assert np.isclose(k_df["sel+2"], 0.333)
         assert np.isclose(m_df["sel+1"], 0.02)
         assert np.isclose(m_df["sel+2"], 0.03)
+
+
+# ---------------------------------------------------------------------------
+# Binding-genotype plates (noise/genotype_offset) and the shape check
+# ---------------------------------------------------------------------------
+
+class TestPredictBindingPlateSites:
+    """theta_binding_noise_offset_z is plated on the binding genotypes; a
+    genotype subset must pick each kept binding genotype's offset by label."""
+
+    @pytest.fixture
+    def offset_orchestrator(self):
+        return self._build("genotype_offset")
+
+    @staticmethod
+    def _build(noise):
+        growth_df = pd.DataFrame({
+            "library": ["lib"] * 6,
+            "genotype": ["wt", "wt", "M42V", "M42V", "K84N", "K84N"],
+            "titrant_name": ["tit1"] * 6,
+            "titrant_conc": [0.0, 1.0] * 3,
+            "condition_pre": ["pre-1"] * 6,
+            "condition_sel": ["sel+1"] * 6,
+            "t_pre": [10.0] * 6,
+            "t_sel": [0.0, 20.0] * 3,
+            "ln_cfu": [0.0, 5.0, 0.0, 3.0, 0.0, 2.0],
+            "ln_cfu_std": [0.1] * 6,
+            "replicate": [1] * 6,
+        })
+        binding_df = pd.DataFrame({
+            "genotype": ["wt", "M42V", "K84N"],
+            "titrant_name": ["tit1"] * 3,
+            "titrant_conc": [0.5] * 3,
+            "theta_obs": [0.5, 0.2, 0.3],
+            "theta_std": [0.01] * 3,
+        })
+        return ModelOrchestrator(growth_df, binding_df, transformation="single",
+                                 theta_binding_noise=noise)
+
+    @staticmethod
+    def _posteriors(orchestrator):
+        from numpyro.handlers import seed, trace as nptrace
+        tr = nptrace(seed(orchestrator.jax_model, rng_seed=0)).get_trace(
+            data=orchestrator.data, priors=orchestrator.priors)
+        return {name: _feasible_draw(site) for name, site in tr.items()
+                if site["type"] == "sample" and not site.get("is_observed", False)}
+
+    def _capture(self, orchestrator, posteriors, **kwargs):
+        """Run predict and return the posterior samples it handed Predictive."""
+        import tfscreen.tfmodel.analysis.prediction as pred_mod
+        captured = {}
+        real = pred_mod.Predictive
+
+        def spy(*args, **kw):
+            captured.update(kw["posterior_samples"])
+            return real(*args, **kw)
+
+        with patch.object(pred_mod, "Predictive", side_effect=spy):
+            out = predict(orchestrator, posteriors, predict_sites=["growth_pred"],
+                          num_samples=None, **kwargs)
+        return out, captured
+
+    def test_binding_labels(self, offset_orchestrator):
+        from tfscreen.tfmodel.analysis.prediction import _binding_labels
+        assert _binding_labels(offset_orchestrator) == ["wt", "M42V", "K84N"]
+        assert _binding_labels(MagicMock(binding_tm=None)) == []
+
+    def test_subset_takes_offsets_by_binding_label(self, offset_orchestrator):
+        post = self._posteriors(offset_orchestrator)
+        post["theta_binding_noise_offset_z"] = np.array([[10.0, 20.0, 30.0]])
+        _, captured = self._capture(offset_orchestrator, post,
+                                    genotypes=["K84N", "wt"])
+        # The subset's binding genotypes are wt, K84N (binding-tensor order).
+        np.testing.assert_allclose(
+            np.asarray(captured["theta_binding_noise_offset_z"]), [[10.0, 30.0]])
+
+    def test_binding_genotype_without_a_value_raises(self, offset_orchestrator,
+                                                     mocker):
+        post = self._posteriors(offset_orchestrator)
+        mocker.patch("tfscreen.tfmodel.analysis.prediction._binding_labels",
+                     side_effect=[["wt", "M42V"], ["wt", "Q1X"]])
+        with pytest.raises(ValueError,
+                           match=r"plated on the binding genotypes and has no "
+                                 r"value for \['Q1X'\]"):
+            predict(offset_orchestrator, post, predict_sites=["growth_pred"],
+                    num_samples=None, genotypes=["wt"])
+
+    def test_site_absent_from_prediction_model_is_skipped(self,
+                                                          offset_orchestrator,
+                                                          mocker):
+        """A posterior site the prediction model does not have is not
+        shape-checked; it is simply unused."""
+        post = self._posteriors(offset_orchestrator)
+        zero_noise = self._build("zero")
+        mocker.patch("tfscreen.tfmodel.analysis.prediction.copy_orchestrator",
+                     return_value=zero_noise)
+        out = predict(offset_orchestrator, post, predict_sites=["growth_pred"],
+                      num_samples=None)
+        post_zero = {k: v for k, v in post.items()
+                     if not k.startswith("theta_binding_noise")}
+        expected = predict(zero_noise, post_zero, predict_sites=["growth_pred"],
+                           num_samples=None)
+        q_cols = [c for c in out.columns if c.startswith("q")]
+        np.testing.assert_allclose(out[q_cols].to_numpy(dtype=float),
+                                   expected[q_cols].to_numpy(dtype=float))
+
+    def test_wrong_shape_site_raises(self, offset_orchestrator):
+        post = self._posteriors(offset_orchestrator)
+        post["theta_binding_noise_offset_scale"] = np.array([[0.1, 0.2]])
+        with pytest.raises(ValueError,
+                           match=r"Posterior site 'theta_binding_noise_offset_"
+                                 r"scale' has shape \(2,\) but the prediction "
+                                 r"model expects \(\)"):
+            predict(offset_orchestrator, post, predict_sites=["growth_pred"],
+                    num_samples=None)

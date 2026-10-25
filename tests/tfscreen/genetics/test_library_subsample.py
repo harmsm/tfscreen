@@ -230,6 +230,17 @@ def test_full_library_depth_keeps_per_sequence_quantities(config):
     assert "double-1-2" in text and "cfu0 unchanged" in text
 
 
+def test_mixture_missing_an_origin_is_an_error(config):
+    full = _full(config)
+    config.update(library_subsample={"double-1-2": 20},
+                  library_subsample_seed=1)
+    _, summary = subsample_library_df(full, config)
+    del config["library_mixture"]["single-2"]
+    with pytest.raises(ValueError,
+                       match=r"library_mixture has no value.*single-2"):
+        subsample_design(config, summary)
+
+
 def test_as_written_depth_changes_nothing(config):
     config.update(library_subsample={"double-1-2": 20},
                   library_subsample_seed=1,

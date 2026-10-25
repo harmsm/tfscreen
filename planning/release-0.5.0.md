@@ -221,7 +221,9 @@ of the release.
     upgrade notes are in the release notes draft
     (`.claude/2026-10-24_release-notes-v0.5.0.md`). If the tag date
     differs, change the section's date.
-21. [ ] Full test suite, with `--runslow` and the smoke tests. Run lint.
+21. [x] Full test suite, with `--runslow` and the smoke tests. Run lint.
+    Done 2026-10-24: 6,145 passed with `--runslow` (fresh venv, newest
+    releases, `-n 6`); smoke tests 45 passed; fatal lint clean.
 22. [ ] Tag v0.5.0 and write GitHub release notes. Install that tag on
     the cluster.
 23. [ ] Record the commit and version Natalie's analysis uses in her

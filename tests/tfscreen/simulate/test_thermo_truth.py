@@ -323,3 +323,76 @@ def test_reordered_csv_with_extras_labels_ddG_truth(tmp_path):
                            columns=["mut"] + list(reversed(_C12_STRUCTS)))
     got2 = _draw(comp, thermo_data=rev)[3]["mutation"]
     pd.testing.assert_frame_equal(ref, got2)
+
+
+# ---------------------------------------------------------------------------
+# small branches of the truth helpers
+# ---------------------------------------------------------------------------
+
+@dataclass
+class _WrongLengthParam:
+    ln_K_op: np.ndarray    # (G,)
+    other: np.ndarray      # (2,): not per-genotype when G = 3
+
+
+def test_theta_param_to_df_skips_fields_not_sized_by_genotype():
+    param = _WrongLengthParam(ln_K_op=np.array([1.0, 2.0, 3.0]),
+                              other=np.array([7.0, 8.0]))
+    df = _theta_param_to_df(param, ["a", "b", "c"], [0, 1, 2],
+                            num_genotype_sim=3)
+    assert list(df.columns) == ["genotype", "ln_K_op"]
+
+
+def test_theta_at_concs_hill_override_and_nan_for_curve_less_override():
+    from tfscreen.simulate.thermo_to_growth import _theta_at_concs
+
+    concs = np.array([0.0, 0.1, 1.0])
+    fake_module = types.SimpleNamespace(
+        run_model=lambda param, data: (np.full((len(concs), 3), 0.5),))
+    hill = {"theta_low": 0.1, "theta_high": 0.9, "log_hill_K": 0.0,
+            "hill_n": 2.0}
+    with patch.dict(model_registry["theta"], {"fake": fake_module}), \
+         patch("tfscreen.simulate.sim_data_class.with_titrant_conc",
+               side_effect=lambda sd, c: sd):
+        out = _theta_at_concs("fake", None, None, [1.0, 0.0, 0.1],
+                              ["wt", "A1B", "C2D"], [0, 1, 2],
+                              theta_gc_override={"A1B": np.ones(3),
+                                                 "C2D": np.ones(3)},
+                              theta_params_override={"A1B": hill})
+    wide = out.pivot(index="genotype", columns="titrant_conc", values="theta")
+    np.testing.assert_allclose(wide.loc["wt"], [0.5, 0.5, 0.5])
+    log_c = np.log([1e-20, 0.1, 1.0])
+    expected = 0.1 + 0.8 / (1.0 + np.exp(-2.0 * log_c))
+    np.testing.assert_allclose(wide.loc["A1B"], expected)
+    assert wide.loc["C2D"].isna().all()
+
+
+def test_mutation_truth_tables_label_mismatch_raises():
+    sim_data = types.SimpleNamespace(num_mutation=3, num_pair=0,
+                                     struct_names=None)
+    with pytest.raises(ValueError, match=r"labels \(2/0\) do not match "
+                                         r"sim_data \(3/0\)"):
+        _mutation_truth_tables({"theta_d_x": np.zeros(3)},
+                               ["wt", "A1B", "C2D"], sim_data)
+
+
+def test_mutation_truth_tables_ddG_without_structure_names_numbers_them():
+    sim_data = types.SimpleNamespace(num_mutation=2, num_pair=0,
+                                     struct_names=("H",))   # wrong length
+    det = {"theta_ddG": np.array([[1.0, 2.0], [3.0, 4.0]])}
+    mut, pair = _mutation_truth_tables(det, ["wt", "A1B", "C2D"], sim_data)
+    assert pair is None
+    assert list(mut.columns) == ["mutation", "ddG_0", "ddG_1"]
+    assert mut["ddG_1"].tolist() == [2.0, 4.0]
+
+
+def test_ddG_sigma_truth_table_numbers_structures_without_names():
+    from tfscreen.simulate.thermo_to_growth import _ddG_sigma_truth_table
+
+    sites = {"theta_ddG_sigma": np.array([0.5, 1.5])}
+    df = _ddG_sigma_truth_table(sites, None)
+    assert df["structure"].tolist() == ["0", "1"]
+    assert df["ddG_sigma"].tolist() == [0.5, 1.5]
+    df = _ddG_sigma_truth_table(sites, ["H", "L", "X"])     # wrong length
+    assert df["structure"].tolist() == ["0", "1"]
+    assert _ddG_sigma_truth_table({}, ["H"]) is None

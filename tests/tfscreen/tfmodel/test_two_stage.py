@@ -312,3 +312,43 @@ def test_x_summary_joins():
     assert x.columns[-2:].tolist() == ["consistency_z", "inconsistent"]
     bare = ts.x_summary(pred, reads)
     assert bare["k_shift"].isna().all() and bare["consistency_z"].isna().all()
+
+
+def test_flag_reads_strings_and_numbers():
+    assert ts._flag(" True ") and ts._flag("1.0") and ts._flag("1")
+    assert not ts._flag("0") and not ts._flag("false")
+    assert ts._flag(1.0) and not ts._flag(0)
+
+
+def test_km_from_map_scalar_rows_and_defaults(tmp_path):
+    pri, npz = tmp_path / "p.csv", tmp_path / "m.npz"
+    # k_loc per condition; m_loc and m_pinned scalar rows (broadcast);
+    # no k_pinned rows at all (k free everywhere by default)
+    rows = [("growth.condition_growth.m_loc", -0.004, None, None),
+            ("growth.condition_growth.m_pinned", 1.0, None, None)]
+    rows += [("growth.condition_growth.k_loc", 0.01 * (i + 1), i, c)
+             for i, c in enumerate("abc")]
+    pd.DataFrame(rows, columns=["parameter", "value", "flat_index",
+                                "condition_rep"]).to_csv(pri, index=False)
+    np.savez(npz, condition_growth_k_auto_loc=np.array([0.1, 0.2, 0.3]))
+    out = ts.km_from_map(str(npz), str(pri))
+    assert list(out.index) == ["a", "b", "c"]
+    assert np.allclose(out["k"], [0.1, 0.2, 0.3])
+    assert np.allclose(out["m"], -0.004)
+
+
+def test_km_from_map_needs_per_condition_rows(tmp_path):
+    pri, npz = tmp_path / "p.csv", tmp_path / "m.npz"
+    pd.DataFrame({"parameter": ["growth.condition_growth.k_loc"],
+                  "value": [0.01], "flat_index": [None],
+                  "condition_rep": [None]}).to_csv(pri, index=False)
+    np.savez(npz, other=np.zeros(1))
+    with pytest.raises(ValueError, match="no per-condition growth rows"):
+        ts.km_from_map(str(npz), str(pri))
+
+
+def test_marker_consistency_needs_shared_non_wt_rows():
+    both = _pred({"wt": [1.0, 0.0], "A1B": [0.5, 0.4]}, 0.05, ["wt", "A1B"])
+    one = _pred({"wt": [1.0, 0.0], "C2D": [0.5, 0.4]}, 0.05, ["wt", "C2D"])
+    with pytest.raises(ValueError, match="no non-wt rows in common"):
+        ts.marker_consistency(both, one)

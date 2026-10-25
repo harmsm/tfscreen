@@ -246,3 +246,67 @@ def test_main_parses_flags(tmp_path, clean):
                                     out, "--flag_z", "100", "--min_counts", "2"]):
         main()
     assert not pd.read_csv(out + ".csv")["flagged"].any()
+
+
+# --- internals ---
+
+def test_deviations_of_a_single_tube():
+    dv, sd = Q.deviations([0.7], [1.0])
+    np.testing.assert_array_equal(dv, [0.0])
+    np.testing.assert_array_equal(sd, [1.0])
+
+
+def _additive_grid(seed=0, G=6, R=2, C=4):
+    rng = np.random.default_rng(seed)
+    a = rng.normal(0, 1, (G, R))
+    d = rng.normal(0, 1, (G, C))
+    return a, d, a[:, :, None] + d[:, None, :]
+
+
+def test_project_defaults_to_unit_row_scale():
+    a, d, L = _additive_grid()
+    s0, e0 = Q._project(L, a, d)
+    s1, e1 = Q._project(L, a, d, np.ones(L.shape[1]))
+    np.testing.assert_allclose(s0, s1)
+    np.testing.assert_allclose(e0, e1)
+    # An exact additive fit scores every row at its expectation.
+    np.testing.assert_allclose(s0, np.broadcast_to(e0, s0.shape), atol=1e-12)
+    assert e0[0] == pytest.approx(0.0) and e0[-1] == pytest.approx(1.0)
+
+
+def test_project_without_an_axis_raises():
+    a, d, L = _additive_grid()
+    d[:, -1] = d[:, 0]
+    with pytest.raises(ValueError, match="no axis to score"):
+        Q._project(L, a, d)
+
+
+def test_fit_profiles_stops_once_scales_settle():
+    a, d, L = _additive_grid()
+    with patch.object(Q, "_project", wraps=Q._project) as proj:
+        fa, fd, fb = Q._fit_profiles(L, n_iter=20)
+    # Converged on the first pass instead of running all 20.
+    assert proj.call_count < 20
+    np.testing.assert_allclose(fb, 1.0)
+    np.testing.assert_allclose(fa[:, :, None] + fd[:, None, :], L, atol=1e-8)
+
+
+def test_panel_without_titrant_effect_raises(clean):
+    flat = clean.copy()
+    # Every tube of a replicate x time row has the same composition.
+    first = flat[flat["titrant_conc"] == 0.0].set_index(
+        ["genotype", "replicate", "t_sel"])["counts"]
+    key = pd.MultiIndex.from_frame(flat[["genotype", "replicate", "t_sel"]])
+    flat["counts"] = first.reindex(key).to_numpy()
+    with pytest.raises(ValueError, match=r"Panel .*no axis to score"):
+        Q.score_tubes(flat)
+
+
+@pytest.mark.filterwarnings("ignore:.*found in sys.modules:RuntimeWarning")
+def test_cli_module_runs_as_script(monkeypatch):
+    import runpy
+    monkeypatch.setattr(sys, "argv", ["tfs-check-tubes", "--help"])
+    with pytest.raises(SystemExit) as exc:
+        runpy.run_module("tfscreen.process_raw.scripts.check_tubes_cli",
+                         run_name="__main__")
+    assert exc.value.code == 0

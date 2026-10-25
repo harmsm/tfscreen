@@ -568,3 +568,75 @@ def test_large_K_U_mutation_reduces_theta(mock_data_no_epi):
     # At apo (C=0), mutant genotypes (indices 1, 2, 3) have larger K_U → lower theta.
     # Only compare at C=0: at saturating effector both thetas collapse to ~0 (float32 floor).
     assert jnp.all(theta_unstable[:, 0, 1:] < theta_stable[:, 0, 1:])
+
+
+# ---------------------------------------------------------------------------
+# predict_unmeasured
+# ---------------------------------------------------------------------------
+
+import pandas as pd
+
+from tfscreen.tfmodel.generative.components.theta.thermo import mwc
+from tfscreen.tfmodel.generative.components.theta.thermo.O2_C4_K3_U1_a.PK import (
+    predict_unmeasured,
+)
+
+
+def _unmeasured_posteriors(S=6, T=1, M=2, d_U=None, seed_val=0):
+    rng = np.random.default_rng(seed_val)
+    post = {
+        "theta_ln_K_op_wt": np.full(S, mwc.DEFAULT_LN_K_H_O, dtype=np.float32),
+        "theta_ln_K_HL_wt": np.full(S, mwc.DEFAULT_LN_K_H_L, dtype=np.float32),
+        "theta_ln_K_E_wt": np.full((S, T), mwc.DEFAULT_LN_K_E_C4, dtype=np.float32),
+        "theta_ln_K_U_wt": np.full(S, -12.0, dtype=np.float32),
+        "theta_d_ln_K_op": (rng.standard_normal((S, M)) * 0.3).astype(np.float32),
+        "theta_d_ln_K_HL": (rng.standard_normal((S, M)) * 0.3).astype(np.float32),
+        "theta_d_ln_K_E": (rng.standard_normal((S, T, M)) * 0.3).astype(np.float32),
+        "theta_d_ln_K_U": (np.zeros((S, M)) if d_U is None else d_U).astype(np.float32),
+    }
+    return post
+
+
+def _unmeasured_kwargs(post, concs, genotypes=("wt", "M42I", "K84L", "Z99Q")):
+    return dict(
+        target_genotypes=list(genotypes),
+        titrant_names=["IPTG"],
+        manual_titrant_df=pd.DataFrame({"titrant_name": ["IPTG"] * len(concs),
+                                        "titrant_conc": concs}),
+        mut_labels=["M42I", "K84L"],
+        pair_labels=[],
+        param_posteriors=post,
+        q_to_get={"median": 0.5},
+        tf_total=mwc.DEFAULT_TF_TOTAL_M,
+    )
+
+
+class TestPredictUnmeasured:
+
+    def test_conc_unit_scale_converts_mM_to_M(self):
+        post = _unmeasured_posteriors()
+        res_M = predict_unmeasured(**_unmeasured_kwargs(post, [0.0, 1e-5, 1e-4]))
+        res_mM = predict_unmeasured(conc_unit_scale=1e-3,
+                                    **_unmeasured_kwargs(post, [0.0, 1e-2, 1e-1]))
+        np.testing.assert_allclose(res_mM["median"].values,
+                                   res_M["median"].values, atol=1e-6)
+
+    def test_unknown_mutation_nan_and_wt_in_unit_interval(self):
+        post = _unmeasured_posteriors()
+        res = predict_unmeasured(**_unmeasured_kwargs(post, [0.0, 1e-4]))
+        assert res.loc[res["genotype"] == "Z99Q", "median"].isna().all()
+        wt = res.loc[res["genotype"] == "wt", "median"]
+        assert ((wt >= 0) & (wt <= 1)).all()
+
+    def test_unfolding_mutation_lowers_repression(self):
+        S, M = 6, 2
+        d_U = np.zeros((S, M))
+        d_U[:, 0] = 15.0                     # M42I mostly unfolded
+        post = _unmeasured_posteriors(S=S, M=M, d_U=d_U)
+        for k in ("theta_d_ln_K_op", "theta_d_ln_K_HL", "theta_d_ln_K_E"):
+            post[k] = np.zeros_like(post[k])
+        res = predict_unmeasured(**_unmeasured_kwargs(post, [0.0],
+                                                      genotypes=("wt", "M42I")))
+        wt = float(res.loc[res["genotype"] == "wt", "median"].iloc[0])
+        mut = float(res.loc[res["genotype"] == "M42I", "median"].iloc[0])
+        assert mut < wt

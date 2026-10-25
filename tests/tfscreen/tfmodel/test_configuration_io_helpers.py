@@ -519,3 +519,21 @@ class TestUnknownPriorRows:
     ])
     def test_static_flag(self, value, expected):
         assert _static_flag(value) == expected
+
+
+class TestKnownKeysEdgeCases:
+
+    def test_fields_of_a_non_standard_dataclass(self):
+        # an object carrying __dataclass_fields__ itself (not through its
+        # class, so dataclasses.is_dataclass is False) still lists them
+        from types import SimpleNamespace
+        from tfscreen.tfmodel.configuration_io import _dataclass_fields
+        f = dataclasses.field()
+        f.name = "a"
+        obj = SimpleNamespace(__dataclass_fields__={"a": f}, a=1.0)
+        assert not dataclasses.is_dataclass(obj)
+        assert [x.name for x in _dataclass_fields(obj)] == ["a"]
+
+    def test_known_keys_of_a_non_dataclass_is_empty(self):
+        from tfscreen.tfmodel.configuration_io import _known_keys
+        assert _known_keys(object()) == (set(), [])

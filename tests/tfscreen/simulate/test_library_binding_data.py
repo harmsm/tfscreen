@@ -156,3 +156,16 @@ def test_file_path_uses_named_genotypes_and_warns_on_nonsurvivor(params_df, tmp_
         )
     assert set(man["genotype"]) == {"H74A", "K84L"}
     assert "D88A" not in set(bdf["genotype"])
+
+
+def test_theta_df_missing_a_binding_concentration_raises(params_df):
+    theta_df = pd.DataFrame({"genotype": ["H74A", "H74A"],
+                             "titrant_conc": [0.0, 1.0],
+                             "theta": [0.9, 0.2]})
+    with pytest.raises(ValueError, match=r"no theta at binding "
+                                         r"concentration\(s\) \[0.001, 0.03\]"):
+        generate_library_binding_df(
+            {"choose_by": "random", "num": 1}, "iptg", CONCS, 0.0,
+            params_df, _all_survive(params_df), spiked_genotypes=["wt"],
+            rng=np.random.default_rng(0), theta_df=theta_df,
+        )

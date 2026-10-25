@@ -335,3 +335,63 @@ def test_cli_module_runs_as_script(monkeypatch):
         runpy.run_module("tfscreen.process_raw.scripts.correct_tubes_cli",
                          run_name="__main__")
     assert exc.value.code == 0
+
+
+# ---------------------------------------------------------------------------
+# edge cases of reading and applying
+# ---------------------------------------------------------------------------
+
+def test_correction_that_is_not_a_mapping(tmp_path):
+    with pytest.raises(ValueError, match="correction 1: each correction "
+                                         "must be a mapping"):
+        read_corrections(_write(tmp_path, ["swap A and B"]))
+
+
+def test_single_tube_may_be_a_bare_string(tmp_path):
+    corr = read_corrections(_write(tmp_path, [
+        _entry(action="exclude", tubes=KAN)]))["corrections"]
+    assert corr[0]["tubes"] == [KAN]
+    df, changes = correct_tube_table(pd.read_csv(TUBES), corr)
+    assert KAN not in set(df["sample"])
+    assert changes["action"].tolist() == ["exclude"]
+
+
+def test_empty_tube_name(tmp_path):
+    with pytest.raises(ValueError, match="empty tube name"):
+        read_corrections(_write(tmp_path, [
+            _entry(action="exclude", tubes=[KAN, "  "])]))
+
+
+def test_swap_with_a_column_missing_in_both_tubes(tmp_path):
+    tubes = pd.read_csv(TUBES)
+    tubes.loc[tubes["sample"].isin([A, B]), "titrant_name"] = float("nan")
+    corr = read_corrections(_write(tmp_path, [_entry()]))["corrections"]
+    df, changes = correct_tube_table(tubes, corr)
+    # Both NaN counts as the same value: only titrant_conc changes.
+    assert set(changes["column"]) == {"titrant_conc"}
+    df = df.set_index("sample")
+    orig = tubes.set_index("sample")
+    assert df.at[A, "titrant_conc"] == orig.at[B, "titrant_conc"]
+    assert df.loc[[A, B], "titrant_name"].isna().all()
+
+
+def test_relabel_text_column(tmp_path):
+    df, changes = _apply(tmp_path, [_entry(action="relabel", tubes=[KAN],
+                                           set={"condition_sel": "kanR+new"})])
+    assert df.set_index("sample").at[KAN, "condition_sel"] == "kanR+new"
+    assert changes["corrected"].tolist() == ["kanR+new"]
+
+
+def test_tube_table_indexed_by_sample(tmp_path, monkeypatch):
+    import tfscreen.process_raw.tube_corrections as TC
+    corr = _write(tmp_path, [_entry()])
+    plain = str(tmp_path / "plain")
+    apply_corrections(TUBES, corr, out_prefix=plain)
+
+    real = TC.read_dataframe
+    monkeypatch.setattr(TC, "read_dataframe",
+                        lambda src: real(src).set_index("sample"))
+    indexed = str(tmp_path / "indexed")
+    apply_corrections(TUBES, corr, out_prefix=indexed)
+    pd.testing.assert_frame_equal(pd.read_csv(f"{indexed}.csv"),
+                                  pd.read_csv(f"{plain}.csv"))

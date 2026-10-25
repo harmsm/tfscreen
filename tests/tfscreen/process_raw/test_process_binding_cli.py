@@ -45,3 +45,14 @@ def test_process_binding_refuses_overwrite(tmpdir):
     _wells().to_csv(src, index=False)
     with pytest.raises(ValueError, match="overwrite"):
         process_binding(src, out_prefix=os.path.join(tmpdir, "b"))
+
+
+@pytest.mark.filterwarnings("ignore:.*found in sys.modules:RuntimeWarning")
+def test_cli_module_runs_as_script(monkeypatch):
+    import runpy
+    import sys
+    monkeypatch.setattr(sys, "argv", ["tfs-process-binding", "--help"])
+    with pytest.raises(SystemExit) as exc:
+        runpy.run_module("tfscreen.process_raw.scripts.process_binding_cli",
+                         run_name="__main__")
+    assert exc.value.code == 0

@@ -2796,3 +2796,87 @@ class TestSummarizeFitRelative:
         assert any("Could not build the X-scale truth: bad gauge"
                    in str(x.message) for x in w)
         assert results["metadata"]["n_theta_test_points"] is None
+
+
+# ---------------------------------------------------------------------------
+# Keyed (per-mutation / per-pair) truth and the ddG_sigma join: failure paths
+# ---------------------------------------------------------------------------
+
+from tfscreen.tfmodel.scripts.summarize_fit_cli import (  # noqa: E402
+    _compute_keyed_obs,
+    _read_keyed_truth,
+    _summarize_ddG_sigma,
+)
+
+
+class TestReadKeyedTruth:
+
+    def test_unreadable_file_warns_and_returns_none(self, tmp_path):
+        (tmp_path / "tfs_sim_mutation_parameters.csv").write_text("")
+        with pytest.warns(UserWarning, match="Could not load"):
+            assert _read_keyed_truth(str(tmp_path), "mutation_parameters",
+                                     "mutation") is None
+
+    def test_missing_key_column_warns_and_returns_none(self, tmp_path):
+        pd.DataFrame({"genotype": ["A1B"], "d_x": [1.0]}).to_csv(
+            tmp_path / "tfs_sim_mutation_parameters.csv", index=False)
+        with pytest.warns(UserWarning, match="has no 'mutation' column"):
+            assert _read_keyed_truth(str(tmp_path), "mutation_parameters",
+                                     "mutation") is None
+
+    def test_absent_file_returns_none_silently(self, tmp_path):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            assert _read_keyed_truth(str(tmp_path), "pair_parameters",
+                                     "pair") is None
+
+
+def test_compute_keyed_obs_without_key_column_returns_none():
+    truth = pd.DataFrame({"d_x": [1.0]}, index=pd.Index(["A1B"], name="mutation"))
+    params = pd.DataFrame({"genotype": ["A1B"], "q0.5": [0.9]})
+    assert _compute_keyed_obs(params, truth, "d_x", "mutation") is None
+    params = pd.DataFrame({"mutation": ["A1B", "C2D"], "q0.5": [0.9, 0.1]})
+    out = _compute_keyed_obs(params, truth, "d_x", "mutation")
+    assert out[0] == 1.0 and np.isnan(out[1])
+
+
+class TestSummarizeDdGSigmaFailures:
+
+    def _sim(self, run):
+        pd.DataFrame({"structure": ["H"], "ddG_sigma": [1.0]}).to_csv(
+            run / "tfs_sim_ddG_sigma.csv", index=False)
+
+    def test_warns_when_other_ddG_tables_exist_but_sigma_missing(self, tmp_path):
+        self._sim(tmp_path)
+        pd.DataFrame({"mutation": ["A1B"], "q0.5": [0.1]}).to_csv(
+            tmp_path / "tfs_params_ddG_H.csv", index=False)
+        out = tmp_path / "summary"
+        out.mkdir()
+        with pytest.warns(UserWarning,
+                          match=r"Expected \*_params_ddG_sigma.csv"):
+            _summarize_ddG_sigma(str(tmp_path), str(out / "tfs_summarize"))
+        assert not list(out.iterdir())
+
+    def test_unjoinable_truth_warns_and_writes_nothing(self, tmp_path):
+        # Truth without a 'structure' column cannot be joined.
+        pd.DataFrame({"state": ["H"], "ddG_sigma": [1.0]}).to_csv(
+            tmp_path / "tfs_sim_ddG_sigma.csv", index=False)
+        pd.DataFrame({"structure": ["H"], "q0.5": [0.9]}).to_csv(
+            tmp_path / "tfs_params_ddG_sigma.csv", index=False)
+        out = tmp_path / "summary"
+        out.mkdir()
+        with pytest.warns(UserWarning, match="Could not join ddG_sigma truth"):
+            _summarize_ddG_sigma(str(tmp_path), str(out / "tfs_summarize"))
+        assert not list(out.iterdir())
+
+    def test_unwritable_output_warns_and_skips_calibration(self, tmp_path):
+        self._sim(tmp_path)
+        pd.DataFrame({"structure": ["H"], "q0.025": [0.5], "q0.5": [0.9],
+                      "q0.975": [1.3]}).to_csv(
+            tmp_path / "tfs_params_ddG_sigma.csv", index=False)
+        out_prefix = str(tmp_path / "no_such_dir" / "tfs_summarize")
+        with patch("tfscreen.tfmodel.scripts.summarize_fit_cli._try_calibration"
+                   ) as calib:
+            with pytest.warns(UserWarning, match="Could not write"):
+                _summarize_ddG_sigma(str(tmp_path), out_prefix)
+        calib.assert_not_called()

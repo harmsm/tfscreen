@@ -47,6 +47,12 @@ growth/binding pieces, which the two-stage fit refuses. The second, from
 
 ### Fixed
 
+- **A ΔΔG CSV column can supply two structures.** `load_ddG_prior_csv`
+  failed ("The truth value of a Series is ambiguous") whenever one file
+  column fed two structures: a `column_map` such as `{HD: H}` for a model,
+  or, with no model given, a column kept as its own structure and copied to
+  another. The numeric check now looks at each source column once
+  (`theta/thermo/io.py`).
 - **`--shared_shift` works under pandas 3.** `shared_shift.row_shifts`
   wrote wt's zero into the array from `Series.to_numpy()`, which pandas
   3's copy-on-write returns as a read-only view (`ValueError: assignment

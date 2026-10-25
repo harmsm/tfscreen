@@ -653,8 +653,13 @@ def load_ddG_prior_csv(csv_path, mut_labels, struct_names=None,
             print(f"{source}: reading structure(s) from mapped column(s) "
                   f"{mapped}.", flush=True)
 
-    values = df[src_cols].apply(pd.to_numeric, errors="coerce")
-    bad = [c for c in src_cols if values[c].isna().all() and df[c].notna().any()]
+    # A column can supply two structures (column_map {HD: H}, or a column
+    # kept as its own structure and copied to another), so check each source
+    # column once, then take one copy per structure.
+    unique_cols = list(dict.fromkeys(src_cols))
+    numeric = df[unique_cols].apply(pd.to_numeric, errors="coerce")
+    bad = [c for c in unique_cols
+           if numeric[c].isna().all() and df[c].notna().any()]
     if bad:
         raise ValueError(
             f"{source}: structure column(s) {bad} are not numeric."
@@ -695,7 +700,7 @@ def load_ddG_prior_csv(csv_path, mut_labels, struct_names=None,
     M = len(mut_labels)
     S = len(src_cols)
     scale = ddG_to_kT_factor(opts["ddG_units"], opts["temperature_K"])
-    vals = values.to_numpy(dtype=np.float64)
+    vals = numeric[src_cols].to_numpy(dtype=np.float64)
     features = np.zeros((M, S), dtype=np.float32)
     missing_labels = []
     nan_labels = []

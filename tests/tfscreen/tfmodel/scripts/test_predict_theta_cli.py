@@ -512,3 +512,14 @@ def test_finite_theta_is_not_reported(mock_extract, tmp_path):
                return_value=df), warnings.catch_warnings():
         warnings.simplefilter("error", RuntimeWarning)
         predict_theta("cfg.yaml", "post.h5", out_prefix=str(tmp_path / "o"))
+
+
+def test_warn_nonfinite_theta_without_value_columns():
+    """A table with no numeric value column has nothing to check."""
+    import warnings
+    from tfscreen.tfmodel.scripts.predict_theta_cli import warn_nonfinite_theta
+    df = pd.DataFrame({"genotype": ["wt"], "titrant_name": ["iptg"],
+                       "titrant_conc": [np.nan], "in_training_data": [1]})
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert warn_nonfinite_theta(df) == 0

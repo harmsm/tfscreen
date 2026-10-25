@@ -758,3 +758,85 @@ class TestPddGStructPerm:
         data = types.SimpleNamespace(struct_names=names[1:])
         with pytest.raises(ValueError, match=rf"lacks \['{names[0]}'\]"):
             mod._get_struct_perm(data)
+
+
+class TestIoEdgeCases:
+    """Small branches of the option parsing and coverage checks."""
+
+    def test_struct_ensemble_with_no_mutations(self, tmp_path):
+        p = str(tmp_path / "ens.h5")
+        _write_h5(p, {"H": {"res_nums": [10]}})
+        out = load_struct_ensemble(p, [])
+        assert out["struct_names"] == ("H",)
+        assert out["struct_features"].shape[0] == 0
+
+    def test_column_map_string_skips_empty_items(self):
+        opts = normalize_thermo_options({"column_map": "HD=HO,, ,LE2=LOE2,"})
+        assert opts["column_map"] == {"HD": "HO", "LE2": "LOE2"}
+
+    def test_column_map_of_wrong_type_raises(self):
+        with pytest.raises(ValueError, match="column_map must be a dict.*got int"):
+            normalize_thermo_options({"column_map": 3})
+
+    def test_thermo_options_not_a_dict_raises(self):
+        with pytest.raises(ValueError, match="thermo_options must be a dict; got list"):
+            normalize_thermo_options(["kT"])
+
+    def test_unparseable_library_label_skips_wt_check(self, tmp_path):
+        p = str(tmp_path / "ddG.csv")
+        pd.DataFrame({"mut": ["A10G"], "H": [1.5]}).to_csv(p, index=False)
+        with pytest.warns(UserWarning):
+            out = load_ddG_prior_csv(p, ["A10G", "notamutation"])
+        np.testing.assert_array_equal(out["struct_features"][:, 0], [1.5, 0.0])
+
+    def test_column_map_names_mutation_column(self, tmp_path):
+        p = str(tmp_path / "ddG.csv")
+        pd.DataFrame({"label": ["A10G"], "H": [2.0]}).to_csv(p, index=False)
+        out = load_ddG_prior_csv(p, ["A10G"],
+                                 thermo_options={"column_map": {"mut": "label"}})
+        assert out["struct_names"] == ("H",)
+        np.testing.assert_array_equal(out["struct_features"][0], [2.0])
+
+    def test_column_map_mutation_column_absent_raises(self, tmp_path):
+        p = str(tmp_path / "ddG.csv")
+        pd.DataFrame({"mut": ["A10G"], "H": [2.0]}).to_csv(p, index=False)
+        with pytest.raises(ValueError, match="names mutation column 'label'"):
+            load_ddG_prior_csv(p, ["A10G"],
+                               thermo_options={"column_map": {"mut": "label"}})
+
+    def test_column_map_without_model_identity_entry(self, tmp_path):
+        p = str(tmp_path / "ddG.csv")
+        pd.DataFrame({"mut": ["A10G"], "H": [1.0], "L": [3.0]}).to_csv(
+            p, index=False)
+        # A structure mapped to its own column keeps its place and values.
+        out = load_ddG_prior_csv(p, ["A10G"],
+                                 thermo_options={"column_map": {"H": "H"}})
+        assert out["struct_names"] == ("H", "L")
+        np.testing.assert_array_equal(out["struct_features"][0], [1.0, 3.0])
+
+    def test_column_map_without_model_adds_structure(self, tmp_path):
+        # HO is kept as its own structure and copied to HD: one file column
+        # supplies two structures (failed with an ambiguous-truth-value error
+        # until 2026-10-25)
+        p = str(tmp_path / "ddG.csv")
+        pd.DataFrame({"mut": ["A10G"], "H": [1.0], "HO": [2.0]}).to_csv(
+            p, index=False)
+        out = load_ddG_prior_csv(p, ["A10G"],
+                                 thermo_options={"column_map": {"HD": "HO"}})
+        assert out["struct_names"] == ("H", "HO", "HD")
+        np.testing.assert_array_equal(out["struct_features"][0], [1.0, 2.0, 2.0])
+
+    def test_column_map_two_structures_from_one_column(self, tmp_path):
+        p = str(tmp_path / "ddG.csv")
+        pd.DataFrame({"mut": ["A10G"], "H": [1.0], "L": [3.0],
+                      "LE2": [4.0]}).to_csv(p, index=False)
+        out = load_ddG_prior_csv(p, ["A10G"], struct_names=_C4,
+                                 thermo_options={"column_map": {"HD": "H"}})
+        np.testing.assert_array_equal(out["struct_features"][0], [1, 1, 3, 4])
+
+    def test_column_map_without_model_to_absent_column_raises(self, tmp_path):
+        p = str(tmp_path / "ddG.csv")
+        pd.DataFrame({"mut": ["A10G"], "H": [1.0]}).to_csv(p, index=False)
+        with pytest.raises(ValueError, match="maps 'HD' to column 'HO'"):
+            load_ddG_prior_csv(p, ["A10G"],
+                               thermo_options={"column_map": {"HD": "HO"}})

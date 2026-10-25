@@ -71,6 +71,7 @@ def test_read_config_resolves_paths_and_defaults(tmp_path):
 @pytest.mark.parametrize("over,match", [
     ({"two_stage": {"transformation_lambda": None}}, "transformation_lambda"),
     ({"theta_model": "hill_geno"}, "hill_relative"),
+    ({"condition_growth_model": "power"}, "must be linear"),
     ({"growth_shares_replicates": False}, "growth_shares_replicates"),
     ({"transformation_model": "mixture"}, "set by the two-stage fit"),
     ({"not_an_arg": 1}, "Unknown key"),
@@ -390,3 +391,147 @@ def test_default_run_has_no_k_shift(tmp_path, rec):
     assert (out / "kshift" / "shift.csv").exists()
     cli.fit_two_stage(y, out_dir=str(out), step="summary")
     assert pd.read_csv(out / "tfs_x.csv")["k_shift"].isna().all()
+
+
+# --- resuming, refusals and edge cases of single steps ---
+
+def test_rerun_of_a_half_finished_stage_reuses_its_config_and_fit(tmp_path, rec):
+    out = tmp_path / "run"
+    y = _write_yaml(tmp_path)
+    for step in ("stage1", "stage2"):
+        cli.fit_two_stage(y, out_dir=str(out), step=step)
+    # km.csv gone: stage 1 re-extracts it but neither configures nor fits
+    os.remove(out / "stage1" / "km.csv")
+    n_conf, n_fit = len(_calls(rec, "configure")), len(_calls(rec, "fit"))
+    cli.fit_two_stage(y, out_dir=str(out), step="stage1")
+    assert (out / "stage1" / "km.csv").exists()
+    assert len(_calls(rec, "configure")) == n_conf
+    assert len(_calls(rec, "fit")) == n_fit
+    # stage 2's prediction gone: the posterior is reused, X re-predicted
+    os.remove(out / "stage2" / cli.PRED)
+    n_post, n_pred = len(_calls(rec, "posterior")), len(_calls(rec, "predict"))
+    cli.fit_two_stage(y, out_dir=str(out), step="stage2")
+    assert (out / "stage2" / cli.PRED).exists()
+    assert len(_calls(rec, "posterior")) == n_post
+    assert len(_calls(rec, "predict")) == n_pred + 1
+
+
+class _PinnedRecorder(Recorder):
+    """Every k and m pinned: extraction writes no k/m tables."""
+
+    def configure_model(self, out_prefix, **kw):
+        self.calls.append(("configure", os.getcwd(), kw))
+        open(f"{out_prefix}_config.yaml", "w").write("x: 1\n")
+        rows = []
+        for i, (c, (k, m)) in enumerate(self.km.items()):
+            rows += [("growth.condition_growth.k_loc", k, i, c),
+                     ("growth.condition_growth.m_loc", m, i, c),
+                     ("growth.condition_growth.k_pinned", 1.0, i, c),
+                     ("growth.condition_growth.m_pinned", 1.0, i, c)]
+        pd.DataFrame(rows, columns=["parameter", "value", "flat_index",
+                                    "condition_rep"]
+                     ).to_csv(f"{out_prefix}_priors.csv", index=False)
+
+    def extract_params(self, config_file, param_file, out_prefix):
+        self.calls.append(("extract", os.getcwd(), param_file))
+
+
+def test_km_from_the_map_when_extraction_skips_pinned_k_and_m(tmp_path):
+    r = _PinnedRecorder()
+    lib = pd.DataFrame({"genotype": ["wt", "A1B", "C2D", "A1B/C2D"],
+                        "in_spiked_origin": [True, False, False, False]})
+    with patch.object(cli, "configure_model", r.configure_model), \
+         patch.object(cli, "fit_model", r.fit_model), \
+         patch.object(cli, "extract_params", r.extract_params), \
+         patch.object(cli, "library_composition_table", return_value=lib):
+        out = tmp_path / "run"
+        cli.fit_two_stage(_write_yaml(tmp_path), out_dir=str(out), step="stage1")
+    km = pd.read_csv(out / "stage1" / "km.csv", index_col="condition_rep")
+    assert list(km.index) == CONDS
+    assert np.allclose(km["k"], [r.km[c][0] for c in CONDS])
+    assert np.allclose(km["m"], [r.km[c][1] for c in CONDS])
+
+
+def test_steps_refuse_without_their_inputs(tmp_path, rec):
+    out = tmp_path / "run"
+    y = _write_yaml(tmp_path, two_stage={"kshift": True})
+    with pytest.raises(RuntimeError, match="stage 2 needs stage 1"):
+        cli.fit_two_stage(y, out_dir=str(out), step="stage2")
+    with pytest.raises(RuntimeError, match="consistency check needs stage 2"):
+        cli.fit_two_stage(y, out_dir=str(out), step="consistency")
+    with pytest.raises(RuntimeError, match="needs kshift/shift.csv"):
+        cli.fit_two_stage(y, out_dir=str(out), step="predict")
+    for step in ("stage1", "jackknife"):
+        cli.fit_two_stage(y, out_dir=str(out), step=step)
+    with pytest.raises(RuntimeError, match="start from stage 2's MAP"):
+        cli.fit_two_stage(y, out_dir=str(out), step="kshift")
+    assert not (out / "kshift" / "shift.csv").exists()
+    with pytest.raises(ValueError, match="use it with --step jackknife"):
+        cli.fit_two_stage(y, out_dir=str(out), step="stage2", jackknife_task=1)
+
+
+def test_finished_jackknife_task_and_kshift_are_skipped(tmp_path, rec, capsys):
+    out = tmp_path / "run"
+    y = _write_yaml(tmp_path)
+    for step in ("stage1", "jackknife", "stage2", "kshift"):
+        cli.fit_two_stage(y, out_dir=str(out), step=step)
+    n = len(rec.calls)
+    capsys.readouterr()
+    cli.fit_two_stage(y, out_dir=str(out), jackknife_task=2)
+    cli.fit_two_stage(y, out_dir=str(out), step="kshift")
+    assert len(rec.calls) == n
+    said = capsys.readouterr().out
+    assert "jackknife 2: done, skipped" in said
+    assert "kshift: done, skipped" in said
+
+
+def test_jackknife_summary_refuses_subsamples_of_different_sizes(tmp_path, rec):
+    out = tmp_path / "run"
+    y = _write_yaml(tmp_path)
+    for step in ("stage1", "jackknife"):
+        cli.fit_two_stage(y, out_dir=str(out), step=step)
+    p = out / "jackknife" / "jk_01" / "subsample.json"
+    info = json.load(open(p))
+    info["d"] += 1
+    json.dump(info, open(p, "w"))
+    os.remove(out / "jackknife" / "k_step.csv")
+    _, settings = cli.read_two_stage_config(y)
+    with pytest.raises(RuntimeError, match="differ in tubes kept"):
+        cli.summarize_jackknife(str(out), settings)
+    assert not (out / "jackknife" / "k_step.csv").exists()
+
+
+def _consistency_inputs(out, libraries):
+    (out / "stage1").mkdir(parents=True)
+    (out / "stage2").mkdir()
+    pd.DataFrame({"library": libraries, "condition_pre": "a",
+                  "condition_sel": "b"}
+                 ).to_csv(out / "stage1" / "tfs_growth.csv", index=False)
+    open(out / "stage2" / cli.PRED, "w").write("x\n")
+
+
+def test_consistency_refuses_a_bad_library(tmp_path):
+    y = _write_yaml(tmp_path)
+    cfg, settings = cli.read_two_stage_config(y)
+    out = tmp_path / "two"
+    _consistency_inputs(out, ["kanR", "pheS"])
+    settings["consistency_library"] = "bogus"
+    with pytest.raises(ValueError, match="'bogus' is not one of"):
+        cli.run_consistency(str(out), cfg, settings)
+    out = tmp_path / "one"
+    _consistency_inputs(out, ["kanR", "kanR"])
+    settings["consistency_library"] = None
+    with pytest.raises(ValueError, match="needs two libraries"):
+        cli.run_consistency(str(out), cfg, settings)
+    assert not (out / "consistency").exists()
+
+
+@pytest.mark.filterwarnings("ignore:.*found in sys.modules:RuntimeWarning")
+def test_cli_module_runs_as_script(monkeypatch):
+    import runpy
+    import sys
+    monkeypatch.setattr(sys, "argv", ["tfs-fit-two-stage", "--help"])
+    with pytest.raises(SystemExit) as exc:
+        runpy.run_module("tfscreen.tfmodel.scripts.fit_two_stage_cli",
+                         run_name="__main__")
+    assert exc.value.code == 0

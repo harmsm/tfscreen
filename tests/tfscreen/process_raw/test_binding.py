@@ -105,6 +105,11 @@ def test_refusals():
         binding_table(_wells(), 2.0, protein_conc_units="pM")
     with pytest.raises(ValueError, match="theta_std must be positive"):
         binding_table(_wells(), 2.0, theta_std=0.0)
+    with pytest.raises(ValueError, match="sig_digits must be at least 1"):
+        binding_table(_wells(), 2.0, sig_digits=0)
+    for bad in (0.0, -1.0, np.nan):
+        with pytest.raises(ValueError, match="protein_conc must be positive"):
+            binding_table(_wells(), bad)
 
 
 def test_no_replicate_cols_makes_each_row_a_replicate():
