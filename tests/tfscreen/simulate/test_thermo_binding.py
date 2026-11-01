@@ -242,7 +242,7 @@ def _wt_only_sim_data(module):
 
 
 def test_every_thermo_component_listed():
-    assert len(ALL_THERMO) == 12
+    assert len(ALL_THERMO) == 15   # 12 O2 models + thermo.dimer PK, PddG, PnnC
 
 
 @pytest.mark.parametrize("component", ALL_THERMO)

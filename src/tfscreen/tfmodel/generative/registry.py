@@ -39,6 +39,9 @@ from .components.theta.thermo.O2_C12_K5_U0_a import PddG as theta_mwc_dimer_lnK_
 from .components.theta.thermo.O2_C12_K5_U1_a import PK as theta_mwc_dimer_unfolded_lnK_mut
 from .components.theta.thermo.O2_C12_K5_U1_a import PnnC as theta_mwc_dimer_unfolded_lnK_nn_prior
 from .components.theta.thermo.O2_C12_K5_U1_a import PddG as theta_mwc_dimer_unfolded_lnK_ddG_prior
+from .components.theta.thermo.dimer import PK as theta_dimer_PK
+from .components.theta.thermo.dimer import PddG as theta_dimer_PddG
+from .components.theta.thermo.dimer import PnnC as theta_dimer_PnnC
 from .components.transformation import mixture as transformation_mixture
 from .components.transformation import single as transformation_single
 
@@ -111,6 +114,9 @@ model_registry = {
         "thermo.O2_C12_K5_U1_a.PK":theta_mwc_dimer_unfolded_lnK_mut,
         "thermo.O2_C12_K5_U1_a.PnnC":theta_mwc_dimer_unfolded_lnK_nn_prior,
         "thermo.O2_C12_K5_U1_a.PddG":theta_mwc_dimer_unfolded_lnK_ddG_prior,
+        "thermo.dimer.PK":theta_dimer_PK,
+        "thermo.dimer.PddG":theta_dimer_PddG,
+        "thermo.dimer.PnnC":theta_dimer_PnnC,
     },
     "theta_growth_noise":{
         "zero":no_noise,

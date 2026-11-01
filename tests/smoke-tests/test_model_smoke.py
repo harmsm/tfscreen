@@ -108,6 +108,11 @@ SMOKE_CONFIGS = [
         "theta":"thermo.O2_C12_K5_U1_a.PK",
         "epistasis":False,
     },
+    # test the general dimer PK theta, with pair terms
+    {
+        "theta":"thermo.dimer.PK",
+        "epistasis":True,
+    },
 ]
 
 @pytest.mark.slow
@@ -260,6 +265,7 @@ def test_model_svi_smoke_lac_ddG_prior(growth_smoke_csv,
 @pytest.mark.parametrize("theta_key", [
     "thermo.O2_C12_K5_U0_a.PnnC",
     "thermo.O2_C12_K5_U1_a.PnnC",
+    "thermo.dimer.PnnC",
 ])
 def test_model_svi_smoke_mwc_nn_prior(growth_smoke_csv,
                                        binding_smoke_csv,
@@ -292,6 +298,7 @@ def test_model_svi_smoke_mwc_nn_prior(growth_smoke_csv,
 @pytest.mark.parametrize("theta_key", [
     "thermo.O2_C12_K5_U0_a.PddG",
     "thermo.O2_C12_K5_U1_a.PddG",
+    "thermo.dimer.PddG",
 ])
 def test_model_svi_smoke_mwc_ddG_prior(growth_smoke_csv,
                                         binding_smoke_csv,

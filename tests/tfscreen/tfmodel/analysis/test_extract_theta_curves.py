@@ -263,3 +263,29 @@ class TestExtractThetaUnmeasuredBatching:
                 extract_theta_unmeasured(
                     model, {}, ["wt"], self._manual_df()
                 )
+
+
+def test_theta_priors_reach_a_predict_unmeasured_that_takes_them():
+    """thermo.dimer reads its species flags from the theta priors."""
+    seen = {}
+
+    def predict(target_genotypes, titrant_names, manual_titrant_df,
+                mut_labels, pair_labels, param_posteriors, q_to_get,
+                theta_priors=None):
+        seen["priors"] = theta_priors
+        return _fake_predict_unmeasured(target_genotypes, titrant_names,
+                                        manual_titrant_df, mut_labels,
+                                        pair_labels, param_posteriors,
+                                        q_to_get)
+
+    module = MagicMock()
+    module.predict_unmeasured = predict
+    model = _make_unmeasured_model()
+    with patch("tfscreen.tfmodel.analysis.extraction.model_registry",
+               {"theta": {"hill_mut": module}}), \
+         patch("tfscreen.tfmodel.analysis.extraction.load_posteriors",
+               return_value=({"q0.5": 0.5}, {})):
+        extract_theta_unmeasured(
+            model, {}, ["wt"],
+            pd.DataFrame({"titrant_name": ["IPTG"], "titrant_conc": [1.0]}))
+    assert seen["priors"] is model.priors.theta

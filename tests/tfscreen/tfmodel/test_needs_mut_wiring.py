@@ -104,6 +104,7 @@ def _make_binding_csv(tmp_path, genotypes=_GENOTYPES):
 @pytest.mark.parametrize("theta", [
     "thermo.O2_C4_K3_U1_a.PK",
     "thermo.O2_C12_K5_U1_a.PK",
+    "thermo.dimer.PK",
 ])
 def test_needs_mut_growth_path(tmp_path, theta):
     """
@@ -130,6 +131,7 @@ def test_needs_mut_growth_path(tmp_path, theta):
 @pytest.mark.parametrize("theta", [
     "thermo.O2_C4_K3_U1_a.PK",
     "thermo.O2_C12_K5_U1_a.PK",
+    "thermo.dimer.PK",
 ])
 def test_needs_mut_binding_only_path(tmp_path, theta):
     """
@@ -175,3 +177,15 @@ def test_offset_guesses_have_correct_shape_binding_only(tmp_path, theta):
         if "offset" in key and hasattr(val, "shape") and val.shape != ():
             assert val.shape[0] == M or val.shape[-1] == M, \
                 f"{key} has shape {val.shape} but expected M={M} on at least one axis"
+
+
+@pytest.mark.parametrize("theta, expected", [
+    ("hill_geno", ((), ())),
+    ("thermo.dimer.PK", ((), ())),
+    ("thermo.dimer.PnnC", (("thermo.dimer.PnnC",), ())),
+    ("thermo.O2_C12_K5_U1_a.PddG", ((), ("thermo.O2_C12_K5_U1_a.PddG",))),
+])
+def test_structural_theta_models_by_name(theta, expected):
+    """Which theta components need a structure HDF5 or a ddG CSV."""
+    from tfscreen.tfmodel.model_orchestrator import _structural_theta_models
+    assert _structural_theta_models(theta) == expected

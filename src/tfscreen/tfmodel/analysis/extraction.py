@@ -1,4 +1,6 @@
 import warnings
+import inspect
+
 import pandas as pd
 import numpy as np
 import h5py
@@ -604,6 +606,10 @@ def extract_theta_unmeasured(orchestrator, posteriors, target_genotypes,
         extra_kwargs["tf_total"] = float(theta_priors.theta_tf_total_M)
     if hasattr(theta_priors, "theta_conc_unit_scale"):
         extra_kwargs["conc_unit_scale"] = float(theta_priors.theta_conc_unit_scale)
+    # Components whose species set comes from static priors flags
+    # (thermo.dimer) take the priors themselves.
+    if "theta_priors" in inspect.signature(module.predict_unmeasured).parameters:
+        extra_kwargs["theta_priors"] = theta_priors
 
     target_genotypes = list(target_genotypes)
     n_total = len(target_genotypes)

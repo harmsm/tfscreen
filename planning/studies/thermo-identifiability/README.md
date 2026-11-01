@@ -845,6 +845,9 @@ the pipeline before that can happen.
 
 ## Next
 
+The port is done (2026-10-31): `thermo.dimer.PK`, `.PddG` and `.PnnC`, plan
+`planning/dimer-thermo-model.md`.
+
 **Next step (Mike, 2026-10-31): port the general species model into the
 pipeline,** with PK/PnnC/PddG as priors on its terms, a pair term on the
 constants with a distance-scaled sparse prior, per-effector and

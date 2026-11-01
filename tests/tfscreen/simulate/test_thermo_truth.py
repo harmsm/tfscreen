@@ -44,7 +44,8 @@ _C12_STRUCTS = ["H", "HO", "L", "LO", "HE2", "LE2"]
 
 
 def _ddG_csv(path, component="O2_C4"):
-    structs = _C12_STRUCTS if "O2_C12" in component else _C4_STRUCTS
+    structs = (_C12_STRUCTS if ("O2_C12" in component or "dimer" in component)
+               else _C4_STRUCTS)
     rng = np.random.default_rng(3)
     muts = ["H29A", "H29C", "L62A"]
     df = pd.DataFrame(rng.normal(0, 1, (len(muts), len(structs))),
@@ -96,6 +97,10 @@ CASES = [
     ("thermo.O2_C4_K3_U0_a.PddG", ["ln_K_op", "ln_K_HL"]),
     ("thermo.O2_C4_K3_U1_a.PddG", ["ln_K_op", "ln_K_HL", "ln_K_U"]),
     ("thermo.O2_C12_K5_U1_a.PddG", ["ln_K_h_l", "ln_K_h_o", "ln_K_l_o", "ln_K_u"]),
+    ("thermo.dimer.PK", ["ln_K_h_l", "ln_K_h_o", "ln_K_l_o", "ln_K_u",
+                         "ln_K_h_oii", "ln_K_l_oii"]),
+    ("thermo.dimer.PddG", ["ln_K_h_l", "ln_K_h_o", "ln_K_l_o", "ln_K_u",
+                           "ln_K_h_oii", "ln_K_l_oii"]),
 ]
 
 

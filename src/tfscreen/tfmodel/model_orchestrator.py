@@ -31,6 +31,22 @@ import inspect
 # Declare float datatype
 FLOAT_DTYPE = jnp.float64 if jax.config.read("jax_enable_x64") else jnp.float32
 
+
+def _structural_theta_models(theta):
+    """
+    ``(nn_models, ddG_models)``: ``theta`` in the first when it is a
+    thermo PnnC component (structure HDF5), in the second when a thermo
+    PddG one (ΔΔG CSV). Both are tuples, empty or ``(theta,)``.
+    """
+    theta = str(theta)
+    if not theta.startswith("thermo."):
+        return (), ()
+    if theta.endswith(".PnnC"):
+        return (theta,), ()
+    if theta.endswith(".PddG"):
+        return (), (theta,)
+    return (), ()
+
 # Set zero conc to this when taking log
 ZERO_CONC_VALUE = 1e-20
 
@@ -1457,19 +1473,8 @@ class ModelOrchestrator:
         # component is selected.  Stored as static (pytree_node=False) fields
         # on GrowthData; downstream components use apply_mut_matrix for efficient
         # scatter without embedding the dense matrix as an XLA constant literal.
-        _needs_mut = (self._theta in ("hill_mut", "lac_dimer_mut",
-                                       "thermo.O2_C4_K3_U0_a.PK",
-                                       "thermo.O2_C4_K3_U0_a.PnnC",
-                                       "thermo.O2_C4_K3_U0_a.PddG",
-                                       "thermo.O2_C4_K3_U1_a.PK",
-                                       "thermo.O2_C4_K3_U1_a.PnnC",
-                                       "thermo.O2_C4_K3_U1_a.PddG",
-                                       "thermo.O2_C12_K5_U0_a.PK",
-                                       "thermo.O2_C12_K5_U0_a.PnnC",
-                                       "thermo.O2_C12_K5_U0_a.PddG",
-                                       "thermo.O2_C12_K5_U1_a.PK",
-                                       "thermo.O2_C12_K5_U1_a.PnnC",
-                                       "thermo.O2_C12_K5_U1_a.PddG") or
+        _needs_mut = (self._theta in ("hill_mut", "lac_dimer_mut") or
+                      str(self._theta).startswith("thermo.") or
                       self._activity in ("hierarchical_mut", "horseshoe_mut") or
                       self._dk_geno == "hierarchical_mut")
         self.mut_labels = []
@@ -1506,10 +1511,7 @@ class ModelOrchestrator:
         # (*_lnK_nn_prior models) or a CSV file (*_lnK_ddG_prior models).
         # struct_names is a tuple and cannot go through populate_dataclass (which
         # rejects tuples); it is injected via .replace() after GrowthData is built.
-        _nn_prior_models   = ("thermo.O2_C4_K3_U0_a.PnnC", "thermo.O2_C4_K3_U1_a.PnnC",
-                               "thermo.O2_C12_K5_U0_a.PnnC", "thermo.O2_C12_K5_U1_a.PnnC")
-        _ddG_prior_models  = ("thermo.O2_C4_K3_U0_a.PddG", "thermo.O2_C4_K3_U1_a.PddG",
-                               "thermo.O2_C12_K5_U0_a.PddG", "thermo.O2_C12_K5_U1_a.PddG")
+        _nn_prior_models, _ddG_prior_models = _structural_theta_models(self._theta)
         _needs_struct = self._theta in _nn_prior_models + _ddG_prior_models
         _struct_names_tuple = None
         if _needs_struct:
@@ -1764,20 +1766,8 @@ class ModelOrchestrator:
         binding_data_sources = [self.binding_tm.tensors, sizes, other_data]
 
         # Mutation decomposition matrices for mutation-level theta components
-        _needs_mut = self._theta in ("hill_mut",
-                                     "lac_dimer_mut",
-                                     "thermo.O2_C4_K3_U0_a.PK",
-                                     "thermo.O2_C4_K3_U0_a.PnnC",
-                                     "thermo.O2_C4_K3_U0_a.PddG",
-                                     "thermo.O2_C4_K3_U1_a.PK",
-                                     "thermo.O2_C4_K3_U1_a.PnnC",
-                                     "thermo.O2_C4_K3_U1_a.PddG",
-                                     "thermo.O2_C12_K5_U0_a.PK",
-                                     "thermo.O2_C12_K5_U0_a.PnnC",
-                                     "thermo.O2_C12_K5_U0_a.PddG",
-                                     "thermo.O2_C12_K5_U1_a.PK",
-                                     "thermo.O2_C12_K5_U1_a.PnnC",
-                                     "thermo.O2_C12_K5_U1_a.PddG")
+        _needs_mut = (self._theta in ("hill_mut", "lac_dimer_mut")
+                      or str(self._theta).startswith("thermo."))
 
         if _needs_mut:
             _geno_idx = self.binding_tm.tensor_dim_names.index("genotype")
@@ -1805,10 +1795,7 @@ class ModelOrchestrator:
                 "pair_nnz_geno_idx": pair_nnz_geno_idx,
             })
 
-        _nn_prior_models  = ("thermo.O2_C4_K3_U0_a.PnnC", "thermo.O2_C4_K3_U1_a.PnnC",
-                              "thermo.O2_C12_K5_U0_a.PnnC", "thermo.O2_C12_K5_U1_a.PnnC")
-        _ddG_prior_models = ("thermo.O2_C4_K3_U0_a.PddG", "thermo.O2_C4_K3_U1_a.PddG",
-                              "thermo.O2_C12_K5_U0_a.PddG", "thermo.O2_C12_K5_U1_a.PddG")
+        _nn_prior_models, _ddG_prior_models = _structural_theta_models(self._theta)
         _struct_names_tuple = None
         if self._theta in _nn_prior_models + _ddG_prior_models:
             if self._thermo_data is None:

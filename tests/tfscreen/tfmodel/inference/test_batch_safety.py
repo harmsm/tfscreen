@@ -160,6 +160,7 @@ _SAFE_VARIANTS = [
     ("theta", "thermo.O2_C4_K3_U1_a.PK"),
     ("theta", "thermo.O2_C12_K5_U0_a.PK"),
     ("theta", "thermo.O2_C12_K5_U1_a.PK"),
+    ("theta", "thermo.dimer.PK"),
     ("theta_rescale", "passthrough"),
     ("theta_rescale", "logit"),
     ("transformation", "single"),
@@ -243,6 +244,7 @@ def test_default_model_is_batch_safe():
     ("hill_mut", "horseshoe_mut"),
     ("thermo.O2_C4_K3_U0_a.PK", "horseshoe_geno"),
     ("thermo.O2_C12_K5_U1_a.PK", "horseshoe_geno"),
+    ("thermo.dimer.PK", "horseshoe_geno"),
 ])
 def test_epistasis_latents_are_batch_safe(theta, activity):
     """Pair-indexed epistasis latents must be library-sized too."""
@@ -341,6 +343,7 @@ def test_component_predictions_follow_batch_order(axis, variant):
     ("hill_mut", "hierarchical_mut"),
     ("hill_mut", "horseshoe_mut"),
     ("thermo.O2_C4_K3_U0_a.PK", "horseshoe_geno"),
+    ("thermo.dimer.PK", "horseshoe_geno"),
 ])
 def test_epistasis_predictions_follow_batch_order(theta, activity):
     orchestrator = ModelOrchestrator(growth_df=_GROWTH_CSV,

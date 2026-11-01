@@ -597,6 +597,92 @@ mutation's stability unchanged.
 Full names look like ``thermo.O2_C4_K3_U0_a.PK`` or
 ``thermo.O2_C12_K5_U1_a.PnnC``.
 
+.. _thermo-dimer:
+
+The general dimer model
+~~~~~~~~~~~~~~~~~~~~~~~
+
+``thermo.dimer.PK``, ``thermo.dimer.PddG`` and ``thermo.dimer.PnnC`` are one
+model of a dimeric transcription factor whose species are chosen by flags
+rather than by name. They are meant to replace the ``O2`` models. The
+identifiability study behind the design is
+``planning/studies/thermo-identifiability/``.
+
+The model is a set of species, each with a log formation constant that is a
+sum of energy terms. Every model has the dimer conformations H2 and L2, each
+binding zero, one or two effectors at independent per-site constants. Each
+conformation engages operator with a first half-site constant. Six static
+priors fields add species and terms. Set them with
+``tfs-configure-model --set_priors theta_monomers=1``, in the priors CSV, or
+in a simulate config's ``theta_priors`` block:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 10 50
+
+   * - Flag
+     - Default
+     - Adds
+   * - ``theta_unfolded_dimer``
+     - on
+     - an unfolded dimer U2, ``ln_K_u`` = ln [U2]/[H2]
+   * - ``theta_second_engagement``
+     - on
+     - the second, intramolecular operator engagement ``ln_K_h_oii`` and
+       ``ln_K_l_oii``; a dimer binds with K\ :sub:`o`\ (1 + K\ :sub:`oii`)
+   * - ``theta_monomers``
+     - off
+     - free H and L monomers with dimerization ``ln_K_d_h``, the monomer
+       conformational constant ``ln_K_m_h_l`` and monomer half-site binding
+       ``ln_K_m_h_o`` and ``ln_K_m_l_o``
+   * - ``theta_unfolded_monomer``
+     - off
+     - an unfolded monomer, ``ln_K_m_u``; needs monomers
+   * - ``theta_effector_coupling``
+     - off
+     - coupling of the second effector site to the first, ``ln_K_h_ee`` and
+       ``ln_K_l_ee``, per titrant
+   * - ``theta_operator_coupling``
+     - off
+     - coupling of each bound effector to operator binding, ``ln_K_h_eo``
+       and ``ln_K_l_eo``, per titrant; 0 is MWC independence
+
+The basis is referenced to the dimer and reuses the ``O2_C12`` names. With
+the second engagement off and the other optional terms at their defaults,
+the model is ``O2_C12_K5_U1_a`` exactly. The wt prior on each operator
+constant sits on the effective constant, ``ln_K_h_o_eff``, which is what the
+data see. The first engagement is that constant minus
+softplus(``ln_K_h_oii``). We kept the second engagement on by default
+because the study found that folding it into one constant produces spurious
+epistasis when K\ :sub:`oii` is near 1.
+
+Each mutation shifts every term of the model. With more than one titrant,
+its effect on an effector term is a shared shift plus a per-titrant
+deviation with prior SD ``theta_d_dev_scale`` (0.5). With epistasis, each
+pair shifts every term through a regularized horseshoe. When the structure
+HDF5 carries contact distances, the horseshoe scale of a pair is
+exp(−d/d\ :sub:`0`), with d its closest contact. The three priors differ only
+in the per-mutation shifts:
+
+* ``PK`` puts a hierarchical normal on every term.
+* ``PddG`` puts the structural ΔΔG prior of the ``O2`` PddG models on the six
+  ``O2_C12`` constants. The CSV has columns H, HO, L, LO, HE2 and LE2. The
+  structural ΔΔG of HO and LO sets the shift of the first engagement. Every
+  other term gets the ``PK`` prior.
+* ``PnnC`` is ``PddG`` with the prior means from the structure MLP.
+
+``ln_K_u`` is always part of the structural block, so the post-hoc
+per-structure ΔΔG is exact. Without the unfolded dimer that row reaches no
+θ, and the common shift of the per-structure ΔΔG then comes from the prior.
+Score per-structure ΔΔG only for models with the unfolded dimer.
+
+The solver finds free protomer in closed form and free effector by a
+bracketed Newton solve in log space. Its derivatives come from the implicit
+function theorem, so gradients and the Laplace Hessian are exact. The
+equations are in ``theta/thermo/dimer/species.py``. The model has no axis
+for operator, TF level or genetic background. One operator and one known TF
+level, ``theta_tf_total_M``, apply to every tube.
+
 All the thermodynamic models read ``titrant_conc`` in mM, the units of the
 growth and binding tables, and multiply it by the prior
 ``theta_conc_unit_scale`` (default 1e-3) so that the equations run in M.

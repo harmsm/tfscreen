@@ -29,6 +29,31 @@ fall into two kinds:
 
 ## [Unreleased]
 
+### Added
+
+- `thermo.dimer.PK`, `thermo.dimer.PddG` and `thermo.dimer.PnnC`
+  (`tfmodel/generative/components/theta/thermo/dimer/`): one general
+  thermodynamic model of a dimeric transcription factor, ported from the
+  identifiability study (`planning/studies/thermo-identifiability/`), meant to
+  replace the `O2_*` models. Static priors flags choose the species:
+  `theta_unfolded_dimer` and `theta_second_engagement` (on by default),
+  `theta_monomers`, `theta_unfolded_monomer`, `theta_effector_coupling` and
+  `theta_operator_coupling`. With the second engagement off it is
+  `O2_C12_K5_U1_a` exactly. Each mutation shifts every term. Effector effects
+  are shared across titrants with a per-titrant deviation (prior SD
+  `theta_d_dev_scale`, 0.5), and pairs shift every term through a horseshoe
+  scaled by contact distance when the structure file gives one. PddG and PnnC
+  put the existing structural ΔΔG prior on the six `O2_C12` constants.
+  Documented in `docs/source/model.rst` ("The general dimer model").
+
+### Changed
+
+- `ModelOrchestrator` decides which theta components need mutation matrices
+  and structure files by name pattern (`thermo.*`, `*.PddG`, `*.PnnC`) instead
+  of listing the `O2_*` models.
+- `extract_theta_unmeasured` passes the theta priors to a component's
+  `predict_unmeasured` when it takes a `theta_priors` argument.
+
 ## [0.5.0] - 2026-10-24
 
 The release for the first manuscript on the 2026 screen: someone in the lab
