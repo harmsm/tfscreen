@@ -1,0 +1,2683 @@
+{
+ "mwc_dimer|full|theta|-|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -1.08 op2:oiiH +1.00 wt:oH -0.56 mut4:oiiH +0.56 mut4:oH -0.37 mut5:oH +0.37 mut5:oiiH -0.37 mut0:oH (+7 more)",
+   "-1.87 wt:oiiL +1.00 wt:oL -0.92 mut5:oiiL +0.92 mut5:oL -0.79 mut4:oL +0.79 mut4:oiiL -0.58 mut2:oiiL +0.58 mut2:oL (+7 more)",
+   "+4.00 mut5:oiiH -3.95 op2:oiiH +3.95 mut0:oiiH -3.34 mut4:oiiH +2.53 mut3:oiiH +1.52 mut4:oH -1.41 mut1:oiiH -1.01 mut5:oH (+6 more)",
+   "-16.25 mut4:oiiL -6.77 mut3:oiiL +5.46 mut5:oiiL -3.75 mut5:oL +3.68 mut2:oiiL +3.19 mut4:oL -2.37 mut2:oL +2.27 mut3:oL (+6 more)"
+  ]
+ },
+ "mwc_dimer|full|affine|condition|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -1.08 op2:oiiH +1.00 wt:oH -0.56 mut4:oiiH +0.56 mut4:oH +0.37 mut5:oiiH -0.37 mut5:oH +0.37 mut0:oiiH (+7 more)",
+   "-1.87 wt:oiiL +1.00 wt:oL +0.92 mut5:oL -0.92 mut5:oiiL +0.79 mut4:oiiL -0.79 mut4:oL +0.58 mut2:oL -0.58 mut2:oiiL (+7 more)",
+   "+4.00 mut5:oiiH -3.95 op2:oiiH +3.95 mut0:oiiH -3.34 mut4:oiiH +2.53 mut3:oiiH +1.52 mut4:oH -1.41 mut1:oiiH -1.01 mut5:oH (+6 more)",
+   "-16.25 mut4:oiiL -6.77 mut3:oiiL +5.46 mut5:oiiL -3.75 mut5:oL +3.68 mut2:oiiL +3.19 mut4:oL -2.37 mut2:oL +2.27 mut3:oL (+6 more)"
+  ]
+ },
+ "mwc_dimer|full|affine|operator|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -1.08 op2:oiiH +1.00 wt:oH -0.56 mut4:oiiH +0.56 mut4:oH -0.37 mut5:oH +0.37 mut5:oiiH -0.37 mut0:oH (+7 more)",
+   "-1.87 wt:oiiL +1.00 wt:oL +0.92 mut5:oL -0.92 mut5:oiiL -0.79 mut4:oL +0.79 mut4:oiiL -0.58 mut2:oiiL +0.58 mut2:oL (+7 more)",
+   "+4.00 mut5:oiiH -3.95 op2:oiiH +3.95 mut0:oiiH -3.34 mut4:oiiH +2.53 mut3:oiiH +1.52 mut4:oH -1.41 mut1:oiiH -1.01 mut5:oH (+6 more)",
+   "-16.25 mut4:oiiL -6.77 mut3:oiiL +5.46 mut5:oiiL -3.75 mut5:oL +3.68 mut2:oiiL +3.19 mut4:oL -2.37 mut2:oL +2.27 mut3:oL (+6 more)"
+  ]
+ },
+ "mwc_dimer|star|theta|-|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -1.08 op2:oiiH +1.00 wt:oH -0.56 mut4:oiiH +0.56 mut4:oH +0.37 mut5:oiiH -0.37 mut5:oH +0.37 mut0:oiiH (+7 more)",
+   "-1.87 wt:oiiL +1.00 wt:oL -0.92 mut5:oiiL +0.92 mut5:oL +0.79 mut4:oiiL -0.79 mut4:oL -0.58 mut2:oiiL +0.58 mut2:oL (+7 more)",
+   "+4.00 mut5:oiiH -3.95 op2:oiiH +3.95 mut0:oiiH -3.34 mut4:oiiH +2.53 mut3:oiiH +1.52 mut4:oH -1.41 mut1:oiiH -1.01 mut5:oH (+6 more)",
+   "-16.25 mut4:oiiL -6.77 mut3:oiiL +5.46 mut5:oiiL -3.75 mut5:oL +3.68 mut2:oiiL +3.19 mut4:oL -2.37 mut2:oL +2.27 mut3:oL (+6 more)"
+  ]
+ },
+ "mwc_dimer|star|affine|condition|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -1.08 op2:oiiH +1.00 wt:oH -0.56 mut4:oiiH +0.56 mut4:oH +0.37 mut5:oiiH -0.37 mut5:oH -0.37 mut0:oH (+7 more)",
+   "-1.87 wt:oiiL +1.00 wt:oL +0.92 mut5:oL -0.92 mut5:oiiL -0.79 mut4:oL +0.79 mut4:oiiL +0.58 mut2:oL -0.58 mut2:oiiL (+7 more)",
+   "+4.00 mut5:oiiH -3.95 op2:oiiH +3.95 mut0:oiiH -3.34 mut4:oiiH +2.53 mut3:oiiH +1.52 mut4:oH -1.41 mut1:oiiH -1.01 mut5:oH (+6 more)",
+   "-16.25 mut4:oiiL -6.77 mut3:oiiL +5.46 mut5:oiiL -3.75 mut5:oL +3.68 mut2:oiiL +3.19 mut4:oL -2.37 mut2:oL +2.27 mut3:oL (+6 more)"
+  ]
+ },
+ "mwc_dimer|star|affine|operator|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -1.08 op2:oiiH +1.00 wt:oH +0.56 mut4:oH -0.56 mut4:oiiH -0.37 mut5:oH +0.37 mut5:oiiH -0.37 mut0:oH (+7 more)",
+   "-1.87 wt:oiiL +1.00 wt:oL -0.92 mut5:oiiL +0.92 mut5:oL +0.79 mut4:oiiL -0.79 mut4:oL -0.58 mut2:oiiL +0.58 mut2:oL (+7 more)",
+   "+4.00 mut5:oiiH -3.95 op2:oiiH +3.95 mut0:oiiH -3.34 mut4:oiiH +2.53 mut3:oiiH +1.52 mut4:oH -1.41 mut1:oiiH -1.01 mut5:oH (+6 more)",
+   "-16.25 mut4:oiiL -6.77 mut3:oiiL +5.46 mut5:oiiL -3.75 mut5:oL +3.68 mut2:oiiL +3.19 mut4:oL -2.37 mut2:oL +2.27 mut3:oL (+6 more)"
+  ]
+ },
+ "mwc_dimer|wt_knobs|theta|-|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -1.08 op2:oiiH +1.00 wt:oH +0.56 mut4:oH -0.56 mut4:oiiH -0.37 mut5:oH +0.37 mut5:oiiH -0.37 mut0:oH (+7 more)",
+   "-1.87 wt:oiiL +1.00 wt:oL -0.92 mut5:oiiL +0.92 mut5:oL +0.79 mut4:oiiL -0.79 mut4:oL -0.58 mut2:oiiL +0.58 mut2:oL (+7 more)",
+   "+4.00 mut5:oiiH -3.95 op2:oiiH +3.95 mut0:oiiH -3.34 mut4:oiiH +2.53 mut3:oiiH +1.52 mut4:oH -1.41 mut1:oiiH -1.01 mut5:oH (+6 more)",
+   "-16.25 mut4:oiiL -6.77 mut3:oiiL +5.46 mut5:oiiL -3.75 mut5:oL +3.68 mut2:oiiL +3.19 mut4:oL -2.37 mut2:oL +2.27 mut3:oL (+6 more)"
+  ]
+ },
+ "mwc_dimer|wt_knobs|affine|condition|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -1.08 op2:oiiH +1.00 wt:oH -0.56 mut4:oiiH +0.56 mut4:oH +0.37 mut5:oiiH -0.37 mut5:oH +0.37 mut0:oiiH (+7 more)",
+   "-1.87 wt:oiiL +1.00 wt:oL -0.92 mut5:oiiL +0.92 mut5:oL +0.79 mut4:oiiL -0.79 mut4:oL +0.58 mut2:oL -0.58 mut2:oiiL (+7 more)",
+   "+4.00 mut5:oiiH -3.95 op2:oiiH +3.95 mut0:oiiH -3.34 mut4:oiiH +2.53 mut3:oiiH +1.52 mut4:oH -1.41 mut1:oiiH -1.01 mut5:oH (+6 more)",
+   "-16.25 mut4:oiiL -6.77 mut3:oiiL +5.46 mut5:oiiL -3.75 mut5:oL +3.68 mut2:oiiL +3.19 mut4:oL -2.37 mut2:oL +2.27 mut3:oL (+6 more)"
+  ]
+ },
+ "mwc_dimer|wt_knobs|affine|operator|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -1.08 op2:oiiH +1.00 wt:oH -0.56 mut4:oiiH +0.56 mut4:oH -0.37 mut5:oH +0.37 mut5:oiiH +0.37 mut0:oiiH (+7 more)",
+   "-1.87 wt:oiiL +1.00 wt:oL -0.92 mut5:oiiL +0.92 mut5:oL +0.79 mut4:oiiL -0.79 mut4:oL -0.58 mut2:oiiL +0.58 mut2:oL (+7 more)",
+   "+4.00 mut5:oiiH -3.95 op2:oiiH +3.95 mut0:oiiH -3.34 mut4:oiiH +2.53 mut3:oiiH +1.52 mut4:oH -1.41 mut1:oiiH -1.01 mut5:oH (+6 more)",
+   "-16.25 mut4:oiiL -6.77 mut3:oiiL +5.46 mut5:oiiL -3.75 mut5:oL +3.68 mut2:oiiL +3.19 mut4:oL -2.37 mut2:oL +2.27 mut3:oL (+6 more)"
+  ]
+ },
+ "mwc_dimer|knobs_only|theta|-|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.00 wt:oH -0.56 mut5:oiiH +0.56 mut5:oH -0.37 mut1:oH +0.37 mut1:oiiH -0.27 mut0:oH +0.27 mut0:oiiH (+7 more)",
+   "-1.87 wt:oiiL +1.00 wt:oL +0.79 mut5:oiiL -0.79 mut5:oL +0.65 op2:oiiL +0.58 mut3:oL -0.58 mut3:oiiL +0.56 mut4:oiiL (+7 more)",
+   "+12.02 mut1:oiiH -10.16 mut5:oiiH +8.11 mut0:oiiH +7.71 mut4:oiiH +4.63 mut5:oH -4.30 mut2:oiiH -3.12 op2:oiiH -3.04 mut1:oH (+6 more)",
+   "-1.37 mut5:oiiL -1.22 op2:oiiL +1.00 op2:oL -0.57 mut4:oiiL +0.31 mut3:oiiL +0.27 mut5:oL -0.20 mut3:oL +0.19 mut4:oL (+6 more)"
+  ]
+ },
+ "mwc_dimer|knobs_only|affine|condition|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.00 wt:oH -0.56 mut5:oiiH +0.56 mut5:oH -0.37 mut1:oH +0.37 mut1:oiiH -0.27 mut0:oH +0.27 mut0:oiiH (+7 more)",
+   "-1.87 wt:oiiL +1.00 wt:oL +0.79 mut5:oiiL -0.79 mut5:oL +0.65 op2:oiiL -0.58 mut3:oiiL +0.58 mut3:oL -0.56 mut4:oL (+7 more)",
+   "+12.02 mut1:oiiH -10.16 mut5:oiiH +8.11 mut0:oiiH +7.71 mut4:oiiH +4.63 mut5:oH -4.30 mut2:oiiH -3.12 op2:oiiH -3.04 mut1:oH (+6 more)",
+   "-1.37 mut5:oiiL -1.22 op2:oiiL +1.00 op2:oL -0.57 mut4:oiiL +0.31 mut3:oiiL +0.27 mut5:oL -0.20 mut3:oL +0.19 mut4:oL (+6 more)"
+  ]
+ },
+ "mwc_dimer|knobs_only|affine|operator|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.00 wt:oH -0.56 mut5:oiiH +0.56 mut5:oH +0.37 mut1:oiiH -0.37 mut1:oH +0.27 mut0:oiiH -0.27 mut0:oH (+7 more)",
+   "-1.87 wt:oiiL +1.00 wt:oL +0.79 mut5:oiiL -0.79 mut5:oL +0.65 op2:oiiL -0.58 mut3:oiiL +0.58 mut3:oL +0.56 mut4:oiiL (+7 more)",
+   "+12.02 mut1:oiiH -10.16 mut5:oiiH +8.11 mut0:oiiH +7.71 mut4:oiiH +4.63 mut5:oH -4.30 mut2:oiiH -3.12 op2:oiiH -3.04 mut1:oH (+6 more)",
+   "-1.37 mut5:oiiL -1.22 op2:oiiL +1.00 op2:oL -0.57 mut4:oiiL +0.31 mut3:oiiL +0.27 mut5:oL -0.20 mut3:oL +0.19 mut4:oL (+6 more)"
+  ]
+ },
+ "mwc_dimer|base|theta|-|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -2.73 mut3:oiiH -1.92 mut0:oiiH +1.31 mut4:oiiH +1.19 mut2:oiiH +1.00 wt:oH +0.79 mut1:oiiH +0.07 mut5:oiiH",
+   "-1.87 wt:oiiL +1.00 wt:oL +0.65 mut2:oiiL +0.57 mut1:oiiL -0.36 mut4:oiiL +0.33 mut5:oiiL +0.21 mut3:oiiL -0.14 mut0:oiiL",
+   "-4.78 mut0:oiiH +1.00 mut0:oH",
+   "-2.01 mut0:oiiL +1.00 mut0:oL",
+   "-2.08 mut1:oiiH +1.00 mut1:oH",
+   "-1.31 mut1:oiiL +1.00 mut1:oL",
+   "-1.67 mut2:oiiH +1.00 mut2:oH",
+   "-1.22 mut2:oiiL +1.00 mut2:oL",
+   "-5.59 mut3:oiiH +1.00 mut3:oH",
+   "-1.66 mut3:oiiL +1.00 mut3:oL",
+   "-1.55 mut4:oiiH +1.00 mut4:oH",
+   "-2.24 mut4:oiiL +1.00 mut4:oL",
+   "-2.80 mut5:oiiH +1.00 mut5:oH",
+   "-1.54 mut5:oiiL +1.00 mut5:oL"
+  ]
+ },
+ "mwc_dimer|base|affine|condition|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -2.73 mut3:oiiH -1.92 mut0:oiiH +1.31 mut4:oiiH +1.19 mut2:oiiH +1.00 wt:oH +0.79 mut1:oiiH +0.07 mut5:oiiH",
+   "-1.87 wt:oiiL +1.00 wt:oL +0.65 mut2:oiiL +0.57 mut1:oiiL -0.36 mut4:oiiL +0.33 mut5:oiiL +0.21 mut3:oiiL -0.14 mut0:oiiL",
+   "-4.78 mut0:oiiH +1.00 mut0:oH",
+   "-2.01 mut0:oiiL +1.00 mut0:oL",
+   "-2.08 mut1:oiiH +1.00 mut1:oH",
+   "-1.31 mut1:oiiL +1.00 mut1:oL",
+   "-1.67 mut2:oiiH +1.00 mut2:oH",
+   "-1.22 mut2:oiiL +1.00 mut2:oL",
+   "-5.59 mut3:oiiH +1.00 mut3:oH",
+   "-1.66 mut3:oiiL +1.00 mut3:oL",
+   "-1.55 mut4:oiiH +1.00 mut4:oH",
+   "-2.24 mut4:oiiL +1.00 mut4:oL",
+   "-2.80 mut5:oiiH +1.00 mut5:oH",
+   "-1.54 mut5:oiiL +1.00 mut5:oL"
+  ]
+ },
+ "mwc_dimer|base|affine|operator|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -2.73 mut3:oiiH -1.92 mut0:oiiH +1.31 mut4:oiiH +1.19 mut2:oiiH +1.00 wt:oH +0.79 mut1:oiiH +0.07 mut5:oiiH",
+   "-1.87 wt:oiiL +1.00 wt:oL +0.65 mut2:oiiL +0.57 mut1:oiiL -0.36 mut4:oiiL +0.33 mut5:oiiL +0.21 mut3:oiiL -0.14 mut0:oiiL",
+   "-4.78 mut0:oiiH +1.00 mut0:oH",
+   "-2.01 mut0:oiiL +1.00 mut0:oL",
+   "-2.08 mut1:oiiH +1.00 mut1:oH",
+   "-1.31 mut1:oiiL +1.00 mut1:oL",
+   "-1.67 mut2:oiiH +1.00 mut2:oH",
+   "-1.22 mut2:oiiL +1.00 mut2:oL",
+   "-5.59 mut3:oiiH +1.00 mut3:oH",
+   "-1.66 mut3:oiiL +1.00 mut3:oL",
+   "-1.55 mut4:oiiH +1.00 mut4:oH",
+   "-2.24 mut4:oiiL +1.00 mut4:oL",
+   "-2.80 mut5:oiiH +1.00 mut5:oH",
+   "-1.54 mut5:oiiL +1.00 mut5:oL"
+  ]
+ },
+ "mwc_dimer|wt_only|theta|-|shared|target|ratio": {
+  "unidentified": [
+   "wt:L1",
+   "wt:U",
+   "wt:eH",
+   "wt:eL",
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "mut*:L1 (x6)",
+   "mut*:U (x6)",
+   "mut*:eH (x6)",
+   "mut*:eL (x6)",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "+40.57 mut0:U +16.56 wt:U -13.89 mut4:U +13.56 mut0:eH -13.49 mut3:U +12.89 mut0:oiiH -11.72 mut2:U +4.54 wt:oiiH (+28 more)",
+   "-2.86 wt:oiiH -2.73 mut4:oiiH -1.92 mut1:oiiH +1.31 mut5:oiiH +1.19 mut3:oiiH -1.11 mut0:oiiH +1.00 wt:oH +0.79 mut2:oiiH",
+   "-1.87 wt:oiiL +1.00 wt:oL +0.65 mut3:oiiL +0.57 mut2:oiiL -0.36 mut5:oiiL +0.21 mut4:oiiL +0.19 mut0:oiiL -0.14 mut1:oiiL",
+   "+57.13 mut0:U +17.43 mut0:oiiH +12.57 mut0:eH +1.00 mut0:L1 +0.62 mut0:eL +0.02 mut0:oiiL",
+   "-3.97 mut0:oiiH +1.00 mut0:oH",
+   "-1.68 mut0:oiiL +1.00 mut0:oL",
+   "+13.28 mut1:U +6.36 mut1:oiiH -3.24 mut1:eH +1.00 mut1:L1 -0.08 mut1:eL +0.00 mut1:oiiL",
+   "-4.78 mut1:oiiH +1.00 mut1:oH",
+   "-2.01 mut1:oiiL +1.00 mut1:oL",
+   "-5.45 mut2:eH +4.84 mut2:U +1.16 mut2:oiiH +1.00 mut2:L1 -0.37 mut2:eL +0.00 mut2:oiiL",
+   "-2.08 mut2:oiiH +1.00 mut2:oH",
+   "-1.31 mut2:oiiL +1.00 mut2:oL",
+   "+3.07 mut3:U +1.23 mut3:oiiH +1.00 mut3:L1 -0.54 mut3:eL -0.49 mut3:eH +0.04 mut3:oiiL",
+   "-1.67 mut3:oiiH +1.00 mut3:oH",
+   "-1.22 mut3:oiiL +1.00 mut3:oL",
+   "-3.40 mut4:eH +2.66 mut4:U +1.56 mut4:oiiH +1.00 mut4:L1 -0.05 mut4:eL +0.00 mut4:oiiL",
+   "-5.59 mut4:oiiH +1.00 mut4:oH",
+   "-1.66 mut4:oiiL +1.00 mut4:oL",
+   "+13.26 mut5:U +2.94 mut5:oiiH +1.00 mut5:L1 -0.22 mut5:eH -0.04 mut5:eL +0.00 mut5:oiiL",
+   "-1.55 mut5:oiiH +1.00 mut5:oH",
+   "-2.24 mut5:oiiL +1.00 mut5:oL"
+  ]
+ },
+ "mwc_dimer|wt_only|affine|condition|shared|target|ratio": {
+  "unidentified": [
+   "wt:L1",
+   "wt:U",
+   "wt:eH",
+   "wt:eL",
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "aff0000:a",
+   "aff0000:s",
+   "mut*:L1 (x6)",
+   "mut*:U (x6)",
+   "mut*:eH (x6)",
+   "mut*:eL (x6)",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "+572.05 mut5:oiiL +546.28 mut4:oiiH +514.02 mut1:oiiH +511.72 wt:oiiH +468.33 wt:oiiL +287.55 mut0:oiiH -258.14 mut3:oiiH -251.84 mut5:oiiH (+29 more)",
+   "-34.55 mut5:oiiL -33.18 mut4:oiiH -30.94 mut1:oiiH -30.64 wt:oiiH -28.29 wt:oiiL -16.59 mut0:oiiH +15.39 mut3:oiiH +15.12 mut5:oiiH (+29 more)",
+   "-2.86 wt:oiiH -2.73 mut4:oiiH -1.92 mut1:oiiH +1.31 mut5:oiiH +1.19 mut3:oiiH -1.11 mut0:oiiH +1.00 wt:oH +0.79 mut2:oiiH",
+   "-1.87 wt:oiiL +1.00 wt:oL +0.65 mut3:oiiL +0.57 mut2:oiiL -0.36 mut5:oiiL +0.21 mut4:oiiL +0.19 mut0:oiiL -0.14 mut1:oiiL",
+   "+57.13 mut0:U +17.43 mut0:oiiH +12.57 mut0:eH +1.00 mut0:L1 +0.62 mut0:eL +0.02 mut0:oiiL",
+   "-3.97 mut0:oiiH +1.00 mut0:oH",
+   "-1.68 mut0:oiiL +1.00 mut0:oL",
+   "+13.28 mut1:U +6.36 mut1:oiiH -3.24 mut1:eH +1.00 mut1:L1 -0.08 mut1:eL +0.00 mut1:oiiL",
+   "-4.78 mut1:oiiH +1.00 mut1:oH",
+   "-2.01 mut1:oiiL +1.00 mut1:oL",
+   "-5.45 mut2:eH +4.84 mut2:U +1.16 mut2:oiiH +1.00 mut2:L1 -0.37 mut2:eL +0.00 mut2:oiiL",
+   "-2.08 mut2:oiiH +1.00 mut2:oH",
+   "-1.31 mut2:oiiL +1.00 mut2:oL",
+   "+3.07 mut3:U +1.23 mut3:oiiH +1.00 mut3:L1 -0.54 mut3:eL -0.49 mut3:eH +0.04 mut3:oiiL",
+   "-1.67 mut3:oiiH +1.00 mut3:oH",
+   "-1.22 mut3:oiiL +1.00 mut3:oL",
+   "-3.40 mut4:eH +2.66 mut4:U +1.56 mut4:oiiH +1.00 mut4:L1 -0.05 mut4:eL +0.00 mut4:oiiL",
+   "-5.59 mut4:oiiH +1.00 mut4:oH",
+   "-1.66 mut4:oiiL +1.00 mut4:oL",
+   "+13.26 mut5:U +2.94 mut5:oiiH +1.00 mut5:L1 -0.22 mut5:eH -0.04 mut5:eL +0.00 mut5:oiiL",
+   "-1.55 mut5:oiiH +1.00 mut5:oH",
+   "-2.24 mut5:oiiL +1.00 mut5:oL"
+  ]
+ },
+ "mwc_dimer|wt_only|affine|operator|shared|target|ratio": {
+  "unidentified": [
+   "wt:L1",
+   "wt:U",
+   "wt:eH",
+   "wt:eL",
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "affop0:a",
+   "affop0:s",
+   "mut*:L1 (x6)",
+   "mut*:U (x6)",
+   "mut*:eH (x6)",
+   "mut*:eL (x6)",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "+572.05 mut5:oiiL +546.28 mut4:oiiH +514.02 mut1:oiiH +511.72 wt:oiiH +468.33 wt:oiiL +287.55 mut0:oiiH -258.14 mut3:oiiH -251.84 mut5:oiiH (+29 more)",
+   "-34.55 mut5:oiiL -33.18 mut4:oiiH -30.94 mut1:oiiH -30.64 wt:oiiH -28.29 wt:oiiL -16.59 mut0:oiiH +15.39 mut3:oiiH +15.12 mut5:oiiH (+29 more)",
+   "-2.86 wt:oiiH -2.73 mut4:oiiH -1.92 mut1:oiiH +1.31 mut5:oiiH +1.19 mut3:oiiH -1.11 mut0:oiiH +1.00 wt:oH +0.79 mut2:oiiH",
+   "-1.87 wt:oiiL +1.00 wt:oL +0.65 mut3:oiiL +0.57 mut2:oiiL -0.36 mut5:oiiL +0.21 mut4:oiiL +0.19 mut0:oiiL -0.14 mut1:oiiL",
+   "+57.13 mut0:U +17.43 mut0:oiiH +12.57 mut0:eH +1.00 mut0:L1 +0.62 mut0:eL +0.02 mut0:oiiL",
+   "-3.97 mut0:oiiH +1.00 mut0:oH",
+   "-1.68 mut0:oiiL +1.00 mut0:oL",
+   "+13.28 mut1:U +6.36 mut1:oiiH -3.24 mut1:eH +1.00 mut1:L1 -0.08 mut1:eL +0.00 mut1:oiiL",
+   "-4.78 mut1:oiiH +1.00 mut1:oH",
+   "-2.01 mut1:oiiL +1.00 mut1:oL",
+   "-5.45 mut2:eH +4.84 mut2:U +1.16 mut2:oiiH +1.00 mut2:L1 -0.37 mut2:eL +0.00 mut2:oiiL",
+   "-2.08 mut2:oiiH +1.00 mut2:oH",
+   "-1.31 mut2:oiiL +1.00 mut2:oL",
+   "+3.07 mut3:U +1.23 mut3:oiiH +1.00 mut3:L1 -0.54 mut3:eL -0.49 mut3:eH +0.04 mut3:oiiL",
+   "-1.67 mut3:oiiH +1.00 mut3:oH",
+   "-1.22 mut3:oiiL +1.00 mut3:oL",
+   "-3.40 mut4:eH +2.66 mut4:U +1.56 mut4:oiiH +1.00 mut4:L1 -0.05 mut4:eL +0.00 mut4:oiiL",
+   "-5.59 mut4:oiiH +1.00 mut4:oH",
+   "-1.66 mut4:oiiL +1.00 mut4:oL",
+   "+13.26 mut5:U +2.94 mut5:oiiH +1.00 mut5:L1 -0.22 mut5:eH -0.04 mut5:eL +0.00 mut5:oiiL",
+   "-1.55 mut5:oiiH +1.00 mut5:oH",
+   "-2.24 mut5:oiiL +1.00 mut5:oL"
+  ]
+ },
+ "mwc|full|theta|-|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.00 wt:oH +0.79 mut2:oiiH -0.79 mut2:oH +0.78 op2:oiiH -0.63 mut1:oiiH +0.63 mut1:oH -0.59 mut5:oH (+7 more)",
+   "-1.87 wt:oiiL -1.77 mut0:oiiL +1.77 mut0:oL +1.00 wt:oL +0.56 mut1:oiiL -0.56 mut1:oL +0.39 mut5:oiiL -0.39 mut5:oL (+7 more)",
+   "-10.65 mut2:oiiH -4.59 mut5:oiiH -2.31 mut4:oiiH -2.09 op2:oiiH -1.95 mut3:oiiH +1.88 mut1:oiiH +1.10 mut2:oH +1.00 op2:oH (+6 more)",
+   "+9.75 mut0:oiiL -7.41 mut0:oL -7.07 mut1:oiiL -4.01 mut5:oiiL +2.35 mut1:oL -2.08 mut3:oiiL -1.71 op2:oiiL +1.64 mut5:oL (+6 more)"
+  ]
+ },
+ "mwc|full|affine|condition|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.00 wt:oH -0.79 mut2:oH +0.79 mut2:oiiH +0.78 op2:oiiH -0.63 mut1:oiiH +0.63 mut1:oH -0.59 mut5:oH (+7 more)",
+   "-1.87 wt:oiiL +1.77 mut0:oL -1.77 mut0:oiiL +1.00 wt:oL -0.56 mut1:oL +0.56 mut1:oiiL -0.39 mut5:oL +0.39 mut5:oiiL (+7 more)",
+   "-10.65 mut2:oiiH -4.59 mut5:oiiH -2.31 mut4:oiiH -2.09 op2:oiiH -1.95 mut3:oiiH +1.88 mut1:oiiH +1.10 mut2:oH +1.00 op2:oH (+6 more)",
+   "+9.75 mut0:oiiL -7.41 mut0:oL -7.07 mut1:oiiL -4.01 mut5:oiiL +2.35 mut1:oL -2.08 mut3:oiiL -1.71 op2:oiiL +1.64 mut5:oL (+6 more)"
+  ]
+ },
+ "mwc|full|affine|operator|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.00 wt:oH -0.79 mut2:oH +0.79 mut2:oiiH +0.78 op2:oiiH +0.63 mut1:oH -0.63 mut1:oiiH +0.59 mut5:oiiH (+7 more)",
+   "-1.87 wt:oiiL +1.77 mut0:oL -1.77 mut0:oiiL +1.00 wt:oL -0.56 mut1:oL +0.56 mut1:oiiL +0.39 mut5:oiiL -0.39 mut5:oL (+7 more)",
+   "-10.65 mut2:oiiH -4.59 mut5:oiiH -2.31 mut4:oiiH -2.09 op2:oiiH -1.95 mut3:oiiH +1.88 mut1:oiiH +1.10 mut2:oH +1.00 op2:oH (+6 more)",
+   "+9.75 mut0:oiiL -7.41 mut0:oL -7.07 mut1:oiiL -4.01 mut5:oiiL +2.35 mut1:oL -2.08 mut3:oiiL -1.71 op2:oiiL +1.64 mut5:oL (+6 more)"
+  ]
+ },
+ "mwc|star|theta|-|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.00 wt:oH -0.79 mut2:oH +0.79 mut2:oiiH +0.78 op2:oiiH +0.63 mut1:oH -0.63 mut1:oiiH -0.59 mut5:oH (+7 more)",
+   "-1.87 wt:oiiL -1.77 mut0:oiiL +1.77 mut0:oL +1.00 wt:oL -0.56 mut1:oL +0.56 mut1:oiiL -0.39 mut5:oL +0.39 mut5:oiiL (+7 more)",
+   "-10.65 mut2:oiiH -4.59 mut5:oiiH -2.31 mut4:oiiH -2.09 op2:oiiH -1.95 mut3:oiiH +1.88 mut1:oiiH +1.10 mut2:oH +1.00 op2:oH (+6 more)",
+   "+9.75 mut0:oiiL -7.41 mut0:oL -7.07 mut1:oiiL -4.01 mut5:oiiL +2.35 mut1:oL -2.08 mut3:oiiL -1.71 op2:oiiL +1.64 mut5:oL (+6 more)"
+  ]
+ },
+ "mwc|star|affine|condition|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.00 wt:oH +0.79 mut2:oiiH -0.79 mut2:oH +0.78 op2:oiiH -0.63 mut1:oiiH +0.63 mut1:oH +0.59 mut5:oiiH (+7 more)",
+   "-1.87 wt:oiiL -1.77 mut0:oiiL +1.77 mut0:oL +1.00 wt:oL +0.56 mut1:oiiL -0.56 mut1:oL +0.39 mut5:oiiL -0.39 mut5:oL (+7 more)",
+   "-10.65 mut2:oiiH -4.59 mut5:oiiH -2.31 mut4:oiiH -2.09 op2:oiiH -1.95 mut3:oiiH +1.88 mut1:oiiH +1.10 mut2:oH +1.00 op2:oH (+6 more)",
+   "+9.75 mut0:oiiL -7.41 mut0:oL -7.07 mut1:oiiL -4.01 mut5:oiiL +2.35 mut1:oL -2.08 mut3:oiiL -1.71 op2:oiiL +1.64 mut5:oL (+6 more)"
+  ]
+ },
+ "mwc|star|affine|operator|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.00 wt:oH -0.79 mut2:oH +0.79 mut2:oiiH +0.78 op2:oiiH -0.63 mut1:oiiH +0.63 mut1:oH +0.59 mut5:oiiH (+7 more)",
+   "-1.87 wt:oiiL -1.77 mut0:oiiL +1.77 mut0:oL +1.00 wt:oL +0.56 mut1:oiiL -0.56 mut1:oL +0.39 mut5:oiiL -0.39 mut5:oL (+7 more)",
+   "-10.65 mut2:oiiH -4.59 mut5:oiiH -2.31 mut4:oiiH -2.09 op2:oiiH -1.95 mut3:oiiH +1.88 mut1:oiiH +1.10 mut2:oH +1.00 op2:oH (+6 more)",
+   "+9.75 mut0:oiiL -7.41 mut0:oL -7.07 mut1:oiiL -4.01 mut5:oiiL +2.35 mut1:oL -2.08 mut3:oiiL -1.71 op2:oiiL +1.64 mut5:oL (+6 more)"
+  ]
+ },
+ "mwc|wt_knobs|theta|-|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.00 wt:oH +0.79 mut2:oiiH -0.79 mut2:oH +0.78 op2:oiiH -0.63 mut1:oiiH +0.63 mut1:oH +0.59 mut5:oiiH (+7 more)",
+   "-1.87 wt:oiiL +1.77 mut0:oL -1.77 mut0:oiiL +1.00 wt:oL +0.56 mut1:oiiL -0.56 mut1:oL -0.39 mut5:oL +0.39 mut5:oiiL (+7 more)",
+   "-10.65 mut2:oiiH -4.59 mut5:oiiH -2.31 mut4:oiiH -2.09 op2:oiiH -1.95 mut3:oiiH +1.88 mut1:oiiH +1.10 mut2:oH +1.00 op2:oH (+6 more)",
+   "+9.75 mut0:oiiL -7.41 mut0:oL -7.07 mut1:oiiL -4.01 mut5:oiiL +2.35 mut1:oL -2.08 mut3:oiiL -1.71 op2:oiiL +1.64 mut5:oL (+6 more)"
+  ]
+ },
+ "mwc|wt_knobs|affine|condition|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.00 wt:oH -0.79 mut2:oH +0.79 mut2:oiiH +0.78 op2:oiiH +0.63 mut1:oH -0.63 mut1:oiiH -0.59 mut5:oH (+7 more)",
+   "-1.87 wt:oiiL +1.77 mut0:oL -1.77 mut0:oiiL +1.00 wt:oL -0.56 mut1:oL +0.56 mut1:oiiL -0.39 mut5:oL +0.39 mut5:oiiL (+7 more)",
+   "-10.65 mut2:oiiH -4.59 mut5:oiiH -2.31 mut4:oiiH -2.09 op2:oiiH -1.95 mut3:oiiH +1.88 mut1:oiiH +1.10 mut2:oH +1.00 op2:oH (+6 more)",
+   "+9.75 mut0:oiiL -7.41 mut0:oL -7.07 mut1:oiiL -4.01 mut5:oiiL +2.35 mut1:oL -2.08 mut3:oiiL -1.71 op2:oiiL +1.64 mut5:oL (+6 more)"
+  ]
+ },
+ "mwc|wt_knobs|affine|operator|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.00 wt:oH -0.79 mut2:oH +0.79 mut2:oiiH +0.78 op2:oiiH +0.63 mut1:oH -0.63 mut1:oiiH -0.59 mut5:oH (+7 more)",
+   "-1.87 wt:oiiL +1.77 mut0:oL -1.77 mut0:oiiL +1.00 wt:oL +0.56 mut1:oiiL -0.56 mut1:oL +0.39 mut5:oiiL -0.39 mut5:oL (+7 more)",
+   "-10.65 mut2:oiiH -4.59 mut5:oiiH -2.31 mut4:oiiH -2.09 op2:oiiH -1.95 mut3:oiiH +1.88 mut1:oiiH +1.10 mut2:oH +1.00 op2:oH (+6 more)",
+   "+9.75 mut0:oiiL -7.41 mut0:oL -7.07 mut1:oiiL -4.01 mut5:oiiL +2.35 mut1:oL -2.08 mut3:oiiL -1.71 op2:oiiL +1.64 mut5:oL (+6 more)"
+  ]
+ },
+ "mwc|knobs_only|theta|-|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -1.77 mut1:oiiH +1.77 mut1:oH -1.76 op2:oiiH +1.00 wt:oH +0.56 mut2:oiiH -0.56 mut2:oH -0.23 mut4:oH (+7 more)",
+   "-2.94 mut1:oiiL +2.94 mut1:oL -1.87 wt:oiiL -1.06 mut5:oiiL +1.06 mut5:oL +1.00 wt:oL +0.61 mut3:oL -0.61 mut3:oiiL (+7 more)",
+   "+6.11 mut2:oiiH -6.11 mut1:oiiH -4.63 op2:oiiH +3.65 mut1:oH +1.64 mut4:oiiH -1.16 mut2:oH -1.01 mut5:oiiH +1.00 op2:oH (+6 more)",
+   "+8.54 mut1:oiiL -6.99 mut1:oL -3.65 mut4:oiiL +3.58 mut5:oiiL -2.51 mut5:oL +2.25 mut3:oiiL -2.10 mut2:oiiL -1.62 op2:oiiL (+6 more)"
+  ]
+ },
+ "mwc|knobs_only|affine|condition|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -1.77 mut1:oiiH +1.77 mut1:oH -1.76 op2:oiiH +1.00 wt:oH -0.56 mut2:oH +0.56 mut2:oiiH -0.23 mut4:oH (+7 more)",
+   "-2.94 mut1:oiiL +2.94 mut1:oL -1.87 wt:oiiL -1.06 mut5:oiiL +1.06 mut5:oL +1.00 wt:oL +0.61 mut3:oL -0.61 mut3:oiiL (+7 more)",
+   "+6.11 mut2:oiiH -6.11 mut1:oiiH -4.63 op2:oiiH +3.65 mut1:oH +1.64 mut4:oiiH -1.16 mut2:oH -1.01 mut5:oiiH +1.00 op2:oH (+6 more)",
+   "+8.54 mut1:oiiL -6.99 mut1:oL -3.65 mut4:oiiL +3.58 mut5:oiiL -2.51 mut5:oL +2.25 mut3:oiiL -2.10 mut2:oiiL -1.62 op2:oiiL (+6 more)"
+  ]
+ },
+ "mwc|knobs_only|affine|operator|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -1.77 mut1:oiiH +1.77 mut1:oH -1.76 op2:oiiH +1.00 wt:oH +0.56 mut2:oiiH -0.56 mut2:oH -0.23 mut4:oH (+7 more)",
+   "-2.94 mut1:oiiL +2.94 mut1:oL -1.87 wt:oiiL -1.06 mut5:oiiL +1.06 mut5:oL +1.00 wt:oL +0.61 mut3:oL -0.61 mut3:oiiL (+7 more)",
+   "+6.11 mut2:oiiH -6.11 mut1:oiiH -4.63 op2:oiiH +3.65 mut1:oH +1.64 mut4:oiiH -1.16 mut2:oH -1.01 mut5:oiiH +1.00 op2:oH (+6 more)",
+   "+8.54 mut1:oiiL -6.99 mut1:oL -3.65 mut4:oiiL +3.58 mut5:oiiL -2.51 mut5:oL +2.25 mut3:oiiL -2.10 mut2:oiiL -1.62 op2:oiiL (+6 more)"
+  ]
+ },
+ "mwc|base|theta|-|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -2.36 mut2:oiiH +1.12 mut1:oiiH -1.01 mut3:oiiH +1.00 wt:oH -0.94 mut5:oiiH +0.67 mut4:oiiH -0.18 mut0:oiiH",
+   "-1.87 wt:oiiL -1.36 mut5:oiiL +1.00 wt:oL +0.63 mut3:oiiL +0.62 mut2:oiiL +0.37 mut0:oiiL +0.29 mut4:oiiL +0.19 mut1:oiiL",
+   "-3.04 mut0:oiiH +1.00 mut0:oH",
+   "-1.51 mut0:oiiL +1.00 mut0:oL",
+   "-1.74 mut1:oiiH +1.00 mut1:oH",
+   "-1.68 mut1:oiiL +1.00 mut1:oL",
+   "-5.23 mut2:oiiH +1.00 mut2:oH",
+   "-1.26 mut2:oiiL +1.00 mut2:oL",
+   "-3.87 mut3:oiiH +1.00 mut3:oH",
+   "-1.24 mut3:oiiL +1.00 mut3:oL",
+   "-2.20 mut4:oiiH +1.00 mut4:oH",
+   "-1.58 mut4:oiiL +1.00 mut4:oL",
+   "-3.81 mut5:oiiH +1.00 mut5:oH",
+   "-3.24 mut5:oiiL +1.00 mut5:oL"
+  ]
+ },
+ "mwc|base|affine|condition|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -2.36 mut2:oiiH +1.12 mut1:oiiH -1.01 mut3:oiiH +1.00 wt:oH -0.94 mut5:oiiH +0.67 mut4:oiiH -0.18 mut0:oiiH",
+   "-1.87 wt:oiiL -1.36 mut5:oiiL +1.00 wt:oL +0.63 mut3:oiiL +0.62 mut2:oiiL +0.37 mut0:oiiL +0.29 mut4:oiiL +0.19 mut1:oiiL",
+   "-3.04 mut0:oiiH +1.00 mut0:oH",
+   "-1.51 mut0:oiiL +1.00 mut0:oL",
+   "-1.74 mut1:oiiH +1.00 mut1:oH",
+   "-1.68 mut1:oiiL +1.00 mut1:oL",
+   "-5.23 mut2:oiiH +1.00 mut2:oH",
+   "-1.26 mut2:oiiL +1.00 mut2:oL",
+   "-3.87 mut3:oiiH +1.00 mut3:oH",
+   "-1.24 mut3:oiiL +1.00 mut3:oL",
+   "-2.20 mut4:oiiH +1.00 mut4:oH",
+   "-1.58 mut4:oiiL +1.00 mut4:oL",
+   "-3.81 mut5:oiiH +1.00 mut5:oH",
+   "-3.24 mut5:oiiL +1.00 mut5:oL"
+  ]
+ },
+ "mwc|base|affine|operator|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -2.36 mut2:oiiH +1.12 mut1:oiiH -1.01 mut3:oiiH +1.00 wt:oH -0.94 mut5:oiiH +0.67 mut4:oiiH -0.18 mut0:oiiH",
+   "-1.87 wt:oiiL -1.36 mut5:oiiL +1.00 wt:oL +0.63 mut3:oiiL +0.62 mut2:oiiL +0.37 mut0:oiiL +0.29 mut4:oiiL +0.19 mut1:oiiL",
+   "-3.04 mut0:oiiH +1.00 mut0:oH",
+   "-1.51 mut0:oiiL +1.00 mut0:oL",
+   "-1.74 mut1:oiiH +1.00 mut1:oH",
+   "-1.68 mut1:oiiL +1.00 mut1:oL",
+   "-5.23 mut2:oiiH +1.00 mut2:oH",
+   "-1.26 mut2:oiiL +1.00 mut2:oL",
+   "-3.87 mut3:oiiH +1.00 mut3:oH",
+   "-1.24 mut3:oiiL +1.00 mut3:oL",
+   "-2.20 mut4:oiiH +1.00 mut4:oH",
+   "-1.58 mut4:oiiL +1.00 mut4:oL",
+   "-3.81 mut5:oiiH +1.00 mut5:oH",
+   "-3.24 mut5:oiiL +1.00 mut5:oL"
+  ]
+ },
+ "mwc|wt_only|theta|-|shared|target|ratio": {
+  "unidentified": [
+   "wt:L1",
+   "wt:U",
+   "wt:dH",
+   "wt:dL",
+   "wt:eH",
+   "wt:eL",
+   "wt:oHm",
+   "wt:oLm",
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "mut*:L1 (x6)",
+   "mut*:U (x6)",
+   "mut*:dH (x6)",
+   "mut*:dL (x6)",
+   "mut*:eH (x6)",
+   "mut*:eL (x6)",
+   "mut*:oHm (x6)",
+   "mut*:oLm (x6)",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2313985033945.71 mut5:U +913190057012.55 mut5:oLm -782262587641.90 mut5:oiiH -728432849502.56 mut5:eH +514876633134.18 mut5:dH +223975796047.20 mut5:L1 -165520542386.37 mut5:dL -117219701595.72 mut5:oH (+51 more)",
+   "+140758187026.11 mut5:U -55548750503.27 mut5:oLm +44310090661.83 mut5:eH +41929962173.72 mut5:oiiH -31319606589.76 mut5:dH -13624300090.75 mut5:L1 +10068505587.62 mut5:dL +9653316400.32 mut5:oH (+51 more)",
+   "+1162873228217.58 mut5:U -458915790843.16 mut5:oLm +366067646898.73 mut5:eH +340787288304.46 mut5:oiiH -258746811827.95 mut5:dH -112557104272.24 mut5:L1 +83180921066.16 mut5:dL +82256969929.43 mut5:oH (+51 more)",
+   "-913167262990.33 mut5:U +360371936239.59 mut5:oLm -287461249287.83 mut5:eH -268932724589.64 mut5:oiiH +203185619922.96 mut5:dH +88387504464.62 mut5:L1 -65319324665.63 mut5:dL -64003337277.66 mut5:oH (+51 more)",
+   "-49.21 mut5:oiiH +19.56 mut5:oH -13.26 mut5:U +5.66 mut5:oiiL +5.23 mut5:oLm -4.20 mut5:oL -4.17 mut5:eH +2.95 mut5:dH (+11 more)",
+   "+53.47 mut5:U -21.10 mut5:oLm +16.83 mut5:eH -11.90 mut5:dH +7.56 mut5:oH +7.20 mut5:oiiH -5.18 mut5:L1 +3.82 mut5:dL (+11 more)",
+   "-118586318204.84 mut5:oiiH -51536312477.15 mut5:U +42526132885.02 mut5:oH +20338265907.92 mut5:oLm -16223419362.64 mut5:eH +11467165112.52 mut5:dH +11031792520.56 mut5:oiiL -8223926973.94 mut5:oL (+51 more)",
+   "+706194055.24 mut5:oiiH +306904182.74 mut5:U -253247615.55 mut5:oH -121116521.08 mut5:oLm +96612175.40 mut5:eH -68288179.11 mut5:dH -65695490.78 mut5:oiiL +48974354.58 mut5:oL (+51 more)",
+   "-4.14 mut0:oiiH +2.19 mut5:U +1.77 mut5:oiiH +1.00 mut0:oH -0.86 mut5:oLm +0.69 mut5:eH -0.68 mut5:oiiL +0.51 mut5:oL (+6 more)",
+   "+12.74 mut5:U +6.09 mut5:oiiH -5.03 mut5:oLm +4.01 mut5:eH -2.83 mut5:dH -2.67 mut0:oiiL -1.23 mut5:L1 +1.00 mut0:oL (+6 more)",
+   "-149616.15 mut5:U +59044.48 mut5:oLm -47098.51 mut5:eH -42758.75 mut5:oiiH +33290.53 mut5:dH -20147.04 mut5:oiiL +14674.03 mut5:oL +14481.66 mut5:L1 (+27 more)",
+   "+24150.54 mut5:U -9530.76 mut5:oLm +7602.48 mut5:eH +6903.53 mut5:oiiH -5373.65 mut5:dH +3251.24 mut5:oiiL -2368.02 mut5:oL -2337.58 mut5:L1 (+20 more)",
+   "-5.14 mut5:U -2.08 mut1:oiiH +2.03 mut5:oLm -1.93 mut5:oiiH -1.62 mut5:eH +1.14 mut5:dH +1.00 mut1:oH +0.50 mut5:L1 (+6 more)",
+   "+18.29 mut5:oiiH +17.45 mut5:U -6.88 mut5:oLm +5.49 mut5:eH -4.65 mut5:oH -3.88 mut5:dH -1.69 mut5:L1 -1.31 mut1:oiiL (+6 more)",
+   "-1848130086.95 mut5:U +729345534.35 mut5:oLm -687852289.32 mut5:oiiH -581783296.08 mut5:eH +411220606.38 mut5:dH -265162559.88 mut5:oiiL +193301660.90 mut5:oL +178884375.62 mut5:L1 (+51 more)",
+   "+694589250.25 mut5:U -274112505.09 mut5:oLm +258517954.18 mut5:oiiH +218653668.53 mut5:eH -154550491.16 mut5:dH +99656979.96 mut5:oiiL -72649244.88 mut5:oL -67230745.94 mut5:L1 (+51 more)",
+   "-11.64 mut5:U -9.54 mut5:oiiH +4.59 mut5:oLm -3.66 mut5:eH +2.59 mut5:dH -2.45 mut2:oiiH +1.91 mut5:oH -1.31 mut5:oiiL (+6 more)",
+   "+7.28 mut5:U +4.32 mut5:oiiH -3.04 mut2:oiiL -2.87 mut5:oLm +2.29 mut5:eH -1.62 mut5:dH +1.00 mut2:oL -0.70 mut5:L1 (+6 more)",
+   "-2052656.60 mut5:U +810059.06 mut5:oLm -691275.12 mut5:oiiH -646168.34 mut5:eH +456729.85 mut5:dH +199301.09 mut5:oiiL +198681.69 mut5:L1 -150161.88 mut5:oL (+39 more)",
+   "+15501.52 mut5:U -6117.51 mut5:oLm +5220.64 mut5:oiiH +4879.82 mut5:eH -3449.19 mut5:dH -1505.12 mut5:oiiL -1500.43 mut5:L1 +1134.02 mut5:oL (+18 more)",
+   "+2.51 mut5:U -1.55 mut3:oiiH -1.06 mut5:oiiH +1.00 mut3:oH -0.99 mut5:oLm +0.98 mut5:oH +0.79 mut5:eH -0.56 mut5:dH (+6 more)",
+   "+9.25 mut5:U -3.65 mut5:oLm +3.14 mut5:oH +2.91 mut5:eH -2.85 mut5:oiiH -2.24 mut3:oiiL -2.06 mut5:dH +1.03 mut5:oiiL (+6 more)",
+   "-3209.23 mut5:U -1280.97 mut5:oiiH +1266.49 mut5:oLm -1010.25 mut5:eH +714.07 mut5:dH -371.33 mut5:oiiL +310.63 mut5:L1 +269.82 mut5:oL (+13 more)",
+   "+711.00 mut5:U +287.55 mut5:oiiH -280.59 mut5:oLm +223.82 mut5:eH -158.20 mut5:dH +81.44 mut5:oiiL -68.82 mut5:L1 -59.16 mut5:oL (+13 more)",
+   "-12.91 mut5:oiiH -12.85 mut5:U +5.07 mut5:oLm -4.04 mut5:eH +3.17 mut5:oH +2.86 mut5:dH +2.15 mut5:oiiL -1.61 mut5:oL (+6 more)",
+   "-3.20 mut4:oiiL +1.00 mut4:oL -0.42 mut5:U -0.27 mut5:oiiH -0.17 mut5:oiiL +0.16 mut5:oLm -0.13 mut5:eH +0.13 mut5:oL (+6 more)"
+  ]
+ },
+ "mwc|wt_only|affine|condition|shared|target|ratio": {
+  "unidentified": [
+   "wt:L1",
+   "wt:U",
+   "wt:dH",
+   "wt:dL",
+   "wt:eH",
+   "wt:eL",
+   "wt:oHm",
+   "wt:oLm",
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "aff0000:a",
+   "aff0000:s",
+   "mut*:L1 (x6)",
+   "mut*:U (x6)",
+   "mut*:dH (x6)",
+   "mut*:dL (x6)",
+   "mut*:eH (x6)",
+   "mut*:eL (x6)",
+   "mut*:oHm (x6)",
+   "mut*:oLm (x6)",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "+986733979014340.38 mut4:oiiL -418365009699820.81 mut5:U -307935201511052.62 mut4:oL +165102734557485.28 mut5:oLm -143146423885500.78 mut5:oiiH -131700416323886.12 mut5:eH +93089610945088.50 mut5:dH +40495148363483.95 mut5:L1 (+47 more)",
+   "-58898949533588.77 mut4:oiiL +22447612521887.62 mut5:U +18380901316135.39 mut4:oL +10622897541038.60 mut5:oiiH -8858676615348.10 mut5:oLm +7066466627197.02 mut5:eH -4994780781955.87 mut5:dH -2172794779307.72 mut5:L1 (+47 more)",
+   "-565267497037314.50 mut4:oiiL +219979947978439.09 mut5:U +176405965853873.75 mut4:oL +98317474369023.69 mut5:oiiH -86812413350053.80 mut5:oLm +69249266625580.77 mut5:eH -48947361686979.04 mut5:dH -21292735848392.12 mut5:L1 (+47 more)",
+   "+335620127722481.81 mut4:oiiL -143844774994291.53 mut5:U -104738717688168.05 mut4:oL +56766618426083.72 mut5:oLm -47398366118718.38 mut5:oiiH -45282025956123.15 mut5:eH +32006627219861.87 mut5:dH +13923282751999.80 mut5:L1 (+47 more)",
+   "+110277588193261.06 mut4:oiiL -40588850394546.88 mut5:U -34414900130078.25 mut4:oL -21024434671442.81 mut5:oiiH +16017892184878.23 mut5:oLm -12777298184449.32 mut5:eH +9031360285584.60 mut5:dH +3928761050261.66 mut5:L1 (+47 more)",
+   "-197931356276996.44 mut5:U +157874107763198.97 mut5:oiiH -110320651663036.58 mut5:oH +78111581031707.36 mut5:oLm -62307919582848.66 mut5:eH +44040968744081.50 mut5:dH +19158183141475.10 mut5:L1 -14158115323394.87 mut5:dL (+47 more)",
+   "-439657380853.06 mut4:oiiL +163705188192.24 mut5:U +137206164021.22 mut4:oL +78889902033.20 mut5:oiiH -64604259909.68 mut5:oLm +51534084288.73 mut5:eH -36425764727.59 mut5:dH -15845680944.05 mut5:L1 (+47 more)",
+   "-29.03 mut5:oiiH +27.66 mut4:oiiL +16.14 mut5:oH +14.46 mut5:U -8.63 mut4:oL -5.71 mut5:oLm +4.57 mut5:oiiL +4.55 mut5:eH (+13 more)",
+   "-227.93 mut4:oiiL +77.74 mut5:U +70.72 mut4:oL +35.12 mut5:oiiH -30.68 mut5:oLm +24.47 mut5:eH -17.30 mut5:dH -7.52 mut5:L1 (+12 more)",
+   "-14472512920174.06 mut4:oiiL +5480191801839.34 mut5:U +4516512329887.85 mut4:oL +2742858304682.97 mut5:oiiH -2162690521410.26 mut5:oLm +1725154649830.36 mut5:eH -1219388711232.70 mut5:dH -530450192421.18 mut5:L1 (+47 more)",
+   "+588166442734.77 mut4:oiiL -214457974482.29 mut5:U -183552158855.46 mut4:oL -109652733334.31 mut5:oiiH +84633221355.16 mut5:oLm -67510975971.66 mut5:eH +47718689790.16 mut5:dH +20758254450.74 mut5:L1 (+47 more)",
+   "+6731138485364.51 mut4:oiiL -2448005888568.21 mut5:U -2100621373087.06 mut4:oL -1253370629156.39 mut5:oiiH +966075645461.37 mut5:oLm -770627740308.76 mut5:eH +544701738868.07 mut5:dH +236952378908.90 mut5:L1 (+47 more)",
+   "+2905585015842.77 mut4:oiiL -1014398669714.79 mut5:U -906761018019.97 mut4:oL -532302758548.24 mut5:oiiH +400320107707.38 mut5:oLm -319330760746.96 mut5:eH +225712112372.95 mut5:dH +98187690593.44 mut5:L1 (+47 more)",
+   "-105.67 mut4:oiiL +42.97 mut5:U +32.98 mut4:oL +25.77 mut5:oiiH -16.96 mut5:oLm +13.53 mut5:eH -9.56 mut5:dH -4.16 mut5:L1 (+8 more)",
+   "+69.45 mut4:oiiL -21.67 mut4:oL -11.84 mut5:U -5.93 mut5:oiiH +4.67 mut5:oLm -3.73 mut5:eH -2.67 mut0:oiiL +2.63 mut5:dH (+8 more)",
+   "-45078267536.77 mut4:oiiL -44632108633.73 mut5:U -31322755145.56 mut5:oiiH +17613572745.33 mut5:oLm +14067809239.00 mut4:oL -14050032473.61 mut5:eH +9930957533.49 mut5:dH +4982491650.09 mut5:oH (+47 more)",
+   "+6950999196.59 mut4:oiiL +6882202005.52 mut5:U +4829920243.29 mut5:oiiH -2715985629.70 mut5:oLm -2169234446.25 mut4:oL +2166493240.57 mut5:eH -1531338266.24 mut5:dH -768292460.48 mut5:oH (+47 more)",
+   "+75736490562.29 mut4:oiiL +74986927067.33 mut5:U +52625743932.58 mut5:oiiH -29592769315.16 mut5:oLm -23635480240.95 mut4:oL +23605623678.72 mut5:eH -16685117756.51 mut5:dH -8371150064.60 mut5:oH (+47 more)",
+   "+7.65 mut4:oiiL -2.39 mut4:oL -2.08 mut1:oiiH +1.00 mut1:oH -0.48 mut5:oiiH -0.44 mut5:U +0.18 mut5:oLm -0.14 mut5:eH (+8 more)",
+   "+7.11 mut5:oiiH +2.93 mut5:U +2.79 mut4:oiiL -2.58 mut5:oH -1.31 mut1:oiiL -1.16 mut5:oLm +1.00 mut1:oL +0.92 mut5:eH (+8 more)",
+   "+40067250.21 mut4:oiiL -12503995.04 mut4:oL -12041093.09 mut5:oiiH +4961398.98 mut5:oH -2040012.57 mut5:U +1479481.53 mut5:oiiL -1096012.91 mut5:oL +805038.26 mut5:oLm (+36 more)",
+   "-15058646.04 mut4:oiiL +4699429.94 mut4:oL +4525453.81 mut5:oiiH -1864660.76 mut5:oH +766717.93 mut5:U -556038.94 mut5:oiiL +411918.55 mut5:oL -302565.42 mut5:oLm (+34 more)",
+   "-20.86 mut4:oiiL +7.77 mut5:U +6.51 mut4:oL -3.07 mut5:oLm -2.45 mut2:oiiH +2.45 mut5:eH +2.40 mut5:oH -1.87 mut5:oiiH (+8 more)",
+   "-3.04 mut2:oiiL +2.34 mut4:oiiL -1.93 mut5:oiiH +1.04 mut5:oH +1.00 mut2:oL +0.89 mut5:U -0.73 mut4:oL -0.35 mut5:oLm (+8 more)",
+   "-2840037.67 mut4:oiiL +1943153.18 mut5:oiiH +886305.32 mut4:oL -760031.29 mut5:oH +530827.63 mut5:U -209479.55 mut5:oLm -182869.44 mut5:oiiL +167110.23 mut5:eH (+32 more)",
+   "+21444.87 mut4:oiiL -14673.62 mut5:oiiH -6692.41 mut4:oL +5739.46 mut5:oH -4007.90 mut5:U +1581.63 mut5:oLm +1381.00 mut5:oiiL -1261.73 mut5:eH (+17 more)",
+   "+30.88 mut4:oiiL -12.04 mut5:U -9.64 mut4:oL -6.24 mut5:oiiH +4.75 mut5:oLm -3.79 mut5:eH +2.68 mut5:dH -1.55 mut3:oiiH (+8 more)",
+   "+2.73 mut5:U -2.24 mut3:oiiL -1.08 mut5:oLm +1.00 mut3:oL +0.86 mut5:eH +0.77 mut5:oH -0.61 mut5:dH -0.50 mut5:oiiH (+8 more)",
+   "-27840153.59 mut5:oiiH +24282526.32 mut4:oiiL -13463189.69 mut5:U +9708897.02 mut5:oH -7577975.93 mut4:oL +5313030.50 mut5:oLm -4238256.60 mut5:eH +2995728.14 mut5:dH (+38 more)",
+   "+4412626.88 mut5:oiiH -3848667.82 mut4:oiiL +2133903.41 mut5:U -1538845.91 mut5:oH +1201074.33 mut4:oL -842110.54 mut5:oLm +671759.85 mut5:eH -474820.21 mut5:dH (+35 more)",
+   "+21125681.27 mut5:oiiH -18426817.31 mut4:oiiL +10216007.60 mut5:U -7367338.54 mut5:oH +5750550.87 mut4:oL -4031582.51 mut5:oLm +3216032.95 mut5:eH -2273189.50 mut5:dH (+38 more)",
+   "-68.79 mut4:oiiL +26.97 mut5:U +21.47 mut4:oL -10.65 mut5:oLm +8.49 mut5:eH +8.21 mut5:oiiH -6.00 mut5:dH -2.61 mut5:L1 (+8 more)"
+  ]
+ },
+ "mwc|wt_only|affine|operator|shared|target|ratio": {
+  "unidentified": [
+   "wt:L1",
+   "wt:U",
+   "wt:dH",
+   "wt:dL",
+   "wt:eH",
+   "wt:eL",
+   "wt:oHm",
+   "wt:oLm",
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "affop0:a",
+   "affop0:s",
+   "mut*:L1 (x6)",
+   "mut*:U (x6)",
+   "mut*:dH (x6)",
+   "mut*:dL (x6)",
+   "mut*:eH (x6)",
+   "mut*:eL (x6)",
+   "mut*:oHm (x6)",
+   "mut*:oLm (x6)",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "+986733979014340.38 mut4:oiiL -418365009699820.81 mut5:U -307935201511052.62 mut4:oL +165102734557485.28 mut5:oLm -143146423885500.78 mut5:oiiH -131700416323886.12 mut5:eH +93089610945088.50 mut5:dH +40495148363483.95 mut5:L1 (+47 more)",
+   "-58898949533588.77 mut4:oiiL +22447612521887.62 mut5:U +18380901316135.39 mut4:oL +10622897541038.60 mut5:oiiH -8858676615348.10 mut5:oLm +7066466627197.02 mut5:eH -4994780781955.87 mut5:dH -2172794779307.72 mut5:L1 (+47 more)",
+   "-565267497037314.50 mut4:oiiL +219979947978439.09 mut5:U +176405965853873.75 mut4:oL +98317474369023.69 mut5:oiiH -86812413350053.80 mut5:oLm +69249266625580.77 mut5:eH -48947361686979.04 mut5:dH -21292735848392.12 mut5:L1 (+47 more)",
+   "+335620127722481.81 mut4:oiiL -143844774994291.53 mut5:U -104738717688168.05 mut4:oL +56766618426083.72 mut5:oLm -47398366118718.38 mut5:oiiH -45282025956123.15 mut5:eH +32006627219861.87 mut5:dH +13923282751999.80 mut5:L1 (+47 more)",
+   "+110277588193261.06 mut4:oiiL -40588850394546.88 mut5:U -34414900130078.25 mut4:oL -21024434671442.81 mut5:oiiH +16017892184878.23 mut5:oLm -12777298184449.32 mut5:eH +9031360285584.60 mut5:dH +3928761050261.66 mut5:L1 (+47 more)",
+   "-197931356276996.44 mut5:U +157874107763198.97 mut5:oiiH -110320651663036.58 mut5:oH +78111581031707.36 mut5:oLm -62307919582848.66 mut5:eH +44040968744081.50 mut5:dH +19158183141475.10 mut5:L1 -14158115323394.87 mut5:dL (+47 more)",
+   "-439657380853.06 mut4:oiiL +163705188192.24 mut5:U +137206164021.22 mut4:oL +78889902033.20 mut5:oiiH -64604259909.68 mut5:oLm +51534084288.73 mut5:eH -36425764727.59 mut5:dH -15845680944.05 mut5:L1 (+47 more)",
+   "-29.03 mut5:oiiH +27.66 mut4:oiiL +16.14 mut5:oH +14.46 mut5:U -8.63 mut4:oL -5.71 mut5:oLm +4.57 mut5:oiiL +4.55 mut5:eH (+13 more)",
+   "-227.93 mut4:oiiL +77.74 mut5:U +70.72 mut4:oL +35.12 mut5:oiiH -30.68 mut5:oLm +24.47 mut5:eH -17.30 mut5:dH -7.52 mut5:L1 (+12 more)",
+   "-14472512920174.06 mut4:oiiL +5480191801839.34 mut5:U +4516512329887.85 mut4:oL +2742858304682.97 mut5:oiiH -2162690521410.26 mut5:oLm +1725154649830.36 mut5:eH -1219388711232.70 mut5:dH -530450192421.18 mut5:L1 (+47 more)",
+   "+588166442734.77 mut4:oiiL -214457974482.29 mut5:U -183552158855.46 mut4:oL -109652733334.31 mut5:oiiH +84633221355.16 mut5:oLm -67510975971.66 mut5:eH +47718689790.16 mut5:dH +20758254450.74 mut5:L1 (+47 more)",
+   "+6731138485364.51 mut4:oiiL -2448005888568.21 mut5:U -2100621373087.06 mut4:oL -1253370629156.39 mut5:oiiH +966075645461.37 mut5:oLm -770627740308.76 mut5:eH +544701738868.07 mut5:dH +236952378908.90 mut5:L1 (+47 more)",
+   "+2905585015842.77 mut4:oiiL -1014398669714.79 mut5:U -906761018019.97 mut4:oL -532302758548.24 mut5:oiiH +400320107707.38 mut5:oLm -319330760746.96 mut5:eH +225712112372.95 mut5:dH +98187690593.44 mut5:L1 (+47 more)",
+   "-105.67 mut4:oiiL +42.97 mut5:U +32.98 mut4:oL +25.77 mut5:oiiH -16.96 mut5:oLm +13.53 mut5:eH -9.56 mut5:dH -4.16 mut5:L1 (+8 more)",
+   "+69.45 mut4:oiiL -21.67 mut4:oL -11.84 mut5:U -5.93 mut5:oiiH +4.67 mut5:oLm -3.73 mut5:eH -2.67 mut0:oiiL +2.63 mut5:dH (+8 more)",
+   "-45078267536.77 mut4:oiiL -44632108633.73 mut5:U -31322755145.56 mut5:oiiH +17613572745.33 mut5:oLm +14067809239.00 mut4:oL -14050032473.61 mut5:eH +9930957533.49 mut5:dH +4982491650.09 mut5:oH (+47 more)",
+   "+6950999196.59 mut4:oiiL +6882202005.52 mut5:U +4829920243.29 mut5:oiiH -2715985629.70 mut5:oLm -2169234446.25 mut4:oL +2166493240.57 mut5:eH -1531338266.24 mut5:dH -768292460.48 mut5:oH (+47 more)",
+   "+75736490562.29 mut4:oiiL +74986927067.33 mut5:U +52625743932.58 mut5:oiiH -29592769315.16 mut5:oLm -23635480240.95 mut4:oL +23605623678.72 mut5:eH -16685117756.51 mut5:dH -8371150064.60 mut5:oH (+47 more)",
+   "+7.65 mut4:oiiL -2.39 mut4:oL -2.08 mut1:oiiH +1.00 mut1:oH -0.48 mut5:oiiH -0.44 mut5:U +0.18 mut5:oLm -0.14 mut5:eH (+8 more)",
+   "+7.11 mut5:oiiH +2.93 mut5:U +2.79 mut4:oiiL -2.58 mut5:oH -1.31 mut1:oiiL -1.16 mut5:oLm +1.00 mut1:oL +0.92 mut5:eH (+8 more)",
+   "+40067250.21 mut4:oiiL -12503995.04 mut4:oL -12041093.09 mut5:oiiH +4961398.98 mut5:oH -2040012.57 mut5:U +1479481.53 mut5:oiiL -1096012.91 mut5:oL +805038.26 mut5:oLm (+36 more)",
+   "-15058646.04 mut4:oiiL +4699429.94 mut4:oL +4525453.81 mut5:oiiH -1864660.76 mut5:oH +766717.93 mut5:U -556038.94 mut5:oiiL +411918.55 mut5:oL -302565.42 mut5:oLm (+34 more)",
+   "-20.86 mut4:oiiL +7.77 mut5:U +6.51 mut4:oL -3.07 mut5:oLm -2.45 mut2:oiiH +2.45 mut5:eH +2.40 mut5:oH -1.87 mut5:oiiH (+8 more)",
+   "-3.04 mut2:oiiL +2.34 mut4:oiiL -1.93 mut5:oiiH +1.04 mut5:oH +1.00 mut2:oL +0.89 mut5:U -0.73 mut4:oL -0.35 mut5:oLm (+8 more)",
+   "-2840037.67 mut4:oiiL +1943153.18 mut5:oiiH +886305.32 mut4:oL -760031.29 mut5:oH +530827.63 mut5:U -209479.55 mut5:oLm -182869.44 mut5:oiiL +167110.23 mut5:eH (+32 more)",
+   "+21444.87 mut4:oiiL -14673.62 mut5:oiiH -6692.41 mut4:oL +5739.46 mut5:oH -4007.90 mut5:U +1581.63 mut5:oLm +1381.00 mut5:oiiL -1261.73 mut5:eH (+17 more)",
+   "+30.88 mut4:oiiL -12.04 mut5:U -9.64 mut4:oL -6.24 mut5:oiiH +4.75 mut5:oLm -3.79 mut5:eH +2.68 mut5:dH -1.55 mut3:oiiH (+8 more)",
+   "+2.73 mut5:U -2.24 mut3:oiiL -1.08 mut5:oLm +1.00 mut3:oL +0.86 mut5:eH +0.77 mut5:oH -0.61 mut5:dH -0.50 mut5:oiiH (+8 more)",
+   "-27840153.59 mut5:oiiH +24282526.32 mut4:oiiL -13463189.69 mut5:U +9708897.02 mut5:oH -7577975.93 mut4:oL +5313030.50 mut5:oLm -4238256.60 mut5:eH +2995728.14 mut5:dH (+38 more)",
+   "+4412626.88 mut5:oiiH -3848667.82 mut4:oiiL +2133903.41 mut5:U -1538845.91 mut5:oH +1201074.33 mut4:oL -842110.54 mut5:oLm +671759.85 mut5:eH -474820.21 mut5:dH (+35 more)",
+   "+21125681.27 mut5:oiiH -18426817.31 mut4:oiiL +10216007.60 mut5:U -7367338.54 mut5:oH +5750550.87 mut4:oL -4031582.51 mut5:oLm +3216032.95 mut5:eH -2273189.50 mut5:dH (+38 more)",
+   "-68.79 mut4:oiiL +26.97 mut5:U +21.47 mut4:oL -10.65 mut5:oLm +8.49 mut5:eH +8.21 mut5:oiiH -6.00 mut5:dH -2.61 mut5:L1 (+8 more)"
+  ]
+ },
+ "mwc_umono|full|theta|-|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.00 wt:oH -0.79 mut2:oH +0.79 mut2:oiiH +0.78 op2:oiiH -0.63 mut1:oiiH +0.63 mut1:oH -0.59 mut5:oH (+7 more)",
+   "-1.87 wt:oiiL +1.77 mut0:oL -1.77 mut0:oiiL +1.00 wt:oL -0.56 mut1:oL +0.56 mut1:oiiL +0.39 mut5:oiiL -0.39 mut5:oL (+7 more)",
+   "-10.65 mut2:oiiH -4.59 mut5:oiiH -2.31 mut4:oiiH -2.09 op2:oiiH -1.95 mut3:oiiH +1.88 mut1:oiiH +1.10 mut2:oH +1.00 op2:oH (+6 more)",
+   "+9.75 mut0:oiiL -7.41 mut0:oL -7.07 mut1:oiiL -4.01 mut5:oiiL +2.35 mut1:oL -2.08 mut3:oiiL -1.71 op2:oiiL +1.64 mut5:oL (+6 more)"
+  ]
+ },
+ "mwc_umono|full|affine|condition|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.00 wt:oH -0.79 mut2:oH +0.79 mut2:oiiH +0.78 op2:oiiH -0.63 mut1:oiiH +0.63 mut1:oH +0.59 mut5:oiiH (+7 more)",
+   "-1.87 wt:oiiL +1.77 mut0:oL -1.77 mut0:oiiL +1.00 wt:oL -0.56 mut1:oL +0.56 mut1:oiiL +0.39 mut5:oiiL -0.39 mut5:oL (+7 more)",
+   "-10.65 mut2:oiiH -4.59 mut5:oiiH -2.31 mut4:oiiH -2.09 op2:oiiH -1.95 mut3:oiiH +1.88 mut1:oiiH +1.10 mut2:oH +1.00 op2:oH (+6 more)",
+   "+9.75 mut0:oiiL -7.41 mut0:oL -7.07 mut1:oiiL -4.01 mut5:oiiL +2.35 mut1:oL -2.08 mut3:oiiL -1.71 op2:oiiL +1.64 mut5:oL (+6 more)"
+  ]
+ },
+ "mwc_umono|full|affine|operator|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.00 wt:oH +0.79 mut2:oiiH -0.79 mut2:oH +0.78 op2:oiiH -0.63 mut1:oiiH +0.63 mut1:oH -0.59 mut5:oH (+7 more)",
+   "-1.87 wt:oiiL -1.77 mut0:oiiL +1.77 mut0:oL +1.00 wt:oL -0.56 mut1:oL +0.56 mut1:oiiL -0.39 mut5:oL +0.39 mut5:oiiL (+7 more)",
+   "-10.65 mut2:oiiH -4.59 mut5:oiiH -2.31 mut4:oiiH -2.09 op2:oiiH -1.95 mut3:oiiH +1.88 mut1:oiiH +1.10 mut2:oH +1.00 op2:oH (+6 more)",
+   "+9.75 mut0:oiiL -7.41 mut0:oL -7.07 mut1:oiiL -4.01 mut5:oiiL +2.35 mut1:oL -2.08 mut3:oiiL -1.71 op2:oiiL +1.64 mut5:oL (+6 more)"
+  ]
+ },
+ "mwc_umono|star|theta|-|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.00 wt:oH +0.79 mut2:oiiH -0.79 mut2:oH +0.78 op2:oiiH -0.63 mut1:oiiH +0.63 mut1:oH +0.59 mut5:oiiH (+7 more)",
+   "-1.87 wt:oiiL +1.77 mut0:oL -1.77 mut0:oiiL +1.00 wt:oL -0.56 mut1:oL +0.56 mut1:oiiL -0.39 mut5:oL +0.39 mut5:oiiL (+7 more)",
+   "-10.65 mut2:oiiH -4.59 mut5:oiiH -2.31 mut4:oiiH -2.09 op2:oiiH -1.95 mut3:oiiH +1.88 mut1:oiiH +1.10 mut2:oH +1.00 op2:oH (+6 more)",
+   "+9.75 mut0:oiiL -7.41 mut0:oL -7.07 mut1:oiiL -4.01 mut5:oiiL +2.35 mut1:oL -2.08 mut3:oiiL -1.71 op2:oiiL +1.64 mut5:oL (+6 more)"
+  ]
+ },
+ "mwc_umono|star|affine|condition|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.00 wt:oH -0.79 mut2:oH +0.79 mut2:oiiH +0.78 op2:oiiH +0.63 mut1:oH -0.63 mut1:oiiH -0.59 mut5:oH (+7 more)",
+   "-1.87 wt:oiiL +1.77 mut0:oL -1.77 mut0:oiiL +1.00 wt:oL -0.56 mut1:oL +0.56 mut1:oiiL -0.39 mut5:oL +0.39 mut5:oiiL (+7 more)",
+   "-10.65 mut2:oiiH -4.59 mut5:oiiH -2.31 mut4:oiiH -2.09 op2:oiiH -1.95 mut3:oiiH +1.88 mut1:oiiH +1.10 mut2:oH +1.00 op2:oH (+6 more)",
+   "+9.75 mut0:oiiL -7.41 mut0:oL -7.07 mut1:oiiL -4.01 mut5:oiiL +2.35 mut1:oL -2.08 mut3:oiiL -1.71 op2:oiiL +1.64 mut5:oL (+6 more)"
+  ]
+ },
+ "mwc_umono|star|affine|operator|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.00 wt:oH +0.79 mut2:oiiH -0.79 mut2:oH +0.78 op2:oiiH +0.63 mut1:oH -0.63 mut1:oiiH +0.59 mut5:oiiH (+7 more)",
+   "-1.87 wt:oiiL +1.77 mut0:oL -1.77 mut0:oiiL +1.00 wt:oL -0.56 mut1:oL +0.56 mut1:oiiL -0.39 mut5:oL +0.39 mut5:oiiL (+7 more)",
+   "-10.65 mut2:oiiH -4.59 mut5:oiiH -2.31 mut4:oiiH -2.09 op2:oiiH -1.95 mut3:oiiH +1.88 mut1:oiiH +1.10 mut2:oH +1.00 op2:oH (+6 more)",
+   "+9.75 mut0:oiiL -7.41 mut0:oL -7.07 mut1:oiiL -4.01 mut5:oiiL +2.35 mut1:oL -2.08 mut3:oiiL -1.71 op2:oiiL +1.64 mut5:oL (+6 more)"
+  ]
+ },
+ "mwc_umono|wt_knobs|theta|-|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.00 wt:oH +0.79 mut2:oiiH -0.79 mut2:oH +0.78 op2:oiiH +0.63 mut1:oH -0.63 mut1:oiiH -0.59 mut5:oH (+7 more)",
+   "-1.87 wt:oiiL -1.77 mut0:oiiL +1.77 mut0:oL +1.00 wt:oL -0.56 mut1:oL +0.56 mut1:oiiL -0.39 mut5:oL +0.39 mut5:oiiL (+7 more)",
+   "-10.65 mut2:oiiH -4.59 mut5:oiiH -2.31 mut4:oiiH -2.09 op2:oiiH -1.95 mut3:oiiH +1.88 mut1:oiiH +1.10 mut2:oH +1.00 op2:oH (+6 more)",
+   "+9.75 mut0:oiiL -7.41 mut0:oL -7.07 mut1:oiiL -4.01 mut5:oiiL +2.35 mut1:oL -2.08 mut3:oiiL -1.71 op2:oiiL +1.64 mut5:oL (+6 more)"
+  ]
+ },
+ "mwc_umono|wt_knobs|affine|condition|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.00 wt:oH -0.79 mut2:oH +0.79 mut2:oiiH +0.78 op2:oiiH +0.63 mut1:oH -0.63 mut1:oiiH +0.59 mut5:oiiH (+7 more)",
+   "-1.87 wt:oiiL +1.77 mut0:oL -1.77 mut0:oiiL +1.00 wt:oL -0.56 mut1:oL +0.56 mut1:oiiL -0.39 mut5:oL +0.39 mut5:oiiL (+7 more)",
+   "-10.65 mut2:oiiH -4.59 mut5:oiiH -2.31 mut4:oiiH -2.09 op2:oiiH -1.95 mut3:oiiH +1.88 mut1:oiiH +1.10 mut2:oH +1.00 op2:oH (+6 more)",
+   "+9.75 mut0:oiiL -7.41 mut0:oL -7.07 mut1:oiiL -4.01 mut5:oiiL +2.35 mut1:oL -2.08 mut3:oiiL -1.71 op2:oiiL +1.64 mut5:oL (+6 more)"
+  ]
+ },
+ "mwc_umono|wt_knobs|affine|operator|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.00 wt:oH +0.79 mut2:oiiH -0.79 mut2:oH +0.78 op2:oiiH -0.63 mut1:oiiH +0.63 mut1:oH -0.59 mut5:oH (+7 more)",
+   "-1.87 wt:oiiL -1.77 mut0:oiiL +1.77 mut0:oL +1.00 wt:oL -0.56 mut1:oL +0.56 mut1:oiiL -0.39 mut5:oL +0.39 mut5:oiiL (+7 more)",
+   "-10.65 mut2:oiiH -4.59 mut5:oiiH -2.31 mut4:oiiH -2.09 op2:oiiH -1.95 mut3:oiiH +1.88 mut1:oiiH +1.10 mut2:oH +1.00 op2:oH (+6 more)",
+   "+9.75 mut0:oiiL -7.41 mut0:oL -7.07 mut1:oiiL -4.01 mut5:oiiL +2.35 mut1:oL -2.08 mut3:oiiL -1.71 op2:oiiL +1.64 mut5:oL (+6 more)"
+  ]
+ },
+ "mwc_umono|knobs_only|theta|-|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -1.77 mut1:oiiH +1.77 mut1:oH -1.76 op2:oiiH +1.00 wt:oH -0.56 mut2:oH +0.56 mut2:oiiH -0.23 mut4:oH (+7 more)",
+   "+2.94 mut1:oL -2.94 mut1:oiiL -1.87 wt:oiiL +1.06 mut5:oL -1.06 mut5:oiiL +1.00 wt:oL -0.61 mut3:oiiL +0.61 mut3:oL (+7 more)",
+   "+6.11 mut2:oiiH -6.11 mut1:oiiH -4.63 op2:oiiH +3.65 mut1:oH +1.64 mut4:oiiH -1.16 mut2:oH -1.01 mut5:oiiH +1.00 op2:oH (+6 more)",
+   "+8.54 mut1:oiiL -6.99 mut1:oL -3.65 mut4:oiiL +3.58 mut5:oiiL -2.51 mut5:oL +2.25 mut3:oiiL -2.10 mut2:oiiL -1.62 op2:oiiL (+6 more)"
+  ]
+ },
+ "mwc_umono|knobs_only|affine|condition|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.77 mut1:oH -1.77 mut1:oiiH -1.76 op2:oiiH +1.00 wt:oH -0.56 mut2:oH +0.56 mut2:oiiH +0.23 mut4:oiiH (+7 more)",
+   "-2.94 mut1:oiiL +2.94 mut1:oL -1.87 wt:oiiL -1.06 mut5:oiiL +1.06 mut5:oL +1.00 wt:oL -0.61 mut3:oiiL +0.61 mut3:oL (+7 more)",
+   "+6.11 mut2:oiiH -6.11 mut1:oiiH -4.63 op2:oiiH +3.65 mut1:oH +1.64 mut4:oiiH -1.16 mut2:oH -1.01 mut5:oiiH +1.00 op2:oH (+6 more)",
+   "+8.54 mut1:oiiL -6.99 mut1:oL -3.65 mut4:oiiL +3.58 mut5:oiiL -2.51 mut5:oL +2.25 mut3:oiiL -2.10 mut2:oiiL -1.62 op2:oiiL (+6 more)"
+  ]
+ },
+ "mwc_umono|knobs_only|affine|operator|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -1.77 mut1:oiiH +1.77 mut1:oH -1.76 op2:oiiH +1.00 wt:oH +0.56 mut2:oiiH -0.56 mut2:oH -0.23 mut4:oH (+7 more)",
+   "-2.94 mut1:oiiL +2.94 mut1:oL -1.87 wt:oiiL +1.06 mut5:oL -1.06 mut5:oiiL +1.00 wt:oL +0.61 mut3:oL -0.61 mut3:oiiL (+7 more)",
+   "+6.11 mut2:oiiH -6.11 mut1:oiiH -4.63 op2:oiiH +3.65 mut1:oH +1.64 mut4:oiiH -1.16 mut2:oH -1.01 mut5:oiiH +1.00 op2:oH (+6 more)",
+   "+8.54 mut1:oiiL -6.99 mut1:oL -3.65 mut4:oiiL +3.58 mut5:oiiL -2.51 mut5:oL +2.25 mut3:oiiL -2.10 mut2:oiiL -1.62 op2:oiiL (+6 more)"
+  ]
+ },
+ "mwc_umono|base|theta|-|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -2.36 mut2:oiiH +1.12 mut1:oiiH -1.01 mut3:oiiH +1.00 wt:oH -0.94 mut5:oiiH +0.67 mut4:oiiH -0.18 mut0:oiiH",
+   "-1.87 wt:oiiL -1.36 mut5:oiiL +1.00 wt:oL +0.63 mut3:oiiL +0.62 mut2:oiiL +0.37 mut0:oiiL +0.29 mut4:oiiL +0.19 mut1:oiiL",
+   "-3.04 mut0:oiiH +1.00 mut0:oH",
+   "-1.51 mut0:oiiL +1.00 mut0:oL",
+   "-1.74 mut1:oiiH +1.00 mut1:oH",
+   "-1.68 mut1:oiiL +1.00 mut1:oL",
+   "-5.23 mut2:oiiH +1.00 mut2:oH",
+   "-1.26 mut2:oiiL +1.00 mut2:oL",
+   "-3.87 mut3:oiiH +1.00 mut3:oH",
+   "-1.24 mut3:oiiL +1.00 mut3:oL",
+   "-2.20 mut4:oiiH +1.00 mut4:oH",
+   "-1.58 mut4:oiiL +1.00 mut4:oL",
+   "-3.81 mut5:oiiH +1.00 mut5:oH",
+   "-3.24 mut5:oiiL +1.00 mut5:oL"
+  ]
+ },
+ "mwc_umono|base|affine|condition|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -2.36 mut2:oiiH +1.12 mut1:oiiH -1.01 mut3:oiiH +1.00 wt:oH -0.94 mut5:oiiH +0.67 mut4:oiiH -0.18 mut0:oiiH",
+   "-1.87 wt:oiiL -1.36 mut5:oiiL +1.00 wt:oL +0.63 mut3:oiiL +0.62 mut2:oiiL +0.37 mut0:oiiL +0.29 mut4:oiiL +0.19 mut1:oiiL",
+   "-3.04 mut0:oiiH +1.00 mut0:oH",
+   "-1.51 mut0:oiiL +1.00 mut0:oL",
+   "-1.74 mut1:oiiH +1.00 mut1:oH",
+   "-1.68 mut1:oiiL +1.00 mut1:oL",
+   "-5.23 mut2:oiiH +1.00 mut2:oH",
+   "-1.26 mut2:oiiL +1.00 mut2:oL",
+   "-3.87 mut3:oiiH +1.00 mut3:oH",
+   "-1.24 mut3:oiiL +1.00 mut3:oL",
+   "-2.20 mut4:oiiH +1.00 mut4:oH",
+   "-1.58 mut4:oiiL +1.00 mut4:oL",
+   "-3.81 mut5:oiiH +1.00 mut5:oH",
+   "-3.24 mut5:oiiL +1.00 mut5:oL"
+  ]
+ },
+ "mwc_umono|base|affine|operator|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -2.36 mut2:oiiH +1.12 mut1:oiiH -1.01 mut3:oiiH +1.00 wt:oH -0.94 mut5:oiiH +0.67 mut4:oiiH -0.18 mut0:oiiH",
+   "-1.87 wt:oiiL -1.36 mut5:oiiL +1.00 wt:oL +0.63 mut3:oiiL +0.62 mut2:oiiL +0.37 mut0:oiiL +0.29 mut4:oiiL +0.19 mut1:oiiL",
+   "-3.04 mut0:oiiH +1.00 mut0:oH",
+   "-1.51 mut0:oiiL +1.00 mut0:oL",
+   "-1.74 mut1:oiiH +1.00 mut1:oH",
+   "-1.68 mut1:oiiL +1.00 mut1:oL",
+   "-5.23 mut2:oiiH +1.00 mut2:oH",
+   "-1.26 mut2:oiiL +1.00 mut2:oL",
+   "-3.87 mut3:oiiH +1.00 mut3:oH",
+   "-1.24 mut3:oiiL +1.00 mut3:oL",
+   "-2.20 mut4:oiiH +1.00 mut4:oH",
+   "-1.58 mut4:oiiL +1.00 mut4:oL",
+   "-3.81 mut5:oiiH +1.00 mut5:oH",
+   "-3.24 mut5:oiiL +1.00 mut5:oL"
+  ]
+ },
+ "mwc_umono|wt_only|theta|-|shared|target|ratio": {
+  "unidentified": [
+   "wt:L1",
+   "wt:U",
+   "wt:dH",
+   "wt:dL",
+   "wt:eH",
+   "wt:eL",
+   "wt:oHm",
+   "wt:oLm",
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "mut*:L1 (x6)",
+   "mut*:U (x6)",
+   "mut*:dH (x6)",
+   "mut*:dL (x6)",
+   "mut*:eH (x6)",
+   "mut*:eL (x6)",
+   "mut*:oHm (x6)",
+   "mut*:oLm (x6)",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "+877098772822.34 mut5:U +108462401704.57 mut5:dH +69603462479.15 mut5:oiiH -68103543223.90 mut5:oiiL +60891805360.71 mut5:L1 +54231257961.23 mut5:oHm +46970643909.88 mut5:oL -23261785671.07 mut5:oH (+50 more)",
+   "+54793403704.86 mut5:U +6775775240.27 mut5:dH -5519271797.76 mut5:oiiL +3806611669.13 mut5:oL +3803984103.62 mut5:L1 +3387892086.11 mut5:oHm -832196039.19 mut5:dL -416092251.32 mut5:oLm (+50 more)",
+   "-643666182293.47 mut5:U -79596029692.43 mut5:dH +54982286347.12 mut5:oiiL -44685956982.24 mut5:L1 -39798060487.22 mut5:oHm -37920983968.20 mut5:oL -33097151943.87 mut5:oiiH +11061215998.84 mut5:oH (+50 more)",
+   "+283510952788.68 mut5:U +35059083229.86 mut5:dH +29769120242.96 mut5:oiiH -20858255410.25 mut5:oiiL +19682495681.71 mut5:L1 +17529558425.32 mut5:oHm +14385824989.27 mut5:oL -9948971472.84 mut5:oH (+50 more)",
+   "+26.11 mut5:U +3.23 mut5:dH -2.47 mut5:oiiL -2.27 wt:oiiH +1.81 mut5:L1 -1.77 mut5:oiiH +1.71 mut5:oL +1.61 mut5:oHm (+10 more)",
+   "+1.55 mut5:oiiL -1.45 wt:oiiL -1.07 mut5:oL +1.00 wt:oL +0.95 mut5:oiiH -0.53 mut3:oiiL +0.48 mut5:U -0.35 mut2:oiiL (+10 more)",
+   "+62309143851.84 mut5:U -16788289980.12 mut5:oiiH -9162730301.08 mut5:oiiL +7705174755.03 mut5:dH +6319485616.71 mut5:oL +5610719600.56 mut5:oH +4325759749.17 mut5:L1 +3852595455.42 mut5:oHm (+50 more)",
+   "+15738287697.36 mut5:U -4240452500.29 mut5:oiiH -2314358689.57 mut5:oiiL +1946203230.48 mut5:dH +1596200692.37 mut5:oL +1417177686.76 mut5:oH +1092617346.89 mut5:L1 +973103655.59 mut5:oHm (+50 more)",
+   "-95606649873.31 mut5:U +25759819021.65 mut5:oiiH +14059221229.44 mut5:oiiL -11822758257.89 mut5:dH -9696568972.58 mut5:oL -8609043664.53 mut5:oH -6637411015.60 mut5:L1 -5911391523.63 mut5:oHm (+50 more)",
+   "+3.77 mut5:U -2.44 mut0:oiiH -1.18 mut5:oiiH +1.00 mut0:oH -0.63 mut5:oiiL +0.47 mut5:dH +0.43 mut5:oL +0.39 mut5:oH (+4 more)",
+   "-1.60 mut0:oiiL +1.00 mut0:oL +0.74 mut5:U -0.28 mut5:oiiH +0.09 mut5:oH +0.09 mut5:dH -0.06 mut5:oiiL +0.05 mut5:L1 (+4 more)",
+   "+1098468893.87 mut5:oiiH +897304820.84 mut5:oiiL -618865093.50 mut5:oL -369228703.14 mut5:U -367113170.82 mut5:oH -45658994.03 mut5:dH -25632793.50 mut5:L1 -22828630.76 mut5:oHm (+49 more)",
+   "-169054351.24 mut5:oiiH -138095202.32 mut5:oiiL +95243331.27 mut5:oL +56824291.47 mut5:U +56498713.14 mut5:oH +7026918.45 mut5:dH +3944886.51 mut5:L1 +3513325.91 mut5:oHm (+47 more)",
+   "+30.22 mut5:U +3.74 mut5:dH -2.13 mut1:oiiH +2.10 mut5:L1 +1.87 mut5:oHm +1.66 mut5:oiiL -1.14 mut5:oL +1.00 mut1:oH (+5 more)",
+   "-1.42 mut1:oiiL +1.00 mut1:oL -0.87 mut5:U +0.24 mut5:oiiH -0.11 mut5:dH -0.08 mut5:oH -0.06 mut5:L1 -0.05 mut5:oHm (+4 more)",
+   "+114453330.94 mut5:U +14153347.08 mut5:dH -12123483.61 mut5:oiiH +7945813.84 mut5:L1 +7076669.86 mut5:oHm +4051721.57 mut5:oH -1738278.06 mut5:dL -883355.56 mut5:oiiL (+48 more)",
+   "-12316248.22 mut5:U -1523032.44 mut5:dH +1304600.52 mut5:oiiH -855043.84 mut5:L1 -761515.82 mut5:oHm -436003.24 mut5:oH +187054.97 mut5:dL +95057.74 mut5:oiiL (+43 more)",
+   "-7.50 mut5:U -2.02 mut2:oiiH +1.00 mut2:oH -0.93 mut5:dH +0.89 mut5:oiiL +0.83 mut5:oiiH -0.61 mut5:oL -0.52 mut5:L1 (+4 more)",
+   "-1.80 mut2:oiiL -1.39 mut5:U +1.00 mut2:oL +0.69 mut5:oiiH +0.57 mut5:oiiL -0.40 mut5:oL -0.23 mut5:oH -0.17 mut5:dH (+4 more)",
+   "+2047.54 mut5:U +253.20 mut5:dH -164.33 mut5:oiiH +142.15 mut5:L1 +126.60 mut5:oHm +54.92 mut5:oH +36.97 mut5:oiiL -31.10 mut5:dL (+13 more)",
+   "-273.42 mut5:U -33.81 mut5:dH +22.48 mut5:oiiH -18.98 mut5:L1 -16.91 mut5:oHm -7.51 mut5:oH -4.53 mut5:oiiL +4.15 mut5:dL (+13 more)",
+   "-3.53 mut3:oiiH -1.45 mut5:oiiL -1.38 mut5:oiiH +1.00 mut3:oH +1.00 mut5:oL +0.46 mut5:oH -0.04 mut5:U -0.00 mut5:dH (+4 more)",
+   "+4.76 mut5:U -1.98 mut3:oiiL +1.00 mut3:oL -0.95 mut5:oiiH +0.59 mut5:dH +0.33 mut5:L1 +0.32 mut5:oH +0.29 mut5:oHm (+4 more)",
+   "+4175.60 mut5:U +516.36 mut5:dH -322.90 mut5:oiiH +289.89 mut5:L1 +258.18 mut5:oHm +107.91 mut5:oH -63.42 mut5:dL +46.72 mut5:oiiL (+13 more)",
+   "-428.61 mut5:U -53.00 mut5:dH +33.16 mut5:oiiH -29.76 mut5:L1 -26.50 mut5:oHm -11.08 mut5:oH +6.51 mut5:dL -4.77 mut5:oiiL (+13 more)",
+   "-2.07 mut4:oiiH +1.00 mut4:oH +0.67 mut5:U -0.15 mut5:oiiH +0.08 mut5:dH +0.05 mut5:oH +0.05 mut5:L1 +0.04 mut5:oHm (+4 more)",
+   "-4.64 mut5:U +3.20 mut5:oiiH +1.24 mut5:oiiL -1.24 mut4:oiiL -1.07 mut5:oH +1.00 mut4:oL -0.86 mut5:oL -0.57 mut5:dH (+5 more)"
+  ]
+ },
+ "mwc_umono|wt_only|affine|condition|shared|target|ratio": {
+  "unidentified": [
+   "wt:L1",
+   "wt:U",
+   "wt:dH",
+   "wt:dL",
+   "wt:eH",
+   "wt:eL",
+   "wt:oHm",
+   "wt:oLm",
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "aff0000:a",
+   "aff0000:s",
+   "mut*:L1 (x6)",
+   "mut*:U (x6)",
+   "mut*:dH (x6)",
+   "mut*:dL (x6)",
+   "mut*:eH (x6)",
+   "mut*:eL (x6)",
+   "mut*:oHm (x6)",
+   "mut*:oLm (x6)",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-110236457141503.75 mut5:oiiH +55761259884923.80 mut5:U +49184906809595.54 mut5:oH +18833510969939.51 mut5:dH +10384187717982.26 mut5:L1 +9416619400234.82 mut5:oHm +6896954673491.20 mut5:oiiL -5095779460348.55 mut5:oL (+46 more)",
+   "-1186428504387.47 mut5:oiiH +1078982240500.25 mut5:U +529354576059.15 mut5:oH +364422334944.36 mut5:dH +200927076379.82 mut5:L1 +182210907481.20 mut5:oHm -37431275901.68 mut5:dL -18716781439.40 mut5:oLm (+46 more)",
+   "+65792421470076.47 mut5:oiiH -29355049637182.25 mut5:oH -27779352010415.20 mut5:U -9382629762806.48 mut5:dH -5173321345038.05 mut5:L1 -4978328031825.68 mut5:oiiL -4691218469678.20 mut5:oHm +3678213540195.41 mut5:oL (+46 more)",
+   "-40684916527403.28 mut5:oiiH +18152684631544.52 mut5:oH +12193145091292.14 mut5:U +4118388985963.15 mut5:dH +3819249169429.19 mut5:oiiL -2821834600053.51 mut5:oL +2270811564879.78 mut5:L1 +2059121570395.71 mut5:oHm (+46 more)",
+   "-12078009733761.67 mut5:oiiH +9606480678570.58 mut5:U +5388908687004.21 mut5:oH +3244562998910.42 mut5:dH +1788919748729.01 mut5:L1 +1622276003715.74 mut5:oHm -333265044087.88 mut5:dL +225176898706.72 mut5:oiiL (+46 more)",
+   "-12887956253164.04 mut5:U -7048480527398.26 mut5:oiiH -4352702387883.62 mut5:dH +3144932680851.14 mut5:oH +2924892952195.35 mut5:oiiL -2399811840080.36 mut5:L1 -2176403814345.03 mut5:oHm -2161046303004.44 mut5:oL (+46 more)",
+   "+7502076268338.07 mut5:U +4102918837481.82 mut5:oiiH +2533707024281.94 mut5:dH -1830664565039.11 mut5:oH -1702579491473.41 mut5:oiiL +1396929901086.81 mut5:L1 +1266884142465.20 mut5:oHm +1257944538741.50 mut5:oL (+46 more)",
+   "+53.68 mut5:oiiH -23.67 mut5:oH +11.25 mut5:U -6.68 mut5:oiiL +4.94 mut5:oL +3.80 mut5:dH -2.86 wt:oiiH +2.09 mut5:L1 (+11 more)",
+   "+48.29 mut5:oiiH -39.03 mut5:U -21.54 mut5:oH -13.18 mut5:dH +10.78 mut5:oiiL -7.58 mut5:oL -7.27 mut5:L1 -6.59 mut5:oHm (+11 more)",
+   "+3248691684430.60 mut5:oiiH -1449502645106.42 mut5:oH +1230877704612.16 mut5:U -666596533991.72 mut5:oiiL +492511897564.70 mut5:oL +415687977134.76 mut5:dH +229173311896.81 mut5:L1 +207856560856.55 mut5:oHm (+46 more)",
+   "-10765798934.24 mut5:U +4828250354.51 mut5:oiiH +4317275143.23 mut5:oiiL -3635858708.57 mut5:dH -3189795997.24 mut5:oL -2154111513.44 mut5:oH -2004525056.98 mut5:L1 -1818015186.48 mut5:oHm (+46 more)",
+   "-1688583760469.93 mut5:oiiH +753411906820.15 mut5:oH -551413098698.87 mut5:U +309239699358.89 mut5:oiiL -228480408051.38 mut5:oL -186220941118.29 mut5:dH -102665377974.13 mut5:L1 -93116272033.57 mut5:oHm (+46 more)",
+   "-507985803861.09 mut5:oiiH +226652684231.48 mut5:oH -142085428031.03 mut5:U +83007090984.22 mut5:oiiL -61329437201.54 mut5:oL -47984353804.21 mut5:dH -26454152828.69 mut5:L1 -23993723531.20 mut5:oHm (+46 more)",
+   "+25.99 mut5:oiiH -11.59 mut5:oH -4.14 mut0:oiiH +2.17 mut5:U +1.00 mut0:oH +0.73 mut5:dH +0.40 mut5:L1 +0.37 mut5:oHm (+6 more)",
+   "+31.41 mut5:oiiH -14.02 mut5:oH -5.94 mut5:U +5.03 mut5:oiiL -3.71 mut5:oL -2.67 mut0:oiiL -2.01 mut5:dH -1.11 mut5:L1 (+6 more)",
+   "+15507250337.95 mut5:oiiH -6919001358.47 mut5:oH -4751487108.28 mut5:U -1604908208.78 mut5:dH +1459653064.46 mut5:oiiL -1078513955.71 mut5:oL -884937712.26 mut5:L1 -802413930.26 mut5:oHm (+46 more)",
+   "+5355958663.02 mut5:oiiH -2389713486.14 mut5:oH -1641088653.57 mut5:U -554309964.75 mut5:dH +504141233.33 mut5:oiiL -372501773.90 mut5:oL -305643518.69 mut5:L1 -277141106.86 mut5:oHm (+46 more)",
+   "-34232254711.76 mut5:oiiH +15273695316.27 mut5:oH +10488908942.78 mut5:U +3542835259.81 mut5:dH -3222184997.74 mut5:oiiL +2380820191.17 mut5:oL +1953500214.30 mut5:L1 +1771328945.48 mut5:oHm (+46 more)",
+   "-3.43 mut5:oiiH -2.12 mut5:U -2.08 mut1:oiiH +1.53 mut5:oH +1.00 mut1:oH -0.72 mut5:dH -0.40 mut5:L1 -0.36 mut5:oHm (+6 more)",
+   "+14.26 mut5:oiiH +12.70 mut5:U -6.36 mut5:oH +4.29 mut5:dH -4.14 mut5:oiiL +3.06 mut5:oL +2.36 mut5:L1 +2.14 mut5:oHm (+6 more)",
+   "-461829.77 mut5:U +296049.54 mut5:oiiL -218747.77 mut5:oL -156009.55 mut5:dH -86032.09 mut5:L1 -77994.72 mut5:oHm -70426.29 mut5:oiiH +31407.09 mut5:oH (+31 more)",
+   "+120204.66 mut5:U -77054.95 mut5:oiiL +56935.06 mut5:oL +40606.03 mut5:dH +22392.36 mut5:L1 +20300.40 mut5:oHm +18326.51 mut5:oiiH -8172.83 mut5:oH (+26 more)",
+   "+8.88 mut5:U +3.00 mut5:dH -2.45 mut2:oiiH +2.14 mut5:oiiH +1.65 mut5:L1 +1.50 mut5:oHm -1.49 mut5:oiiL +1.10 mut5:oL (+6 more)",
+   "+9.97 mut5:oiiH -4.45 mut5:oH -3.04 mut2:oiiL -1.55 mut5:oiiL +1.38 mut5:U +1.14 mut5:oL +1.00 mut2:oL +0.46 mut5:dH (+6 more)",
+   "-237133.38 mut5:oiiH +105805.62 mut5:oH +94508.55 mut5:U -43281.82 mut5:oiiL +31980.73 mut5:oL +31924.96 mut5:dH +17604.76 mut5:L1 +15960.68 mut5:oHm (+25 more)",
+   "+33063.74 mut5:oiiH -14752.58 mut5:oH -13178.96 mut5:U +6034.69 mut5:oiiL -4459.00 mut5:oL -4451.85 mut5:dH -2454.94 mut5:L1 -2225.67 mut5:oHm (+19 more)",
+   "+12.88 mut5:oiiH -5.75 mut5:oH -1.55 mut3:oiiH -1.08 mut5:oiiL -1.01 mut5:U +1.00 mut3:oH +0.80 mut5:oL -0.34 mut5:dH (+6 more)",
+   "+12.58 mut5:U +5.37 mut5:oiiH +4.25 mut5:dH -2.60 mut5:oiiL -2.40 mut5:oH +2.34 mut5:L1 -2.24 mut3:oiiL +2.12 mut5:oHm (+6 more)",
+   "+633724.70 mut5:oiiH -416604.90 mut5:U -282764.35 mut5:oH +214917.51 mut5:oiiL -158800.95 mut5:oL -140729.83 mut5:dH -77604.75 mut5:L1 -70356.69 mut5:oHm (+29 more)",
+   "+119664.54 mut5:oiiH -78666.82 mut5:U -53393.64 mut5:oH +40584.82 mut5:oiiL -29987.82 mut5:oL -26573.78 mut5:dH -14653.98 mut5:L1 -13285.34 mut5:oHm (+22 more)",
+   "-853077.50 mut5:oiiH +560800.19 mut5:U +380638.32 mut5:oH -289317.23 mut5:oiiL +213774.36 mut5:oL +189439.25 mut5:dH +104465.31 mut5:L1 +94708.55 mut5:oHm (+31 more)",
+   "-3.61 mut5:oiiH +1.61 mut5:oH -1.52 mut4:oiiH +1.00 mut4:oH -0.33 mut5:U -0.11 mut5:dH +0.09 mut5:oiiL -0.06 mut5:oL (+6 more)",
+   "-3.20 mut4:oiiL -1.06 mut5:oiiH +1.00 mut4:oL +0.86 mut5:U +0.47 mut5:oH +0.29 mut5:dH -0.17 mut5:oiiL +0.16 mut5:L1 (+6 more)"
+  ]
+ },
+ "mwc_umono|wt_only|affine|operator|shared|target|ratio": {
+  "unidentified": [
+   "wt:L1",
+   "wt:U",
+   "wt:dH",
+   "wt:dL",
+   "wt:eH",
+   "wt:eL",
+   "wt:oHm",
+   "wt:oLm",
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "affop0:a",
+   "affop0:s",
+   "mut*:L1 (x6)",
+   "mut*:U (x6)",
+   "mut*:dH (x6)",
+   "mut*:dL (x6)",
+   "mut*:eH (x6)",
+   "mut*:eL (x6)",
+   "mut*:oHm (x6)",
+   "mut*:oLm (x6)",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-110236457141503.75 mut5:oiiH +55761259884923.80 mut5:U +49184906809595.54 mut5:oH +18833510969939.51 mut5:dH +10384187717982.26 mut5:L1 +9416619400234.82 mut5:oHm +6896954673491.20 mut5:oiiL -5095779460348.55 mut5:oL (+46 more)",
+   "-1186428504387.47 mut5:oiiH +1078982240500.25 mut5:U +529354576059.15 mut5:oH +364422334944.36 mut5:dH +200927076379.82 mut5:L1 +182210907481.20 mut5:oHm -37431275901.68 mut5:dL -18716781439.40 mut5:oLm (+46 more)",
+   "+65792421470076.47 mut5:oiiH -29355049637182.25 mut5:oH -27779352010415.20 mut5:U -9382629762806.48 mut5:dH -5173321345038.05 mut5:L1 -4978328031825.68 mut5:oiiL -4691218469678.20 mut5:oHm +3678213540195.41 mut5:oL (+46 more)",
+   "-40684916527403.28 mut5:oiiH +18152684631544.52 mut5:oH +12193145091292.14 mut5:U +4118388985963.15 mut5:dH +3819249169429.19 mut5:oiiL -2821834600053.51 mut5:oL +2270811564879.78 mut5:L1 +2059121570395.71 mut5:oHm (+46 more)",
+   "-12078009733761.67 mut5:oiiH +9606480678570.58 mut5:U +5388908687004.21 mut5:oH +3244562998910.42 mut5:dH +1788919748729.01 mut5:L1 +1622276003715.74 mut5:oHm -333265044087.88 mut5:dL +225176898706.72 mut5:oiiL (+46 more)",
+   "-12887956253164.04 mut5:U -7048480527398.26 mut5:oiiH -4352702387883.62 mut5:dH +3144932680851.14 mut5:oH +2924892952195.35 mut5:oiiL -2399811840080.36 mut5:L1 -2176403814345.03 mut5:oHm -2161046303004.44 mut5:oL (+46 more)",
+   "+7502076268338.07 mut5:U +4102918837481.82 mut5:oiiH +2533707024281.94 mut5:dH -1830664565039.11 mut5:oH -1702579491473.41 mut5:oiiL +1396929901086.81 mut5:L1 +1266884142465.20 mut5:oHm +1257944538741.50 mut5:oL (+46 more)",
+   "+53.68 mut5:oiiH -23.67 mut5:oH +11.25 mut5:U -6.68 mut5:oiiL +4.94 mut5:oL +3.80 mut5:dH -2.86 wt:oiiH +2.09 mut5:L1 (+11 more)",
+   "+48.29 mut5:oiiH -39.03 mut5:U -21.54 mut5:oH -13.18 mut5:dH +10.78 mut5:oiiL -7.58 mut5:oL -7.27 mut5:L1 -6.59 mut5:oHm (+11 more)",
+   "+3248691684430.60 mut5:oiiH -1449502645106.42 mut5:oH +1230877704612.16 mut5:U -666596533991.72 mut5:oiiL +492511897564.70 mut5:oL +415687977134.76 mut5:dH +229173311896.81 mut5:L1 +207856560856.55 mut5:oHm (+46 more)",
+   "-10765798934.24 mut5:U +4828250354.51 mut5:oiiH +4317275143.23 mut5:oiiL -3635858708.57 mut5:dH -3189795997.24 mut5:oL -2154111513.44 mut5:oH -2004525056.98 mut5:L1 -1818015186.48 mut5:oHm (+46 more)",
+   "-1688583760469.93 mut5:oiiH +753411906820.15 mut5:oH -551413098698.87 mut5:U +309239699358.89 mut5:oiiL -228480408051.38 mut5:oL -186220941118.29 mut5:dH -102665377974.13 mut5:L1 -93116272033.57 mut5:oHm (+46 more)",
+   "-507985803861.09 mut5:oiiH +226652684231.48 mut5:oH -142085428031.03 mut5:U +83007090984.22 mut5:oiiL -61329437201.54 mut5:oL -47984353804.21 mut5:dH -26454152828.69 mut5:L1 -23993723531.20 mut5:oHm (+46 more)",
+   "+25.99 mut5:oiiH -11.59 mut5:oH -4.14 mut0:oiiH +2.17 mut5:U +1.00 mut0:oH +0.73 mut5:dH +0.40 mut5:L1 +0.37 mut5:oHm (+6 more)",
+   "+31.41 mut5:oiiH -14.02 mut5:oH -5.94 mut5:U +5.03 mut5:oiiL -3.71 mut5:oL -2.67 mut0:oiiL -2.01 mut5:dH -1.11 mut5:L1 (+6 more)",
+   "+15507250337.95 mut5:oiiH -6919001358.47 mut5:oH -4751487108.28 mut5:U -1604908208.78 mut5:dH +1459653064.46 mut5:oiiL -1078513955.71 mut5:oL -884937712.26 mut5:L1 -802413930.26 mut5:oHm (+46 more)",
+   "+5355958663.02 mut5:oiiH -2389713486.14 mut5:oH -1641088653.57 mut5:U -554309964.75 mut5:dH +504141233.33 mut5:oiiL -372501773.90 mut5:oL -305643518.69 mut5:L1 -277141106.86 mut5:oHm (+46 more)",
+   "-34232254711.76 mut5:oiiH +15273695316.27 mut5:oH +10488908942.78 mut5:U +3542835259.81 mut5:dH -3222184997.74 mut5:oiiL +2380820191.17 mut5:oL +1953500214.30 mut5:L1 +1771328945.48 mut5:oHm (+46 more)",
+   "-3.43 mut5:oiiH -2.12 mut5:U -2.08 mut1:oiiH +1.53 mut5:oH +1.00 mut1:oH -0.72 mut5:dH -0.40 mut5:L1 -0.36 mut5:oHm (+6 more)",
+   "+14.26 mut5:oiiH +12.70 mut5:U -6.36 mut5:oH +4.29 mut5:dH -4.14 mut5:oiiL +3.06 mut5:oL +2.36 mut5:L1 +2.14 mut5:oHm (+6 more)",
+   "-461829.77 mut5:U +296049.54 mut5:oiiL -218747.77 mut5:oL -156009.55 mut5:dH -86032.09 mut5:L1 -77994.72 mut5:oHm -70426.29 mut5:oiiH +31407.09 mut5:oH (+31 more)",
+   "+120204.66 mut5:U -77054.95 mut5:oiiL +56935.06 mut5:oL +40606.03 mut5:dH +22392.36 mut5:L1 +20300.40 mut5:oHm +18326.51 mut5:oiiH -8172.83 mut5:oH (+26 more)",
+   "+8.88 mut5:U +3.00 mut5:dH -2.45 mut2:oiiH +2.14 mut5:oiiH +1.65 mut5:L1 +1.50 mut5:oHm -1.49 mut5:oiiL +1.10 mut5:oL (+6 more)",
+   "+9.97 mut5:oiiH -4.45 mut5:oH -3.04 mut2:oiiL -1.55 mut5:oiiL +1.38 mut5:U +1.14 mut5:oL +1.00 mut2:oL +0.46 mut5:dH (+6 more)",
+   "-237133.38 mut5:oiiH +105805.62 mut5:oH +94508.55 mut5:U -43281.82 mut5:oiiL +31980.73 mut5:oL +31924.96 mut5:dH +17604.76 mut5:L1 +15960.68 mut5:oHm (+25 more)",
+   "+33063.74 mut5:oiiH -14752.58 mut5:oH -13178.96 mut5:U +6034.69 mut5:oiiL -4459.00 mut5:oL -4451.85 mut5:dH -2454.94 mut5:L1 -2225.67 mut5:oHm (+19 more)",
+   "+12.88 mut5:oiiH -5.75 mut5:oH -1.55 mut3:oiiH -1.08 mut5:oiiL -1.01 mut5:U +1.00 mut3:oH +0.80 mut5:oL -0.34 mut5:dH (+6 more)",
+   "+12.58 mut5:U +5.37 mut5:oiiH +4.25 mut5:dH -2.60 mut5:oiiL -2.40 mut5:oH +2.34 mut5:L1 -2.24 mut3:oiiL +2.12 mut5:oHm (+6 more)",
+   "+633724.70 mut5:oiiH -416604.90 mut5:U -282764.35 mut5:oH +214917.51 mut5:oiiL -158800.95 mut5:oL -140729.83 mut5:dH -77604.75 mut5:L1 -70356.69 mut5:oHm (+29 more)",
+   "+119664.54 mut5:oiiH -78666.82 mut5:U -53393.64 mut5:oH +40584.82 mut5:oiiL -29987.82 mut5:oL -26573.78 mut5:dH -14653.98 mut5:L1 -13285.34 mut5:oHm (+22 more)",
+   "-853077.50 mut5:oiiH +560800.19 mut5:U +380638.32 mut5:oH -289317.23 mut5:oiiL +213774.36 mut5:oL +189439.25 mut5:dH +104465.31 mut5:L1 +94708.55 mut5:oHm (+31 more)",
+   "-3.61 mut5:oiiH +1.61 mut5:oH -1.52 mut4:oiiH +1.00 mut4:oH -0.33 mut5:U -0.11 mut5:dH +0.09 mut5:oiiL -0.06 mut5:oL (+6 more)",
+   "-3.20 mut4:oiiL -1.06 mut5:oiiH +1.00 mut4:oL +0.86 mut5:U +0.47 mut5:oH +0.29 mut5:dH -0.17 mut5:oiiL +0.16 mut5:L1 (+6 more)"
+  ]
+ },
+ "coupled|full|theta|-|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -1.52 mut5:oiiH +1.52 mut5:oH +1.00 wt:oH -1.00 mut3:oiiH +1.00 mut3:oH +0.79 mut1:oiiH -0.79 mut1:oH (+7 more)",
+   "-1.87 wt:oiiL +1.00 wt:oL -0.81 mut4:oiiL +0.81 mut4:oL -0.59 mut0:oL +0.59 mut0:oiiL -0.50 mut2:oiiL +0.50 mut2:oL (+7 more)",
+   "+62.85 mut1:oiiH -21.79 mut5:oiiH -15.89 mut3:oiiH +12.53 mut5:oH -11.56 mut4:oiiH -10.45 mut0:oiiH -10.04 mut2:oiiH +8.22 mut3:oH (+6 more)",
+   "-1.58 mut0:oiiL -1.40 op2:oiiL +1.00 mut4:oiiL +1.00 op2:oL -0.68 mut4:oL +0.67 mut2:oiiL +0.50 mut0:oL -0.42 mut2:oL (+6 more)"
+  ]
+ },
+ "coupled|full|affine|condition|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.52 mut5:oH -1.52 mut5:oiiH +1.00 wt:oH +1.00 mut3:oH -1.00 mut3:oiiH +0.79 mut1:oiiH -0.79 mut1:oH (+7 more)",
+   "-1.87 wt:oiiL +1.00 wt:oL -0.81 mut4:oiiL +0.81 mut4:oL +0.59 mut0:oiiL -0.59 mut0:oL -0.50 mut2:oiiL +0.50 mut2:oL (+7 more)",
+   "+62.85 mut1:oiiH -21.79 mut5:oiiH -15.89 mut3:oiiH +12.53 mut5:oH -11.56 mut4:oiiH -10.45 mut0:oiiH -10.04 mut2:oiiH +8.22 mut3:oH (+6 more)",
+   "-1.58 mut0:oiiL -1.40 op2:oiiL +1.00 mut4:oiiL +1.00 op2:oL -0.68 mut4:oL +0.67 mut2:oiiL +0.50 mut0:oL -0.42 mut2:oL (+6 more)"
+  ]
+ },
+ "coupled|full|affine|operator|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.52 mut5:oH -1.52 mut5:oiiH +1.00 wt:oH +1.00 mut3:oH -1.00 mut3:oiiH -0.79 mut1:oH +0.79 mut1:oiiH (+7 more)",
+   "-1.87 wt:oiiL +1.00 wt:oL +0.81 mut4:oL -0.81 mut4:oiiL +0.59 mut0:oiiL -0.59 mut0:oL +0.50 mut2:oL -0.50 mut2:oiiL (+7 more)",
+   "+62.85 mut1:oiiH -21.79 mut5:oiiH -15.89 mut3:oiiH +12.53 mut5:oH -11.56 mut4:oiiH -10.45 mut0:oiiH -10.04 mut2:oiiH +8.22 mut3:oH (+6 more)",
+   "-1.58 mut0:oiiL -1.40 op2:oiiL +1.00 mut4:oiiL +1.00 op2:oL -0.68 mut4:oL +0.67 mut2:oiiL +0.50 mut0:oL -0.42 mut2:oL (+6 more)"
+  ]
+ },
+ "coupled|star|theta|-|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.52 mut5:oH -1.52 mut5:oiiH +1.00 wt:oH +1.00 mut3:oH -1.00 mut3:oiiH -0.79 mut1:oH +0.79 mut1:oiiH (+7 more)",
+   "-1.87 wt:oiiL +1.00 wt:oL +0.81 mut4:oL -0.81 mut4:oiiL -0.59 mut0:oL +0.59 mut0:oiiL -0.50 mut2:oiiL +0.50 mut2:oL (+7 more)",
+   "+62.85 mut1:oiiH -21.79 mut5:oiiH -15.89 mut3:oiiH +12.53 mut5:oH -11.56 mut4:oiiH -10.45 mut0:oiiH -10.04 mut2:oiiH +8.22 mut3:oH (+6 more)",
+   "-1.58 mut0:oiiL -1.40 op2:oiiL +1.00 mut4:oiiL +1.00 op2:oL -0.68 mut4:oL +0.67 mut2:oiiL +0.50 mut0:oL -0.42 mut2:oL (+6 more)"
+  ]
+ },
+ "coupled|star|affine|condition|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -1.52 mut5:oiiH +1.52 mut5:oH +1.00 wt:oH -1.00 mut3:oiiH +1.00 mut3:oH -0.79 mut1:oH +0.79 mut1:oiiH (+7 more)",
+   "-1.87 wt:oiiL +1.00 wt:oL -0.81 mut4:oiiL +0.81 mut4:oL +0.59 mut0:oiiL -0.59 mut0:oL -0.50 mut2:oiiL +0.50 mut2:oL (+7 more)",
+   "+62.85 mut1:oiiH -21.79 mut5:oiiH -15.89 mut3:oiiH +12.53 mut5:oH -11.56 mut4:oiiH -10.45 mut0:oiiH -10.04 mut2:oiiH +8.22 mut3:oH (+6 more)",
+   "-1.58 mut0:oiiL -1.40 op2:oiiL +1.00 mut4:oiiL +1.00 op2:oL -0.68 mut4:oL +0.67 mut2:oiiL +0.50 mut0:oL -0.42 mut2:oL (+6 more)"
+  ]
+ },
+ "coupled|star|affine|operator|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.52 mut5:oH -1.52 mut5:oiiH +1.00 wt:oH +1.00 mut3:oH -1.00 mut3:oiiH -0.79 mut1:oH +0.79 mut1:oiiH (+7 more)",
+   "-1.87 wt:oiiL +1.00 wt:oL -0.81 mut4:oiiL +0.81 mut4:oL -0.59 mut0:oL +0.59 mut0:oiiL -0.50 mut2:oiiL +0.50 mut2:oL (+7 more)",
+   "+62.85 mut1:oiiH -21.79 mut5:oiiH -15.89 mut3:oiiH +12.53 mut5:oH -11.56 mut4:oiiH -10.45 mut0:oiiH -10.04 mut2:oiiH +8.22 mut3:oH (+6 more)",
+   "-1.58 mut0:oiiL -1.40 op2:oiiL +1.00 mut4:oiiL +1.00 op2:oL -0.68 mut4:oL +0.67 mut2:oiiL +0.50 mut0:oL -0.42 mut2:oL (+6 more)"
+  ]
+ },
+ "coupled|wt_knobs|theta|-|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.52 mut5:oH -1.52 mut5:oiiH +1.00 wt:oH +1.00 mut3:oH -1.00 mut3:oiiH -0.79 mut1:oH +0.79 mut1:oiiH (+7 more)",
+   "-1.87 wt:oiiL +1.00 wt:oL +0.81 mut4:oL -0.81 mut4:oiiL -0.59 mut0:oL +0.59 mut0:oiiL -0.50 mut2:oiiL +0.50 mut2:oL (+7 more)",
+   "+62.85 mut1:oiiH -21.79 mut5:oiiH -15.89 mut3:oiiH +12.53 mut5:oH -11.56 mut4:oiiH -10.45 mut0:oiiH -10.04 mut2:oiiH +8.22 mut3:oH (+6 more)",
+   "-1.58 mut0:oiiL -1.40 op2:oiiL +1.00 mut4:oiiL +1.00 op2:oL -0.68 mut4:oL +0.67 mut2:oiiL +0.50 mut0:oL -0.42 mut2:oL (+6 more)"
+  ]
+ },
+ "coupled|wt_knobs|affine|condition|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.52 mut5:oH -1.52 mut5:oiiH +1.00 wt:oH +1.00 mut3:oH -1.00 mut3:oiiH -0.79 mut1:oH +0.79 mut1:oiiH (+7 more)",
+   "-1.87 wt:oiiL +1.00 wt:oL +0.81 mut4:oL -0.81 mut4:oiiL +0.59 mut0:oiiL -0.59 mut0:oL +0.50 mut2:oL -0.50 mut2:oiiL (+7 more)",
+   "+62.85 mut1:oiiH -21.79 mut5:oiiH -15.89 mut3:oiiH +12.53 mut5:oH -11.56 mut4:oiiH -10.45 mut0:oiiH -10.04 mut2:oiiH +8.22 mut3:oH (+6 more)",
+   "-1.58 mut0:oiiL -1.40 op2:oiiL +1.00 mut4:oiiL +1.00 op2:oL -0.68 mut4:oL +0.67 mut2:oiiL +0.50 mut0:oL -0.42 mut2:oL (+6 more)"
+  ]
+ },
+ "coupled|wt_knobs|affine|operator|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.52 mut5:oH -1.52 mut5:oiiH +1.00 wt:oH -1.00 mut3:oiiH +1.00 mut3:oH -0.79 mut1:oH +0.79 mut1:oiiH (+7 more)",
+   "-1.87 wt:oiiL +1.00 wt:oL -0.81 mut4:oiiL +0.81 mut4:oL +0.59 mut0:oiiL -0.59 mut0:oL +0.50 mut2:oL -0.50 mut2:oiiL (+7 more)",
+   "+62.85 mut1:oiiH -21.79 mut5:oiiH -15.89 mut3:oiiH +12.53 mut5:oH -11.56 mut4:oiiH -10.45 mut0:oiiH -10.04 mut2:oiiH +8.22 mut3:oH (+6 more)",
+   "-1.58 mut0:oiiL -1.40 op2:oiiL +1.00 mut4:oiiL +1.00 op2:oL -0.68 mut4:oL +0.67 mut2:oiiL +0.50 mut0:oL -0.42 mut2:oL (+6 more)"
+  ]
+ },
+ "coupled|knobs_only|theta|-|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +2.58 mut2:oH -2.58 mut2:oiiH -2.06 op2:oiiH -1.57 mut0:oiiH +1.57 mut0:oH +1.00 wt:oH +0.56 mut1:oiiH (+7 more)",
+   "+2.01 mut3:oL -2.01 mut3:oiiL -1.87 wt:oiiL -1.32 op2:oiiL +1.00 wt:oL -0.73 mut0:oiiL +0.73 mut0:oL +0.63 mut5:oiiL (+7 more)",
+   "-7.48 mut2:oiiH +5.66 mut1:oiiH -5.15 mut0:oiiH -4.92 op2:oiiH +4.92 mut2:oH +3.05 mut4:oiiH +2.98 mut0:oH +1.14 mut3:oiiH (+6 more)",
+   "-4.31 mut3:oiiL +3.54 mut5:oiiL +3.34 mut3:oL +3.21 mut2:oiiL -3.20 op2:oiiL -1.82 mut0:oiiL +1.47 mut1:oiiL -1.42 mut4:oiiL (+6 more)"
+  ]
+ },
+ "coupled|knobs_only|affine|condition|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -2.58 mut2:oiiH +2.58 mut2:oH -2.06 op2:oiiH +1.57 mut0:oH -1.57 mut0:oiiH +1.00 wt:oH +0.56 mut1:oiiH (+7 more)",
+   "-2.01 mut3:oiiL +2.01 mut3:oL -1.87 wt:oiiL -1.32 op2:oiiL +1.00 wt:oL +0.73 mut0:oL -0.73 mut0:oiiL +0.63 mut5:oiiL (+7 more)",
+   "-7.48 mut2:oiiH +5.66 mut1:oiiH -5.15 mut0:oiiH -4.92 op2:oiiH +4.92 mut2:oH +3.05 mut4:oiiH +2.98 mut0:oH +1.14 mut3:oiiH (+6 more)",
+   "-4.31 mut3:oiiL +3.54 mut5:oiiL +3.34 mut3:oL +3.21 mut2:oiiL -3.20 op2:oiiL -1.82 mut0:oiiL +1.47 mut1:oiiL -1.42 mut4:oiiL (+6 more)"
+  ]
+ },
+ "coupled|knobs_only|affine|operator|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +2.58 mut2:oH -2.58 mut2:oiiH -2.06 op2:oiiH +1.57 mut0:oH -1.57 mut0:oiiH +1.00 wt:oH +0.56 mut1:oiiH (+7 more)",
+   "-2.01 mut3:oiiL +2.01 mut3:oL -1.87 wt:oiiL -1.32 op2:oiiL +1.00 wt:oL +0.73 mut0:oL -0.73 mut0:oiiL -0.63 mut5:oL (+7 more)",
+   "-7.48 mut2:oiiH +5.66 mut1:oiiH -5.15 mut0:oiiH -4.92 op2:oiiH +4.92 mut2:oH +3.05 mut4:oiiH +2.98 mut0:oH +1.14 mut3:oiiH (+6 more)",
+   "-4.31 mut3:oiiL +3.54 mut5:oiiL +3.34 mut3:oL +3.21 mut2:oiiL -3.20 op2:oiiL -1.82 mut0:oiiL +1.47 mut1:oiiL -1.42 mut4:oiiL (+6 more)"
+  ]
+ },
+ "coupled|base|theta|-|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -2.70 mut4:oiiH +1.29 mut3:oiiH +1.22 mut0:oiiH -1.01 mut2:oiiH +1.00 wt:oH +0.83 mut5:oiiH +0.72 mut1:oiiH",
+   "-1.87 wt:oiiL -1.13 mut1:oiiL +1.00 wt:oL +0.63 mut2:oiiL -0.57 mut4:oiiL +0.53 mut0:oiiL -0.19 mut3:oiiL +0.05 mut5:oiiL",
+   "-1.65 mut0:oiiH +1.00 mut0:oH",
+   "-1.34 mut0:oiiL +1.00 mut0:oL",
+   "-2.15 mut1:oiiH +1.00 mut1:oH",
+   "-3.00 mut1:oiiL +1.00 mut1:oL",
+   "-3.87 mut2:oiiH +1.00 mut2:oH",
+   "-1.24 mut2:oiiL +1.00 mut2:oL",
+   "-1.57 mut3:oiiH +1.00 mut3:oH",
+   "-2.07 mut3:oiiL +1.00 mut3:oL",
+   "-5.57 mut4:oiiH +1.00 mut4:oH",
+   "-2.44 mut4:oiiL +1.00 mut4:oL",
+   "-2.03 mut5:oiiH +1.00 mut5:oH",
+   "-1.83 mut5:oiiL +1.00 mut5:oL"
+  ]
+ },
+ "coupled|base|affine|condition|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -2.70 mut4:oiiH +1.29 mut3:oiiH +1.22 mut0:oiiH -1.01 mut2:oiiH +1.00 wt:oH +0.83 mut5:oiiH +0.72 mut1:oiiH",
+   "-1.87 wt:oiiL -1.13 mut1:oiiL +1.00 wt:oL +0.63 mut2:oiiL -0.57 mut4:oiiL +0.53 mut0:oiiL -0.19 mut3:oiiL +0.05 mut5:oiiL",
+   "-1.65 mut0:oiiH +1.00 mut0:oH",
+   "-1.34 mut0:oiiL +1.00 mut0:oL",
+   "-2.15 mut1:oiiH +1.00 mut1:oH",
+   "-3.00 mut1:oiiL +1.00 mut1:oL",
+   "-3.87 mut2:oiiH +1.00 mut2:oH",
+   "-1.24 mut2:oiiL +1.00 mut2:oL",
+   "-1.57 mut3:oiiH +1.00 mut3:oH",
+   "-2.07 mut3:oiiL +1.00 mut3:oL",
+   "-5.57 mut4:oiiH +1.00 mut4:oH",
+   "-2.44 mut4:oiiL +1.00 mut4:oL",
+   "-2.03 mut5:oiiH +1.00 mut5:oH",
+   "-1.83 mut5:oiiL +1.00 mut5:oL"
+  ]
+ },
+ "coupled|base|affine|operator|shared|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -2.70 mut4:oiiH +1.29 mut3:oiiH +1.22 mut0:oiiH -1.01 mut2:oiiH +1.00 wt:oH +0.83 mut5:oiiH +0.72 mut1:oiiH",
+   "-1.87 wt:oiiL -1.13 mut1:oiiL +1.00 wt:oL +0.63 mut2:oiiL -0.57 mut4:oiiL +0.53 mut0:oiiL -0.19 mut3:oiiL +0.05 mut5:oiiL",
+   "-1.65 mut0:oiiH +1.00 mut0:oH",
+   "-1.34 mut0:oiiL +1.00 mut0:oL",
+   "-2.15 mut1:oiiH +1.00 mut1:oH",
+   "-3.00 mut1:oiiL +1.00 mut1:oL",
+   "-3.87 mut2:oiiH +1.00 mut2:oH",
+   "-1.24 mut2:oiiL +1.00 mut2:oL",
+   "-1.57 mut3:oiiH +1.00 mut3:oH",
+   "-2.07 mut3:oiiL +1.00 mut3:oL",
+   "-5.57 mut4:oiiH +1.00 mut4:oH",
+   "-2.44 mut4:oiiL +1.00 mut4:oL",
+   "-2.03 mut5:oiiH +1.00 mut5:oH",
+   "-1.83 mut5:oiiL +1.00 mut5:oL"
+  ]
+ },
+ "coupled|wt_only|theta|-|shared|target|ratio": {
+  "unidentified": [
+   "wt:L1",
+   "wt:U",
+   "wt:dH",
+   "wt:dL",
+   "wt:eH",
+   "wt:eL",
+   "wt:cH",
+   "wt:cL",
+   "wt:xH",
+   "wt:xL",
+   "wt:oHm",
+   "wt:oLm",
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "mut*:L1 (x6)",
+   "mut*:U (x6)",
+   "mut*:dH (x6)",
+   "mut*:dL (x6)",
+   "mut*:eH (x6)",
+   "mut*:eL (x6)",
+   "mut*:cH (x6)",
+   "mut*:cL (x6)",
+   "mut*:xH (x6)",
+   "mut*:xL (x6)",
+   "mut*:oHm (x6)",
+   "mut*:oLm (x6)",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-42564069698988.13 mut5:cH -14545864092021.90 mut5:oiiH -7959323998142.69 mut5:oiiL +5472737128485.90 mut5:oH +4041058286839.01 mut5:oL +2549754729463.80 mut5:xH -767000359456.87 mut5:oLm +527737767763.90 mut5:oHm (+52 more)",
+   "+4390912271725.69 mut5:cH +1561215416293.37 mut5:oiiH +849507079539.79 mut5:oiiL -585210891001.85 mut5:oH -431699316183.69 mut5:oL -272120525029.05 mut5:xH +81707965841.88 mut5:oLm -56195100819.34 mut5:oHm (+52 more)",
+   "+2148978975181.76 mut5:cH +1587555690387.16 mut5:oiiH +697763971328.99 mut5:oiiL -524846328272.59 mut5:oH -362722947754.23 mut5:oL -202190677296.09 mut5:xH +55275753233.16 mut5:oLm -37988724002.22 mut5:oHm (+52 more)",
+   "-131576640806981.23 mut5:cH -42718197686454.09 mut5:oiiH -23831696653917.42 mut5:oiiL +16256130914170.84 mut5:oH +12078767048625.27 mut5:oL +7700698502711.89 mut5:xH -2326695957110.34 mut5:oLm +1601123638758.72 mut5:oHm (+52 more)",
+   "+12469295575293.21 mut5:cH +4035223755747.71 mut5:oiiH +2217840061486.35 mut5:oiiL -1521400184766.76 mut5:oH -1124939416359.45 mut5:oL -724082582784.86 mut5:xH +214849820310.39 mut5:oLm -148007778622.72 mut5:oHm (+52 more)",
+   "+2542452319556.72 mut5:cH +823266930015.01 mut5:oiiH +452121992495.35 mut5:oiiL -310317381685.42 mut5:oH -229328178409.09 mut5:oL -147449571460.85 mut5:xH +43777207093.85 mut5:oLm -30157353755.14 mut5:oHm (+52 more)",
+   "+50232311659629.06 mut5:cH +16340640600400.23 mut5:oiiH +9031115854635.72 mut5:oiiL -6181600296955.99 mut5:oH -4579843255251.67 mut5:oL -2936047110462.29 mut5:xH +877411068490.01 mut5:oLm -604149645387.87 mut5:oHm (+52 more)",
+   "-804556940445043.25 mut5:cH -260454992596676.38 mut5:oiiH -142985606347931.44 mut5:oiiL +98154453218608.59 mut5:oH +72526937867040.53 mut5:oL +46639867118389.41 mut5:xH -13842086077874.43 mut5:oLm +9535825198518.00 mut5:oHm (+52 more)",
+   "+1155.77 mut5:cH +905.02 mut5:oiiH +478.03 mut5:oiiL -339.20 mut5:oH -244.36 mut5:oL -127.97 mut5:xH +45.69 mut5:oLm -30.99 mut5:oHm (+12 more)",
+   "+529.76 mut5:cH -109.40 mut5:oiiH +24.61 mut5:oH -14.45 mut5:oiiL +9.35 mut5:oL +3.58 mut5:xH -3.20 mut5:cL -1.87 wt:oiiL (+12 more)",
+   "-2609984120908.54 mut5:cH -893722569825.50 mut5:oiiH -504954839397.36 mut5:oiiL +330628024496.55 mut5:oH +257977299255.56 mut5:oL +163462296276.29 mut5:xH -46190139182.33 mut5:oLm +31863437131.25 mut5:oHm (+52 more)",
+   "+255065690179.14 mut5:cH +87340741052.11 mut5:oiiH +49347675823.16 mut5:oiiL -32311254619.43 mut5:oH -25211324037.77 mut5:oL -15974664883.34 mut5:xH +4514019694.66 mut5:oLm -3113915330.71 mut5:oHm (+52 more)",
+   "+3578956072724.59 mut5:cH +1225522165096.64 mut5:oiiH +692422165561.79 mut5:oiiL -453375543011.53 mut5:oH -353752824783.56 mut5:oL -224148602861.79 mut5:xH +63338484520.79 mut5:oLm -43692915215.10 mut5:oHm (+52 more)",
+   "-21832989944.15 mut5:cH -7476151951.04 mut5:oiiH -4224039424.78 mut5:oiiL +2765763753.41 mut5:oH +2158027197.45 mut5:oL +1367391891.41 mut5:xH -386388977.02 mut5:oLm +266543487.20 mut5:oHm (+52 more)",
+   "+66.00 mut5:cH +18.79 mut5:oiiH +11.58 mut5:oiiL -7.50 mut5:oH -5.85 mut5:oL -3.75 mut5:xH +1.17 mut5:oLm +1.00 mut0:cH (+12 more)",
+   "+392.63 mut5:cH +92.30 mut5:oiiH +49.51 mut5:oiiL -36.15 mut5:oH -24.71 mut5:oL -15.44 mut5:xH +5.05 mut5:oLm -3.48 mut5:oHm (+11 more)",
+   "-1655.58 mut5:cH -435.63 mut5:oiiH -248.41 mut5:oiiL +167.65 mut5:oH +125.43 mut5:oL +79.63 mut5:xH -23.99 mut5:oLm +16.57 mut5:oHm (+7 more)",
+   "+2201.16 mut5:cH +403.55 mut5:oiiH +259.86 mut5:oiiL -168.13 mut5:oH -129.51 mut5:oL -85.29 mut5:xH +26.69 mut5:oLm -18.48 mut5:oHm (+7 more)",
+   "+4354967937949.13 mut5:cH +274548944400.55 mut5:oiiL +189144832109.67 mut5:oiiH -141074983676.30 mut5:oH -129845722843.18 mut5:oL -96937212478.59 mut5:xH +34187069285.91 mut5:oLm -26124845580.68 mut5:cL (+52 more)",
+   "-628081358493.17 mut5:cH -39595913212.14 mut5:oiiL -27278754244.55 mut5:oiiH +20346067797.33 mut5:oH +18726568495.97 mut5:oL +13980451259.12 mut5:xH -4930517705.14 mut5:oLm +3767772541.37 mut5:cL (+52 more)",
+   "-5019769150693.58 mut5:cH -316459614346.81 mut5:oiiL -218018126229.47 mut5:oiiH +162610447739.82 mut5:oH +149667030517.18 mut5:oL +111734966177.58 mut5:xH -39405826048.39 mut5:oLm +30112895539.88 mut5:cL (+52 more)",
+   "+68505636828.66 mut5:cH +4318769605.86 mut5:oiiL +2975315937.88 mut5:oiiH -2219166753.22 mut5:oH -2042527030.60 mut5:oL -1524863671.76 mut5:xH +537777137.21 mut5:oLm -410955774.17 mut5:cL (+52 more)",
+   "+4.03 mut5:cH +2.82 mut5:oiiH +1.37 mut5:oiiL +1.00 mut1:cH -0.97 mut5:oH -0.71 mut5:oL -0.43 mut5:xH +0.12 mut5:oLm (+12 more)",
+   "-36.04 mut5:cH +2.76 mut5:oiiH +1.00 mut1:xH -0.45 mut5:oiiL +0.25 mut5:xH +0.22 mut5:cL -0.19 mut5:oH -0.15 mut5:oLm (+11 more)",
+   "-2970.40 mut5:cH -459.19 mut5:oiiH -314.52 mut5:oiiL +199.54 mut5:oH +155.73 mut5:oL +103.54 mut5:xH -33.07 mut5:oLm +22.93 mut5:oHm (+7 more)",
+   "+786.76 mut5:cH +77.46 mut5:oiiH +70.26 mut5:oiiL -40.34 mut5:oH -34.24 mut5:oL -21.98 mut5:xH +7.81 mut5:oLm -5.42 mut5:oHm (+7 more)",
+   "+61965973585.01 mut5:oiiH +26659626846.32 mut5:oiiL -19407575213.63 mut5:oH -14120765118.90 mut5:oL -8439837020.22 mut5:xH +2006093773.20 mut5:oLm -1371802853.67 mut5:oHm +1261478622.91 mut5:cH (+52 more)",
+   "-10381290619.53 mut5:oiiH -4466344686.47 mut5:oiiL +3251392591.86 mut5:oH +2365682112.36 mut5:oL +1413944009.32 mut5:xH -336085296.79 mut5:oLm +229821144.51 mut5:oHm -211348581.55 mut5:cH (+52 more)",
+   "-52776639925.48 mut5:oiiH -22706101802.98 mut5:oiiL +16529502113.52 mut5:oH +12026707152.48 mut5:oL +7188239929.05 mut5:xH -1708597661.94 mut5:oLm +1168369681.16 mut5:oHm -1074435931.20 mut5:cH (+52 more)",
+   "+368918728.14 mut5:oiiH +158720006.81 mut5:oiiL -115544378.81 mut5:oH -84068986.15 mut5:oL -50247173.74 mut5:xH +11943429.50 mut5:oLm -8167130.98 mut5:oHm +7511163.59 mut5:cH (+51 more)",
+   "-1.05 mut5:cH +1.00 mut2:cH -0.27 mut5:oiiH -0.16 mut5:oiiL +0.11 mut5:oH +0.08 mut5:oL +0.05 mut5:xH -0.02 mut5:oLm (+12 more)",
+   "+434.86 mut5:cH +129.56 mut5:oiiH +71.03 mut5:oiiL -49.18 mut5:oH -35.93 mut5:oL -22.47 mut5:xH +6.86 mut5:oLm -4.73 mut5:oHm (+11 more)",
+   "-1113.69 mut5:cH -276.26 mut5:oiiH -157.45 mut5:oiiL +106.83 mut5:oH +79.33 mut5:oL +50.25 mut5:xH -15.25 mut5:oLm +10.54 mut5:oHm (+7 more)",
+   "-1757.37 mut5:cH -429.63 mut5:oiiH -264.01 mut5:oiiL +171.99 mut5:oH +132.81 mut5:oL +90.44 mut5:xH -27.02 mut5:oLm +18.65 mut5:oHm (+7 more)",
+   "-2744720665121.23 mut5:cH -1055956351789.07 mut5:oiiH -707303707534.31 mut5:oiiL +447629020386.44 mut5:oH +356586805972.04 mut5:oL +210051247121.17 mut5:xH -75090143021.12 mut5:oLm +51096356773.61 mut5:oHm (+52 more)",
+   "+318164270336.22 mut5:cH +122405357200.01 mut5:oiiH +81989582951.72 mut5:oiiL -51888552291.35 mut5:oH -41335016033.36 mut5:oL -24348833576.99 mut5:xH +8704318663.00 mut5:oLm -5923001362.58 mut5:oHm (+52 more)",
+   "+22360643569.92 mut5:cH +8622574998.80 mut5:oiiH +5756573612.56 mut5:oiiL -3647189009.95 mut5:oH -2902720321.26 mut5:oL -1710063743.37 mut5:xH +610090312.82 mut5:oLm -415183453.82 mut5:oHm (+52 more)",
+   "-8247084505356.46 mut5:cH -3172783015362.51 mut5:oiiH -2125257615096.62 mut5:oiiL +1344993249344.04 mut5:oH +1071445969738.13 mut5:oL +631146097226.24 mut5:xH -225628742524.36 mut5:oLm +153532783232.46 mut5:oHm (+52 more)",
+   "+3539686299.96 mut5:cH +1361785328.77 mut5:oiiH +912166731.99 mut5:oiiL -577277516.65 mut5:oH -459868057.60 mut5:oL -270890052.15 mut5:xH +96839857.51 mut5:oLm -65896294.53 mut5:oHm (+51 more)",
+   "+1302054970624.50 mut5:cH +500925564116.89 mut5:oiiH +335535732977.86 mut5:oiiL -212348497027.09 mut5:oH -169160045240.88 mut5:oL -99645479838.20 mut5:xH +35622032304.35 mut5:oLm -24239605382.64 mut5:oHm (+52 more)",
+   "+18715863520.04 mut5:cH +7200352291.31 mut5:oiiH +4823022934.12 mut5:oiiL -3052317742.85 mut5:oH -2431522778.49 mut5:oL -1432313721.90 mut5:xH +512034522.35 mut5:oLm -348422421.77 mut5:oHm (+52 more)",
+   "-91.36 mut5:cH -16.75 mut5:oiiH -2.80 mut3:oiiH +2.73 mut5:oiiL +1.13 mut5:oLm -1.05 mut5:oL +1.02 mut5:oH -1.01 mut5:xL (+7 more)",
+   "+3154.08 mut5:cH +1036.70 mut5:oiiH +632.92 mut5:oiiL -412.63 mut5:oH -320.16 mut5:oL -197.55 mut5:xH +63.53 mut5:oLm -43.54 mut5:oHm (+7 more)",
+   "+12990.20 mut5:cH +3794.00 mut5:oiiH +2091.72 mut5:oiiL -1440.61 mut5:oH -1057.90 mut5:oL -686.04 mut5:xH +203.98 mut5:oLm -140.74 mut5:oHm (+15 more)",
+   "-699.87 mut5:cH -205.93 mut5:oiiH -113.55 mut5:oiiL +78.22 mut5:oH +57.43 mut5:oL +37.19 mut5:xH -11.08 mut5:oLm +7.65 mut5:oHm (+15 more)",
+   "-12345.86 mut5:cH -3606.29 mut5:oiiH -1992.65 mut5:oiiL +1371.23 mut5:oH +1007.67 mut5:oL +653.39 mut5:xH -194.65 mut5:oLm +134.28 mut5:oHm (+15 more)",
+   "+1.90 mut5:cH +1.00 mut4:cH +0.64 mut5:oiiH +0.35 mut5:oiiL -0.24 mut5:oH -0.18 mut5:oL -0.11 mut5:xH +0.03 mut5:oLm (+12 more)",
+   "+24.64 mut5:cH +7.51 mut5:oiiH +4.12 mut5:oiiL -2.84 mut5:oH -2.09 mut5:oL -1.35 mut5:xH +1.00 mut4:xH +0.40 mut5:oLm (+11 more)",
+   "-308.21 mut5:cH -128.48 mut5:oiiH -69.93 mut5:oiiL +47.69 mut5:oH +35.69 mut5:oL +22.38 mut5:xH -6.65 mut5:oLm +4.57 mut5:oHm (+7 more)",
+   "+1434.01 mut5:cH +414.63 mut5:oiiH +230.42 mut5:oiiL -158.62 mut5:oH -116.40 mut5:oL -74.60 mut5:xH +22.60 mut5:oLm -15.58 mut5:oHm (+7 more)",
+   "-11253.81 mut5:cH -2834.91 mut5:oiiH -1521.84 mut5:oiiL +1081.98 mut5:oH +763.69 mut5:oL +528.60 mut5:xH -144.10 mut5:oLm +100.22 mut5:oHm (+7 more)",
+   "+774.05 mut5:cH +185.11 mut5:oiiH +99.63 mut5:oiiL -71.15 mut5:oH -49.87 mut5:oL -34.71 mut5:xH +9.49 mut5:oLm -6.58 mut5:oHm (+6 more)",
+   "+12056.13 mut5:cH +2855.09 mut5:oiiH +1529.42 mut5:oiiL -1097.37 mut5:oH -765.14 mut5:oL -534.93 mut5:xH +145.13 mut5:oLm -100.62 mut5:oHm (+7 more)"
+  ]
+ },
+ "coupled|wt_only|affine|condition|shared|target|ratio": {
+  "unidentified": [
+   "wt:L1",
+   "wt:U",
+   "wt:dH",
+   "wt:dL",
+   "wt:eH",
+   "wt:eL",
+   "wt:cH",
+   "wt:cL",
+   "wt:xH",
+   "wt:xL",
+   "wt:oHm",
+   "wt:oLm",
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "aff0000:a",
+   "aff0000:s",
+   "mut*:L1 (x6)",
+   "mut*:U (x6)",
+   "mut*:dH (x6)",
+   "mut*:dL (x6)",
+   "mut*:eH (x6)",
+   "mut*:eL (x6)",
+   "mut*:cH (x6)",
+   "mut*:cL (x6)",
+   "mut*:xH (x6)",
+   "mut*:xL (x6)",
+   "mut*:oHm (x6)",
+   "mut*:oLm (x6)",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "+1899597619936382.25 mut5:cH +1441042433343252.25 mut5:oiiH -432847773966006.00 mut5:oH -234120773704789.06 mut5:oiiL +141104882141890.12 mut5:oL +65137445913488.73 mut5:eH +51258060959419.92 mut5:xH -13544810515405.48 mut5:xL (+50 more)",
+   "-47116876665798.41 mut5:cH -30609679669411.28 mut5:oiiH +9088670114047.18 mut5:oH +5150803685964.81 mut5:oiiL -3086591846315.96 mut5:oL -1274930837025.39 mut5:eH -933265598720.52 mut5:xH +248800099933.37 mut5:xL (+50 more)",
+   "-567288083444450.25 mut5:cH -388217723842178.00 mut5:oiiH +115720162840377.39 mut5:oH +64610623376272.98 mut5:oiiL -38786308935205.70 mut5:oL -16605587743184.82 mut5:eH -12537425847522.06 mut5:xH +3324128835781.22 mut5:xL (+50 more)",
+   "+766860660044738.50 mut5:cH +596021465200196.38 mut5:oiiH -179421713478962.81 mut5:oH -96119230286066.00 mut5:oiiL +58010564216546.22 mut5:oL +27414815331500.33 mut5:eH +21648963711861.91 mut5:xH -5736380067704.57 mut5:xL (+50 more)",
+   "+62225470448908.44 mut5:cH +37108611592617.29 mut5:oiiH -10930401130238.57 mut5:oH -6390153906826.37 mut5:oiiL +3814086260779.57 mut5:oL +1443427087243.21 mut5:eH +1016547695515.12 mut5:xH -310283662902.30 mut5:cL (+50 more)",
+   "+5153186432938697.00 mut5:cH +4301356084855512.50 mut5:oiiH -1300010500783612.75 mut5:oH -685410099916742.12 mut5:oiiL +414442997226701.31 mut5:oL +202865185693570.19 mut5:eH +164671217027960.59 mut5:xH -43378679445090.76 mut5:xL (+50 more)",
+   "+14693097007943.16 mut5:cH +13560198217172.57 mut5:oiiH -4121222403359.71 mut5:oH -2123760520691.68 mut5:oiiL +1287911894677.87 mut5:oL +663699638174.57 mut5:eH +553165889549.92 mut5:xH -145277668563.75 mut5:xL (+50 more)",
+   "+1966999890460223.75 mut5:cH +1807419265899852.00 mut5:oiiH -549347957091354.62 mut5:oH -282923575903771.25 mut5:oiiL +171600383349594.94 mut5:oL +88546784642815.72 mut5:eH +73642267407582.73 mut5:xH -19361589806517.19 mut5:xL (+50 more)",
+   "-2893083666951.47 mut5:cH -1083262928309.56 mut5:oiiH +336933648519.28 mut5:oH +132126256909.32 mut5:oiiL -86157493977.54 mut5:oL -74365265693.04 mut5:eH -20097177230.65 mut5:xH +14104097954.97 mut5:cL (+50 more)",
+   "+35049162255427.82 mut5:cH +14950319163229.11 mut5:oiiH -4622794816356.49 mut5:oH -2019473890988.89 mut5:oiiL +1283637389085.53 mut5:oL +910592459024.09 mut5:eH +420857573943.69 mut5:xH -170528080405.46 mut5:cL (+50 more)",
+   "-2460612160519.75 mut5:cH -1057542907170.06 mut5:oiiH +326898896288.07 mut5:oH +143601641123.95 mut5:oiiL -91162651114.37 mut5:oL -63969862201.84 mut5:eH -30319288620.08 mut5:xH +11970373516.18 mut5:cL (+50 more)",
+   "+2241.27 mut5:cH +618.24 mut5:oiiH -184.91 mut5:oH -26.47 mut5:oiiL +21.25 mut5:oL +17.52 mut5:eH +17.07 mut5:xH -12.66 mut5:cL (+13 more)",
+   "-562.15 mut5:cH +111.96 mut5:oiiH -26.69 mut5:oH -23.45 mut5:oiiL -13.13 mut5:eH +11.61 mut5:oL +2.79 mut5:cL +2.63 mut5:xH (+13 more)",
+   "-113130203660.88 mut5:cH -12667369895.32 mut5:oiiH +4328404578.40 mut5:oH +2800018681.43 mut5:oiiL -2087466889.14 mut5:xH -1851489433.08 mut5:oL -995056955.44 mut5:eH +634084192.98 mut5:cL (+50 more)",
+   "+21530171273.93 mut5:cH +2410767327.07 mut5:oiiH -823752416.73 mut5:oH -532880363.98 mut5:oiiL +397272405.91 mut5:xH +352362794.74 mut5:oL +189372493.88 mut5:eH -120674592.11 mut5:cL (+49 more)",
+   "+308536040122.83 mut5:cH +34547283525.87 mut5:oiiH -11804708909.73 mut5:oH -7636396724.19 mut5:oiiL +5693077825.21 mut5:xH +5049504414.68 mut5:oL +2713783255.22 mut5:eH -1729315631.44 mut5:cL (+50 more)",
+   "+245667721698.84 mut5:cH +27507815003.16 mut5:oiiH -9399342461.30 mut5:oH -6080379204.21 mut5:oiiL +4533037428.67 mut5:xH +4020600668.48 mut5:oL +2160813801.66 mut5:eH -1376944592.19 mut5:cL (+50 more)",
+   "+28.58 mut5:cH +6.28 mut5:oiiH -1.90 mut5:oH +1.00 mut0:cH -0.63 mut5:oiiL +0.42 mut5:oL +0.26 mut5:xH -0.17 mut5:cL (+13 more)",
+   "-108.83 mut5:cH -8.18 mut5:oiiH +2.88 mut5:oH +1.59 mut5:oiiL -1.13 mut5:oL -1.10 mut5:xH +1.00 mut0:xH +0.65 mut5:cL (+12 more)",
+   "+236.79 mut5:cH +123.59 mut5:oiiH -36.34 mut5:oH -13.46 mut5:oiiL +8.40 mut5:oL -4.78 mut0:oiiH +4.21 mut5:eH +3.33 mut5:xH (+8 more)",
+   "+776.64 mut5:cH +268.89 mut5:oiiH -76.51 mut5:oH -16.94 mut5:oiiL +11.25 mut5:oL +7.94 mut5:xH -4.64 mut5:cL -2.01 mut0:oiiL (+8 more)",
+   "+89590792763.61 mut5:cH +8510102380.43 mut5:oiiH -2962315348.54 mut5:oH -1642018505.56 mut5:oiiL +1142412638.60 mut5:oL +754402196.36 mut5:xH -514730732.73 mut5:cL +495153462.99 mut5:eH (+50 more)",
+   "-21156251373.43 mut5:cH -2009601713.11 mut5:oiiH +699530279.14 mut5:oH +387751173.53 mut5:oiiL -269772779.06 mut5:oL -178146769.13 mut5:xH +121550130.78 mut5:cL -116927143.86 mut5:eH (+50 more)",
+   "-175932562527.96 mut5:cH -16711583659.57 mut5:oiiH +5817201615.70 mut5:oH +3224488652.30 mut5:oiiL -2243395339.70 mut5:oL -1481445710.32 mut5:xH +1010794678.54 mut5:cL -972350177.34 mut5:eH (+50 more)",
+   "-161158319713.41 mut5:cH -15308198000.58 mut5:oiiH +5328691603.84 mut5:oH +2953706155.40 mut5:oiiL -2055002061.68 mut5:oL -1357038475.53 mut5:xH +925911434.29 mut5:cL -890695465.27 mut5:eH (+50 more)",
+   "+1.00 mut1:cH +0.62 mut5:cH +0.14 mut5:oiiH -0.04 mut5:oH -0.02 mut5:oiiL +0.01 mut5:oL +0.01 mut5:eH +0.01 mut5:xH (+13 more)",
+   "+2.20 mut5:cH +1.02 mut5:oiiH +1.00 mut1:xH -0.28 mut5:oH -0.14 mut5:oiiL +0.08 mut5:oL +0.05 mut5:xH -0.03 mut1:oLm (+12 more)",
+   "-66.02 mut5:cH -17.77 mut5:oiiH +6.00 mut5:oH +3.53 mut5:oiiL -2.27 mut5:oL -1.70 mut5:eH -1.67 mut1:oiiH -1.35 mut5:xH (+8 more)",
+   "+288.89 mut5:cH +108.50 mut5:oiiH -32.15 mut5:oH -10.73 mut5:oiiL +6.89 mut5:oL +4.71 mut5:xH +2.45 mut5:eH -1.62 mut5:cL (+8 more)",
+   "-1516548766888.59 mut5:cH -236124963554.64 mut5:oiiH +75691132149.33 mut5:oH +29595781082.34 mut5:oiiL -20501761781.69 mut5:oL +9069067552.97 mut5:cL -7511846730.63 mut5:xH +2332089778.99 mut5:xL (+50 more)",
+   "+239873875412.72 mut5:cH +37347143120.38 mut5:oiiH -11971868880.23 mut5:oH -4680886361.64 mut5:oiiL +3242613877.37 mut5:oL -1434447736.33 mut5:cL +1188328453.16 mut5:xH -368867886.80 mut5:xL (+50 more)",
+   "+1214156551867.75 mut5:cH +189037617536.85 mut5:oiiH -60597250290.94 mut5:oH -23692864570.11 mut5:oiiL +16412894264.49 mut5:oL -7260660207.46 mut5:cL +6014964872.64 mut5:xH -1867078094.39 mut5:xL (+50 more)",
+   "-649657073812.18 mut5:cH -101194822385.79 mut5:oiiH +32436685210.15 mut5:oH +12692242299.03 mut5:oiiL -8790262485.68 mut5:oL +3885672752.73 mut5:cL -3210050503.50 mut5:xH +999059635.99 mut5:xL (+50 more)",
+   "-9629619808.79 mut5:cH -1499361799.08 mut5:oiiH +480626798.86 mut5:oH +187937132.98 mut5:oiiL -130187071.29 mut5:oL +57586426.22 mut5:cL -47690657.24 mut5:xH +14808094.68 mut5:xL (+49 more)",
+   "+1.00 mut2:cH -0.31 mut5:cH -0.01 mut5:oiiH +0.00 mut5:oH +0.00 mut5:cL +0.00 mut5:eH -0.00 mut5:xH -0.00 mut5:oL (+13 more)",
+   "+10.86 mut5:cH +4.22 mut5:oiiH -1.32 mut5:oH +1.00 mut2:xH -0.79 mut5:oiiL +0.49 mut5:oL +0.44 mut5:eH +0.38 mut5:xH (+12 more)",
+   "+622.77 mut5:cH +160.44 mut5:oiiH -48.16 mut5:oH -14.39 mut5:oiiL +9.71 mut5:oL +5.30 mut5:xH -3.69 mut5:cL -1.55 mut2:oiiH (+8 more)",
+   "-196.47 mut5:cH -21.62 mut5:oiiH +10.33 mut5:oiiL +9.01 mut5:oH -6.51 mut5:oL -2.24 mut2:oiiL -1.69 mut5:xH +1.13 mut5:cL (+8 more)",
+   "+600632426905.02 mut5:cH -65796654473.70 mut5:oiiH +39209916696.06 mut5:oiiL -24055105109.65 mut5:xH -20280270255.29 mut5:oL +16122098388.48 mut5:oH +13901040106.34 mut5:eH -2982270080.06 mut5:cL (+50 more)",
+   "-69621647857.19 mut5:cH +7627544988.19 mut5:oiiH -4545154658.16 mut5:oiiL +2788430708.08 mut5:xH +2350866006.50 mut5:oL -1869001469.44 mut5:oH -1611360130.88 mut5:eH +345684945.79 mut5:cL (+50 more)",
+   "-4726280016.46 mut5:cH +564614317.83 mut5:oiiH -319122337.44 mut5:oiiL +195724212.42 mut5:xH +165499958.92 mut5:oL -140143878.82 mut5:oH -111519300.11 mut5:eH +23372215.47 mut5:cL (+50 more)",
+   "+1805207859138.11 mut5:cH -197617092089.93 mut5:oiiH +117815258646.39 mut5:oiiL -72279285592.81 mut5:xH -60935480396.64 mut5:oL +48416752427.73 mut5:oH +41773569059.66 mut5:eH -8963522065.02 mut5:cL (+50 more)",
+   "-774699669.72 mut5:cH +84835920.32 mut5:oiiH -50566647.95 mut5:oiiL +31022443.75 mut5:xH +26153958.48 mut5:oL -20786160.44 mut5:oH -17928330.51 mut5:eH +3846610.39 mut5:cL (+46 more)",
+   "-284969216601.45 mut5:cH +31206445453.73 mut5:oiiH -18600676949.64 mut5:oiiL +11411443241.02 mut5:xH +9620596812.09 mut5:oL -7646079186.76 mut5:oH -6594842522.24 mut5:eH +1414955486.22 mut5:cL (+50 more)",
+   "-4096174972.22 mut5:cH +448564446.38 mut5:oiiH -267367921.20 mut5:oiiL +164029183.84 mut5:xH +138287384.73 mut5:oL -109905476.96 mut5:oH -94794901.51 mut5:eH +20338706.48 mut5:cL (+50 more)",
+   "-75.63 mut5:cH -24.43 mut5:oiiH +7.07 mut5:oH -2.80 mut3:oiiH -1.89 mut5:oiiL -1.58 mut5:eH +1.39 mut5:xH +1.00 mut3:oH (+8 more)",
+   "-315.93 mut5:cH +15.91 mut5:oiiH -10.25 mut5:oiiL +8.25 mut5:xH -5.20 mut5:eH +5.03 mut5:oL -3.68 mut5:oH +1.66 mut5:cL (+8 more)",
+   "-1696685471.75 mut5:cH -35197333.72 mut5:oiiH +23637920.04 mut5:oiiL +20571608.40 mut5:oH -17211762.24 mut5:oL +9824704.52 mut5:cL -7528194.98 mut5:eH -1744002.09 mut5:xH (+45 more)",
+   "+128439345.00 mut5:cH +2664448.22 mut5:oiiH -1789394.02 mut5:oiiL -1557275.09 mut5:oH +1302932.95 mut5:oL -743731.60 mut5:cL +569885.69 mut5:eH +132021.05 mut5:xH (+34 more)",
+   "+2265806819.09 mut5:cH +47003727.79 mut5:oiiH -31566816.76 mut5:oiiL -27471997.25 mut5:oH +22985125.07 mut5:oL -13120217.39 mut5:cL +10053390.46 mut5:eH +2328992.62 mut5:xH (+45 more)",
+   "+1991355789.24 mut5:cH +41310390.52 mut5:oiiH -27743203.93 mut5:oiiL -24144412.44 mut5:oH +20200993.61 mut5:oL -11531000.76 mut5:cL +8835657.77 mut5:eH +2046878.84 mut5:xH (+45 more)",
+   "+1.00 mut4:cH +0.04 mut5:cH +0.01 mut5:oiiH -0.00 mut5:xH +0.00 mut5:oiiL -0.00 mut5:oH -0.00 mut5:oL +0.00 mut5:eH (+13 more)",
+   "+1.00 mut4:xH +0.16 mut5:oiiH -0.04 mut5:oH +0.02 mut5:oiiL -0.02 mut5:xH +0.02 mut5:eH -0.01 mut5:oL -0.01 mut4:oiiL (+12 more)",
+   "+90.65 mut5:cH +23.11 mut5:oiiH -6.86 mut5:oH -2.57 mut4:oiiH -1.12 mut5:oiiL +1.00 mut4:oH +0.86 mut5:oL +0.69 mut5:xH (+8 more)",
+   "-41.68 mut5:cH +2.82 mut5:oiiH +1.53 mut5:xH -1.42 mut4:oiiL +1.00 mut4:oL -0.69 mut5:oH +0.37 mut5:oiiL -0.28 mut5:oL (+8 more)",
+   "-41.55 mut5:cH -20.50 mut5:oiiH +5.37 mut5:oH -2.36 mut5:xH +2.34 mut5:oiiL -1.49 mut5:oL -1.35 mut5:eH +1.00 mut5:L1 (+7 more)",
+   "+1.02 mut5:cH +1.00 mut5:U +0.07 mut5:oH -0.06 mut5:oiiH -0.06 mut5:dH +0.06 mut5:oiiL -0.03 mut5:oL +0.01 mut5:xH (+7 more)"
+  ]
+ },
+ "coupled|wt_only|affine|operator|shared|target|ratio": {
+  "unidentified": [
+   "wt:L1",
+   "wt:U",
+   "wt:dH",
+   "wt:dL",
+   "wt:eH",
+   "wt:eL",
+   "wt:cH",
+   "wt:cL",
+   "wt:xH",
+   "wt:xL",
+   "wt:oHm",
+   "wt:oLm",
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "affop0:a",
+   "affop0:s",
+   "mut*:L1 (x6)",
+   "mut*:U (x6)",
+   "mut*:dH (x6)",
+   "mut*:dL (x6)",
+   "mut*:eH (x6)",
+   "mut*:eL (x6)",
+   "mut*:cH (x6)",
+   "mut*:cL (x6)",
+   "mut*:xH (x6)",
+   "mut*:xL (x6)",
+   "mut*:oHm (x6)",
+   "mut*:oLm (x6)",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "+1899597619936382.25 mut5:cH +1441042433343252.25 mut5:oiiH -432847773966006.00 mut5:oH -234120773704789.06 mut5:oiiL +141104882141890.12 mut5:oL +65137445913488.73 mut5:eH +51258060959419.92 mut5:xH -13544810515405.48 mut5:xL (+50 more)",
+   "-47116876665798.41 mut5:cH -30609679669411.28 mut5:oiiH +9088670114047.18 mut5:oH +5150803685964.81 mut5:oiiL -3086591846315.96 mut5:oL -1274930837025.39 mut5:eH -933265598720.52 mut5:xH +248800099933.37 mut5:xL (+50 more)",
+   "-567288083444450.25 mut5:cH -388217723842178.00 mut5:oiiH +115720162840377.39 mut5:oH +64610623376272.98 mut5:oiiL -38786308935205.70 mut5:oL -16605587743184.82 mut5:eH -12537425847522.06 mut5:xH +3324128835781.22 mut5:xL (+50 more)",
+   "+766860660044738.50 mut5:cH +596021465200196.38 mut5:oiiH -179421713478962.81 mut5:oH -96119230286066.00 mut5:oiiL +58010564216546.22 mut5:oL +27414815331500.33 mut5:eH +21648963711861.91 mut5:xH -5736380067704.57 mut5:xL (+50 more)",
+   "+62225470448908.44 mut5:cH +37108611592617.29 mut5:oiiH -10930401130238.57 mut5:oH -6390153906826.37 mut5:oiiL +3814086260779.57 mut5:oL +1443427087243.21 mut5:eH +1016547695515.12 mut5:xH -310283662902.30 mut5:cL (+50 more)",
+   "+5153186432938697.00 mut5:cH +4301356084855512.50 mut5:oiiH -1300010500783612.75 mut5:oH -685410099916742.12 mut5:oiiL +414442997226701.31 mut5:oL +202865185693570.19 mut5:eH +164671217027960.59 mut5:xH -43378679445090.76 mut5:xL (+50 more)",
+   "+14693097007943.16 mut5:cH +13560198217172.57 mut5:oiiH -4121222403359.71 mut5:oH -2123760520691.68 mut5:oiiL +1287911894677.87 mut5:oL +663699638174.57 mut5:eH +553165889549.92 mut5:xH -145277668563.75 mut5:xL (+50 more)",
+   "+1966999890460223.75 mut5:cH +1807419265899852.00 mut5:oiiH -549347957091354.62 mut5:oH -282923575903771.25 mut5:oiiL +171600383349594.94 mut5:oL +88546784642815.72 mut5:eH +73642267407582.73 mut5:xH -19361589806517.19 mut5:xL (+50 more)",
+   "-2893083666951.47 mut5:cH -1083262928309.56 mut5:oiiH +336933648519.28 mut5:oH +132126256909.32 mut5:oiiL -86157493977.54 mut5:oL -74365265693.04 mut5:eH -20097177230.65 mut5:xH +14104097954.97 mut5:cL (+50 more)",
+   "+35049162255427.82 mut5:cH +14950319163229.11 mut5:oiiH -4622794816356.49 mut5:oH -2019473890988.89 mut5:oiiL +1283637389085.53 mut5:oL +910592459024.09 mut5:eH +420857573943.69 mut5:xH -170528080405.46 mut5:cL (+50 more)",
+   "-2460612160519.75 mut5:cH -1057542907170.06 mut5:oiiH +326898896288.07 mut5:oH +143601641123.95 mut5:oiiL -91162651114.37 mut5:oL -63969862201.84 mut5:eH -30319288620.08 mut5:xH +11970373516.18 mut5:cL (+50 more)",
+   "+2241.27 mut5:cH +618.24 mut5:oiiH -184.91 mut5:oH -26.47 mut5:oiiL +21.25 mut5:oL +17.52 mut5:eH +17.07 mut5:xH -12.66 mut5:cL (+13 more)",
+   "-562.15 mut5:cH +111.96 mut5:oiiH -26.69 mut5:oH -23.45 mut5:oiiL -13.13 mut5:eH +11.61 mut5:oL +2.79 mut5:cL +2.63 mut5:xH (+13 more)",
+   "-113130203660.88 mut5:cH -12667369895.32 mut5:oiiH +4328404578.40 mut5:oH +2800018681.43 mut5:oiiL -2087466889.14 mut5:xH -1851489433.08 mut5:oL -995056955.44 mut5:eH +634084192.98 mut5:cL (+50 more)",
+   "+21530171273.93 mut5:cH +2410767327.07 mut5:oiiH -823752416.73 mut5:oH -532880363.98 mut5:oiiL +397272405.91 mut5:xH +352362794.74 mut5:oL +189372493.88 mut5:eH -120674592.11 mut5:cL (+49 more)",
+   "+308536040122.83 mut5:cH +34547283525.87 mut5:oiiH -11804708909.73 mut5:oH -7636396724.19 mut5:oiiL +5693077825.21 mut5:xH +5049504414.68 mut5:oL +2713783255.22 mut5:eH -1729315631.44 mut5:cL (+50 more)",
+   "+245667721698.84 mut5:cH +27507815003.16 mut5:oiiH -9399342461.30 mut5:oH -6080379204.21 mut5:oiiL +4533037428.67 mut5:xH +4020600668.48 mut5:oL +2160813801.66 mut5:eH -1376944592.19 mut5:cL (+50 more)",
+   "+28.58 mut5:cH +6.28 mut5:oiiH -1.90 mut5:oH +1.00 mut0:cH -0.63 mut5:oiiL +0.42 mut5:oL +0.26 mut5:xH -0.17 mut5:cL (+13 more)",
+   "-108.83 mut5:cH -8.18 mut5:oiiH +2.88 mut5:oH +1.59 mut5:oiiL -1.13 mut5:oL -1.10 mut5:xH +1.00 mut0:xH +0.65 mut5:cL (+12 more)",
+   "+236.79 mut5:cH +123.59 mut5:oiiH -36.34 mut5:oH -13.46 mut5:oiiL +8.40 mut5:oL -4.78 mut0:oiiH +4.21 mut5:eH +3.33 mut5:xH (+8 more)",
+   "+776.64 mut5:cH +268.89 mut5:oiiH -76.51 mut5:oH -16.94 mut5:oiiL +11.25 mut5:oL +7.94 mut5:xH -4.64 mut5:cL -2.01 mut0:oiiL (+8 more)",
+   "+89590792763.61 mut5:cH +8510102380.43 mut5:oiiH -2962315348.54 mut5:oH -1642018505.56 mut5:oiiL +1142412638.60 mut5:oL +754402196.36 mut5:xH -514730732.73 mut5:cL +495153462.99 mut5:eH (+50 more)",
+   "-21156251373.43 mut5:cH -2009601713.11 mut5:oiiH +699530279.14 mut5:oH +387751173.53 mut5:oiiL -269772779.06 mut5:oL -178146769.13 mut5:xH +121550130.78 mut5:cL -116927143.86 mut5:eH (+50 more)",
+   "-175932562527.96 mut5:cH -16711583659.57 mut5:oiiH +5817201615.70 mut5:oH +3224488652.30 mut5:oiiL -2243395339.70 mut5:oL -1481445710.32 mut5:xH +1010794678.54 mut5:cL -972350177.34 mut5:eH (+50 more)",
+   "-161158319713.41 mut5:cH -15308198000.58 mut5:oiiH +5328691603.84 mut5:oH +2953706155.40 mut5:oiiL -2055002061.68 mut5:oL -1357038475.53 mut5:xH +925911434.29 mut5:cL -890695465.27 mut5:eH (+50 more)",
+   "+1.00 mut1:cH +0.62 mut5:cH +0.14 mut5:oiiH -0.04 mut5:oH -0.02 mut5:oiiL +0.01 mut5:oL +0.01 mut5:eH +0.01 mut5:xH (+13 more)",
+   "+2.20 mut5:cH +1.02 mut5:oiiH +1.00 mut1:xH -0.28 mut5:oH -0.14 mut5:oiiL +0.08 mut5:oL +0.05 mut5:xH -0.03 mut1:oLm (+12 more)",
+   "-66.02 mut5:cH -17.77 mut5:oiiH +6.00 mut5:oH +3.53 mut5:oiiL -2.27 mut5:oL -1.70 mut5:eH -1.67 mut1:oiiH -1.35 mut5:xH (+8 more)",
+   "+288.89 mut5:cH +108.50 mut5:oiiH -32.15 mut5:oH -10.73 mut5:oiiL +6.89 mut5:oL +4.71 mut5:xH +2.45 mut5:eH -1.62 mut5:cL (+8 more)",
+   "-1516548766888.59 mut5:cH -236124963554.64 mut5:oiiH +75691132149.33 mut5:oH +29595781082.34 mut5:oiiL -20501761781.69 mut5:oL +9069067552.97 mut5:cL -7511846730.63 mut5:xH +2332089778.99 mut5:xL (+50 more)",
+   "+239873875412.72 mut5:cH +37347143120.38 mut5:oiiH -11971868880.23 mut5:oH -4680886361.64 mut5:oiiL +3242613877.37 mut5:oL -1434447736.33 mut5:cL +1188328453.16 mut5:xH -368867886.80 mut5:xL (+50 more)",
+   "+1214156551867.75 mut5:cH +189037617536.85 mut5:oiiH -60597250290.94 mut5:oH -23692864570.11 mut5:oiiL +16412894264.49 mut5:oL -7260660207.46 mut5:cL +6014964872.64 mut5:xH -1867078094.39 mut5:xL (+50 more)",
+   "-649657073812.18 mut5:cH -101194822385.79 mut5:oiiH +32436685210.15 mut5:oH +12692242299.03 mut5:oiiL -8790262485.68 mut5:oL +3885672752.73 mut5:cL -3210050503.50 mut5:xH +999059635.99 mut5:xL (+50 more)",
+   "-9629619808.79 mut5:cH -1499361799.08 mut5:oiiH +480626798.86 mut5:oH +187937132.98 mut5:oiiL -130187071.29 mut5:oL +57586426.22 mut5:cL -47690657.24 mut5:xH +14808094.68 mut5:xL (+49 more)",
+   "+1.00 mut2:cH -0.31 mut5:cH -0.01 mut5:oiiH +0.00 mut5:oH +0.00 mut5:cL +0.00 mut5:eH -0.00 mut5:xH -0.00 mut5:oL (+13 more)",
+   "+10.86 mut5:cH +4.22 mut5:oiiH -1.32 mut5:oH +1.00 mut2:xH -0.79 mut5:oiiL +0.49 mut5:oL +0.44 mut5:eH +0.38 mut5:xH (+12 more)",
+   "+622.77 mut5:cH +160.44 mut5:oiiH -48.16 mut5:oH -14.39 mut5:oiiL +9.71 mut5:oL +5.30 mut5:xH -3.69 mut5:cL -1.55 mut2:oiiH (+8 more)",
+   "-196.47 mut5:cH -21.62 mut5:oiiH +10.33 mut5:oiiL +9.01 mut5:oH -6.51 mut5:oL -2.24 mut2:oiiL -1.69 mut5:xH +1.13 mut5:cL (+8 more)",
+   "+600632426905.02 mut5:cH -65796654473.70 mut5:oiiH +39209916696.06 mut5:oiiL -24055105109.65 mut5:xH -20280270255.29 mut5:oL +16122098388.48 mut5:oH +13901040106.34 mut5:eH -2982270080.06 mut5:cL (+50 more)",
+   "-69621647857.19 mut5:cH +7627544988.19 mut5:oiiH -4545154658.16 mut5:oiiL +2788430708.08 mut5:xH +2350866006.50 mut5:oL -1869001469.44 mut5:oH -1611360130.88 mut5:eH +345684945.79 mut5:cL (+50 more)",
+   "-4726280016.46 mut5:cH +564614317.83 mut5:oiiH -319122337.44 mut5:oiiL +195724212.42 mut5:xH +165499958.92 mut5:oL -140143878.82 mut5:oH -111519300.11 mut5:eH +23372215.47 mut5:cL (+50 more)",
+   "+1805207859138.11 mut5:cH -197617092089.93 mut5:oiiH +117815258646.39 mut5:oiiL -72279285592.81 mut5:xH -60935480396.64 mut5:oL +48416752427.73 mut5:oH +41773569059.66 mut5:eH -8963522065.02 mut5:cL (+50 more)",
+   "-774699669.72 mut5:cH +84835920.32 mut5:oiiH -50566647.95 mut5:oiiL +31022443.75 mut5:xH +26153958.48 mut5:oL -20786160.44 mut5:oH -17928330.51 mut5:eH +3846610.39 mut5:cL (+46 more)",
+   "-284969216601.45 mut5:cH +31206445453.73 mut5:oiiH -18600676949.64 mut5:oiiL +11411443241.02 mut5:xH +9620596812.09 mut5:oL -7646079186.76 mut5:oH -6594842522.24 mut5:eH +1414955486.22 mut5:cL (+50 more)",
+   "-4096174972.22 mut5:cH +448564446.38 mut5:oiiH -267367921.20 mut5:oiiL +164029183.84 mut5:xH +138287384.73 mut5:oL -109905476.96 mut5:oH -94794901.51 mut5:eH +20338706.48 mut5:cL (+50 more)",
+   "-75.63 mut5:cH -24.43 mut5:oiiH +7.07 mut5:oH -2.80 mut3:oiiH -1.89 mut5:oiiL -1.58 mut5:eH +1.39 mut5:xH +1.00 mut3:oH (+8 more)",
+   "-315.93 mut5:cH +15.91 mut5:oiiH -10.25 mut5:oiiL +8.25 mut5:xH -5.20 mut5:eH +5.03 mut5:oL -3.68 mut5:oH +1.66 mut5:cL (+8 more)",
+   "-1696685471.75 mut5:cH -35197333.72 mut5:oiiH +23637920.04 mut5:oiiL +20571608.40 mut5:oH -17211762.24 mut5:oL +9824704.52 mut5:cL -7528194.98 mut5:eH -1744002.09 mut5:xH (+45 more)",
+   "+128439345.00 mut5:cH +2664448.22 mut5:oiiH -1789394.02 mut5:oiiL -1557275.09 mut5:oH +1302932.95 mut5:oL -743731.60 mut5:cL +569885.69 mut5:eH +132021.05 mut5:xH (+34 more)",
+   "+2265806819.09 mut5:cH +47003727.79 mut5:oiiH -31566816.76 mut5:oiiL -27471997.25 mut5:oH +22985125.07 mut5:oL -13120217.39 mut5:cL +10053390.46 mut5:eH +2328992.62 mut5:xH (+45 more)",
+   "+1991355789.24 mut5:cH +41310390.52 mut5:oiiH -27743203.93 mut5:oiiL -24144412.44 mut5:oH +20200993.61 mut5:oL -11531000.76 mut5:cL +8835657.77 mut5:eH +2046878.84 mut5:xH (+45 more)",
+   "+1.00 mut4:cH +0.04 mut5:cH +0.01 mut5:oiiH -0.00 mut5:xH +0.00 mut5:oiiL -0.00 mut5:oH -0.00 mut5:oL +0.00 mut5:eH (+13 more)",
+   "+1.00 mut4:xH +0.16 mut5:oiiH -0.04 mut5:oH +0.02 mut5:oiiL -0.02 mut5:xH +0.02 mut5:eH -0.01 mut5:oL -0.01 mut4:oiiL (+12 more)",
+   "+90.65 mut5:cH +23.11 mut5:oiiH -6.86 mut5:oH -2.57 mut4:oiiH -1.12 mut5:oiiL +1.00 mut4:oH +0.86 mut5:oL +0.69 mut5:xH (+8 more)",
+   "-41.68 mut5:cH +2.82 mut5:oiiH +1.53 mut5:xH -1.42 mut4:oiiL +1.00 mut4:oL -0.69 mut5:oH +0.37 mut5:oiiL -0.28 mut5:oL (+8 more)",
+   "-41.55 mut5:cH -20.50 mut5:oiiH +5.37 mut5:oH -2.36 mut5:xH +2.34 mut5:oiiL -1.49 mut5:oL -1.35 mut5:eH +1.00 mut5:L1 (+7 more)",
+   "+1.02 mut5:cH +1.00 mut5:U +0.07 mut5:oH -0.06 mut5:oiiH -0.06 mut5:dH +0.06 mut5:oiiL -0.03 mut5:oL +0.01 mut5:xH (+7 more)"
+  ]
+ },
+ "mwc|full|theta|-|specific|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)",
+   "mut*:op2:oH (x6)",
+   "mut*:op2:oL (x6)",
+   "mut*:op2:oiiH (x6)",
+   "mut*:op2:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -2.70 mut3:oiiH -1.33 mut4:oiiH +1.00 wt:oH +0.78 op2:oiiH -0.73 mut2:op2:oiiH +0.67 mut2:oiiH +0.66 mut4:op2:oiiH (+7 more)",
+   "-2.44 mut5:oiiL -1.87 wt:oiiL -1.49 mut4:oiiL -1.03 mut0:op2:oiiL +1.00 wt:oL +0.59 mut1:oiiL -0.57 mut3:oiiL +0.56 mut0:oiiL (+7 more)",
+   "-2.09 op2:oiiH +1.00 op2:oH -0.73 mut2:op2:oiiH +0.66 mut4:op2:oiiH -0.59 mut1:op2:oiiH -0.47 mut5:op2:oiiH +0.40 mut0:op2:oiiH +0.14 mut3:op2:oiiH",
+   "-1.71 op2:oiiL -1.03 mut0:op2:oiiL +1.00 op2:oL +0.51 mut1:op2:oiiL +0.27 mut3:op2:oiiL +0.11 mut2:op2:oiiL -0.01 mut4:op2:oiiL -0.01 mut5:op2:oiiL",
+   "-3.32 mut0:oiiH +1.00 mut0:oH",
+   "-1.32 mut0:oiiL +1.00 mut0:oL",
+   "-1.69 mut0:op2:oiiH +1.00 mut0:op2:oH",
+   "-2.74 mut0:op2:oiiL +1.00 mut0:op2:oL",
+   "-3.23 mut1:oiiH +1.00 mut1:oH",
+   "-1.29 mut1:oiiL +1.00 mut1:oL",
+   "-2.67 mut1:op2:oiiH +1.00 mut1:op2:oH",
+   "-1.20 mut1:op2:oiiL +1.00 mut1:op2:oL",
+   "-2.20 mut2:oiiH +1.00 mut2:oH",
+   "-1.58 mut2:oiiL +1.00 mut2:oL",
+   "-2.82 mut2:op2:oiiH +1.00 mut2:op2:oH",
+   "-1.59 mut2:op2:oiiL +1.00 mut2:op2:oL",
+   "-5.57 mut3:oiiH +1.00 mut3:oH",
+   "-2.44 mut3:oiiL +1.00 mut3:oL",
+   "-1.94 mut3:op2:oiiH +1.00 mut3:op2:oH",
+   "-1.43 mut3:op2:oiiL +1.00 mut3:op2:oL",
+   "-4.20 mut4:oiiH +1.00 mut4:oH",
+   "-3.37 mut4:oiiL +1.00 mut4:oL",
+   "-1.43 mut4:op2:oiiH +1.00 mut4:op2:oH",
+   "-1.71 mut4:op2:oiiL +1.00 mut4:op2:oL",
+   "-3.40 mut5:oiiH +1.00 mut5:oH",
+   "-4.31 mut5:oiiL +1.00 mut5:oL",
+   "-2.55 mut5:op2:oiiH +1.00 mut5:op2:oH",
+   "-1.71 mut5:op2:oiiL +1.00 mut5:op2:oL"
+  ]
+ },
+ "mwc|full|theta|-|shared|all|ratio": {
+  "unidentified": [],
+  "null_directions": []
+ },
+ "mwc|full|theta|-|shared|target|latent": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.00 wt:oH -0.79 mut2:oH +0.79 mut2:oiiH +0.78 op2:oiiH -0.63 mut1:oiiH +0.63 mut1:oH -0.59 mut5:oH (+7 more)",
+   "-1.87 wt:oiiL +1.77 mut0:oL -1.77 mut0:oiiL +1.00 wt:oL +0.56 mut1:oiiL -0.56 mut1:oL +0.39 mut5:oiiL -0.39 mut5:oL (+7 more)",
+   "-10.65 mut2:oiiH -4.59 mut5:oiiH -2.31 mut4:oiiH -2.09 op2:oiiH -1.95 mut3:oiiH +1.88 mut1:oiiH +1.10 mut2:oH +1.00 op2:oH (+6 more)",
+   "+9.75 mut0:oiiL -7.41 mut0:oL -7.07 mut1:oiiL -4.01 mut5:oiiL +2.35 mut1:oL -2.08 mut3:oiiL -1.71 op2:oiiL +1.64 mut5:oL (+6 more)"
+  ]
+ },
+ "mwc|full|theta|-|shared|target|known": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.00 wt:oH -0.79 mut2:oH +0.79 mut2:oiiH +0.78 op2:oiiH -0.63 mut1:oiiH +0.63 mut1:oH -0.59 mut5:oH (+7 more)",
+   "-1.87 wt:oiiL -1.77 mut0:oiiL +1.77 mut0:oL +1.00 wt:oL -0.56 mut1:oL +0.56 mut1:oiiL -0.39 mut5:oL +0.39 mut5:oiiL (+7 more)",
+   "-10.65 mut2:oiiH -4.59 mut5:oiiH -2.31 mut4:oiiH -2.09 op2:oiiH -1.95 mut3:oiiH +1.88 mut1:oiiH +1.10 mut2:oH +1.00 op2:oH (+6 more)",
+   "+9.75 mut0:oiiL -7.41 mut0:oL -7.07 mut1:oiiL -4.01 mut5:oiiL +2.35 mut1:oL -2.08 mut3:oiiL -1.71 op2:oiiL +1.64 mut5:oL (+6 more)"
+  ]
+ },
+ "mwc|star|theta|-|specific|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)",
+   "mut*:op2:oH (x6)",
+   "mut*:op2:oL (x6)",
+   "mut*:op2:oiiH (x6)",
+   "mut*:op2:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -2.70 mut3:oiiH -1.33 mut4:oiiH +1.00 wt:oH +0.78 op2:oiiH -0.73 mut2:op2:oiiH +0.67 mut2:oiiH +0.66 mut4:op2:oiiH (+7 more)",
+   "-2.44 mut5:oiiL -1.87 wt:oiiL -1.49 mut4:oiiL -1.03 mut0:op2:oiiL +1.00 wt:oL +0.59 mut1:oiiL -0.57 mut3:oiiL +0.56 mut0:oiiL (+7 more)",
+   "-2.09 op2:oiiH +1.00 op2:oH -0.73 mut2:op2:oiiH +0.66 mut4:op2:oiiH -0.59 mut1:op2:oiiH -0.47 mut5:op2:oiiH +0.40 mut0:op2:oiiH +0.14 mut3:op2:oiiH",
+   "-1.71 op2:oiiL -1.03 mut0:op2:oiiL +1.00 op2:oL +0.51 mut1:op2:oiiL +0.27 mut3:op2:oiiL +0.11 mut2:op2:oiiL -0.01 mut4:op2:oiiL -0.01 mut5:op2:oiiL",
+   "-3.32 mut0:oiiH +1.00 mut0:oH",
+   "-1.32 mut0:oiiL +1.00 mut0:oL",
+   "-1.69 mut0:op2:oiiH +1.00 mut0:op2:oH",
+   "-2.74 mut0:op2:oiiL +1.00 mut0:op2:oL",
+   "-3.23 mut1:oiiH +1.00 mut1:oH",
+   "-1.29 mut1:oiiL +1.00 mut1:oL",
+   "-2.67 mut1:op2:oiiH +1.00 mut1:op2:oH",
+   "-1.20 mut1:op2:oiiL +1.00 mut1:op2:oL",
+   "-2.20 mut2:oiiH +1.00 mut2:oH",
+   "-1.58 mut2:oiiL +1.00 mut2:oL",
+   "-2.82 mut2:op2:oiiH +1.00 mut2:op2:oH",
+   "-1.59 mut2:op2:oiiL +1.00 mut2:op2:oL",
+   "-5.57 mut3:oiiH +1.00 mut3:oH",
+   "-2.44 mut3:oiiL +1.00 mut3:oL",
+   "-1.94 mut3:op2:oiiH +1.00 mut3:op2:oH",
+   "-1.43 mut3:op2:oiiL +1.00 mut3:op2:oL",
+   "-4.20 mut4:oiiH +1.00 mut4:oH",
+   "-3.37 mut4:oiiL +1.00 mut4:oL",
+   "-1.43 mut4:op2:oiiH +1.00 mut4:op2:oH",
+   "-1.71 mut4:op2:oiiL +1.00 mut4:op2:oL",
+   "-3.40 mut5:oiiH +1.00 mut5:oH",
+   "-4.31 mut5:oiiL +1.00 mut5:oL",
+   "-2.55 mut5:op2:oiiH +1.00 mut5:op2:oH",
+   "-1.71 mut5:op2:oiiL +1.00 mut5:op2:oL"
+  ]
+ },
+ "mwc|star|theta|-|shared|all|ratio": {
+  "unidentified": [],
+  "null_directions": []
+ },
+ "mwc|star|theta|-|shared|target|latent": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.00 wt:oH +0.79 mut2:oiiH -0.79 mut2:oH +0.78 op2:oiiH +0.63 mut1:oH -0.63 mut1:oiiH -0.59 mut5:oH (+7 more)",
+   "-1.87 wt:oiiL +1.77 mut0:oL -1.77 mut0:oiiL +1.00 wt:oL -0.56 mut1:oL +0.56 mut1:oiiL -0.39 mut5:oL +0.39 mut5:oiiL (+7 more)",
+   "-10.65 mut2:oiiH -4.59 mut5:oiiH -2.31 mut4:oiiH -2.09 op2:oiiH -1.95 mut3:oiiH +1.88 mut1:oiiH +1.10 mut2:oH +1.00 op2:oH (+6 more)",
+   "+9.75 mut0:oiiL -7.41 mut0:oL -7.07 mut1:oiiL -4.01 mut5:oiiL +2.35 mut1:oL -2.08 mut3:oiiL -1.71 op2:oiiL +1.64 mut5:oL (+6 more)"
+  ]
+ },
+ "mwc|star|theta|-|shared|target|known": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.00 wt:oH +0.79 mut2:oiiH -0.79 mut2:oH +0.78 op2:oiiH +0.63 mut1:oH -0.63 mut1:oiiH +0.59 mut5:oiiH (+7 more)",
+   "-1.87 wt:oiiL -1.77 mut0:oiiL +1.77 mut0:oL +1.00 wt:oL -0.56 mut1:oL +0.56 mut1:oiiL -0.39 mut5:oL +0.39 mut5:oiiL (+7 more)",
+   "-10.65 mut2:oiiH -4.59 mut5:oiiH -2.31 mut4:oiiH -2.09 op2:oiiH -1.95 mut3:oiiH +1.88 mut1:oiiH +1.10 mut2:oH +1.00 op2:oH (+6 more)",
+   "+9.75 mut0:oiiL -7.41 mut0:oL -7.07 mut1:oiiL -4.01 mut5:oiiL +2.35 mut1:oL -2.08 mut3:oiiL -1.71 op2:oiiL +1.64 mut5:oL (+6 more)"
+  ]
+ },
+ "coupled|full|theta|-|specific|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)",
+   "mut*:op2:oH (x6)",
+   "mut*:op2:oL (x6)",
+   "mut*:op2:oiiH (x6)",
+   "mut*:op2:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -1.43 mut1:op2:oiiH +1.13 mut3:op2:oiiH +1.09 mut4:op2:oiiH -1.04 mut1:oiiH +1.03 mut3:oiiH +1.00 wt:oH +0.95 mut2:op2:oiiH (+7 more)",
+   "-3.71 mut3:oiiL -1.87 wt:oiiL -1.28 mut0:oiiL -1.15 mut4:op2:oiiL +1.00 wt:oL +0.48 op2:oiiL -0.44 mut2:oiiL +0.27 mut0:op2:oiiL (+7 more)",
+   "-3.12 op2:oiiH -1.43 mut1:op2:oiiH +1.13 mut3:op2:oiiH +1.09 mut4:op2:oiiH +1.00 op2:oH +0.95 mut2:op2:oiiH -0.84 mut5:op2:oiiH -0.42 mut0:op2:oiiH",
+   "-1.40 op2:oiiL -1.15 mut4:op2:oiiL +1.00 op2:oL +0.27 mut0:op2:oiiL -0.09 mut3:op2:oiiL +0.06 mut1:op2:oiiL +0.04 mut5:op2:oiiL +0.02 mut2:op2:oiiL",
+   "-2.18 mut0:oiiH +1.00 mut0:oH",
+   "-3.16 mut0:oiiL +1.00 mut0:oL",
+   "-3.54 mut0:op2:oiiH +1.00 mut0:op2:oH",
+   "-1.13 mut0:op2:oiiL +1.00 mut0:op2:oL",
+   "-3.90 mut1:oiiH +1.00 mut1:oH",
+   "-2.14 mut1:oiiL +1.00 mut1:oL",
+   "-4.55 mut1:op2:oiiH +1.00 mut1:op2:oH",
+   "-1.34 mut1:op2:oiiL +1.00 mut1:op2:oL",
+   "-2.42 mut2:oiiH +1.00 mut2:oH",
+   "-2.31 mut2:oiiL +1.00 mut2:oL",
+   "-2.18 mut2:op2:oiiH +1.00 mut2:op2:oH",
+   "-1.38 mut2:op2:oiiL +1.00 mut2:op2:oL",
+   "-1.83 mut3:oiiH +1.00 mut3:oH",
+   "-5.58 mut3:oiiL +1.00 mut3:oL",
+   "-2.00 mut3:op2:oiiH +1.00 mut3:op2:oH",
+   "-1.49 mut3:op2:oiiL +1.00 mut3:op2:oL",
+   "-2.93 mut4:oiiH +1.00 mut4:oH",
+   "-1.82 mut4:oiiL +1.00 mut4:oL",
+   "-2.03 mut4:op2:oiiH +1.00 mut4:op2:oH",
+   "-2.55 mut4:op2:oiiL +1.00 mut4:op2:oL",
+   "-2.93 mut5:oiiH +1.00 mut5:oH",
+   "-2.07 mut5:oiiL +1.00 mut5:oL",
+   "-3.96 mut5:op2:oiiH +1.00 mut5:op2:oH",
+   "-1.36 mut5:op2:oiiL +1.00 mut5:op2:oL"
+  ]
+ },
+ "coupled|full|theta|-|shared|all|ratio": {
+  "unidentified": [],
+  "null_directions": []
+ },
+ "coupled|full|theta|-|shared|target|latent": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.52 mut5:oH -1.52 mut5:oiiH +1.00 wt:oH +1.00 mut3:oH -1.00 mut3:oiiH -0.79 mut1:oH +0.79 mut1:oiiH (+7 more)",
+   "-1.87 wt:oiiL +1.00 wt:oL +0.81 mut4:oL -0.81 mut4:oiiL +0.59 mut0:oiiL -0.59 mut0:oL +0.50 mut2:oL -0.50 mut2:oiiL (+7 more)",
+   "+62.85 mut1:oiiH -21.79 mut5:oiiH -15.89 mut3:oiiH +12.53 mut5:oH -11.56 mut4:oiiH -10.45 mut0:oiiH -10.04 mut2:oiiH +8.22 mut3:oH (+6 more)",
+   "-1.58 mut0:oiiL -1.40 op2:oiiL +1.00 mut4:oiiL +1.00 op2:oL -0.68 mut4:oL +0.67 mut2:oiiL +0.50 mut0:oL -0.42 mut2:oL (+6 more)"
+  ]
+ },
+ "coupled|full|theta|-|shared|target|known": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH +1.52 mut5:oH -1.52 mut5:oiiH +1.00 wt:oH +1.00 mut3:oH -1.00 mut3:oiiH +0.79 mut1:oiiH -0.79 mut1:oH (+7 more)",
+   "-1.87 wt:oiiL +1.00 wt:oL +0.81 mut4:oL -0.81 mut4:oiiL +0.59 mut0:oiiL -0.59 mut0:oL +0.50 mut2:oL -0.50 mut2:oiiL (+7 more)",
+   "+62.85 mut1:oiiH -21.79 mut5:oiiH -15.89 mut3:oiiH +12.53 mut5:oH -11.56 mut4:oiiH -10.45 mut0:oiiH -10.04 mut2:oiiH +8.22 mut3:oH (+6 more)",
+   "-1.58 mut0:oiiL -1.40 op2:oiiL +1.00 mut4:oiiL +1.00 op2:oL -0.68 mut4:oL +0.67 mut2:oiiL +0.50 mut0:oL -0.42 mut2:oL (+6 more)"
+  ]
+ },
+ "coupled|star|theta|-|specific|target|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)",
+   "mut*:op2:oH (x6)",
+   "mut*:op2:oL (x6)",
+   "mut*:op2:oiiH (x6)",
+   "mut*:op2:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -1.43 mut1:op2:oiiH +1.13 mut3:op2:oiiH +1.09 mut4:op2:oiiH -1.04 mut1:oiiH +1.03 mut3:oiiH +1.00 wt:oH +0.95 mut2:op2:oiiH (+7 more)",
+   "-3.71 mut3:oiiL -1.87 wt:oiiL -1.28 mut0:oiiL -1.15 mut4:op2:oiiL +1.00 wt:oL +0.48 op2:oiiL -0.44 mut2:oiiL +0.27 mut0:op2:oiiL (+7 more)",
+   "-3.12 op2:oiiH -1.43 mut1:op2:oiiH +1.13 mut3:op2:oiiH +1.09 mut4:op2:oiiH +1.00 op2:oH +0.95 mut2:op2:oiiH -0.84 mut5:op2:oiiH -0.42 mut0:op2:oiiH",
+   "-1.40 op2:oiiL -1.15 mut4:op2:oiiL +1.00 op2:oL +0.27 mut0:op2:oiiL -0.09 mut3:op2:oiiL +0.06 mut1:op2:oiiL +0.04 mut5:op2:oiiL +0.02 mut2:op2:oiiL",
+   "-2.18 mut0:oiiH +1.00 mut0:oH",
+   "-3.16 mut0:oiiL +1.00 mut0:oL",
+   "-3.54 mut0:op2:oiiH +1.00 mut0:op2:oH",
+   "-1.13 mut0:op2:oiiL +1.00 mut0:op2:oL",
+   "-3.90 mut1:oiiH +1.00 mut1:oH",
+   "-2.14 mut1:oiiL +1.00 mut1:oL",
+   "-4.55 mut1:op2:oiiH +1.00 mut1:op2:oH",
+   "-1.34 mut1:op2:oiiL +1.00 mut1:op2:oL",
+   "-2.42 mut2:oiiH +1.00 mut2:oH",
+   "-2.31 mut2:oiiL +1.00 mut2:oL",
+   "-2.18 mut2:op2:oiiH +1.00 mut2:op2:oH",
+   "-1.38 mut2:op2:oiiL +1.00 mut2:op2:oL",
+   "-1.83 mut3:oiiH +1.00 mut3:oH",
+   "-5.58 mut3:oiiL +1.00 mut3:oL",
+   "-2.00 mut3:op2:oiiH +1.00 mut3:op2:oH",
+   "-1.49 mut3:op2:oiiL +1.00 mut3:op2:oL",
+   "-2.93 mut4:oiiH +1.00 mut4:oH",
+   "-1.82 mut4:oiiL +1.00 mut4:oL",
+   "-2.03 mut4:op2:oiiH +1.00 mut4:op2:oH",
+   "-2.55 mut4:op2:oiiL +1.00 mut4:op2:oL",
+   "-2.93 mut5:oiiH +1.00 mut5:oH",
+   "-2.07 mut5:oiiL +1.00 mut5:oL",
+   "-3.96 mut5:op2:oiiH +1.00 mut5:op2:oH",
+   "-1.36 mut5:op2:oiiL +1.00 mut5:op2:oL"
+  ]
+ },
+ "coupled|star|theta|-|shared|all|ratio": {
+  "unidentified": [],
+  "null_directions": []
+ },
+ "coupled|star|theta|-|shared|target|latent": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -1.52 mut5:oiiH +1.52 mut5:oH +1.00 wt:oH -1.00 mut3:oiiH +1.00 mut3:oH +0.79 mut1:oiiH -0.79 mut1:oH (+7 more)",
+   "-1.87 wt:oiiL +1.00 wt:oL +0.81 mut4:oL -0.81 mut4:oiiL -0.59 mut0:oL +0.59 mut0:oiiL +0.50 mut2:oL -0.50 mut2:oiiL (+7 more)",
+   "+62.85 mut1:oiiH -21.79 mut5:oiiH -15.89 mut3:oiiH +12.53 mut5:oH -11.56 mut4:oiiH -10.45 mut0:oiiH -10.04 mut2:oiiH +8.22 mut3:oH (+6 more)",
+   "-1.58 mut0:oiiL -1.40 op2:oiiL +1.00 mut4:oiiL +1.00 op2:oL -0.68 mut4:oL +0.67 mut2:oiiL +0.50 mut0:oL -0.42 mut2:oL (+6 more)"
+  ]
+ },
+ "coupled|star|theta|-|shared|target|known": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "op2:oH",
+   "op2:oL",
+   "op2:oiiH",
+   "op2:oiiL",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.86 wt:oiiH -1.52 mut5:oiiH +1.52 mut5:oH +1.00 wt:oH +1.00 mut3:oH -1.00 mut3:oiiH +0.79 mut1:oiiH -0.79 mut1:oH (+7 more)",
+   "-1.87 wt:oiiL +1.00 wt:oL +0.81 mut4:oL -0.81 mut4:oiiL +0.59 mut0:oiiL -0.59 mut0:oL +0.50 mut2:oL -0.50 mut2:oiiL (+7 more)",
+   "+62.85 mut1:oiiH -21.79 mut5:oiiH -15.89 mut3:oiiH +12.53 mut5:oH -11.56 mut4:oiiH -10.45 mut0:oiiH -10.04 mut2:oiiH +8.22 mut3:oH (+6 more)",
+   "-1.58 mut0:oiiL -1.40 op2:oiiL +1.00 mut4:oiiL +1.00 op2:oL -0.68 mut4:oL +0.67 mut2:oiiL +0.50 mut0:oL -0.42 mut2:oL (+6 more)"
+  ]
+ },
+ "mwc_dimer|full|theta|-|shared|target_oii|ratio": {
+  "unidentified": [
+   "wt:oL",
+   "wt:oiiL",
+   "op2:oL",
+   "op2:oiiL",
+   "mut*:oL (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "+2.38 mut3:oL -2.38 mut3:oiiL -1.87 wt:oiiL +1.77 mut1:oL -1.77 mut1:oiiL -1.53 op2:oiiL +1.00 wt:oL +0.73 mut0:oL (+7 more)",
+   "-4.71 mut3:oiiL +3.74 mut3:oL -3.67 mut1:oiiL -3.40 op2:oiiL +2.95 mut2:oiiL +2.79 mut1:oL -1.73 mut0:oiiL +1.15 mut0:oL (+6 more)"
+  ]
+ },
+ "mwc_dimer|star|theta|-|shared|target_oii|ratio": {
+  "unidentified": [
+   "wt:oL",
+   "wt:oiiL",
+   "op2:oL",
+   "op2:oiiL",
+   "mut*:oL (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "+2.38 mut3:oL -2.38 mut3:oiiL -1.87 wt:oiiL -1.77 mut1:oiiL +1.77 mut1:oL -1.53 op2:oiiL +1.00 wt:oL -0.73 mut0:oiiL (+7 more)",
+   "-4.71 mut3:oiiL +3.74 mut3:oL -3.67 mut1:oiiL -3.40 op2:oiiL +2.95 mut2:oiiL +2.79 mut1:oL -1.73 mut0:oiiL +1.15 mut0:oL (+6 more)"
+  ]
+ },
+ "mwc_dimer|base|theta|-|shared|target_oii|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "bg2:oH",
+   "bg2:oiiH",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-3.42 bg2:oiiH +2.94 mut2:oH -2.94 mut2:oiiH -2.86 wt:oiiH -1.84 mut1:oiiH +1.84 mut1:oH +1.00 wt:oH -0.61 mut5:oiiH (+7 more)",
+   "-1.87 wt:oiiL -1.24 mut1:oiiL +1.00 wt:oL +0.63 mut2:oiiL +0.44 mut5:oiiL +0.23 mut3:oiiL +0.18 mut4:oiiL -0.10 mut0:oiiL",
+   "-6.70 mut2:oiiH -6.29 bg2:oiiH -4.72 mut1:oiiH +4.55 mut2:oH +2.85 mut1:oH -2.04 mut5:oiiH +1.65 mut4:oiiH -1.19 mut3:oiiH (+6 more)",
+   "-1.98 mut0:oiiL +1.00 mut0:oL",
+   "-3.11 mut1:oiiL +1.00 mut1:oL",
+   "-1.25 mut2:oiiL +1.00 mut2:oL",
+   "-1.65 mut3:oiiL +1.00 mut3:oL",
+   "-1.69 mut4:oiiL +1.00 mut4:oL",
+   "-1.43 mut5:oiiL +1.00 mut5:oL"
+  ]
+ },
+ "mwc|full|theta|-|shared|target_oii|ratio": {
+  "unidentified": [
+   "wt:oL",
+   "wt:oiiL",
+   "op2:oL",
+   "op2:oiiL",
+   "mut*:oL (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.94 mut0:oiiL +2.94 mut0:oL -1.87 wt:oiiL -1.06 mut4:oiiL +1.06 mut4:oL +1.00 wt:oL +0.61 mut2:oL -0.61 mut2:oiiL (+7 more)",
+   "+8.43 mut0:oiiL -6.90 mut0:oL -3.60 mut3:oiiL +3.53 mut4:oiiL -2.48 mut4:oL +2.22 mut2:oiiL -2.08 mut1:oiiL +2.00 mut5:oiiL (+6 more)"
+  ]
+ },
+ "mwc|star|theta|-|shared|target_oii|ratio": {
+  "unidentified": [
+   "wt:oL",
+   "wt:oiiL",
+   "op2:oL",
+   "op2:oiiL",
+   "mut*:oL (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-2.94 mut0:oiiL +2.94 mut0:oL -1.87 wt:oiiL -1.06 mut4:oiiL +1.06 mut4:oL +1.00 wt:oL +0.61 mut2:oL -0.61 mut2:oiiL (+7 more)",
+   "+8.43 mut0:oiiL -6.90 mut0:oL -3.60 mut3:oiiL +3.53 mut4:oiiL -2.48 mut4:oL +2.22 mut2:oiiL -2.08 mut1:oiiL +2.00 mut5:oiiL (+6 more)"
+  ]
+ },
+ "mwc|base|theta|-|shared|target_oii|ratio": {
+  "unidentified": [
+   "wt:oH",
+   "wt:oL",
+   "wt:oiiH",
+   "wt:oiiL",
+   "bg2:oH",
+   "bg2:oiiH",
+   "mut*:oH (x6)",
+   "mut*:oL (x6)",
+   "mut*:oiiH (x6)",
+   "mut*:oiiL (x6)"
+  ],
+  "null_directions": [
+   "-3.42 bg2:oiiH -2.86 wt:oiiH -2.58 mut3:oiiH +2.58 mut3:oH -2.38 mut2:oiiH +2.38 mut2:oH +1.00 wt:oH -0.73 mut0:oiiH (+7 more)",
+   "-1.87 wt:oiiL -1.46 mut5:oiiL -1.33 mut3:oiiL -1.16 mut1:oiiL +1.00 wt:oL +0.57 mut0:oiiL +0.52 mut4:oiiL -0.36 mut2:oiiL",
+   "-6.29 bg2:oiiH -6.06 mut3:oiiH -5.70 mut2:oiiH +5.42 mut5:oiiH +3.99 mut3:oH +3.67 mut2:oH -2.35 mut0:oiiH -1.74 mut4:oiiH (+6 more)",
+   "-1.31 mut0:oiiL +1.00 mut0:oL",
+   "-3.04 mut1:oiiL +1.00 mut1:oL",
+   "-2.24 mut2:oiiL +1.00 mut2:oL",
+   "-3.20 mut3:oiiL +1.00 mut3:oL",
+   "-1.35 mut4:oiiL +1.00 mut4:oL",
+   "-3.33 mut5:oiiL +1.00 mut5:oL"
+  ]
+ }
+}
