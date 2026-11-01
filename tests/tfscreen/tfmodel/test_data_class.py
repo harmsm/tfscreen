@@ -378,3 +378,67 @@ class TestPriorsClass:
             base_growth=bgp,
         )
         assert gp.base_growth is bgp
+
+
+# ---------------------------------------------------------------------------
+# StaticArray
+# ---------------------------------------------------------------------------
+
+class TestStaticArray:
+    from tfscreen.tfmodel.data_class import StaticArray as _SA
+
+    def test_equality_and_hash_follow_contents(self):
+        a = self._SA(np.array([1, 2, 3]))
+        b = self._SA(np.array([1, 2, 3]))
+        assert a == b and hash(a) == hash(b)
+        assert a != self._SA(np.array([1, 2, 4]))
+        assert a != self._SA(np.array([1, 2, 3], dtype=np.int8))
+        assert a != self._SA(np.array([[1, 2, 3]]))
+
+    def test_comparison_with_other_types_is_not_implemented(self):
+        a = self._SA(np.array([1, 2]))
+        assert a.__eq__(np.array([1, 2])) is NotImplemented
+        assert (a == "x") is False
+
+    def test_behaves_as_the_array(self):
+        a = self._SA(np.array([[1, 2], [3, 4]], dtype=np.int32))
+        assert a.shape == (2, 2)
+        assert a.sum(axis=0).tolist() == [4, 6]
+        assert a[1, 0] == 3
+        assert len(a) == 2
+        assert [row.tolist() for row in a] == [[1, 2], [3, 4]]
+        np.testing.assert_array_equal(np.asarray(a), a.array)
+        np.testing.assert_array_equal(jnp.array(a), a.array)
+        assert jnp.array(a, dtype=jnp.float32).dtype == jnp.float32
+        assert np.asarray(a, dtype=float).dtype == float
+        assert "StaticArray" in repr(a)
+
+    def test_copied_and_read_only(self):
+        source = np.array([1.0, 2.0])
+        a = self._SA(source)
+        source[0] = 9.0
+        assert a[0] == 1.0
+        with pytest.raises(ValueError):
+            a.array[0] = 5.0
+        with pytest.raises(AttributeError):
+            a.foo = 1
+
+    def test_pickle_round_trip(self):
+        import pickle
+        import copy
+        a = self._SA(np.array([1, 2, 3]))
+        for b in (pickle.loads(pickle.dumps(a)), copy.deepcopy(a)):
+            assert b == a and hash(b) == hash(a)
+            assert b.shape == (3,)
+
+    def test_unset_slot_raises_attribute_error(self):
+        a = self._SA.__new__(self._SA)
+        with pytest.raises(AttributeError):
+            a.shape
+
+    def test_wrapping_is_idempotent(self):
+        from tfscreen.tfmodel.data_class import StaticArray
+        gd = _make_growth_data(mut_nnz_mut_idx=np.array([0, 1]))
+        held = gd.mut_nnz_mut_idx
+        assert isinstance(held, StaticArray)
+        assert gd.replace(batch_size=4).mut_nnz_mut_idx is held

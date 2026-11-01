@@ -14,6 +14,7 @@ import jax.numpy as jnp
 from flax.struct import dataclass, field
 from typing import Any
 
+from tfscreen.tfmodel.data_class import wrap_static_arrays
 from tfscreen.genetics.build_mut_geno_matrix import (
     build_mut_geno_matrix,
     build_mut_sparse_indices,
@@ -91,6 +92,9 @@ class SimData:
     struct_n_chains:          Any = field(pytree_node=False, default=None)
     struct_contact_pair_idx:  Any = field(pytree_node=False, default=None)
     struct_contact_distances: Any = field(pytree_node=False, default=None)
+
+    def __post_init__(self):
+        wrap_static_arrays(self)
 
 
 

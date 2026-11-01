@@ -1,10 +1,115 @@
 
+import hashlib
+
+import numpy as np
 import jax.numpy as jnp
 from flax.struct import (
     dataclass,
     field
 )
 from typing import Any
+
+
+class StaticArray:
+    """
+    Read-only numpy array that can sit in a static (pytree_node=False) field.
+
+    JAX compares the static fields of a cached treedef with ``==``. On two
+    distinct numpy arrays that is an elementwise comparison with no truth
+    value, so a second fit in one process (new arrays, same shapes) raised
+    "arrays cannot be passed as metadata fields". This holder compares and
+    hashes by dtype, shape and a digest of the contents, computed once, so
+    equal data reuse the compiled function and different data recompile.
+
+    It behaves as the array where components read it: ``jnp.array(x)`` and
+    ``np.asarray(x)`` (``__array__``), ``x[i]``, ``len(x)``, iteration, and
+    any ndarray attribute (``x.shape``, ``x.sum(...)``). The array is copied
+    and made read-only, since a static value must not change after it is
+    hashed.
+    """
+
+    __slots__ = ("_array", "_key")
+
+    def __init__(self, array):
+        array = np.array(array)
+        array.setflags(write=False)
+        digest = hashlib.sha256(np.ascontiguousarray(array).tobytes()).hexdigest()
+        object.__setattr__(self, "_array", array)
+        object.__setattr__(self, "_key", (array.dtype.str, array.shape, digest))
+
+    @property
+    def array(self):
+        """The wrapped read-only numpy array."""
+        return self._array
+
+    def __array__(self, dtype=None, copy=None):
+        if dtype is None:
+            return self._array
+        return self._array.astype(dtype)
+
+    def __getitem__(self, item):
+        return self._array[item]
+
+    def __len__(self):
+        return len(self._array)
+
+    def __iter__(self):
+        return iter(self._array)
+
+    def __getattr__(self, name):
+        # Only reached for names not found on the holder itself. Dunder
+        # names stay the holder's (copy.deepcopy looks up __deepcopy__
+        # here and would otherwise return a bare ndarray), as do the slots
+        # of an instance not yet initialized (unpickling).
+        if name.startswith("__") or name in StaticArray.__slots__:
+            raise AttributeError(name)
+        return getattr(self._array, name)
+
+    def __setattr__(self, name, value):
+        raise AttributeError("StaticArray is read-only")
+
+    def __eq__(self, other):
+        if not isinstance(other, StaticArray):
+            return NotImplemented
+        return self._key == other._key
+
+    def __hash__(self):
+        return hash(self._key)
+
+    def __getstate__(self):
+        return self._array
+
+    def __setstate__(self, state):
+        StaticArray.__init__(self, state)
+
+    def __repr__(self):
+        return f"StaticArray({self._array!r})"
+
+
+# Static fields that hold arrays; wrapped in StaticArray on construction.
+STATIC_ARRAY_FIELDS = (
+    "mut_geno_matrix",
+    "mut_nnz_mut_idx",
+    "mut_nnz_geno_idx",
+    "pair_nnz_pair_idx",
+    "pair_nnz_geno_idx",
+    "struct_features",
+    "struct_n_chains",
+    "struct_contact_pair_idx",
+    "struct_contact_distances",
+)
+
+
+def wrap_static_arrays(obj):
+    """
+    Wrap every array-valued STATIC_ARRAY_FIELDS entry of a frozen dataclass
+    in StaticArray (idempotent; None and missing fields are left alone).
+    """
+    for name in STATIC_ARRAY_FIELDS:
+        value = getattr(obj, name, None)
+        if value is None or isinstance(value, StaticArray):
+            continue
+        object.__setattr__(obj, name, StaticArray(value))
 
 
 @dataclass(frozen=True)
@@ -171,6 +276,9 @@ class GrowthData:
     external_dk_population: Any = field(default=None)
     external_activity_population: Any = field(default=None)
 
+    def __post_init__(self):
+        wrap_static_arrays(self)
+
 @dataclass(frozen=True)
 class BindingData:
 
@@ -224,6 +332,9 @@ class BindingData:
     # arange(num_binding), since the binding tensors are never sliced and
     # batch_idx holds library indices. Binding-only: the batch's indices.
     binding_ordinal: Any = None
+
+    def __post_init__(self):
+        wrap_static_arrays(self)
 
 
 @dataclass(frozen=True)

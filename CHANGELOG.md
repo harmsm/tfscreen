@@ -29,6 +29,19 @@ fall into two kinds:
 
 ## [Unreleased]
 
+### Fixed
+
+- **A second mutation-decomposed fit in one process works.** Fitting two
+  models whose data carry the static mutation or structure arrays
+  (`mut_nnz_*`, `pair_nnz_*`, `struct_*`; any `thermo.*`, `hill_mut`,
+  `*_mut` activity) with matching shapes failed in the second fit
+  ("arrays cannot be passed as metadata fields"): jax compares a cached
+  treedef's static fields with `==`, elementwise on two numpy arrays.
+  `GrowthData`, `BindingData` and `SimData` now wrap those fields in
+  `data_class.StaticArray`, a read-only copy that compares and hashes by
+  dtype, shape and a content digest, so equal data reuse the compiled
+  function and different data retrace.
+
 ## [0.5.0] - 2026-10-24
 
 The release for the first manuscript on the 2026 screen: someone in the lab

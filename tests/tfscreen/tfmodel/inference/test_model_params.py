@@ -121,9 +121,6 @@ def fit(request, tmp_path_factory):
     """
     from tfscreen.tfmodel.inference.run_inference import RunInference
 
-    # Two models in one process can collide in jax's trace cache (their
-    # data carry arrays as static pytree fields); start each one clean.
-    jax.clear_caches()
     tmp = tmp_path_factory.mktemp(request.param)
     orch = _orchestrator(tmp, request.param)
     ri = RunInference(orch, seed=0)
