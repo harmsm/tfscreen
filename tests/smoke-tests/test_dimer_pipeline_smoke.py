@@ -8,7 +8,6 @@ genotypes and for an unmeasured combination, for PK and PddG.
 
 import os
 
-import jax
 import numpy as np
 import pandas as pd
 import pytest
@@ -29,10 +28,6 @@ from tfscreen.tfmodel.scripts.sample_posterior_cli import sample_posterior
 def test_dimer_pipeline(tmpdir, growth_smoke_csv, binding_smoke_csv,
                         library_smoke_yaml, ddg_prior_csv_mwc, theta_model,
                         set_priors):
-    # GrowthData keeps numpy arrays (the mutation COO indices) as static
-    # jit metadata, so a second fit in one process with the same shapes
-    # fails JAX's cache comparison. Each case starts from empty caches.
-    jax.clear_caches()
     cfg = os.path.join(tmpdir, "cfg")
     configure_model(binding_df=binding_smoke_csv,
                     growth_df=growth_smoke_csv,
