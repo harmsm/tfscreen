@@ -251,6 +251,8 @@ def copy_orchestrator(orchestrator,
     # A tube's operator and TF level (tfmodel/contexts.py) are part of its
     # θ condition; without them the copy would merge different contexts.
     categorical_cols += [c for c in ("operator", "tf_level") if c in df.columns]
+    # A library's genetic background picks its congression pool.
+    categorical_cols += [c for c in ("background",) if c in df.columns]
     unique_cats = df[categorical_cols].drop_duplicates()
 
     # Subset genotypes when requested.  Doing this here ensures the new
@@ -810,10 +812,17 @@ def predict(orchestrator,
         rows = jnp.array([orig_labels.index(g) for g in new_labels],
                          dtype=jnp.int32)
         orig_growth = orchestrator.data.growth
+        pools = {}
+        if getattr(orig_growth, "pool_coresident_idx", None) is not None:
+            # one set per genetic background (congression pool)
+            pools = dict(
+                pool_coresident_idx=orig_growth.pool_coresident_idx[:, rows],
+                pool_bulk_fraction=orig_growth.pool_bulk_fraction[:, rows])
         pred_data = pred_data.replace(
             growth=pred_data.growth.replace(
                 coresident_idx=orig_growth.coresident_idx[rows],
                 bulk_fraction=orig_growth.bulk_fraction[rows],
+                **pools,
                 **population_references,
             )
         )

@@ -141,8 +141,49 @@ library does not contain. An example is
     the data can check these numbers, so give the best estimate of what
     went into the pool, not just the design.
 
+``backgrounds``
+    Optional: the same design built in other genetic backgrounds, each a
+    parent with a few mutations, cloned and transformed as a library of its
+    own (see `Genetic backgrounds`_).
+
 Any other key is ignored, so a ``tfs-simulate`` config can serve as the
 library config of a simulated experiment.
+
+Genetic backgrounds
+^^^^^^^^^^^^^^^^^^^
+
+Genotypes are named in absolute terms, relative to the reference
+``wt_seq``: A100V made in a K84L background is ``K84L/A100V``, and the
+background's own parent is the genotype ``K84L``. The same protein measured
+in two backgrounds is one genotype. Each background is declared by name:
+
+.. code-block:: yaml
+
+    backgrounds:
+      bgL90A:
+        wt_seq: gccagc...gcg...           # this background's amplicon DNA
+      bgM1A:
+        outside_mutations: [M1A]          # mutations outside the amplicon
+        library_mixture: {single-1: 100, single-2: 100, double-1-2: 1000}
+
+``wt_seq`` is the amplicon as it is in that background (default: the
+reference's). The expected reads are built on it, so they match the
+plasmid's real codons, and every background mutation inside the amplicon is
+named from it. ``outside_mutations`` lists the mutations outside the
+amplicon, which no read shows; one inside it is an error. ``library_mixture``
+and ``spiked_seqs`` default to the reference's, without the spiked origin
+unless the background gives spikes of its own.
+
+A tube's background is its tube-table ``background`` column; without the
+column every tube is in the reference. A library is one transformation, so
+all of a library's tubes share one background, and each background needs
+its own ``library`` name. Call each tube's reads with its background,
+``tfs-process-fastq library_config.yaml R1 R2 --background bgL90A``.
+``tfs-configure-model`` checks every genotype against its own background's
+library, writes ``{out_prefix}_library.csv`` with one block of rows per
+background (a leading ``background`` column), and gives each background its
+own congression pool. Backgrounds cannot yet be combined with the library
+subsample keys.
 
 Counting reads: tfs-process-fastq
 ---------------------------------

@@ -102,6 +102,25 @@ fall into two kinds:
   tables on the context columns they share and does not compare binding at
   a known protein concentration with growth-context predictions.
   `species.theta_np` takes a per-row `tf_total`.
+- **Genetic backgrounds** (`genetics/backgrounds.py`, step 3d). The library
+  YAML takes an optional `backgrounds` block: each background's amplicon
+  DNA (`wt_seq`), its `outside_mutations` and, optionally, its own
+  `library_mixture` and `spiked_seqs`. Genotypes are named in absolute
+  terms relative to the reference `wt_seq` (`LibraryManager` keys
+  `name_reference_seq`, `name_extra_mutations`), so A100V in a K84L
+  background is `K84L/A100V`. `tfs-process-fastq --background` calls a
+  tube's reads against its background's library. The tube table, and so
+  the growth table, takes a `background` column; `tfs-configure-model`
+  checks each row against its background's library and one background per
+  library, writes `{out_prefix}_library.csv` with one block per background,
+  and records the block in the config's `library` provenance. Congression
+  uses one pool per background: `GrowthData.pool_bulk_fraction`,
+  `pool_coresident_idx` and `condition_pre_pool`, and the `mixture`
+  component takes each condition_pre slot's classes from its pool
+  (`mixture._pool_classes`). Data without backgrounds are unchanged, and the
+  first pool draws exactly as the single pool did. `copy_orchestrator`
+  keeps the `background` column. Backgrounds cannot yet be combined with
+  the library subsample keys.
 
 ### Changed
 

@@ -27,6 +27,7 @@ tfs-process-fastq
                             [--allowed_diff_from_expected ALLOWED_DIFF_FROM_EXPECTED]
                             [--print_raw_seq] [--max_num_reads MAX_NUM_READS]
                             [--chunk_size CHUNK_SIZE] [--num_workers NUM_WORKERS]
+                            [--background BACKGROUND]
                             library_config f1_fastq f2_fastq
 
    Count the protein genotypes observed in a pair of fastq files.
@@ -76,6 +77,13 @@ tfs-process-fastq
      --num_workers NUM_WORKERS
                            number of worker processes; -1 (or None) uses os.cpu_count() -
                            1 (default: -1)
+     --background BACKGROUND
+                           The tube's genetic background, one declared in the library
+                           YAML's backgrounds block (see tfscreen.genetics.backgrounds).
+                           Reads are matched against that background's library and named
+                           in absolute terms, relative to the reference wt_seq, so A100V
+                           in a K84L background is counted as K84L/A100V. Default: the
+                           reference.
 
 tfs-calibrate-od600
 -------------------

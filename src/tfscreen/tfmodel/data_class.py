@@ -202,6 +202,17 @@ class GrowthData:
 
     growth_shares_replicates: bool = field(pytree_node=False, default=False)
 
+    # Congression pools, one per library (one transformation: a genetic
+    # background, genetics/backgrounds.py, and a marker): with more than one,
+    # each pool's bulk fraction (num_pools, num_genotype) and co-resident sets
+    # (num_pools, num_genotype, K, N), and each condition_pre slot's pool.
+    # None with one pool, which uses bulk_fraction and coresident_idx (pool 0
+    # in both cases).
+    num_pools: int = field(pytree_node=False, default=1)
+    pool_bulk_fraction: Any = None
+    pool_coresident_idx: Any = None
+    condition_pre_pool: Any = field(pytree_node=False, default=None)
+
     # (ln c_lo, ln c_hi): the concentrations at which the relative theta
     # component (theta/hill_relative.py) pins wt's X to 1 and 0. None for
     # every other theta component. Set by ModelOrchestrator from its

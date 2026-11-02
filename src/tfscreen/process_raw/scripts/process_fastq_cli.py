@@ -1,4 +1,5 @@
 from ..fastq_to_counts import FastqToCounts
+from tfscreen.genetics.backgrounds import REFERENCE, background_config
 from tfscreen.util.cli import generalized_main
 from tfscreen.genetics import (
     LibraryManager,
@@ -382,7 +383,8 @@ def process_fastq(library_config: Union[str, dict, LibraryManager],
                   print_raw_seq: bool = False,
                   max_num_reads: Optional[int] = None,
                   chunk_size: int = 10000,
-                  num_workers: int = -1) -> None:
+                  num_workers: int = -1,
+                  background: Optional[str] = None) -> None:
     """
     Count the protein genotypes observed in a pair of fastq files.
 
@@ -427,6 +429,12 @@ def process_fastq(library_config: Union[str, dict, LibraryManager],
         own worker
     num_workers : int
         number of worker processes; -1 (or None) uses os.cpu_count() - 1
+    background : str, optional
+        The tube's genetic background, one declared in the library YAML's
+        ``backgrounds`` block (see tfscreen.genetics.backgrounds). Reads are
+        matched against that background's library and named in absolute
+        terms, relative to the reference wt_seq, so A100V in a K84L
+        background is counted as K84L/A100V. Default: the reference.
     
     Returns
     -------
@@ -451,9 +459,14 @@ def process_fastq(library_config: Union[str, dict, LibraryManager],
 
     # Initialize library manager
     if isinstance(library_config,LibraryManager):
+        if background is not None:
+            raise ValueError("background needs the library config, not a "
+                             "LibraryManager.")
         lm = library_config
     else:
-        lm = LibraryManager(library_config)
+        lm = LibraryManager(background_config(
+            library_config, background if background is not None
+            else REFERENCE))
 
     # Set up a FastqToCounts object for calling read pairs
     ftc_instance = FastqToCounts(lm,

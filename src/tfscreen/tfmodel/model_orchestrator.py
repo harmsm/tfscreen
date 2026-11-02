@@ -1477,9 +1477,9 @@ class ModelOrchestrator:
             genotype_names = self.growth_tm.tensor_dim_labels[genotype_idx]
 
             observed = set(genotype_names)
-            from_library = list(self._library_df.loc[
+            from_library = list(dict.fromkeys(self._library_df.loc[
                 self._library_df["in_spiked_origin"], "genotype"
-            ])
+            ]))
             in_data = [g for g in from_library if g in observed]
             absent = [g for g in from_library if g not in observed]
             if len(absent) > 0:
@@ -1516,12 +1516,32 @@ class ModelOrchestrator:
             spiked_idx = np.where(np.isin(genotype_names,self._spiked_genotypes))[0]
             mask[spiked_idx] = False
 
-        bulk_fraction = self._build_bulk_fraction(mask)
-        coresident_idx, coresident_n = self._draw_coresident_sets(mask)
+        # Congression pools: one per library (one transformation: one
+        # genetic background, genetics/backgrounds.py, and one marker), each
+        # drawing its own co-resident sets from its background's table.
+        pool_names, pool_backgrounds, slot_pool = self._congression_pools()
+        pool_bulk, pool_sets = [], []
+        for q, background in enumerate(pool_backgrounds):
+            pool_bulk.append(self._build_bulk_fraction(mask,
+                                                       background=background))
+            idx_q, coresident_n = self._draw_coresident_sets(
+                mask, background=background, pool_index=q)
+            pool_sets.append(idx_q)
+        bulk_fraction, coresident_idx = pool_bulk[0], pool_sets[0]
+        pool_data = {}
+        if len(pool_names) > 1:
+            pool_data = {
+                "pool_bulk_fraction": jnp.array(np.stack(pool_bulk), dtype=float),
+                "pool_coresident_idx": jnp.array(np.stack(pool_sets),
+                                                 dtype=jnp.int32),
+                "num_pools": len(pool_names),
+            }
+        self._congression_pool_names = tuple(pool_names)
+        self._condition_pre_pool = slot_pool
 
         if (self._transformation == "mixture"
-                and np.any(bulk_fraction > 0)
-                and np.all(coresident_idx < 0)):
+                and any(np.any(b > 0) and np.all(c < 0)
+                        for b, c in zip(pool_bulk, pool_sets))):
             raise ValueError(
                 "transformation='mixture' needs co-resident plasmids to draw, "
                 "but no genotype with growth data can be one (the co-resident "
@@ -1560,7 +1580,8 @@ class ModelOrchestrator:
                       "congression_theta_rule":self._congression_theta_rule,
                       "congression_dk_rule":self._congression_dk_rule,
                       "congression_dk_alpha":self._congression_dk_alpha,
-                      "growth_likelihood":self._growth_likelihood}
+                      "growth_likelihood":self._growth_likelihood,
+                      **pool_data}
 
         # Grab the titrant concentration and log_titrant_conc (1D array from 
         # the tensor labels along dimension 6)
@@ -1794,6 +1815,9 @@ class ModelOrchestrator:
         if self.theta_conditions is not None:
             growth_dataclass = growth_dataclass.replace(
                 **self.theta_conditions.data_fields("growth"))
+        if len(self._congression_pool_names) > 1:
+            growth_dataclass = growth_dataclass.replace(
+                condition_pre_pool=tuple(self._condition_pre_pool))
 
         # Populate a BindingData flax dataclass with all keys in `sources`
         if self._has_binding:
@@ -2382,7 +2406,72 @@ class ModelOrchestrator:
         """The PriorsClass Pytree holding all model priors."""
         return self._priors
 
-    def _build_bulk_fraction(self, spiked_free_mask):
+    def _congression_pools(self):
+        """
+        The congression pools and each condition_pre slot's pool.
+
+        One pool per library: a library is one transformation of one
+        plasmid pool into one marker strain, so one genetic background and
+        one marker (kanR, pheS). Each pool's composition comes from its
+        background's block of the library table (a ``background`` column in
+        the growth data, absent: the reference; without backgrounds, the
+        whole table), and each draws its own co-resident sets. Pools are in
+        the order the libraries first appear among the condition_pre slots
+        (library/condition_pre), so a one-library experiment has the one
+        pool it always had.
+
+        Returns
+        -------
+        libraries : list of str
+        backgrounds : list of str or None
+            Each pool's background (None without backgrounds).
+        slot_pool : tuple of int
+            Pool index of each condition_pre slot of the growth tensor.
+        """
+        from tfscreen.genetics.backgrounds import BACKGROUND_COLUMN, REFERENCE
+
+        slots = [str(k) for k in self.growth_tm.tensor_dim_labels[
+            self.growth_tm.tensor_dim_names.index("condition_pre")]]
+        df = self.growth_df
+        slot_lib = (df[["_condition_pre_key", "library"]].drop_duplicates()
+                    .astype(str).set_index("_condition_pre_key")["library"])
+        libraries = list(dict.fromkeys(slot_lib[k] for k in slots))
+        slot_pool = tuple(libraries.index(slot_lib[k]) for k in slots)
+
+        has_table = (self._library_df is not None
+                     and BACKGROUND_COLUMN in self._library_df.columns)
+        bg = (df[BACKGROUND_COLUMN].fillna(REFERENCE).astype(str)
+              if BACKGROUND_COLUMN in df.columns
+              else pd.Series(REFERENCE, index=df.index))
+        if not has_table:
+            if (bg != REFERENCE).any():
+                raise ValueError(
+                    f"The growth data name genetic backgrounds (a "
+                    f"'{BACKGROUND_COLUMN}' column) but the library table has "
+                    f"none; configure with a library config that declares "
+                    f"them.")
+            return libraries, [None] * len(libraries), slot_pool
+
+        lib_bg = (pd.DataFrame({"library": df["library"].astype(str),
+                                "bg": bg}).drop_duplicates())
+        if lib_bg["library"].duplicated().any():
+            raise ValueError("Each library must have one background; "
+                             "regenerate the growth table.")
+        lib_bg = lib_bg.set_index("library")["bg"]
+        declared = set(self._library_df[BACKGROUND_COLUMN].astype(str))
+        missing = sorted(set(lib_bg) - declared)
+        if missing:
+            raise ValueError(f"Backgrounds {missing} of the growth data are "
+                             f"not in the library table ({self._library_file}).")
+        return libraries, [lib_bg[lib] for lib in libraries], slot_pool
+
+    def _pool_table(self, background):
+        """The library table rows of one pool (all rows for None)."""
+        if background is None:
+            return self._library_df
+        return self._library_df[self._library_df["background"] == background]
+
+    def _build_bulk_fraction(self, spiked_free_mask, background=None):
         """
         Per-genotype bulk fraction (congression purity), aligned to the
         growth tensor's genotype axis.
@@ -2413,9 +2502,14 @@ class ModelOrchestrator:
         genotype_names = [str(g) for g in
                           self.growth_tm.tensor_dim_labels[genotype_idx]]
 
-        table = self._library_df.set_index("genotype")["bulk_fraction"]
+        table = self._pool_table(background).set_index("genotype")["bulk_fraction"]
+        # In one background's pool, a genotype from another background has
+        # no cells (its tubes in this pool's libraries have no data).
+        elsewhere = (set() if background is None
+                     else set(self._library_df["genotype"]))
         missing = [g for g in genotype_names
-                   if g not in table.index and g != "__unknown__"]
+                   if g not in table.index and g != "__unknown__"
+                   and g not in elsewhere]
         if len(missing) > 0:
             raise ValueError(
                 f"{len(missing)} genotypes in the growth data are missing from "
@@ -2424,7 +2518,8 @@ class ModelOrchestrator:
                 f"--library_config."
             )
 
-        values = np.array([1.0 if g == "__unknown__" else float(table[g])
+        values = np.array([1.0 if g == "__unknown__"
+                           else float(table[g]) if g in table.index else 0.0
                            for g in genotype_names])
         if np.any(~np.isfinite(values)) or np.any((values < 0) | (values > 1)):
             raise ValueError(
@@ -2433,7 +2528,7 @@ class ModelOrchestrator:
             )
         return values
 
-    def _coresident_pool(self, spiked_free_mask):
+    def _coresident_pool(self, spiked_free_mask, background=None):
         """
         Probability of each genotype (growth-tensor order) being drawn as a
         co-resident plasmid.
@@ -2461,7 +2556,7 @@ class ModelOrchestrator:
         if self._library_df is None:
             weights = np.where(spiked_free_mask, 1.0, 0.0)
         else:
-            table = self._library_df.set_index("genotype")
+            table = self._pool_table(background).set_index("genotype")
             weights = np.array([
                 float(table.loc[g, "pool_fraction"] * table.loc[g, "bulk_fraction"])
                 if g in table.index else 0.0
@@ -2474,7 +2569,8 @@ class ModelOrchestrator:
         total = weights.sum()
         return weights / total if total > 0 else weights
 
-    def _draw_coresident_sets(self, spiked_free_mask):
+    def _draw_coresident_sets(self, spiked_free_mask, background=None,
+                              pool_index=0):
         """
         Draw each genotype's fixed co-resident plasmid sets.
 
@@ -2497,7 +2593,7 @@ class ModelOrchestrator:
             Int, shape (K,): the number of co-residents in each set.
         """
 
-        pool = self._coresident_pool(spiked_free_mask)
+        pool = self._coresident_pool(spiked_free_mask, background=background)
         num_genotype = len(pool)
         n_max = len(self._congression_sets)
 
@@ -2511,7 +2607,10 @@ class ModelOrchestrator:
         if pool.sum() <= 0 or num_sets == 0:
             return coresident_idx, coresident_n
 
-        rng = np.random.default_rng(self._congression_seed)
+        # Pool 0 draws as a single pool always has; each further pool
+        # (background) from its own stream.
+        rng = np.random.default_rng(self._congression_seed if pool_index == 0
+                                    else [self._congression_seed, pool_index])
         draws = rng.choice(num_genotype, size=(num_genotype, num_sets, n_max),
                            p=pool)
         slot = np.arange(n_max)[None, None, :]

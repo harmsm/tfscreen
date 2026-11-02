@@ -46,6 +46,8 @@ See ``planning/congression-physics-plan.md`` ("Fit design (step 3)") and
 
 import math
 
+import numpy as np
+
 import jax
 import jax.numpy as jnp
 import numpyro as pyro
@@ -164,6 +166,36 @@ def _log_class_weights(lam, bulk_fraction, coresident_n):
 
 def cell_classes(focal, population, lam, data: GrowthData) -> CellClasses:
     """
+    The clean and congressed cell classes; with more than one congression
+    pool (one per library: background x marker), each condition_pre slot's classes come from
+    its own pool's co-resident sets and bulk fractions (see
+    :func:`_pool_classes`).
+    """
+    if getattr(data, "num_pools", 1) <= 1 or data.pool_coresident_idx is None:
+        return _pool_classes(focal, population, lam, data,
+                             data.coresident_idx, data.bulk_fraction)
+    per_pool = [_pool_classes(focal, population, lam, data,
+                              data.pool_coresident_idx[q],
+                              data.pool_bulk_fraction[q])
+                for q in range(data.num_pools)]
+    slot = np.asarray(data.condition_pre_pool, dtype=int)
+
+    def pick(arrays):
+        # Each pool's (1 + K, rep, time, 1, csel, tn, tc, B) arrays, stacked
+        # and gathered per condition_pre slot: (P, 1 + K, rep, time, 1, ...),
+        # then P put on the condition_pre axis.
+        chosen = jnp.stack(arrays)[slot]
+        return jnp.moveaxis(jnp.squeeze(chosen, axis=4), 0, 3)
+
+    return CellClasses(theta=pick([c.theta for c in per_pool]),
+                       activity=pick([c.activity for c in per_pool]),
+                       dk_geno=pick([c.dk_geno for c in per_pool]),
+                       log_weight=pick([c.log_weight for c in per_pool]))
+
+
+def _pool_classes(focal, population, lam, data, coresident_idx,
+                  bulk_fraction) -> CellClasses:
+    """
     Build the clean and congressed cell classes for the batch's genotypes.
 
     Parameters
@@ -191,7 +223,7 @@ def cell_classes(focal, population, lam, data: GrowthData) -> CellClasses:
     theta, activity, dk_geno = focal
     theta_pop, activity_pop, dk_pop = population
 
-    idx = data.coresident_idx[data.batch_idx]                  # (B, K, N)
+    idx = coresident_idx[data.batch_idx]                       # (B, K, N)
     valid = idx >= 0
     safe = jnp.where(valid, idx, 0)
 
@@ -267,7 +299,7 @@ def cell_classes(focal, population, lam, data: GrowthData) -> CellClasses:
     classes_act = stack(act_focal, cell_act)
     classes_dk = stack(dk_geno, cell_dk)
 
-    bulk_fraction = data.bulk_fraction[data.batch_idx]
+    bulk_fraction = bulk_fraction[data.batch_idx]
     log_w = _log_class_weights(lam, bulk_fraction, data.coresident_n)
     log_w = log_w.reshape((log_w.shape[0],) + (1,) * (theta.ndim - 1)
                           + (log_w.shape[-1],))

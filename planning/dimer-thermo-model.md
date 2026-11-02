@@ -177,18 +177,28 @@ models refuse more than one operator or TF level.
   a `background` tube-table column; `tfs-process-fastq --background` names
   genotypes in absolute terms; the composition table, genotype check and
   congression pools work per background, since each background is its own
-  transformation.
+  transformation. Done 2026-11-02: `genetics/backgrounds.py`;
+  `LibraryManager` names against the reference (`name_reference_seq`,
+  `name_extra_mutations`); the composition table gains a `background`
+  column; configure checks each growth row against its background; the
+  orchestrator draws pools per background (`_congression_pools`;
+  `GrowthData.pool_bulk_fraction`, `pool_coresident_idx`,
+  `condition_pre_pool`) and the mixture picks each condition_pre slot's
+  pool. Pool 0 draws exactly as a single pool did. Not yet: the library
+  subsample keys with backgrounds, and backgrounds in the simulator (3e).
 - 3e. Simulator: the design table's new columns, the contexts and
   backgrounds in the truth, truth tables for operator shifts and TF levels.
 - 3f. `tfs-process-binding` as above.
 - 3g. Laptop validation: A2 again with two operators, two TF levels and
   two backgrounds, checked against the identifiability study's step 1.
 
-**Open: how a background is declared.** Proposed: one library YAML per
-experiment stays the rule, with an optional `backgrounds` block naming each
-background's mutations (relative to `wt_seq`) and, if it differs, its
-`library_mixture`. Background mutations outside the amplicon never appear
-in the reads, so the names must come from this block.
+**How a background is declared (Mike, 2026-11-02).** One library YAML per
+experiment stays the rule, with an optional `backgrounds` block. Each
+background gives its amplicon DNA (`wt_seq`) so the expected reads match
+its real codons, and `outside_mutations` for the mutations the reads never
+show. Congression uses one pool per background, since each is its own
+transformation: co-resident sets and bulk fractions are drawn per pool and
+each library's condition_pre slots use their background's.
 4. Utility in full simulations, on the cluster, on the axis-capable model:
    the ΔΔG prior (PK, PddG learned σ_s, PddG σ_s held at the dial, over the
    table error) and combinations (planted distance-scaled pair coupling,

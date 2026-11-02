@@ -403,6 +403,11 @@ def library_composition_table(library_config,
           from bulk sub-libraries (0 = pure spike, 1 = pure bulk)
         - ``origins``: "|"-joined sub-libraries encoding the genotype
 
+        With a ``backgrounds`` block (``genetics.backgrounds``), the table
+        holds one block of rows per background, the reference first, with a
+        leading ``background`` column; genotype names are absolute, and each
+        background's fractions are within its own pool.
+
     Raises
     ------
     ValueError
@@ -421,14 +426,32 @@ def library_composition_table(library_config,
     import os
 
     from tfscreen.util import read_yaml
+    from tfscreen.genetics import backgrounds
+
+    if isinstance(library_config, (str, os.PathLike)) and base_dir is None:
+        base_dir = os.path.dirname(os.path.abspath(library_config))
+    config = read_yaml(library_config)
+
+    # Genetic backgrounds (genetics/backgrounds.py): one block of rows per
+    # background, each its own transformed pool, tagged with its name.
+    if config.get("backgrounds"):
+        tables = []
+        for name in backgrounds.background_names(config):
+            table = _composition_one(backgrounds.background_config(config, name),
+                                     spiked_origin, base_dir)
+            table.insert(0, backgrounds.BACKGROUND_COLUMN, name)
+            tables.append(table)
+        return pd.concat(tables, ignore_index=True)
+    return _composition_one(config, spiked_origin, base_dir)
+
+
+def _composition_one(config, spiked_origin, base_dir):
+    """The composition table of one plasmid pool (one background)."""
     from tfscreen.genetics.library_subsample import (
         build_library,
         subsample_design,
     )
 
-    if isinstance(library_config, (str, os.PathLike)) and base_dir is None:
-        base_dir = os.path.dirname(os.path.abspath(library_config))
-    config = read_yaml(library_config)
     if "library_mixture" not in config:
         raise ValueError(
             "The library config must have a 'library_mixture' key giving the "
@@ -485,7 +508,9 @@ def write_library_composition(composition, path):
     if missing:
         raise ValueError(f"composition is missing columns: {missing}.")
 
-    composition[LIBRARY_COMPOSITION_COLUMNS].to_csv(path, index=False)
+    cols = (["background"] if "background" in composition.columns else []) \
+        + LIBRARY_COMPOSITION_COLUMNS
+    composition[cols].to_csv(path, index=False)
 
 
 def read_library_composition(path):
@@ -524,8 +549,13 @@ def read_library_composition(path):
         )
 
     df["genotype"] = df["genotype"].astype(str)
-    if df["genotype"].duplicated().any():
-        dups = sorted(set(df["genotype"][df["genotype"].duplicated()]))[:5]
+    key = ["genotype"]
+    if "background" in df.columns:
+        df["background"] = df["background"].astype(str)
+        key = ["background", "genotype"]
+    dup = df.duplicated(key)
+    if dup.any():
+        dups = df.loc[dup, key].head(5).values.tolist()
         raise ValueError(f"'{path}' has duplicate genotypes, e.g. {dups}.")
 
     for col in ("is_wt", "in_spiked_origin"):

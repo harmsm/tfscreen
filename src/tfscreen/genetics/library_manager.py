@@ -320,6 +320,30 @@ class LibraryManager:
             if len(codon) < 3: break
             aa_seq.append(CODON_TO_AA[codon])
         self.aa_seq = "".join(aa_seq)
+
+        # A genetic background (genetics/backgrounds.py) builds its library
+        # on its own wt_seq but names genotypes against the reference
+        # sequence, plus the background's mutations outside the amplicon.
+        self.name_extra_mutations = []
+        ref = run_config.get("name_reference_seq")
+        if ref is not None:
+            ref = "".join(str(ref).split())
+            _check_char(ref, "name_reference_seq", self.standard_bases)
+            if len(ref) != len(wt_seq):
+                raise ValueError("name_reference_seq must be as long as wt_seq")
+            self.aa_seq = "".join(
+                CODON_TO_AA[ref[i:i + 3]]
+                for i in range(reading_frame, len(ref) - 2, 3))
+        extra = list(run_config.get("name_extra_mutations") or [])
+        last = first_amplicon_residue + len(self.aa_seq) - 1
+        for m in extra:
+            resnum = int(str(m)[1:-1])
+            if first_amplicon_residue <= resnum <= last:
+                raise ValueError(
+                    f"background mutation {m} is inside the amplicon "
+                    f"(residues {first_amplicon_residue}-{last}); give the "
+                    f"background's wt_seq instead.")
+        self.name_extra_mutations = extra
     
         # Build complete degen seq without '.' by putting together with wt
         degen_seq = [degen_sites[i] if degen_sites[i] != '.' else wt_seq[i]
@@ -582,6 +606,7 @@ class LibraryManager:
             aa_mut_list = ["".join([wt,res,mut])
                            for wt,res,mut in wt_res_mut
                            if wt != mut]
+            aa_mut_list = list(getattr(self, "name_extra_mutations", ())) + aa_mut_list
             
             aa_muts.append("/".join(aa_mut_list))
             
@@ -829,11 +854,16 @@ class LibraryManager:
         # wt is only in the library if some site's expansion encodes the wt
         # amino acid or a spiked sequence is wt. A design can legitimately
         # lack it, but it is more often a mistake, so say so.
-        if not any(aa == "" for muts in all_aa_muts.values() for aa in muts):
+        # (In a genetic background the parent is the background itself.)
+        parent = (self._convert_to_aa([self.wt_seq])[0]
+                  if hasattr(self, "wt_seq") else "")
+        if not any(aa == parent for muts in all_aa_muts.values() for aa in muts):
+            what = "wildtype" if parent == "" else f"parent ({parent})"
             warnings.warn(
-                "The library design encodes no wildtype sequence: no library "
-                "site's degenerate codon encodes the wt amino acid and no "
-                "spiked sequence is wt. wt will not be an expected genotype.",
+                f"The library design encodes no {what} sequence: no library "
+                f"site's degenerate codon encodes the parent amino acid and no "
+                f"spiked sequence is the parent. It will not be an expected "
+                f"genotype.",
                 UserWarning,
                 stacklevel=2,
             )

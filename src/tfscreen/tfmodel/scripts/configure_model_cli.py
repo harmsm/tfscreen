@@ -136,6 +136,48 @@ def check_genotypes_in_library(library_genotypes, data_df, label,
     )
 
 
+def check_backgrounds_in_data(composition, growth_df):
+    """
+    With genetic backgrounds, check each growth row against its own
+    background's library.
+
+    A row's background is its ``background`` column (absent: the
+    reference). Every background named must be declared in the library
+    config, every ``library`` must have one background (a library is one
+    transformation, so one plasmid pool), and every genotype must be in
+    that background's library.
+
+    Raises
+    ------
+    ValueError
+    """
+    from tfscreen.genetics.backgrounds import BACKGROUND_COLUMN, REFERENCE
+
+    if growth_df is None or BACKGROUND_COLUMN not in composition.columns:
+        return
+    df = read_dataframe(growth_df)
+    if BACKGROUND_COLUMN not in df.columns:
+        df = df.assign(**{BACKGROUND_COLUMN: REFERENCE})
+    bg = df[BACKGROUND_COLUMN].fillna(REFERENCE).astype(str)
+    declared = set(composition[BACKGROUND_COLUMN].astype(str))
+    unknown = sorted(set(bg) - declared)
+    if unknown:
+        raise ValueError(f"growth_df names backgrounds {unknown} that the "
+                         f"library config does not declare "
+                         f"({sorted(declared)}).")
+    per_lib = df.assign(_bg=bg).groupby("library")["_bg"].nunique()
+    mixed = sorted(per_lib.index[per_lib > 1].astype(str))
+    if mixed:
+        raise ValueError(f"Libraries {mixed} have tubes in more than one "
+                         f"background; a library is one transformation, so "
+                         f"one background.")
+    for name, rows in df.assign(_bg=bg).groupby("_bg"):
+        genos = set(composition.loc[composition[BACKGROUND_COLUMN] == name,
+                                    "genotype"])
+        check_genotypes_in_library(genos, rows, f"growth_df (background "
+                                                f"{name!r})")
+
+
 def check_spikes_in_data(composition, growth_df, allow_missing=False):
     """
     Fail unless every spiked genotype of the library has growth data.
@@ -625,6 +667,7 @@ def configure_model(binding_df=None,
             check_genotypes_in_library(set(composition["genotype"]),
                                        data_df, label)
 
+        check_backgrounds_in_data(composition, growth_df)
         check_spikes_in_data(composition, growth_df,
                              allow_missing=allow_missing_spikes)
 
@@ -637,6 +680,8 @@ def configure_model(binding_df=None,
             "source": library_config if isinstance(library_config, str) else "<dict>",
             "library_mixture": library_yaml["library_mixture"],
         }
+        if library_yaml.get("backgrounds"):
+            library_meta["backgrounds"] = library_yaml["backgrounds"]
         # A subsampled library (tfs-simulate's library_genotypes /
         # library_subsample): the snapshot holds only the kept genotypes.
         subsample = subsample_record(library_yaml)

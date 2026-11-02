@@ -251,6 +251,12 @@ growth data; a missing spike also usually means a different config.
 ``--allow_missing_spikes`` turns the second check into a warning, for a
 spike that really dropped out.
 
+With genetic backgrounds (:doc:`process-raw`), the table has a leading
+``background`` column and one block of rows per background, each with its
+own fractions; a genotype is checked against its own background's library,
+and the ``mixture`` model draws each library's co-resident plasmids from
+its background's pool.
+
 ``library_mixture`` cannot be checked: no data file ever saw it. It is
 recorded as given in the configuration's ``library`` block, and that record
 is its only defense. Give the best estimate of what went into the pool.
