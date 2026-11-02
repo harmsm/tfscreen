@@ -1,0 +1,5 @@
+run,arm,stage1_step,stage1_decision,stage1_loss,stage2_step,stage2_decision,stage2_loss,stage3_step,stage3_decision,stage3_loss,configure_min,configure_GB,map_min,map_GB,full_min,full_GB
+A1,O2PK,50000,continue,220858.546875,26000,converged,209161.71875,50000,continue,183766.703125,0.2,0.75,247.7,1.05,8.6,1.76
+A1,dimerPK_nested,50000,continue,220854.671875,26000,converged,209158.875,50000,continue,183766.875,0.2,0.73,246.3,0.97,9.7,2.09
+A2,dimerPK,50000,continue,223069.734375,26000,converged,211243.359375,50000,continue,184301.28125,0.2,0.74,246.4,1.09,11.8,2.51
+A2,dimerPddG,50000,continue,207688.96875,26000,converged,195938.375,50000,continue,170762.703125,0.2,0.75,247.0,1.29,11.7,2.87

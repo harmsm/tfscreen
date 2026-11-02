@@ -317,3 +317,14 @@ def test_held_sigma_map_laplace_extract(tmp_path):
     fit_sigma = pd.read_csv(run / "tfs_params_ddG_sigma.csv")
     assert list(fit_sigma["structure"]) == structs
     np.testing.assert_allclose(fit_sigma["q0.5"], _HELD, rtol=1e-6)
+
+
+def test_held_sigma_accepts_one_value_per_state():
+    from tfscreen.tfmodel.generative.components.theta.thermo.prior import held_sigma
+    assert held_sigma(0.0, 3) is None
+    assert held_sigma(2.0, 3) == (2.0, 2.0, 2.0)
+    assert held_sigma([1.0, 2.0, 3.0], 3) == (1.0, 2.0, 3.0)
+    with pytest.raises(ValueError):
+        held_sigma([1.0, 0.0, 3.0], 3)
+    with pytest.raises(ValueError):
+        held_sigma([1.0, 2.0], 3)

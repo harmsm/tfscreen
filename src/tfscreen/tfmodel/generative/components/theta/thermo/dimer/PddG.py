@@ -68,8 +68,36 @@ def get_hyperparameters():
 
 def _static_defaults():
     s = dm.flag_defaults()
+    s.update(dm.sigma_fixed_defaults(_FREE_TERMS))
     s["theta_ddG_sigma_fixed"] = 0.0   # > 0 holds σ_s (kT), thermo/prior.py
+    s.update(ddG_sigma_state_fixed_defaults())
     return s
+
+
+def ddG_sigma_state_fixed_defaults():
+    """``theta_ddG_sigma_{state}_fixed`` (static; > 0 holds that σ_s, kT)."""
+    return {f"theta_ddG_sigma_{st}_fixed": 0.0 for st in STRUCTURE_NAMES}
+
+
+def held_ddG_sigma(priors):
+    """
+    The held σ_s: 0.0 (sampled), one value for every state
+    (``theta_ddG_sigma_fixed``) or a tuple in STRUCTURE_NAMES order from the
+    per-state ``theta_ddG_sigma_{state}_fixed`` fields, which must then all
+    be > 0 (a partial hold is not supported) and exclude the scalar.
+    """
+    per = [float(getattr(priors, f"theta_ddG_sigma_{st}_fixed", 0.0))
+           for st in STRUCTURE_NAMES]
+    if not any(v > 0 for v in per):
+        return ddG_sigma_fixed(priors)
+    if not all(v > 0 for v in per):
+        raise ValueError(
+            "theta_ddG_sigma_{state}_fixed holds every state or none; got "
+            f"{dict(zip(STRUCTURE_NAMES, per))}.")
+    if ddG_sigma_fixed(priors) > 0:
+        raise ValueError("Set theta_ddG_sigma_fixed or the per-state "
+                         "theta_ddG_sigma_{state}_fixed, not both.")
+    return tuple(per)
 
 
 ModelPriors = dm.make_priors_class(
@@ -105,13 +133,13 @@ def _structural(name, data, priors, prior_means, guide_init=None):
         if guide:
             init = prior_means if guide_init is None else guide_init
             dlnK = guide_dlnK(name, M, S, DLNK_PROJ, init,
-                              sigma_fixed=ddG_sigma_fixed(priors))
+                              sigma_fixed=held_ddG_sigma(priors))
         else:
             dlnK = sample_dlnK(name, list(STRUCTURE_NAMES), M, prior_means,
                                DLNK_PROJ,
                                sigma_loc=priors.theta_ddG_sigma_loc,
                                sigma_scale=priors.theta_ddG_sigma_scale,
-                               sigma_fixed=ddG_sigma_fixed(priors))
+                               sigma_fixed=held_ddG_sigma(priors))
         return {t: dlnK[:, i] for i, t in enumerate(dm.STRUCT_TERMS)}
     return block
 

@@ -398,3 +398,72 @@ def test_predict_unmeasured_without_pairs_reads_dataset_like_posteriors():
                                  tf_total=1e-5, conc_unit_scale=1e-3,
                                  theta_priors=priors)
     assert np.isfinite(pred["q0.5"]).all() and len(pred) == 2 * len(CONC)
+
+
+# ---------------------------------------------------------------------------
+# Held scales (the EM loop of planning/studies/dimer-utility holds them)
+# ---------------------------------------------------------------------------
+
+def _samples(tr):
+    return {n for n, s in tr.items()
+            if s["type"] == "sample" and not s.get("is_observed")}
+
+
+def test_held_sigma_d_scales_its_offsets_and_drops_from_the_sigma_site():
+    data = _data(epistasis=False)
+    terms = sp.active_terms(dm.variant_from_priors(_priors(PK)))
+    held = {f"theta_sigma_d_{t}_fixed": 0.5 + i for i, t in enumerate(terms)}
+    priors = _priors(PK, **held)
+    tr = _trace(PK.define_model, PK, data, priors)
+    assert "theta_sigma_d" not in tr
+    off = np.asarray(tr["theta_d_offset"]["value"])
+    for i, t in enumerate(terms):
+        d = np.asarray(tr[f"theta_d_{t}"]["value"]).reshape(-1)
+        np.testing.assert_allclose(d, off[i] * (0.5 + i), rtol=1e-5)
+    guide_tr = _trace(PK.guide, PK, data, priors)
+    assert _samples(guide_tr) == _samples(tr)
+    assert not any(n.startswith("theta_sigma_d_") for n in guide_tr
+                   if guide_tr[n]["type"] == "param")
+
+
+def test_partly_held_sigma_d_samples_the_free_terms_only():
+    data = _data(epistasis=False)
+    terms = sp.active_terms(dm.variant_from_priors(_priors(PK)))
+    priors = _priors(PK, **{f"theta_sigma_d_{terms[1]}_fixed": 2.0})
+    tr = _trace(PK.define_model, PK, data, priors)
+    sigma = np.asarray(tr["theta_sigma_d"]["value"])
+    assert sigma.shape == (len(terms) - 1,)
+    off = np.asarray(tr["theta_d_offset"]["value"])
+    d1 = np.asarray(tr[f"theta_d_{terms[1]}"]["value"]).reshape(-1)
+    np.testing.assert_allclose(d1, off[1] * 2.0, rtol=1e-5)
+    d0 = np.asarray(tr[f"theta_d_{terms[0]}"]["value"]).reshape(-1)
+    np.testing.assert_allclose(d0, off[0] * sigma[0], rtol=1e-5)
+    guide_tr = _trace(PK.guide, PK, data, priors)
+    assert guide_tr["theta_sigma_d"]["value"].shape == sigma.shape
+
+
+@pytest.mark.parametrize("key", ["PddG", "PnnC"])
+def test_per_state_held_ddG_sigma(key):
+    module = MODULES[key]
+    data = _for(key, _data(epistasis=False))
+    vals = {s: 0.3 * (i + 1) for i, s in enumerate(module.STRUCTURE_NAMES)}
+    priors = _priors(module, **{f"theta_ddG_sigma_{s}_fixed": v
+                                for s, v in vals.items()})
+    tr = _trace(module.define_model, module, data, priors)
+    assert tr["theta_ddG_sigma"]["type"] == "deterministic"
+    np.testing.assert_allclose(np.asarray(tr["theta_ddG_sigma"]["value"]),
+                               list(vals.values()), rtol=1e-6)
+    guide_tr = _trace(module.guide, module, data, priors)
+    assert _samples(guide_tr) == _samples(tr)
+    assert "theta_ddG_sigma" not in _samples(guide_tr)
+
+
+def test_per_state_held_ddG_sigma_is_all_or_none():
+    first = PddG.STRUCTURE_NAMES[0]
+    with pytest.raises(ValueError, match="every state or none"):
+        PddG.held_ddG_sigma(_priors(PddG, **{f"theta_ddG_sigma_{first}_fixed": 1.0}))
+    both = {f"theta_ddG_sigma_{s}_fixed": 1.0 for s in PddG.STRUCTURE_NAMES}
+    with pytest.raises(ValueError, match="not both"):
+        PddG.held_ddG_sigma(_priors(PddG, theta_ddG_sigma_fixed=1.0, **both))
+    assert PddG.held_ddG_sigma(_priors(PddG, theta_ddG_sigma_fixed=1.0)) == 1.0
+    assert PddG.held_ddG_sigma(_priors(PddG, **both)) == (1.0,) * 6

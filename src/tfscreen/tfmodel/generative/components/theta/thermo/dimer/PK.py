@@ -3,7 +3,7 @@ PK: the general dimeric-TF model with every mutation effect learned from data.
 
 Registry name ``thermo.dimer.PK``. Each mutation shifts every term of the
 variant by Normal(0, σ_term), σ_term ~ HalfNormal(``theta_sigma_d_{term}
-_scale``) (non-centered); effector terms add a per-titrant deviation
+_scale``) (non-centered), or held by ``theta_sigma_d_{term}_fixed`` > 0; effector terms add a per-titrant deviation
 when there is more than one titrant. No structural information is used.
 Physics: ``species.py``; sites and variant flags: ``model.py``.
 """
@@ -21,6 +21,7 @@ from tfscreen.tfmodel.generative.components.theta.thermo.dimer.model import (  #
     make_priors_class,
     predict_unmeasured,
     run_model,
+    sigma_fixed_defaults,
     sigma_hyperparameters,
     wt_guesses,
 )
@@ -29,11 +30,11 @@ from tfscreen.tfmodel.generative.components.theta.thermo.dimer.model import (  #
 def get_hyperparameters():
     p = common_hyperparameters()
     p.update(sigma_hyperparameters(sp.ALL_TERMS))
-    p.update(flag_defaults())
+    p.update(_STATIC)
     return p
 
 
-_STATIC = flag_defaults()
+_STATIC = {**flag_defaults(), **sigma_fixed_defaults(sp.ALL_TERMS)}
 ModelPriors = make_priors_class(
     __name__, [k for k in get_hyperparameters() if k not in _STATIC], _STATIC)
 

@@ -18,6 +18,7 @@ from tfscreen.tfmodel.generative.components.theta.thermo.dimer.PddG import (  # 
     STRUCTURE_NAMES,
     _FREE_TERMS,
     _structural,
+    ddG_sigma_state_fixed_defaults,
     struct_perm,
 )
 from tfscreen.tfmodel.generative.components.theta.thermo.dimer.model import (  # noqa: F401
@@ -42,7 +43,9 @@ from tfscreen.tfmodel.generative.components.theta.thermo.prior import (
 
 def _static_defaults():
     s = dm.flag_defaults()
+    s.update(dm.sigma_fixed_defaults(_FREE_TERMS))
     s["theta_ddG_sigma_fixed"] = 0.0
+    s.update(ddG_sigma_state_fixed_defaults())
     s["theta_nn_hidden_size"] = int(_DEFAULT_HIDDEN_SIZE)
     return s
 

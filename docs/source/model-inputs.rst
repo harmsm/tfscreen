@@ -391,8 +391,11 @@ This can happen when the data are weak.
 To hold σ_s at a known value instead of estimating it, set
 ``theta_ddG_sigma_fixed`` to that value in kT, for example
 ``--set_priors theta_ddG_sigma_fixed=1.69``. The value is in kT whatever
-``--thermo_ddG_units`` says. Every structure gets the same value; there is
-no per-structure hold. The fit then has no σ_s parameters, the LogNormal
+``--thermo_ddG_units`` says. Every structure gets the same value. The
+``thermo.dimer`` PddG and PnnC models also take one value per structure,
+``theta_ddG_sigma_{structure}_fixed`` (all structures or none), and
+``theta_sigma_d_{term}_fixed`` holds a term's per-mutation scale in every
+``thermo.dimer`` model. The fit then has no σ_s parameters, the LogNormal
 prior is unused, and the extracted ``ddG_sigma`` table reports the held
 value. The default 0 estimates σ_s. A held σ_s suits a simulation study
 that compares a fit told the true noise with one that estimates it.

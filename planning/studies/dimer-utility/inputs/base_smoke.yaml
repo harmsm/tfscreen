@@ -1,0 +1,120 @@
+# Structural-prior pilot v2 SMOKE TEST (tiny library; not a result): base simulate config, written by scripts/make_config.py.
+# Library keys are inline, so this file is also the library YAML
+# (tfs-configure-model --library_config). library_mixture, transform_sizes,
+# total_num_reads and pcr_template_molecules describe the FULL library;
+# tfs-simulate scales them to the subsample (library_subsample_depth: full_library).
+# ddG_truth_sd is the dial and is set by the grid.
+reading_frame: 0
+first_amplicon_residue: 27
+wt_seq: gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgatggcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctgcacgcgccgtcgcaaattgtcgcggcgattaaatctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg
+degen_sites: '......nntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnnt......nntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnnt'
+tiles: '......111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111......222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222'
+tile_combos:
+- single-1
+- single-2
+- double-1-2
+expected_5p: cgcgtggtgaaccag
+expected_3p: gtagaacgaagcggc
+spiked_seqs:
+- gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgatggcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctgcacgcgccgtcgcaaattgtcgcggcgattaaatctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg
+- gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgatagcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctgcacgcgccgtcgcaaattgtcgcggcgattaaatctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg
+- gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgatggcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctggcggcgccgtcgcaaattgtcgcggcgattaaatctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg
+- gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgatggcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctgcacgcgccgtcgcaaattgtcgcggcgattctgtctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg
+- gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgatagcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctggcggcgccgtcgcaaattgtcgcggcgattaaatctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg
+- gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgatagcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctgcacgcgccgtcgcaaattgtcgcggcgattctgtctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg
+- gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgatggcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctggcggcgccgtcgcaaattgtcgcggcgattctgtctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg
+- gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgatagcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctggcggcgccgtcgcaaattgtcgcggcgattctgtctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg
+- gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgatggcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctgcacgcgccgtcgcaaattgtcgcggcgattaaatctcgcgccgcccaactgggtgccagcgtggtggtgtcgatg
+library_mixture:
+  double-1-2: 0.31100889814651367
+  single-1: 0.2118722
+  single-2: 0.25370095
+  spiked: 0.00308338
+transform_sizes:
+  single-1: 100000
+  single-2: 100000
+  double-1-2: 77748985
+  spiked: 1000
+design: ../config/design.csv
+theta_component: thermo.O2_C4_K3_U0_a.PddG
+thermo_data: ../config/2026-10-10_laci-dimer-ddg.csv
+thermo_options:
+  ddG_units: kcal/mol
+  column_map:
+    HD: HO
+ddG_truth_sd: 0.0
+theta_priors:
+  theta_ln_K_op_wt_scale: 0.001
+  theta_ln_K_HL_wt_scale: 0.001
+  theta_ln_K_E_wt_scale: 0.001
+  theta_epi_tau_scale: 1.0e-09
+growth:
+  kanR+kan:
+    b: 0.015042
+    m: -0.014122
+  kanR-kan:
+    b: 0.023923
+    m: 0.0
+  pheS+4CP:
+    b: 0.003107
+    m: 0.014379
+  pheS-4CP:
+    b: 0.022042
+    m: 0.0
+dk_geno_hyper_loc: -3.5
+dk_geno_hyper_scale: 0.15
+dk_geno_hyper_shift: 0.02
+activity_wt: 1.0
+activity_mut_scale: 0.0
+lib_assembly_skew_sigma:
+  double-1-2: 2.0
+  single-1: 0.8
+  single-2: 0.8
+  spiked: 0.5
+max_congressed_cells: 2000000
+transformation_poisson_lambda: 0.357
+congression_theta_rule: homodimer
+congression_dk_rule: dilution
+cfu0:
+  kanR: 212433000.0
+  pheS: 208407000.0
+tube_noise_sigma: 0.002
+total_num_reads: 3951880121
+unassigned_read_fraction:
+  kanR: 0.6603
+  pheS: 0.2151
+prob_index_hop: 0.0
+seed: 1
+od600:
+  calibration: ../config/od600_calibration.yaml
+  tube_volume_mL: 5.0
+  sample_cfu_from_od600: true
+founder_sampling: true
+demographic_growth: true
+shared_transformation: true
+pcr_template_molecules: 1883171
+pcr_amplification_cv: 0.5
+binding_data:
+  titrant_name: iptg
+  titrant_conc:
+  - 0
+  - 0.0001
+  - 0.001
+  - 0.003
+  - 0.01
+  - 0.03
+  - 0.1
+  - 0.3
+  - 1.0
+  noise: 0.025
+  spiked_binding:
+    choose_by: stratified
+  library_binding:
+    choose_by: stratified
+    num: 20
+library_subsample:
+  single-1: 100
+  single-2: 100
+  double-1-2: 50
+library_subsample_seed: 20261011
+library_subsample_depth: full_library

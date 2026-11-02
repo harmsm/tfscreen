@@ -45,6 +45,14 @@ fall into two kinds:
   scaled by contact distance when the structure file gives one. PddG and PnnC
   put the existing structural ΔΔG prior on the six `O2_C12` constants.
   Documented in `docs/source/model.rst` ("The general dimer model").
+- thermo.dimer scales can be held: `theta_sigma_d_{term}_fixed` > 0 holds
+  one term's per-mutation scale σ_d (PK, and the non-structural terms of
+  PddG/PnnC), and `theta_ddG_sigma_{state}_fixed` holds each state's σ_s in
+  PddG/PnnC (every state or none). `prior.sample_dlnK`/`guide_dlnK` take one
+  held σ_s per state. Joint MAP does not estimate these scales (σ_d runs up
+  while the offsets shrink, or falls to 0 for an unseen term; σ_s collapses
+  to 0), so `planning/studies/dimer-utility/dimer_em.py` holds them in every
+  MAP and sets them by EM with a Laplace E-step.
 
 ### Changed
 
@@ -66,6 +74,15 @@ fall into two kinds:
   `data_class.StaticArray`, a read-only copy that compares and hashes by
   dtype, shape and a content digest, so equal data reuse the compiled
   function and different data retrace.
+
+- **`tfs-configure-model`'s parameter census counts the edited priors.**
+  `{out_prefix}_model_stats.*` traced the model from the default priors,
+  before `--set_priors`, `--growth_priors` or `--growth_priors_wt_rates`
+  were applied, so a static prior that changes the sites (a held scale, a
+  pin, a `thermo.dimer` variant flag) was miscounted: a dimer with the
+  second engagement off reported 2,264 theta parameters instead of 1,698.
+  The fit itself always read the edited CSV. The census now reloads the
+  written configuration when any of those flags is given.
 
 ## [0.5.0] - 2026-10-24
 

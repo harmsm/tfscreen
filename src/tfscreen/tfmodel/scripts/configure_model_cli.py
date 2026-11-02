@@ -1,5 +1,8 @@
 from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
-from tfscreen.tfmodel.configuration_io import write_configuration
+from tfscreen.tfmodel.configuration_io import (
+    read_configuration,
+    write_configuration,
+)
 from tfscreen.tfmodel.priors_edit import (
     GROWTH_PIN_FIELDS,
     GROWTH_PRIOR_FIELDS,
@@ -680,6 +683,12 @@ def configure_model(binding_df=None,
     # Pre-fit accounting: how many parameters, how many observations, and
     # which genotypes are individually under-determined.
     if not skip_model_stats:
+        if (set_priors or growth_priors is not None
+                or growth_priors_wt_rates is not None):
+            # The census must trace the model tfs-fit-model will build, from
+            # the edited priors CSV: a static prior (a held scale, a pin, a
+            # thermo.dimer variant flag) changes which sites exist.
+            orchestrator, _ = read_configuration(f"{out_prefix}_config.yaml")
         stats = count_model_dimensions(orchestrator)
         print(format_model_stats(stats), flush=True)
         write_model_stats(stats, out_prefix)

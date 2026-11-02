@@ -4,8 +4,9 @@ status: active
 filed: 2026-10-31
 area: tfmodel
 revisit_when: >-
-  Active. Step 1 (the port) is done; step 2, testing its use in full
-  simulations, is the next commit.
+  Active. Step 1 (the port) is done; step 2, feasibility in the full
+  pipeline on the laptop, is under way; the data axes (step 3) come
+  before any cluster grid.
 related:
   - planning/studies/thermo-identifiability/README.md
   - src/tfscreen/tfmodel/generative/components/theta/thermo/dimer/
@@ -41,6 +42,9 @@ sampler rather than a Laplace.
    `mwc.py` does.
 8. Not in the port: sampler intervals for combinations, the extra data axes,
    and retiring the O2 models.
+9. Order after the port (2026-11-01): a cheap laptop feasibility check, then
+   the data axes, then the compute-heavy utility grids on the axis-capable
+   model.
 
 ## Steps
 
@@ -51,14 +55,33 @@ sampler rather than a Laplace.
    Wired into the orchestrator, extraction, the simulator's truth tables and
    the registry-wide tests. A pipeline smoke test runs configure, MAP,
    Laplace, extraction and prediction.
-2. Next commit. Test whether the model is useful in full simulations with
-   realistic structural and energetic inputs, with and without the ΔΔG and
-   NN priors. Revalidate the study's steps 3-5 in the full simulation.
-3. Sampler-based intervals for combinations (NUTS on the sites a prediction
+2. Feasibility in the full pipeline, on the laptop
+   (`planning/studies/dimer-utility/`, stage A). A1: with the second
+   engagement off the model is O2_C12 U1, so a dimer.PK and an O2_C12 U1 PK
+   fit of the same simulation should agree. A2: simulate the default
+   variant from the AF3 state table and fit PK and PddG on a small library;
+   record parameter count, MAP convergence, Laplace time and memory, and
+   recovery. A machinery problem found here is fixed before step 3.
+   Found (2026-11-01, study README): joint MAP does not estimate the
+   hierarchical scales, so they are now held and updated between fits
+   (direct marginal-likelihood update works for PK σ_d, not yet for PddG
+   σ_s); with them held the constants cover. Open: θ intervals undercover
+   (width 0.04 against RMSE 0.09) in every fit, scales held or not.
+3. Operator, TF-level and background axes in the data model, and with them
+   the per-operator deviations. Before any cluster grid (Mike, 2026-11-01):
+   at one operator, one TF level and wt only, a failed utility test cannot
+   tell a wrong model from an under-measured one (saturation hides the
+   effector-site shifts; study step 3), and the backgrounds analysis feeds
+   the NSF preliminary data.
+4. Utility in full simulations, on the cluster, on the axis-capable model:
+   the ΔΔG prior (PK, PddG learned σ_s, PddG σ_s held at the dial, over the
+   table error) and combinations (planted distance-scaled pair coupling,
+   close-doubles library, pair term on and off, scored on five-mutants),
+   with `wt_only` as one design arm. PnnC once its LigandMPNN features are
+   built. Revalidates the study's steps 3-5.
+5. Sampler-based intervals for combinations (NUTS on the sites a prediction
    touches), or a guide checked against a sampler.
-4. Operator, TF-level and background axes in the data model, and with them
-   the per-operator deviations.
-5. Retire the O2 models once the general model reproduces their fits.
+6. Retire the O2 models once the general model reproduces their fits.
 
 ## Known limits of the port
 

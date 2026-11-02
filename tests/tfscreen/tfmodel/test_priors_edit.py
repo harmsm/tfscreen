@@ -175,6 +175,24 @@ def test_configure_holds_wt_hill_curve(tmp_path):
     assert float(o.priors.theta.theta_wt_hill_K_fixed) == 0.0
 
 
+def test_model_stats_count_the_edited_priors(tmp_path):
+    # A held log(n) population SD is a static prior: its site leaves the
+    # model, and the configure-time census must see that.
+    def census(path, **kwargs):
+        path.mkdir()
+        prefix = str(path / "cfg")
+        configure_model(growth_df=_GROWTH_CSV, library_config=_LIBRARY_YAML,
+                        out_prefix=prefix, theta_model="hill_relative",
+                        growth_shares_replicates=True, **kwargs)
+        return set(pd.read_csv(f"{prefix}_model_stats.csv")["site"])
+
+    site = "theta_log_hill_n_hyper_scale"
+    assert site in census(tmp_path / "free")
+    held = census(tmp_path / "held",
+                  set_priors=["theta_log_hill_n_hyper_scale_fixed=0.5"])
+    assert site not in held
+
+
 def test_configure_set_priors_unknown_name(tmp_path):
     with pytest.raises(ValueError, match="No prior named"):
         _configure(tmp_path, set_priors=["not_a_prior=1"])

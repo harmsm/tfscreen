@@ -109,7 +109,11 @@ deterministic site, so the ``ddG_sigma`` table is still extracted, with
 the held value in every row.  The value is a Python float read once per
 trace (``ddG_sigma_fixed``; a ``pytree_node=False`` field of every
 ModelPriors), so under jit it is static.  One scalar applies to all
-states; there is no per-state hold.
+states.  :func:`sample_dlnK` also takes one held value per state (a
+tuple); thermo.dimer's PddG/PnnC set it from their per-state
+``theta_ddG_sigma_{state}_fixed`` fields, so that an EM loop can hold
+each σ_s at its own estimate (joint MAP does not estimate σ_s, see
+"Known MAP limit").
 
 Recorded sites
 --------------
@@ -146,6 +150,24 @@ _GUIDE_SIGMA_SCALE_INIT = 0.1
 def ddG_sigma_fixed(priors):
     """The held σ_s (kT) from a ModelPriors, or 0.0 when σ_s is sampled."""
     return float(getattr(priors, "theta_ddG_sigma_fixed", 0.0))
+
+
+def held_sigma(sigma_fixed, S):
+    """
+    The held σ_s as a length-S tuple of floats, or None when σ_s is sampled.
+
+    ``sigma_fixed`` is a float (0 samples, > 0 holds every state at it) or a
+    length-S sequence of positive floats (one per state, in the order of
+    ``struct_names``).
+    """
+    if np.ndim(sigma_fixed) == 0:
+        v = float(sigma_fixed)
+        return (v,) * S if v > 0 else None
+    vals = tuple(float(v) for v in sigma_fixed)
+    if len(vals) != S or not all(v > 0 for v in vals):
+        raise ValueError(f"a per-state sigma_fixed needs {S} values > 0; "
+                         f"got {vals}")
+    return vals
 
 
 def ddG_sigma_site(name="theta"):
@@ -283,10 +305,11 @@ def sample_dlnK(name, struct_names, num_mut, prior_means, proj,
     sigma_loc, sigma_scale : float
         LogNormal prior on σ_s, in log kT (the models' priors
         ``theta_ddG_sigma_loc`` and ``theta_ddG_sigma_scale``).
-    sigma_fixed : float, default 0.0
+    sigma_fixed : float or sequence of float, default 0.0
         If > 0, every σ_s is held at this value (kT): ``{name}_ddG_sigma``
         is a deterministic site and the LogNormal prior is unused.  0
-        samples σ_s.  A Python float (static under jit).
+        samples σ_s.  A length-S sequence holds each state at its own
+        value (every entry > 0).  Python floats (static under jit).
 
     Returns
     -------
@@ -298,10 +321,10 @@ def sample_dlnK(name, struct_names, num_mut, prior_means, proj,
     P = jnp.asarray(proj, dtype=jnp.float32)
     C = P.shape[0]
 
-    sigma_fixed = float(sigma_fixed)
-    if sigma_fixed > 0:
+    held = held_sigma(sigma_fixed, S)
+    if held is not None:
         sigma_s = pyro.deterministic(ddG_sigma_site(name),
-                                     jnp.full(S, sigma_fixed, dtype=P.dtype))
+                                     jnp.asarray(held, dtype=P.dtype))
     else:
         with pyro.plate(f"{name}_struct_plate", S, dim=-1):
             sigma_s = pyro.sample(ddG_sigma_site(name),
@@ -353,8 +376,9 @@ def guide_dlnK(name, num_mut, num_struct, proj, prior_means_init,
     prior_means_init : array, shape (M, S)
         Per-state prior means at the start of the fit; the Δln K locations
         start at P · prior_means_init.
-    sigma_fixed : float, default 0.0
-        If > 0 (σ_s held in the model), no σ_s parameters or site.
+    sigma_fixed : float or sequence of float, default 0.0
+        If held in the model (see :func:`sample_dlnK`), no σ_s parameters
+        or site.
 
     Returns
     -------
@@ -364,7 +388,7 @@ def guide_dlnK(name, num_mut, num_struct, proj, prior_means_init,
     S = num_struct
     P = jnp.asarray(proj, dtype=jnp.float32)
     C = P.shape[0]
-    if not float(sigma_fixed) > 0:
+    if held_sigma(sigma_fixed, S) is None:
         sigma_locs = pyro.param(f"{name}_ddG_sigma_locs", jnp.zeros(S))
         sigma_scales = pyro.param(f"{name}_ddG_sigma_scales",
                                   jnp.full(S, _GUIDE_SIGMA_SCALE_INIT),

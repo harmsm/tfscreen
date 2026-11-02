@@ -29,7 +29,13 @@ engagement is in the model.
 Per mutation, a shared shift on every active term. PK (and the
 non-structural terms of PddG/PnnC): ``{name}_sigma_d`` (K,) ~
 HalfNormal(``theta_sigma_d_{term}_scale``) and ``{name}_d_offset``
-(K, M) ~ Normal(0, 1), shift = offset · σ. PddG/PnnC put the structural
+(K, M) ~ Normal(0, 1), shift = offset · σ. A static
+``theta_sigma_d_{term}_fixed`` > 0 holds that term's σ at the value (kT):
+the term then has no σ site (``{name}_sigma_d`` covers the free terms
+only) and its shift is offset · held σ. Joint MAP does not estimate these
+scales (planning/studies/dimer-utility, stage A: σ runs up while the
+offsets shrink, or falls to 0 for a term the data do not see), so a MAP
+fit should hold them and set them by EM (``dimer_em.py`` in that study). PddG/PnnC put the structural
 prior (``thermo/prior.py``) on the six C12 constants (ln_K_h_l, ln_K_h_o,
 ln_K_h_e, ln_K_l_o, ln_K_l_e, ln_K_u). With more than one titrant, each
 mutation's effect on an effector term is its shared shift plus a
@@ -157,6 +163,16 @@ def common_hyperparameters():
 def sigma_hyperparameters(terms):
     """``theta_sigma_d_{term}_scale`` (HalfNormal scale of σ) per term."""
     return {f"theta_sigma_d_{t}_scale": 1.0 for t in terms}
+
+
+def sigma_fixed_defaults(terms):
+    """``theta_sigma_d_{term}_fixed`` (static; > 0 holds σ, kT) per term."""
+    return {f"theta_sigma_d_{t}_fixed": 0.0 for t in terms}
+
+
+def held_sigma_d(priors, term):
+    """The held σ of a term's shifts (kT), or 0.0 when σ is sampled."""
+    return float(getattr(priors, f"theta_sigma_d_{term}_fixed", 0.0))
 
 
 def flag_defaults():
@@ -342,19 +358,27 @@ def _sample_free_shifts(name, priors, terms, num_mut, guide):
         return {}
     if num_mut == 0:
         return {t: jnp.zeros((0,)) for t in terms}
-    scales = jnp.array([getattr(priors, f"theta_sigma_d_{t}_scale")
-                        for t in terms])
+    held = [held_sigma_d(priors, t) for t in terms]
+    free = [i for i, h in enumerate(held) if not h > 0]
     if guide:
-        s_loc = pyro.param(f"{name}_sigma_d_locs", jnp.full(K, -1.0))
-        s_scale = pyro.param(f"{name}_sigma_d_scales", jnp.full(K, 0.1),
-                             constraint=constraints.positive)
+        if free:
+            s_loc = pyro.param(f"{name}_sigma_d_locs",
+                               jnp.full(len(free), -1.0))
+            s_scale = pyro.param(f"{name}_sigma_d_scales",
+                                 jnp.full(len(free), 0.1),
+                                 constraint=constraints.positive)
         o_loc = pyro.param(f"{name}_d_offset_locs", jnp.zeros((K, num_mut)))
         o_scale = pyro.param(f"{name}_d_offset_scales", jnp.ones((K, num_mut)),
                              constraint=constraints.positive)
-    with pyro.plate(f"{name}_sigma_d_plate", K, dim=-1):
-        sigma = pyro.sample(f"{name}_sigma_d",
-                            dist.LogNormal(s_loc, s_scale) if guide
-                            else dist.HalfNormal(scales))
+    sigma = jnp.asarray(held, dtype=jnp.float32)
+    if free:
+        scales = jnp.array([getattr(priors, f"theta_sigma_d_{terms[i]}_scale")
+                            for i in free])
+        with pyro.plate(f"{name}_sigma_d_plate", len(free), dim=-1):
+            s_free = pyro.sample(f"{name}_sigma_d",
+                                 dist.LogNormal(s_loc, s_scale) if guide
+                                 else dist.HalfNormal(scales))
+        sigma = sigma.at[jnp.array(free)].set(s_free)
     with pyro.plate(f"{name}_d_term_plate", K, dim=-2):
         with pyro.plate(f"{name}_mutation_plate", num_mut, dim=-1):
             offset = pyro.sample(f"{name}_d_offset",
