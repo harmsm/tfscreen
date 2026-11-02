@@ -9,6 +9,7 @@ Physics: ``species.py``; sites and variant flags: ``model.py``.
 """
 
 from tfscreen.tfmodel.generative.components.theta.thermo.dimer import species as sp
+from tfscreen.tfmodel.generative.components.theta.thermo.dimer import model as dm
 from tfscreen.tfmodel.generative.components.theta.thermo.dimer.model import (  # noqa: F401
     ThetaParam,
     build_calc_df,
@@ -27,6 +28,9 @@ from tfscreen.tfmodel.generative.components.theta.thermo.dimer.model import (  #
 )
 
 
+# Reads the operator and TF-level axes (tfmodel/contexts.py).
+SUPPORTS_CONTEXTS = True
+
 def get_hyperparameters():
     p = common_hyperparameters()
     p.update(sigma_hyperparameters(sp.ALL_TERMS))
@@ -34,13 +38,21 @@ def get_hyperparameters():
     return p
 
 
-_STATIC = {**flag_defaults(), **sigma_fixed_defaults(sp.ALL_TERMS)}
+_STATIC = {**flag_defaults(), **sigma_fixed_defaults(sp.ALL_TERMS),
+           **dm.context_static_defaults()}
 ModelPriors = make_priors_class(
     __name__, [k for k in get_hyperparameters() if k not in _STATIC], _STATIC)
 
 
-def get_priors():
-    return ModelPriors(**get_hyperparameters())
+def get_priors(data=None, contexts=None):
+    """
+    The component's priors; with ``data``, the operator and TF-level prior
+    arrays for its labels (``model.context_hyperparameters``), from
+    ``contexts`` (a read contexts file) when given.
+    """
+    p = get_hyperparameters()
+    p.update(dm.context_hyperparameters(data, contexts, p["theta_tf_total_M"]))
+    return ModelPriors(**p)
 
 
 def define_model(name, data, priors):

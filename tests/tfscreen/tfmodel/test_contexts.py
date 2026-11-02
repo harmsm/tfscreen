@@ -325,7 +325,7 @@ def test_thermo_model_without_context_axis_refuses_contexts():
     growth = _two_operators(pd.read_csv(_GROWTH_CSV))
     with pytest.raises(ValueError, match="no operator or TF-level axis"):
         ModelOrchestrator(growth_df=growth, binding_df=None, batch_size=6,
-                          theta="thermo.dimer.PK")
+                          theta="thermo.O2_C12_K5_U1_a.PK")
 
 
 def test_configure_contexts_file_check(capsys):

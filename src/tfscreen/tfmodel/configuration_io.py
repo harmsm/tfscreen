@@ -213,6 +213,12 @@ def _update_dataclass(dc, prefix, flat_dict, check_unknown=True):
                 # overwrite the correctly-typed tuple with that string — keep
                 # the freshly-built value.
                 continue
+            elif isinstance(attr_val, str) and full_key in flat_dict:
+                # A text field (thermo.dimer's theta_operator_reference);
+                # an empty one reads back from the CSV as NaN.
+                v = flat_dict[full_key]
+                updates[field_name] = ("" if isinstance(v, float)
+                                       and np.isnan(v) else str(v))
             elif isinstance(attr_val, bool) and full_key in flat_dict:
                 # Flags such as condition_growth.m_pinned: a bool, or a tuple
                 # of per-condition flags (see _static_flag).
@@ -264,6 +270,49 @@ def _extract_prior_arrays(obj, prefix=""):
             if arr.ndim >= 1 and arr.size > 0 and arr.dtype.kind == "f":
                 out[f"{prefix}{k}"] = arr
     return out
+
+
+# Context prior arrays (thermo.dimer, tfmodel/contexts.py) and the label
+# column that names each row.
+CONTEXT_LABEL_COLUMNS = {
+    "theta_operator_shift_loc": "operator",
+    "theta_operator_shift_scale": "operator",
+    "theta_tf_level_ln_conc_loc": "tf_level",
+    "theta_tf_level_ln_conc_scale": "tf_level",
+}
+
+
+def _context_label_names(orchestrator):
+    """The orchestrator's operator and TF-level labels, by label column."""
+    from tfscreen.tfmodel.contexts import named_labels
+    conditions = getattr(orchestrator, "theta_conditions", None)
+    if conditions is None:
+        return {"operator": (), "tf_level": ()}
+    return {"operator": named_labels(conditions.operator_names),
+            "tf_level": named_labels(conditions.tf_level_names)}
+
+
+def _assemble_label_array(param, grp, column, names):
+    """
+    One operator- or TF-level-indexed prior array from its CSV rows, joined
+    to the model's labels by name; an unknown or missing label is an error.
+    """
+    names = list(names)
+    values = {}
+    for _, r in grp.iterrows():
+        label = str(r[column])
+        if label not in names:
+            raise ValueError(
+                f"Prior '{param}' has a row for {column} {label!r}, which is "
+                f"not one of the data's {names}. Regenerate the priors file "
+                f"with tfs-configure-model.")
+        values[label] = float(r["value"])
+    missing = [n for n in names if n not in values]
+    if missing:
+        raise ValueError(f"Prior '{param}' has no row for {column} "
+                         f"{missing}. Regenerate the priors file with "
+                         f"tfs-configure-model.")
+    return jnp.asarray([values[n] for n in names], dtype=float)
 
 
 def _assemble_condition_array(param, grp, cond_rep_map):
@@ -328,7 +377,7 @@ def _assemble_condition_array(param, grp, cond_rep_map):
     return jnp.asarray(arr)
 
 
-def _read_priors_flat(priors_df, cond_rep_map):
+def _read_priors_flat(priors_df, cond_rep_map, label_names=None):
     """
     Build the flat prior dict from a priors CSV.
 
@@ -353,7 +402,16 @@ def _read_priors_flat(priors_df, cond_rep_map):
             for _, row in priors_df[scalar_mask].iterrows()}
 
     indexed = priors_df[~scalar_mask]
+    label_names = label_names or {}
     for param, grp in indexed.groupby("parameter", observed=True):
+        column = CONTEXT_LABEL_COLUMNS.get(str(param).split(".")[-1])
+        if column is not None:
+            if column not in grp.columns:
+                raise ValueError(f"Prior '{param}' rows need a '{column}' "
+                                 f"column in the priors CSV.")
+            flat[param] = _assemble_label_array(
+                param, grp, column, label_names.get(column, ()))
+            continue
         flat[param] = _assemble_condition_array(param, grp, cond_rep_map)
 
     return flat
@@ -522,7 +580,19 @@ def write_configuration(orchestrator,
     # to the growth linking-function components so other components' internal
     # arrays are untouched.  On a fresh configure these fields are still scalar,
     # so nothing is emitted here and the priors CSV stays 2-column (legacy).
+    context_names = _context_label_names(orchestrator)
     for dotted_key, arr in _extract_prior_arrays(orchestrator.priors).items():
+        column = CONTEXT_LABEL_COLUMNS.get(dotted_key.split(".")[-1])
+        if column is not None:
+            flat_val = np.asarray(arr).flatten()
+            labels = context_names[column]
+            if len(labels) != len(flat_val):
+                raise ValueError(f"Prior '{dotted_key}' has {len(flat_val)} "
+                                 f"values for {column}s {list(labels)}.")
+            priors_list.append(pd.DataFrame({
+                "parameter": dotted_key, "value": flat_val,
+                "flat_index": range(len(flat_val)), column: list(labels)}))
+            continue
         if ("condition_growth" not in dotted_key
                 and "growth_transition" not in dotted_key):
             continue
@@ -626,7 +696,8 @@ def read_configuration(config_file):
     cond_rep_map = None
     if orchestrator.growth_tm is not None:
         cond_rep_map = orchestrator.growth_tm.map_groups.get("condition_rep")
-    flat_priors = _read_priors_flat(priors_df, cond_rep_map)
+    flat_priors = _read_priors_flat(priors_df, cond_rep_map,
+                                    _context_label_names(orchestrator))
 
     new_priors = _update_dataclass(orchestrator.priors, "", flat_priors)
     orchestrator._priors = new_priors

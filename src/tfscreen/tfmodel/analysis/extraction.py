@@ -24,6 +24,9 @@ class ExtractionContext:
     binding_genotypes: Any = None
     # The condition_growth component's priors (static flags such as m_warp).
     condition_growth_priors: Any = None
+    # The θ conditions (tfmodel/contexts.py): effector, operator and TF-level
+    # names for components indexed by them.
+    theta_conditions: Any = None
 
 
 def _binding_genotypes(orchestrator):
@@ -182,6 +185,7 @@ def extract_parameters(orchestrator, posteriors, q_to_get=None):
         condition_growth_priors=getattr(getattr(getattr(orchestrator, "priors", None),
                                                 "growth", None),
                                         "condition_growth", None),
+        theta_conditions=getattr(orchestrator, "theta_conditions", None),
     )
 
     component_selections = [

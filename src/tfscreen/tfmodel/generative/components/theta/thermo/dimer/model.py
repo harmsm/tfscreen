@@ -49,6 +49,33 @@ titrants: a regularized horseshoe, ``{name}_epi_tau``, ``{name}_epi_c2``,
 scale's prior HalfCauchy(exp(−d/d0)), d the pair's closest contact over
 the structures when the data carry contact distances (PnnC), else 1.
 
+Operators and TF levels (``tfmodel/contexts.py``)
+-------------------------------------------------
+The data's θ conditions are (titrant, operator, TF level); the effector
+terms are indexed by effector (``data.theta_effector_names``), not by θ
+condition, and ``run_model`` maps each condition to its effector, its
+operator and its total TF. Mutation effects are shared across operators
+and TF levels.
+
+Each operator other than the reference (``theta_operator_reference``) has
+a shift, ``{name}_operator_shift`` = loc + scale · ``{name}_operator_shift_z``
+(kT), added to ln_K_h_o and ln_K_l_o, so it moves the effective operator
+constant of both conformations by the same ΔΔG (one literature or measured
+number per operator); a scale of 0 holds it at loc. It also has a deviation
+on every active operator term (:data:`OPERATOR_DEV_TERMS`),
+``{name}_operator_dev`` = ``theta_operator_dev_scale`` ·
+``{name}_operator_dev_z``. Each named TF level has
+``{name}_ln_tf_total`` = loc + scale · ``{name}_tf_level_z`` (ln M
+protomer). Binding measurements use their known protein concentration
+(``data.theta_tf_total_M``); a condition with neither uses
+``theta_tf_total_M``. The loc/scale arrays (``theta_operator_shift_loc``,
+``theta_operator_shift_scale``, ``theta_tf_level_ln_conc_loc``,
+``theta_tf_level_ln_conc_scale``) are indexed by the data's operator and TF
+level names, come from the contexts file (``tfs-configure-model
+--contexts``) and are written to the priors CSV as rows tagged with
+``operator`` or ``tf_level``. Without operator or TF-level labels they are
+empty and nothing changes.
+
 Deterministic sites, the names extraction and the simulator's truth
 tables use: ``{name}_d_{term}`` ((M,), or (T, M) for effector terms),
 ``{name}_epi_{term}`` (P,), ``{name}_{term}`` per genotype ((G,) or
@@ -74,6 +101,7 @@ from tfscreen.tfmodel.generative.components._horseshoe import (
     HalfCauchy,
     regularized_scale,
 )
+from tfscreen.tfmodel.contexts import named_labels
 from tfscreen.tfmodel.generative.components.theta.thermo import mwc
 from tfscreen.tfmodel.generative.components.theta.thermo.dimer import species as sp
 
@@ -124,6 +152,18 @@ STRUCT_TERMS = ("ln_K_h_l", "ln_K_h_o", "ln_K_h_e", "ln_K_l_o", "ln_K_l_e",
                 "ln_K_u")
 
 
+# An operator's shift moves the effective operator constant of each
+# conformation through its first engagement; every active operator term
+# also takes a per-operator deviation.
+OPERATOR_SHIFT_TERMS = ("ln_K_h_o", "ln_K_l_o")
+OPERATOR_DEV_TERMS = ("ln_K_h_o", "ln_K_l_o", "ln_K_h_oii", "ln_K_l_oii",
+                      "ln_K_m_h_o", "ln_K_m_l_o")
+
+# Priors for an operator or TF level the contexts file does not give (kT,
+# ln units): used only when the model is built without one.
+DEFAULT_OPERATOR_SHIFT_SD = 2.0
+DEFAULT_TF_LEVEL_LN_SD = 1.0
+
 def wt_site(term):
     """The wt sample-site suffix of a term (effective for the operator)."""
     return f"{term}_eff" if term in _OPERATOR_TERMS else term
@@ -153,11 +193,86 @@ def common_hyperparameters():
     p["theta_tf_total_M"] = DEFAULT_TF_TOTAL_M     # M, protomer units
     p["theta_conc_unit_scale"] = DEFAULT_CONC_UNIT_SCALE   # mM -> M
     p["theta_d_dev_scale"] = 0.5     # per-titrant deviation of effector effects
+    p["theta_operator_dev_scale"] = 0.5   # per-operator deviation, kT
     p["theta_epi_tau_scale"] = 0.1
     p["theta_epi_slab_scale"] = 2.0
     p["theta_epi_slab_df"] = 4.0
     p["theta_epi_d0"] = 8.0          # Å
+    # Operator and TF-level prior arrays; empty until get_priors sees data
+    # with labels (context_hyperparameters).
+    for f in CONTEXT_ARRAY_FIELDS:
+        p[f] = jnp.zeros(0)
     return p
+
+
+def context_hyperparameters(data=None, contexts=None,
+                            tf_total_M=DEFAULT_TF_TOTAL_M):
+    """
+    The operator and TF-level prior arrays for the data's labels.
+
+    Parameters
+    ----------
+    data : GrowthData or BindingData, optional
+        Carries ``theta_operator_names`` and ``theta_tf_level_names``. None
+        (or data without labels): empty arrays, no operator or TF axis.
+    contexts : dict, optional
+        From ``tfmodel.contexts.read_contexts``. Without one, the first
+        operator is the reference, every other gets Normal(0,
+        :data:`DEFAULT_OPERATOR_SHIFT_SD`), and the TF levels sit at
+        ``tf_total_M`` (held for a single level, ln SD
+        :data:`DEFAULT_TF_LEVEL_LN_SD` otherwise).
+
+    Returns
+    -------
+    dict
+        The four float arrays and the static ``theta_operator_reference``.
+    """
+    ops = named_labels(getattr(data, "theta_operator_names", None))
+    levels = named_labels(getattr(data, "theta_tf_level_names", None))
+    given_ops = (contexts or {}).get("operators") or {}
+    given_tf = (contexts or {}).get("tf_levels") or {}
+
+    reference = ""
+    shift_loc, shift_scale = [], []
+    if ops:
+        refs = [o for o in ops if given_ops.get(o, {}).get("reference")]
+        reference = refs[0] if refs else ops[0]
+        for o in ops:
+            if o == reference:
+                shift_loc.append(0.0)
+                shift_scale.append(0.0)
+            elif o in given_ops:
+                shift_loc.append(float(given_ops[o]["shift_kT"]))
+                shift_scale.append(float(given_ops[o]["shift_sd_kT"]))
+            else:
+                shift_loc.append(0.0)
+                shift_scale.append(DEFAULT_OPERATOR_SHIFT_SD)
+
+    tf_loc, tf_scale = [], []
+    for lvl in levels:
+        if lvl in given_tf:
+            tf_loc.append(math.log(given_tf[lvl]["conc_M"]))
+            tf_scale.append(float(given_tf[lvl]["ln_sd"]))
+        else:
+            tf_loc.append(math.log(tf_total_M))
+            tf_scale.append(0.0 if len(levels) == 1 else DEFAULT_TF_LEVEL_LN_SD)
+
+    return {"theta_operator_shift_loc": jnp.asarray(shift_loc, dtype=float),
+            "theta_operator_shift_scale": jnp.asarray(shift_scale, dtype=float),
+            "theta_tf_level_ln_conc_loc": jnp.asarray(tf_loc, dtype=float),
+            "theta_tf_level_ln_conc_scale": jnp.asarray(tf_scale, dtype=float),
+            "theta_operator_reference": reference}
+
+
+CONTEXT_ARRAY_FIELDS = ("theta_operator_shift_loc",
+                        "theta_operator_shift_scale",
+                        "theta_tf_level_ln_conc_loc",
+                        "theta_tf_level_ln_conc_scale")
+
+
+def context_static_defaults():
+    """The static field naming the reference operator."""
+    return {"theta_operator_reference": ""}
 
 
 def sigma_hyperparameters(terms):
@@ -238,6 +353,11 @@ class ThetaParam:
     ln_K_h_o_eff: jnp.ndarray = None
     ln_K_l_o_eff: jnp.ndarray = None
     tf_total: float = DEFAULT_TF_TOTAL_M    # M, protomer units
+    # Operator offsets (O, K) on the terms ``operator_terms`` and ln total
+    # TF per named level (L,); None without operator or TF-level labels.
+    operator_offset: jnp.ndarray = None
+    ln_tf_total: jnp.ndarray = None
+    operator_terms: tuple = field(pytree_node=False, default=())
     conc_unit_scale: float = field(pytree_node=False,
                                    default=DEFAULT_CONC_UNIT_SCALE)
     variant: sp.Variant = field(pytree_node=False, default=sp.Variant())
@@ -253,11 +373,11 @@ def _broadcast_terms(terms, variant, genotype_idx=None):
     effector terms (T, 1, G); optionally indexed to ``genotype_idx``.
     """
     out = {}
-    tt = set(sp.titrant_terms(variant))
     for t, v in terms.items():
         if genotype_idx is not None:
             v = v[..., genotype_idx]
-        out[t] = v[:, None, :] if t in tt else v[None, None, :]
+        # effector terms, and operator terms with offsets, are (T, G)
+        out[t] = v[:, None, :] if v.ndim == 2 else v[None, None, :]
     return out
 
 
@@ -278,13 +398,59 @@ def run_model(theta_param, data):
     ``data.scatter_theta`` is 1.
     """
     geno_idx = data.batch_idx[data.geno_theta_idx]
-    theta_calc = compute_theta(theta_param.terms(),
+    terms, tf_total = condition_terms(theta_param, data)
+    theta_calc = compute_theta(terms,
                                data.titrant_conc * theta_param.conc_unit_scale,
-                               theta_param.tf_total, theta_param.variant,
+                               tf_total, theta_param.variant,
                                genotype_idx=geno_idx)
     if data.scatter_theta == 1:
         theta_calc = theta_calc[None, None, None, None, :, :, :]
     return theta_calc
+
+
+def condition_terms(theta_param, data):
+    """
+    The terms and total TF at each θ condition of ``data``.
+
+    Effector terms (E, G) are taken at each condition's effector; with
+    operator offsets, each operator term becomes (T, G) with its
+    condition's offset added; total TF is a scalar, or (T, 1, 1) when the
+    data carry operator or TF-level labels. Data without the θ-condition
+    fields (a simulation's SimData) are read as one condition per titrant.
+    """
+    terms = dict(theta_param.terms())
+    tt = set(sp.titrant_terms(theta_param.variant))
+    eff = getattr(data, "theta_effector_idx", None)
+    if eff is not None:
+        idx = np.asarray(eff, dtype=int)
+        for t in tt:
+            terms[t] = terms[t][idx]
+    tf_total = theta_param.tf_total
+    if getattr(data, "theta_operator_idx", None) is None:
+        return terms, tf_total
+
+    if theta_param.operator_offset is not None and \
+            theta_param.operator_offset.shape[0] > 0:
+        op_idx = np.asarray(data.theta_operator_idx, dtype=int)
+        off = theta_param.operator_offset[op_idx]            # (T, K)
+        for k, t in enumerate(theta_param.operator_terms):
+            terms[t] = terms[t][None, :] + off[:, k][:, None]
+
+    lvl = np.asarray(data.theta_tf_level_idx, dtype=int)
+    known = np.asarray(data.theta_tf_total_M, dtype=float)
+    has_levels = (theta_param.ln_tf_total is not None
+                  and theta_param.ln_tf_total.shape[0] > 0
+                  and (lvl >= 0).any())
+    if not has_levels and not np.isfinite(known).any():
+        return terms, tf_total
+    tf = jnp.full((len(lvl),), tf_total)
+    if has_levels:
+        level_tf = jnp.exp(theta_param.ln_tf_total)[np.maximum(lvl, 0)]
+        tf = jnp.where(jnp.asarray(lvl >= 0), level_tf, tf)
+    if np.isfinite(known).any():
+        tf = jnp.where(jnp.asarray(np.isfinite(known)),
+                       jnp.asarray(np.nan_to_num(known, nan=1.0)), tf)
+    return terms, tf[:, None, None]
 
 
 def get_population_moments(theta_param, data):
@@ -408,6 +574,79 @@ def _sample_deviations(name, priors, terms, T, num_mut, guide):
     return {t: dev[i] for i, t in enumerate(terms)}
 
 
+def _sample_contexts(name, priors, variant, operator_names, guide):
+    """
+    Operator offsets (O, K) and ln total TF per level (L,), or None.
+
+    Non-centered, so a prior scale of 0 holds the value at its loc without
+    a change in the model's structure.
+    """
+    dev_terms = tuple(t for t in OPERATOR_DEV_TERMS
+                      if t in sp.active_terms(variant))
+    shift_loc = jnp.asarray(getattr(priors, "theta_operator_shift_loc",
+                                    jnp.zeros(0)))
+    O = int(shift_loc.shape[0])
+    offset = None
+    if O > 0:
+        names = tuple(operator_names or ())
+        ref = str(getattr(priors, "theta_operator_reference", ""))
+        if len(names) != O:
+            raise ValueError(
+                f"The theta priors give {O} operator(s) but the data have "
+                f"{list(names)}. Regenerate the priors with "
+                f"tfs-configure-model.")
+        if ref not in names:
+            raise ValueError(f"theta_operator_reference {ref!r} is not one of "
+                             f"the data's operators {list(names)}.")
+        free = np.array([i for i, n in enumerate(names) if n != ref], int)
+        K = len(dev_terms)
+        shift = jnp.zeros(O)
+        dev = jnp.zeros((O, K))
+        if free.size:
+            with pyro.plate(f"{name}_operator_plate", free.size, dim=-1):
+                z = (pyro.sample(f"{name}_operator_shift_z",
+                                 dist.Normal(*_normal(
+                                     f"{name}_operator_shift_z", 0.0, None,
+                                     True, (free.size,), False)))
+                     if guide else
+                     pyro.sample(f"{name}_operator_shift_z",
+                                 dist.Normal(0.0, 1.0)))
+            scale = jnp.asarray(priors.theta_operator_shift_scale)
+            shift = shift.at[free].set(shift_loc[free] + scale[free] * z)
+            if K:
+                if guide:
+                    q = _normal(f"{name}_operator_dev_z", 0.0, None, True,
+                                (K, free.size), True)
+                with pyro.plate(f"{name}_operator_dev_term_plate", K, dim=-2):
+                    with pyro.plate(f"{name}_operator_plate", free.size,
+                                    dim=-1):
+                        zd = pyro.sample(f"{name}_operator_dev_z",
+                                         dist.Normal(*q) if guide
+                                         else dist.Normal(0.0, 1.0))
+                dev = dev.at[free].set(priors.theta_operator_dev_scale * zd.T)
+        is_shift = jnp.asarray([t in OPERATOR_SHIFT_TERMS for t in dev_terms],
+                               dtype=float)
+        offset = shift[:, None] * is_shift[None, :] + dev
+        if not guide:
+            pyro.deterministic(f"{name}_operator_shift", shift)
+            pyro.deterministic(f"{name}_operator_dev", dev)
+
+    tf_loc = jnp.asarray(getattr(priors, "theta_tf_level_ln_conc_loc",
+                                 jnp.zeros(0)))
+    L = int(tf_loc.shape[0])
+    ln_tf = None
+    if L > 0:
+        with pyro.plate(f"{name}_tf_level_plate", L, dim=-1):
+            z = (pyro.sample(f"{name}_tf_level_z", dist.Normal(*_normal(
+                     f"{name}_tf_level_z", 0.0, None, True, (L,), True)))
+                 if guide else
+                 pyro.sample(f"{name}_tf_level_z", dist.Normal(0.0, 1.0)))
+        ln_tf = tf_loc + jnp.asarray(priors.theta_tf_level_ln_conc_scale) * z
+        if not guide:
+            pyro.deterministic(f"{name}_ln_tf_total", ln_tf)
+    return offset, ln_tf, (dev_terms if offset is not None else ())
+
+
 def _sample_pair_shifts(name, priors, terms, num_pair, distances, guide):
     """Horseshoe pair shifts on every term: dict term → (P,)."""
     K = len(terms)
@@ -478,7 +717,7 @@ def define(name, data, priors, guide=False, structural=None,
     ThetaParam
     """
     variant = variant_from_priors(priors)
-    T = data.num_titrant_name
+    T = num_effectors(data)
     M = data.num_mutation
     has_pairs = data.num_pair > 0
     gterms = sp.genotype_terms(variant)
@@ -538,9 +777,21 @@ def define(name, data, priors, guide=False, structural=None,
         for k, v in eff.items():
             pyro.deterministic(f"{name}_{k}", v)
 
+    operator_offset, ln_tf, op_terms = _sample_contexts(
+        name, priors, variant, getattr(data, "theta_operator_names", None),
+        guide)
+
     return ThetaParam(**values, **eff, tf_total=priors.theta_tf_total_M,
+                      operator_offset=operator_offset, ln_tf_total=ln_tf,
+                      operator_terms=op_terms,
                       conc_unit_scale=priors.theta_conc_unit_scale,
                       variant=variant)
+
+
+def num_effectors(data):
+    """Effectors the effector terms are indexed by (titrants without names)."""
+    names = getattr(data, "theta_effector_names", None)
+    return len(names) if names is not None else data.num_titrant_name
 
 
 def wt_guesses(name, data):
@@ -551,7 +802,7 @@ def wt_guesses(name, data):
     is known), and a guess for a site the model lacks would not be used;
     the variant-specific sites start at their prior medians instead.
     """
-    T = data.num_titrant_name
+    T = num_effectors(data)
     g = {}
     for t in ("ln_K_h_l", "ln_K_h_o", "ln_K_l_o"):
         g[f"{name}_{wt_site(t)}_wt"] = jnp.array(WT_PRIORS[wt_site(t)][0])
@@ -582,14 +833,49 @@ def get_extract_specs(ctx, extra=()):
                   map_column="map_geno", get_columns=["genotype"],
                   in_run_prefix="theta_")]
 
-    te_df = (tm.df[["genotype", "titrant_name", "genotype_idx",
-                    "titrant_name_idx"]].drop_duplicates().copy())
-    te_df["map_theta_KE"] = te_df["titrant_name_idx"] * num_genotype \
+    # Effector terms are (E, G), indexed by effector, not by θ condition.
+    conditions = getattr(ctx, "theta_conditions", None)
+    effector_names = (list(conditions.effector_names) if conditions is not None
+                      else titrant_names)
+    te_df = pd.concat([geno_df[["genotype", "genotype_idx"]]
+                       .assign(titrant_name=en, effector_idx=e)
+                       for e, en in enumerate(effector_names)],
+                      ignore_index=True)
+    te_df["map_theta_KE"] = te_df["effector_idx"] * num_genotype \
         + te_df["genotype_idx"]
     specs.append(dict(input_df=te_df, params_to_get=tterms,
                       map_column="map_theta_KE",
                       get_columns=["genotype", "titrant_name"],
                       in_run_prefix="theta_"))
+
+    priors = getattr(ctx, "theta_priors", None)
+    ops = (named_labels(conditions.operator_names)
+           if conditions is not None else ())
+    if ops and np.asarray(getattr(priors, "theta_operator_shift_loc",
+                                  ())).size == len(ops):
+        specs.append(dict(input_df=pd.DataFrame({"operator": ops,
+                                                 "map_op": range(len(ops))}),
+                          params_to_get=["operator_shift"],
+                          map_column="map_op", get_columns=["operator"],
+                          in_run_prefix="theta_"))
+        dev_terms = [t for t in OPERATOR_DEV_TERMS
+                     if t in sp.active_terms(variant)]
+        rows = [{"operator": o, "term": t, "map_op_dev": i * len(dev_terms) + k}
+                for i, o in enumerate(ops) for k, t in enumerate(dev_terms)]
+        specs.append(dict(input_df=pd.DataFrame(rows),
+                          params_to_get=["operator_dev"],
+                          map_column="map_op_dev",
+                          get_columns=["operator", "term"],
+                          in_run_prefix="theta_"))
+    levels = (named_labels(conditions.tf_level_names)
+              if conditions is not None else ())
+    if levels and np.asarray(getattr(priors, "theta_tf_level_ln_conc_loc",
+                                     ())).size == len(levels):
+        specs.append(dict(input_df=pd.DataFrame({"tf_level": levels,
+                                                 "map_tf": range(len(levels))}),
+                          params_to_get=["ln_tf_total"],
+                          map_column="map_tf", get_columns=["tf_level"],
+                          in_run_prefix="theta_"))
 
     if num_mut > 0:
         mut_df = pd.DataFrame({"mutation": mut_labels, "map_mut": range(num_mut)})
@@ -599,7 +885,7 @@ def get_extract_specs(ctx, extra=()):
                           in_run_prefix="theta_"))
         rows = [{"titrant_name": tn, "mutation": m,
                  "map_theta_d_KE": ti * num_mut + mi}
-                for ti, tn in enumerate(titrant_names)
+                for ti, tn in enumerate(effector_names)
                 for mi, m in enumerate(mut_labels)]
         specs.append(dict(input_df=pd.DataFrame(rows),
                           params_to_get=[f"d_{t}" for t in tterms],
@@ -620,6 +906,12 @@ def get_extract_specs(ctx, extra=()):
 
 def build_calc_df(model, manual_titrant_df):
     """Concentration grid for θ extraction (as the O2 models)."""
+    conditions = getattr(model, "theta_conditions", None)
+    if conditions is not None and conditions.composite:
+        raise NotImplementedError(
+            "θ prediction for data with operators or TF levels is not yet "
+            "supported (planning/dimer-thermo-model.md, step 3c); the "
+            "parameters are extracted with tfs-extract-params.")
     from tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U1_a.thermo import (
         build_calc_df as _o2_build_calc_df,
     )

@@ -286,7 +286,11 @@ def test_priors_pickle_and_csv_round_trip(key):
     module = MODULES[key]
     priors = _priors(module, theta_monomers=True)
     again = pickle.loads(pickle.dumps(priors))
-    assert again == priors
+    import jax
+    a, ta = jax.tree_util.tree_flatten(again)
+    b, tb = jax.tree_util.tree_flatten(priors)
+    assert ta == tb
+    assert all(np.array_equal(np.asarray(x), np.asarray(y)) for x, y in zip(a, b))
     assert dm.variant_from_priors(again).monomers
 
     flat = configuration_io._extract_scalars(module.get_priors())

@@ -3,6 +3,7 @@ import tfscreen
 from tfscreen.util.dataframe import add_group_columns
 from tfscreen.genetics import read_library_composition
 from tfscreen.tfmodel import contexts
+from tfscreen.tfmodel.contexts import read_contexts as contexts_module_read
 from tfscreen.tfmodel.tensors.tensor_manager import TensorManager
 from tfscreen.tfmodel.tensors.populate_dataclass import populate_dataclass
 
@@ -1223,7 +1224,14 @@ class ModelOrchestrator:
                  growth_likelihood="lncfu",
                  theta_gauge_conc=None,
                  mut_labels=None,
-                 pair_labels=None):
+                 pair_labels=None,
+                 contexts=None):
+
+        # Operator and TF-level priors (a contexts file or its read dict;
+        # tfmodel/contexts.py). Not a setting: tfs-configure-model hands it
+        # in and the values go to the priors CSV, which is what a fit reads.
+        self._contexts = (None if contexts is None
+                          else contexts_module_read(contexts))
 
         # Fixed mutation/pair index space (not a setting: never written to a
         # configuration). copy_orchestrator passes the fitted model's labels
@@ -2118,6 +2126,8 @@ class ModelOrchestrator:
                     component_module.get_priors(condition_labels=condition_labels)
             elif "data" in priors_sig.parameters:
                 prior_kwargs = {"data": component_data}
+                if "contexts" in priors_sig.parameters:
+                    prior_kwargs["contexts"] = self._contexts
                 if "presplit" in priors_sig.parameters:
                     prior_kwargs["presplit"] = self._data.presplit
                 priors_class_kwargs[prior_group][key] = \

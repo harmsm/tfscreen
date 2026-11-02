@@ -113,10 +113,13 @@ tf_levels:                 # total TF per cell, µM protomer
   high: {conc_uM: 30, ln_sd: 0.5}
 ```
 
-An operator's `shift` moves every operator-engagement term (first and
-second engagement, H and L) by the same ΔΔG, which is what one literature
-number per operator describes. Each term also gets a per-operator deviation
-about that shift, N(0, 0.5 kT), as the per-titrant effector deviations do.
+An operator's `shift` moves the effective operator constant of H and L by
+the same ΔΔG, which is what one literature number per operator describes;
+it is added to the first engagement (`ln_K_h_o`, `ln_K_l_o`), so the
+effective constant K_o (1 + K_oii) moves by exactly the shift. Every
+operator term (first and second engagement, monomer half-sites) also gets
+a per-operator deviation, N(0, 0.5 kT), as the per-titrant effector
+deviations do.
 Mutation effects are shared across operators and TF levels. Labels in the
 tube table that the file does not name are an error; a file is required
 once there is more than one label of either kind.
@@ -151,7 +154,14 @@ models refuse more than one operator or TF level.
   titrants were indexed against the wrong titrant; fixed by aligning the
   binding axis with the growth titrants.
 - 3b. thermo.dimer: per-operator shift and deviations, per-level total TF,
-  binding at its known `tf_total_uM`.
+  binding at its known `tf_total_uM`. Done 2026-11-02: effector terms are
+  indexed by effector, not θ condition (`model.condition_terms`); shifts,
+  deviations and TF levels are non-centered (loc + scale · z), so a scale
+  of 0 holds a value without changing the sites; the contexts file's
+  values reach the priors CSV as `operator`/`tf_level`-tagged rows, joined
+  by label on read. θ prediction (`build_calc_df`,
+  `compute_theta_samples`, `predict_unmeasured`) still indexes by θ
+  condition, so it refuses data with contexts until 3c.
 - 3c. Outputs: `tfs-predict-theta`, extraction, `tfs-summarize-fit` and
   `tfs-compare-runs` carry the `operator` and `tf_level` columns; new
   `operator_shift` and `tf_total` tables.

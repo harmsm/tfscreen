@@ -98,6 +98,12 @@ def _binding_tf(df):
     return conc.astype(float)
 
 
+def named_labels(names):
+    """An axis's labels, or () when it has only the default one."""
+    names = tuple(names) if names is not None else ()
+    return () if names in ((), (DEFAULT_LABEL,)) else names
+
+
 def _conc_label(conc_uM):
     return f"{float(conc_uM):.6g}uM"
 
@@ -386,14 +392,16 @@ def read_contexts(contexts):
     Parameters
     ----------
     contexts : str or dict
-        Path to the YAML file, or its parsed contents.
+        Path to the YAML file, or its parsed contents. A dict this function
+        returned is passed through.
 
     Returns
     -------
     dict
         ``{"operators": {label: {"reference": bool, "shift_kT": float,
         "shift_sd_kT": float}}, "tf_levels": {label: {"conc_M": float,
-        "ln_sd": float}}, "units": str, "temperature_K": float}``. Operator
+        "ln_sd": float}}, "units": str, "temperature_K": float,
+        "normalized": True}``. Operator
         shifts are converted to kT once, here; the reference operator's
         shift is 0 with SD 0.
 
@@ -407,6 +415,8 @@ def read_contexts(contexts):
         ddG_to_kT_factor,
     )
 
+    if isinstance(contexts, dict) and contexts.get("normalized"):
+        return contexts
     cf = read_yaml(contexts) if not isinstance(contexts, dict) else contexts
     if cf is None:
         cf = {}
@@ -484,7 +494,8 @@ def read_contexts(contexts):
                              nonnegative=True)}
 
     return {"units": units, "temperature_K": temperature_K,
-            "operators": operators, "tf_levels": tf_levels}
+            "operators": operators, "tf_levels": tf_levels,
+            "normalized": True}
 
 
 def check_contexts(contexts, conditions):

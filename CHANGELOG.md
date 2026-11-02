@@ -71,6 +71,23 @@ fall into two kinds:
   operator offsets and TF-level concentrations against the data's labels.
   `tfs-correct-tubes` treats the two columns as design columns and
   `tfs-check-tubes` as panel keys.
+- **`thermo.dimer` reads the operator and TF-level axis** (step 3b).
+  Effector terms are indexed by effector rather than θ condition
+  (`model.condition_terms` maps each condition to its effector, operator
+  offset and total TF). Each non-reference operator has a shift on the
+  first-engagement constants (`theta_operator_shift`, so the effective
+  operator constant moves by exactly the contexts file's ΔΔG) and a
+  deviation on every operator term (`theta_operator_dev`,
+  `theta_operator_dev_scale` 0.5 kT); each named TF level has
+  `theta_ln_tf_total`; binding measurements use their `tf_total_uM`. All
+  are non-centered (loc + scale · z), so a scale of 0 holds a value. The
+  contexts file's values go to the priors CSV as rows tagged with
+  `operator` or `tf_level` (`theta_operator_shift_loc`/`_scale`,
+  `theta_tf_level_ln_conc_loc`/`_scale`, the text row
+  `theta_operator_reference`), joined to the data's labels by name on read;
+  `tfs-extract-params` writes `operator_shift`, `operator_dev` and
+  `ln_tf_total` tables. Data without labels have none of these sites. θ
+  prediction with contexts is refused until step 3c.
 
 ### Changed
 

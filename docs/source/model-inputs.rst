@@ -208,13 +208,23 @@ The labels' values are priors, in a YAML file given to
 
 One operator is the reference, where the wild-type constants are defined.
 Each other operator's shift comes from the literature or a measurement,
-with its uncertainty. A TF level's concentration is learned about its prior
-unless ``ln_sd`` is 0. Every label in the data must be in the file, and the
-file must not name labels the data lack. Only a *θ* model with an operator
-and TF-level axis reads it; the curve models (``hill_geno`` and the like)
-fit each operator and TF level as its own curve, and refuse binding data
-with these columns. The thermodynamic models' axis is in progress
-(``planning/dimer-thermo-model.md``, step 3).
+with its uncertainty, and moves the effective operator affinity of both
+conformations by that ΔΔG; each operator term also takes a small learned
+deviation per operator (``theta_operator_dev_scale``, 0.5 kT). A TF level's
+concentration is learned about its prior unless ``ln_sd`` is 0. Mutation
+effects are shared across operators and TF levels. Every label in the data
+must be in the file, and the file must not name labels the data lack.
+
+The ``thermo.dimer`` models read the file; ``tfs-configure-model`` writes
+its values to the priors CSV as rows tagged with ``operator`` or
+``tf_level`` (``theta.theta_operator_shift_loc``,
+``theta.theta_operator_shift_scale``, ``theta.theta_tf_level_ln_conc_loc``,
+``theta.theta_tf_level_ln_conc_scale``, in kT and ln M; a scale of 0 holds
+the value), and the fit reads them from there. The curve models
+(``hill_geno`` and the like) fit each operator and TF level as its own
+curve, and refuse binding data with these columns. The ``O2_*``
+thermodynamic models have no such axis and refuse data with more than one
+operator or TF level.
 
 Library description
 -------------------

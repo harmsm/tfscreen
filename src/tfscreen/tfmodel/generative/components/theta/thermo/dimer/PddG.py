@@ -57,6 +57,9 @@ DLNK_PROJ = projection(mwc.PROJ_C12, mwc.PROJ_U_C12)
 _FREE_TERMS = tuple(t for t in sp.ALL_TERMS if t not in dm.STRUCT_TERMS)
 
 
+# Reads the operator and TF-level axes (tfmodel/contexts.py).
+SUPPORTS_CONTEXTS = True
+
 def get_hyperparameters():
     p = dm.common_hyperparameters()
     p.update(dm.sigma_hyperparameters(_FREE_TERMS))
@@ -71,6 +74,7 @@ def _static_defaults():
     s.update(dm.sigma_fixed_defaults(_FREE_TERMS))
     s["theta_ddG_sigma_fixed"] = 0.0   # > 0 holds σ_s (kT), thermo/prior.py
     s.update(ddG_sigma_state_fixed_defaults())
+    s.update(dm.context_static_defaults())
     return s
 
 
@@ -105,8 +109,15 @@ ModelPriors = dm.make_priors_class(
     _static_defaults())
 
 
-def get_priors():
-    return ModelPriors(**get_hyperparameters())
+def get_priors(data=None, contexts=None):
+    """
+    The component's priors; with ``data``, the operator and TF-level prior
+    arrays for its labels (``model.context_hyperparameters``), from
+    ``contexts`` (a read contexts file) when given.
+    """
+    p = get_hyperparameters()
+    p.update(dm.context_hyperparameters(data, contexts, p["theta_tf_total_M"]))
+    return ModelPriors(**p)
 
 
 def struct_perm(data):

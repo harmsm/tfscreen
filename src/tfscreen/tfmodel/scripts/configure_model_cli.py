@@ -239,7 +239,8 @@ def _check_contexts_file(orchestrator, contexts_file, theta_model):
     from tfscreen.tfmodel.generative.registry import model_registry
 
     conditions = orchestrator.theta_conditions
-    spec = ctx.read_contexts(contexts_file) if contexts_file else None
+    spec = ctx.read_contexts(contexts_file) if contexts_file is not None \
+        else None
     module = model_registry["theta"].get(theta_model)
     reads_contexts = getattr(module, "SUPPORTS_CONTEXTS", False)
     if conditions is not None and (reads_contexts or spec is not None):
@@ -654,6 +655,11 @@ def configure_model(binding_df=None,
         ("max_missing_fraction", thermo_max_missing_fraction),
     ) if v is not None} or None
 
+    # Operator and TF-level priors: read here and handed to the orchestrator,
+    # so the theta priors carry them into the priors CSV.
+    from tfscreen.tfmodel.contexts import read_contexts
+    contexts_spec = read_contexts(contexts) if contexts is not None else None
+
     # Initialize model to build mappings and get guesses
     orchestrator = ModelOrchestrator(growth_df,
                      binding_df,
@@ -686,9 +692,10 @@ def configure_model(binding_df=None,
                      thermo_data=thermo_data,
                      thermo_options=thermo_options,
                      batch_size=batch_size,
-                     binding_weight=binding_weight)
+                     binding_weight=binding_weight,
+                     contexts=contexts_spec)
 
-    _check_contexts_file(orchestrator, contexts, theta_model)
+    _check_contexts_file(orchestrator, contexts_spec, theta_model)
 
     # Write the model configuration to a file. This includes the model component
     # names, the data file paths, and the parameter guesses/priors.
