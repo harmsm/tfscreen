@@ -18,6 +18,33 @@ from tfscreen.tfmodel.analysis.error_calibration import calibration_summary
 from tfscreen.util.cli.generalized_main import generalized_main
 
 
+
+_CONTEXT_JOIN = ("operator", "tf_level", "tf_total_uM")
+
+
+class _SkipComparison(Exception):
+    """A θ comparison that does not apply to these tables (no message)."""
+
+
+def _theta_join_cols(pred_df, other_df):
+    """
+    The columns a θ prediction table joins another θ table on: genotype,
+    titrant and concentration plus every context column both have
+    (tfmodel/contexts.py). None when ``other_df`` was measured at a known
+    protein concentration (``tf_total_uM``, in vitro binding) the
+    predictions do not carry: they are θ at the growth contexts, so the two
+    do not describe the same occupancy.
+    """
+    cols = ["genotype", "titrant_name", "titrant_conc"]
+    if "tf_total_uM" in other_df.columns and "tf_total_uM" not in pred_df.columns:
+        print("Note: binding θ at a known protein concentration is not "
+              "compared with the θ predictions at the growth contexts.",
+              flush=True)
+        return None
+    return cols + [c for c in _CONTEXT_JOIN
+                   if c in pred_df.columns and c in other_df.columns]
+
+
 def _find_params_or_posterior(run_dir):
     """Return (kind, path) for the best available prediction source in run_dir.
 
@@ -65,7 +92,9 @@ def _try_plot_theta_fits(binding_df, pred_df, out_prefix):
     try:
         from tfscreen.plot.plot_theta_fits import plot_theta_fits
 
-        join_cols = ["genotype", "titrant_name", "titrant_conc"]
+        join_cols = _theta_join_cols(pred_df, binding_df)
+        if join_cols is None:
+            return
         binding_sel = [c for c in join_cols + ["theta_obs", "theta_std"]
                        if c in binding_df.columns]
         merged = pred_df.merge(binding_df[binding_sel], on=join_cols, how="inner")
@@ -1364,7 +1393,9 @@ def summarize_fit(run_dir,
     # --- Theta training statistics ---
     if pred_df is not None and binding_df is not None:
         try:
-            join_cols = ["genotype", "titrant_name", "titrant_conc"]
+            join_cols = _theta_join_cols(pred_df, binding_df)
+            if join_cols is None:
+                raise _SkipComparison()
             train_pred = pred_df[pred_df["in_training_data"] == 1].copy()
             train_merged = train_pred.merge(
                 binding_df[join_cols + ["theta_obs"]],
@@ -1381,6 +1412,8 @@ def summarize_fit(run_dir,
                     train_merged, "ref",
                     f"{out_prefix}_theta_training", "theta training",
                 )
+        except _SkipComparison:
+            pass
         except Exception as exc:
             warnings.warn(f"Could not compute theta training statistics: {exc}")
 
@@ -1406,7 +1439,9 @@ def summarize_fit(run_dir,
             and (x_gauge is not None or not relative)):
         try:
             gt_df = pd.read_csv(ref_theta_file)
-            join_cols = ["genotype", "titrant_name", "titrant_conc"]
+            join_cols = _theta_join_cols(pred_df, gt_df)
+            if join_cols is None:
+                raise _SkipComparison()
             if "theta_obs" in gt_df.columns:
                 theta_col = "theta_obs"
             elif "theta" in gt_df.columns:
@@ -1437,6 +1472,8 @@ def summarize_fit(run_dir,
                         test_merged, "ref",
                         f"{out_prefix}_theta_test", "theta test",
                     )
+        except _SkipComparison:
+            pass
         except Exception as exc:
             warnings.warn(f"Could not compute theta test statistics from {ref_theta_file}: {exc}")
 

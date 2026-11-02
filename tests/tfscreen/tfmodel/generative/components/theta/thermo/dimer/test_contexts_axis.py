@@ -333,6 +333,113 @@ def test_stale_priors_rows_are_refused(tmp_path):
         read_configuration(f"{out_prefix}_config.yaml")
 
 
-def test_theta_prediction_with_contexts_waits_for_3c(context_model):
-    with pytest.raises(NotImplementedError, match="step 3c"):
-        dm.build_calc_df(context_model, None)
+
+# ---------------------------------------------------------------------------
+# θ prediction (step 3c)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def full_model():
+    return ModelOrchestrator(growth_df=_context_growth(),
+                             binding_df=_context_binding(), batch_size=None,
+                             theta="thermo.dimer.PK", contexts=CONTEXTS)
+
+
+def _draws(o, num=3):
+    """Prior draws of every site, stacked as posterior samples."""
+    data = o.get_batch(o.data, o.get_random_idx(batch_key=0))
+    out = {}
+    for i in range(num):
+        tr = trace(seed(o.jax_model, i)).get_trace(data=data, priors=o.priors)
+        for k, v in tr.items():
+            if v["type"] in ("sample", "deterministic"):
+                out.setdefault(k, []).append(np.asarray(v["value"]))
+    return {k: np.stack(v) for k, v in out.items()}, data
+
+
+def test_theta_samples_match_the_model_per_condition(full_model):
+    o = full_model
+    post, data = _draws(o)
+    calc_df, internal, extra = dm.build_calc_df(o, None)
+    assert {"operator", "tf_level"} <= set(calc_df.columns)
+    samples = dm.compute_theta_samples(calc_df, post, **extra)
+    pred = post["theta_growth_pred"]                  # (S, 1,1,1,1, T, C, B)
+    pred = pred.reshape(pred.shape[0], *pred.shape[-3:])
+    pos = {int(g): i for i, g in enumerate(np.asarray(data.growth.batch_idx))}
+    tm = o.growth_tm
+    labels = list(tm.tensor_dim_labels[tm.tensor_dim_names.index("titrant_name")])
+    concs = list(tm.tensor_dim_labels[tm.tensor_dim_names.index("titrant_conc")])
+    for r, row in enumerate(calc_df.itertuples()):
+        t = labels.index(f"{row.titrant_name}|{row.operator}|{row.tf_level}")
+        c = concs.index(row.titrant_conc)
+        np.testing.assert_allclose(samples[:, r],
+                                   pred[:, t, c, pos[row.genotype_idx]],
+                                   rtol=1e-4, atol=1e-6)
+
+
+def test_manual_grid_at_the_binding_concentration(full_model):
+    o = full_model
+    post, data = _draws(o)
+    b = o.binding_tm
+    geno = b.tensor_dim_labels[b.tensor_dim_names.index("genotype")]
+    concs = b.tensor_dim_labels[b.tensor_dim_names.index("titrant_conc")]
+    grid = pd.DataFrame({"genotype": geno[0], "titrant_name": "iptg",
+                         "operator": "O1", "tf_total_uM": 2.0,
+                         "titrant_conc": concs})
+    calc_df, _, extra = dm.build_calc_df(o, grid)
+    samples = dm.compute_theta_samples(calc_df, post, **extra)
+    want = post["theta_binding_pred"][:, 0, :, 0]     # (S, C) of genotype 0
+    np.testing.assert_allclose(samples, want, rtol=1e-4, atol=1e-6)
+
+
+def test_manual_grid_needs_the_context_columns(full_model):
+    grid = pd.DataFrame({"titrant_name": ["iptg"], "titrant_conc": [0.1]})
+    with pytest.raises(ValueError, match="'operator'"):
+        dm.build_calc_df(full_model, grid)
+    grid["operator"] = "O1"
+    with pytest.raises(ValueError, match="'tf_level' or a 'tf_total_uM'"):
+        dm.build_calc_df(full_model, grid)
+    grid["operator"] = "O7"
+    with pytest.raises(ValueError, match="O7"):
+        dm.build_calc_df(full_model, grid)
+
+
+def test_without_contexts_prediction_is_unchanged():
+    o = ModelOrchestrator(growth_df=_GROWTH_CSV, binding_df=_BINDING_CSV,
+                          batch_size=None, theta="thermo.dimer.PK")
+    post, _ = _draws(o, num=2)
+    new_df, new_int, extra = dm.build_calc_df(o, None)
+    new = dm.compute_theta_samples(new_df, post, **extra)
+    saved = o.theta_conditions
+    try:
+        o.theta_conditions = None                     # the pre-context path
+        old_df, old_int, extra_old = dm.build_calc_df(o, None)
+    finally:
+        o.theta_conditions = saved
+    old = dm.compute_theta_samples(old_df, post, **extra_old)
+    pd.testing.assert_frame_equal(new_df.drop(columns=new_int),
+                                  old_df.drop(columns=old_int))
+    np.testing.assert_array_equal(new, old)
+
+
+def test_unmeasured_prediction_with_contexts(full_model):
+    o = full_model
+    post, _ = _draws(o)
+    grid = pd.DataFrame({"titrant_name": "iptg", "operator": ["O2", "O1"],
+                         "tf_level": ["lo", "hi"], "titrant_conc": [0.1, 1.0]})
+    genotypes = list(o.growth_tm.df["genotype"].astype(str).unique()[:3])
+    q = {"q0.5": 0.5}
+    out = dm.predict_unmeasured(genotypes, None, grid, o.mut_labels,
+                                o.pair_labels, post, q,
+                                tf_total=float(o.priors.theta.theta_tf_total_M),
+                                conc_unit_scale=float(
+                                    o.priors.theta.theta_conc_unit_scale),
+                                theta_priors=o.priors.theta,
+                                theta_conditions=o.theta_conditions)
+    assert list(out.columns) == ["genotype", "titrant_name", "operator",
+                                 "tf_level", "titrant_conc", "q0.5"]
+    measured, _, extra = dm.build_calc_df(
+        o, pd.concat([grid.assign(genotype=g) for g in genotypes],
+                     ignore_index=True))
+    want = np.median(dm.compute_theta_samples(measured, post, **extra), axis=0)
+    np.testing.assert_allclose(out["q0.5"], want, rtol=1e-4, atol=1e-6)

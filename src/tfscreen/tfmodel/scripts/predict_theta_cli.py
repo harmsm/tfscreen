@@ -5,6 +5,8 @@ import pandas as pd
 from tfscreen.tfmodel.configuration_io import read_configuration
 from tfscreen.tfmodel.inference.checkpoint_io import resolve_param_file
 from tfscreen.tfmodel.analysis.extraction import (
+    titrant_grid,
+    training_keys,
     extract_theta_curves,
     extract_theta_unmeasured,
 )
@@ -75,6 +77,12 @@ def predict_theta(config_file,
     A boolean column 'in_training_data' is added to the output: 1 if the
     (genotype, titrant_name, titrant_conc) triple was in the training data,
     0 otherwise.
+
+    Data with operators or TF levels (tube-table columns ``operator`` and
+    ``tf_level``) add those columns after titrant_name: every row is one
+    operator and TF level, in_training_data compares them too, and a
+    titrant file's points are predicted in each context its titrant was
+    measured in.
 
     A relative theta component (``hill_relative``) predicts the wt-relative
     growth variable X, not theta; its output gets a column ``theta_scale``
@@ -158,11 +166,7 @@ def predict_theta(config_file,
     # growth_tm is preferred (more genotypes); binding_tm is the fallback for
     # binding-only runs where growth_tm is None.
     training_genotypes = set(orchestrator.training_tm.df["genotype"].unique())
-    training_tuples = set(
-        zip(orchestrator.training_tm.df["genotype"],
-            orchestrator.training_tm.df["titrant_name"],
-            orchestrator.training_tm.df["titrant_conc"])
-    )
+    key_cols, training_tuples = training_keys(orchestrator)
 
     # Resolve requested genotypes.
     file_genotypes = read_lines(genotypes_file) if genotypes_file else []
@@ -190,19 +194,8 @@ def predict_theta(config_file,
             "titrant_name": titrant_names,
             "titrant_conc": titrant_concs,
         })
-        if only_files:
-            manual_titrant_df = file_titrant_df
-        else:
-            training_titrant_df = (
-                orchestrator.training_tm.df[["titrant_name", "titrant_conc"]]
-                .drop_duplicates()
-                .reset_index(drop=True)
-            )
-            manual_titrant_df = (
-                pd.concat([training_titrant_df, file_titrant_df])
-                .drop_duplicates()
-                .reset_index(drop=True)
-            )
+        manual_titrant_df = titrant_grid(orchestrator, file_titrant_df,
+                                         only_files=only_files)
     else:
         manual_titrant_df = None
 
@@ -227,12 +220,8 @@ def predict_theta(config_file,
         print(f"Predicting theta via additive mutation assembly "
               f"({len(out_of_training)} out-of-training genotype(s))...", flush=True)
         if manual_titrant_df is None:
-            # Use unique (titrant_name, titrant_conc) pairs from training data.
-            manual_titrant_df = (
-                orchestrator.training_tm.df[["titrant_name", "titrant_conc"]]
-                .drop_duplicates()
-                .reset_index(drop=True)
-            )
+            # The training grid (with each titrant's contexts).
+            manual_titrant_df = titrant_grid(orchestrator)
         q_to_get = [0.5] if is_map else None
         result_df = extract_theta_unmeasured(
             orchestrator=orchestrator,
@@ -260,11 +249,10 @@ def predict_theta(config_file,
         if genotypes_file is not None:
             result_df = result_df[result_df["genotype"].isin(requested_genotypes)].reset_index(drop=True)
 
-    result_df["in_training_data"] = result_df.apply(
-        lambda row: int((row["genotype"], row["titrant_name"], row["titrant_conc"])
-                        in training_tuples),
-        axis=1,
-    )
+    key_cols = [c for c in key_cols if c in result_df.columns]
+    result_df["in_training_data"] = [
+        int(key in training_tuples)
+        for key in result_df[key_cols].itertuples(index=False, name=None)]
 
     theta_scale = getattr(model_registry["theta"].get(orchestrator._theta),
                           "THETA_SCALE", "theta")

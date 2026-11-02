@@ -29,6 +29,141 @@ class ExtractionContext:
     theta_conditions: Any = None
 
 
+def _context_columns(orchestrator):
+    """The operator/tf_level columns the data name (none without contexts)."""
+    from tfscreen.tfmodel.contexts import named_labels
+    conditions = getattr(orchestrator, "theta_conditions", None)
+    if conditions is None or not conditions.composite:
+        return []
+    return [c for c, names in (("operator", conditions.operator_names),
+                               ("tf_level", conditions.tf_level_names))
+            if named_labels(names)]
+
+
+def _with_context_columns(spec, context_cols):
+    """
+    A spec keyed by ``titrant_name`` also keyed by the context columns, when
+    its rows carry them (curve models indexed by θ condition); effector-
+    indexed tables (thermo.dimer) have none and are left alone.
+    """
+    get_columns = list(spec["get_columns"])
+    if not context_cols or "titrant_name" not in get_columns:
+        return spec
+    extra = [c for c in context_cols if c in spec["input_df"].columns
+             and c not in get_columns]
+    if not extra:
+        return spec
+    i = get_columns.index("titrant_name") + 1
+    return {**spec, "get_columns": get_columns[:i] + extra + get_columns[i:]}
+
+
+def _split_condition_labels(df, orchestrator):
+    """
+    Replace composite θ-condition labels in ``titrant_name`` (tables built
+    from the tensor's labels) with the titrant and its context columns.
+    """
+    conditions = getattr(orchestrator, "theta_conditions", None)
+    if (conditions is None or not conditions.composite
+            or "titrant_name" not in df.columns or df.empty):
+        return df
+    labels = set(conditions.growth_labels or ())
+    names = df["titrant_name"].astype(str)
+    if not names.isin(labels).all():
+        return df
+    table = conditions.growth_table.set_index("theta_condition")
+    cols = _context_columns(orchestrator)
+    df = df.copy()
+    pos = list(df.columns).index("titrant_name") + 1
+    for k, c in enumerate(cols):
+        df.insert(pos + k, c, table.loc[names, c].to_numpy())
+    df["titrant_name"] = table.loc[names, "titrant_name"].to_numpy()
+    return df
+
+
+def titrant_grid(orchestrator, file_titrant_df=None, only_files=False):
+    """
+    The prediction grid: ``titrant_name``, the context columns the data
+    name (``operator``, ``tf_level``) and ``titrant_conc``.
+
+    Parameters
+    ----------
+    orchestrator : ModelOrchestrator
+    file_titrant_df : pandas.DataFrame, optional
+        ``titrant_name`` and ``titrant_conc`` rows (the titrant files). With
+        contexts each row is crossed with its titrant's training contexts.
+    only_files : bool
+        The file's rows only; otherwise the training grid plus the file's.
+
+    Returns
+    -------
+    pandas.DataFrame
+    """
+    ctx = _context_columns(orchestrator)
+    cols = ["titrant_name", *ctx, "titrant_conc"]
+    training = (orchestrator.training_tm.df[cols].drop_duplicates()
+                .reset_index(drop=True))
+    if file_titrant_df is None:
+        return training
+    file_df = file_titrant_df[["titrant_name", "titrant_conc"]].copy()
+    if ctx:
+        combos = training[["titrant_name", *ctx]].drop_duplicates()
+        file_df["titrant_name"] = file_df["titrant_name"].astype(str)
+        combos = combos.assign(titrant_name=combos["titrant_name"].astype(str))
+        file_df = file_df.merge(combos, on="titrant_name")[cols]
+    if only_files:
+        return file_df.reset_index(drop=True)
+    return (pd.concat([training, file_df]).drop_duplicates()
+            .reset_index(drop=True))
+
+
+def training_keys(orchestrator):
+    """(genotype, titrant_name, contexts..., titrant_conc) of the training data."""
+    cols = ["genotype", "titrant_name", *_context_columns(orchestrator),
+            "titrant_conc"]
+    return cols, set(orchestrator.training_tm.df[cols]
+                     .itertuples(index=False, name=None))
+
+
+def _check_manual_grid(orchestrator, module, manual_titrant_df):
+    """
+    A curve model fit with operators or TF levels names its curves by θ
+    condition, which a (titrant, concentration) grid cannot pick out.
+    """
+    if (manual_titrant_df is not None and _context_columns(orchestrator)
+            and not getattr(module, "SUPPORTS_CONTEXTS", False)):
+        raise ValueError(
+            f"theta={orchestrator._theta!r} was fit with operators or TF "
+            f"levels; predict it on the training grid (no titrant files), "
+            f"or use a thermo.dimer model.")
+
+
+def _attach_context_columns(calc_df, orchestrator):
+    """
+    A curve model's rows (indexed by θ condition through ``map_theta_group``
+    or ``titrant_name_idx``) with the operator/tf_level columns, placed
+    after ``titrant_name``.
+    """
+    cols = [c for c in _context_columns(orchestrator)
+            if c not in calc_df.columns]
+    if not cols:
+        return calc_df
+    tm_df = orchestrator.training_tm.df
+    if "map_theta_group" in calc_df.columns and "map_theta_group" in tm_df:
+        lookup = (tm_df[["map_theta_group", *cols]].drop_duplicates()
+                  .set_index("map_theta_group"))
+        key = calc_df["map_theta_group"]
+    elif "titrant_name_idx" in calc_df.columns:
+        lookup = orchestrator.theta_conditions.growth_table[cols]
+        key = calc_df["titrant_name_idx"].astype(int)
+    else:
+        return calc_df
+    calc_df = calc_df.copy()
+    pos = list(calc_df.columns).index("titrant_name") + 1
+    for k, c in enumerate(cols):
+        calc_df.insert(pos + k, c, lookup.loc[key, c].to_numpy())
+    return calc_df
+
+
 def _binding_genotypes(orchestrator):
     """Binding genotype labels in binding-tensor order, or None."""
     tm = getattr(orchestrator, "binding_tm", None)
@@ -223,11 +358,14 @@ def extract_parameters(orchestrator, posteriors, q_to_get=None):
         ))
 
     params = {}
+    context_cols = _context_columns(orchestrator)
     for kwargs in extract:
+        kwargs = _with_context_columns(kwargs, context_cols)
         try:
-            params.update(_extract_param_est(param_posteriors=param_posteriors,
-                                             q_to_get=q_to_get,
-                                             **kwargs))
+            tables = _extract_param_est(param_posteriors=param_posteriors,
+                                        q_to_get=q_to_get, **kwargs)
+            params.update({k: _split_condition_labels(v, orchestrator)
+                           for k, v in tables.items()})
         except KeyError as exc:
             param_names = (kwargs.get("out_names")
                            or kwargs.get("params_to_get", []))
@@ -312,8 +450,10 @@ def extract_theta_curves(orchestrator, posteriors, q_to_get=None, manual_titrant
 
     q_to_get, param_posteriors = load_posteriors(posteriors, q_to_get)
 
+    _check_manual_grid(orchestrator, module, manual_titrant_df)
     calc_df, internal_cols, extra_kwargs = module.build_calc_df(orchestrator, manual_titrant_df)
     theta_samples = module.compute_theta_samples(calc_df, param_posteriors, **extra_kwargs)
+    calc_df = _attach_context_columns(calc_df, orchestrator)
     if shared_shift is not None:
         theta_samples = apply_shared_shift(theta_samples, calc_df,
                                            shared_shift, seed=shift_seed)
@@ -469,15 +609,20 @@ def extract_theta_epistasis(orchestrator, posteriors, q_to_get=None,
     q_to_get, param_posteriors = load_posteriors(posteriors, q_to_get)
 
     # Joint sample matrix: (num_sample, num_row), rows aligned to calc_df.
+    _check_manual_grid(orchestrator, module, manual_titrant_df)
     calc_df, internal_cols, extra_kwargs = module.build_calc_df(
         orchestrator, manual_titrant_df)
     theta_samples = module.compute_theta_samples(
         calc_df, param_posteriors, **extra_kwargs)
+    calc_df = _attach_context_columns(calc_df, orchestrator)
     if shared_shift is not None:
         theta_samples = apply_shared_shift(theta_samples, calc_df,
                                            shared_shift, seed=shift_seed)
 
+    # A mutant cycle stays within one operator and TF level.
     group_by = list(group_by)
+    group_by += [c for c in (*_context_columns(orchestrator), "tf_total_uM")
+                 if c in calc_df.columns and c not in group_by]
 
     # Pivot on the row index (not the observable): mutant_cycle_pivot matches
     # wt/single/single/double per condition and returns, for each cycle, the
@@ -614,6 +759,11 @@ def extract_theta_unmeasured(orchestrator, posteriors, target_genotypes,
     # (thermo.dimer) take the priors themselves.
     if "theta_priors" in inspect.signature(module.predict_unmeasured).parameters:
         extra_kwargs["theta_priors"] = theta_priors
+    # Components with an operator and TF-level axis resolve each grid row's
+    # context from the model's θ conditions.
+    if ("theta_conditions" in inspect.signature(module.predict_unmeasured).parameters
+            and getattr(orchestrator, "theta_conditions", None) is not None):
+        extra_kwargs["theta_conditions"] = orchestrator.theta_conditions
 
     target_genotypes = list(target_genotypes)
     n_total = len(target_genotypes)

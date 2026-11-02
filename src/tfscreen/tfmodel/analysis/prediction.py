@@ -248,6 +248,9 @@ def copy_orchestrator(orchestrator,
     # as the fitted model (which groups conditions per library).
     categorical_cols = ["replicate", "library", "condition_pre", "condition_sel",
                         "titrant_name", "genotype"]
+    # A tube's operator and TF level (tfmodel/contexts.py) are part of its
+    # θ condition; without them the copy would merge different contexts.
+    categorical_cols += [c for c in ("operator", "tf_level") if c in df.columns]
     unique_cats = df[categorical_cols].drop_duplicates()
 
     # Subset genotypes when requested.  Doing this here ensures the new

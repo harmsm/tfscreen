@@ -86,8 +86,22 @@ fall into two kinds:
   `theta_tf_level_ln_conc_loc`/`_scale`, the text row
   `theta_operator_reference`), joined to the data's labels by name on read;
   `tfs-extract-params` writes `operator_shift`, `operator_dev` and
-  `ln_tf_total` tables. Data without labels have none of these sites. θ
-  prediction with contexts is refused until step 3c.
+  `ln_tf_total` tables. Data without labels have none of these sites.
+- **Outputs carry the operator and TF level** (step 3c). With contexts,
+  `tfs-predict-theta`, `tfs-predict-epistasis` and `tfs-extract-params`
+  write `operator` and `tf_level` columns after `titrant_name`;
+  `in_training_data` compares them; a titrant file's points are predicted
+  in each context their titrant was measured in
+  (`extraction.titrant_grid`); epistasis cycles stay within one context. The
+  `thermo.dimer` θ prediction applies each row's operator offset and total
+  TF from the posterior, and a manual grid may give `tf_total_uM` to predict
+  at a known protein concentration. Curve models' tables gain the context
+  columns, and they refuse a manual grid with contexts.
+  `copy_orchestrator` keeps the context columns (without them a
+  `tfs-predict-growth` chunk merged operators). `tfs-summarize-fit` joins θ
+  tables on the context columns they share and does not compare binding at
+  a known protein concentration with growth-context predictions.
+  `species.theta_np` takes a per-row `tf_total`.
 
 ### Changed
 

@@ -904,20 +904,130 @@ def get_extract_specs(ctx, extra=()):
     return specs
 
 
+CONTEXT_COLUMNS = ("operator", "tf_level")
+_INTERNAL = ["genotype_idx", "titrant_name_idx", "_effector_idx",
+             "_operator_idx", "_tf_level_idx", "_tf_total_M"]
+
+
+def resolve_context_rows(df, conditions):
+    """
+    Each row's effector, operator and TF-level indices, and known total TF.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        ``titrant_name`` and optionally ``operator``, ``tf_level`` and
+        ``tf_total_uM`` (µM protomer, a known concentration, as for
+        binding). A column may be left out when the data have one label on
+        that axis.
+    conditions : tfmodel.contexts.ThetaConditions
+
+    Returns
+    -------
+    pandas.DataFrame
+        ``df`` with ``_effector_idx``, ``_operator_idx`` (into the data's
+        operator names; -1 for none), ``_tf_level_idx`` (-1 for none) and
+        ``_tf_total_M`` (NaN unless ``tf_total_uM`` was given).
+    """
+    df = df.copy()
+    effectors = list(conditions.effector_names)
+    bad = sorted(set(df["titrant_name"].astype(str)) - set(effectors))
+    if bad:
+        raise ValueError(f"titrant_name values {bad} are not among the model's "
+                         f"titrants {effectors}.")
+    df["_effector_idx"] = [effectors.index(t)
+                           for t in df["titrant_name"].astype(str)]
+
+    def _axis(column, names, what):
+        names = list(names)
+        if column in df.columns:
+            labels = df[column]
+            bad = sorted(set(labels[labels.notna()].astype(str)) - set(names))
+            if bad:
+                raise ValueError(f"{what} {bad} are not among the model's "
+                                 f"{names}.")
+            return np.array([names.index(str(v)) if pd.notna(v) else -1
+                             for v in labels], dtype=int)
+        if len(names) > 1:
+            return None
+        return np.full(len(df), 0 if names else -1, dtype=int)
+
+    ops = list(named_labels(conditions.operator_names))
+    op_idx = _axis("operator", ops, "operators")
+    if op_idx is None:
+        raise ValueError(f"The model has operators {ops}; give each row an "
+                         f"'operator'.")
+    df["_operator_idx"] = op_idx
+
+    known = (pd.to_numeric(df["tf_total_uM"], errors="coerce").to_numpy(float)
+             if "tf_total_uM" in df.columns else np.full(len(df), np.nan))
+    df["_tf_total_M"] = known * 1e-6
+    levels = list(named_labels(conditions.tf_level_names))
+    lvl_idx = _axis("tf_level", levels, "TF levels")
+    if lvl_idx is None:
+        if not np.isfinite(known).all():
+            raise ValueError(f"The model has TF levels {levels}; give each "
+                             f"row a 'tf_level' or a 'tf_total_uM'.")
+        lvl_idx = np.full(len(df), -1, dtype=int)
+    df["_tf_level_idx"] = np.where(np.isfinite(known), -1, lvl_idx)
+    return df
+
+
 def build_calc_df(model, manual_titrant_df):
-    """Concentration grid for θ extraction (as the O2 models)."""
+    """
+    Concentration grid for θ extraction.
+
+    Without ``manual_titrant_df``, every (genotype, θ condition,
+    concentration) of the training data, with ``titrant_name`` and the
+    ``operator``/``tf_level`` columns the data name. A manual grid gives
+    ``titrant_name`` and ``titrant_conc``, optionally ``genotype``,
+    ``operator``, ``tf_level`` or ``tf_total_uM`` (see
+    :func:`resolve_context_rows`).
+    """
+    import tfscreen.util.dataframe
+
     conditions = getattr(model, "theta_conditions", None)
-    if conditions is not None and conditions.composite:
-        raise NotImplementedError(
-            "θ prediction for data with operators or TF levels is not yet "
-            "supported (planning/dimer-thermo-model.md, step 3c); the "
-            "parameters are extracted with tfs-extract-params.")
-    from tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U1_a.thermo import (
-        build_calc_df as _o2_build_calc_df,
-    )
-    calc_df, cols, extra = _o2_build_calc_df(model, manual_titrant_df)
-    extra["variant"] = variant_from_priors(model.priors.theta)
-    return calc_df, cols, extra
+    if conditions is None:
+        from tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U1_a.thermo import (
+            build_calc_df as _o2_build_calc_df,
+        )
+        calc_df, cols, extra = _o2_build_calc_df(model, manual_titrant_df)
+        extra["variant"] = variant_from_priors(model.priors.theta)
+        return calc_df, cols, extra
+
+    tm_df = model.training_tm.df
+    context_cols = [c for c, names in (("operator", conditions.operator_names),
+                                       ("tf_level", conditions.tf_level_names))
+                    if named_labels(names) and c in tm_df.columns]
+    geno_map = (tm_df[["genotype", "genotype_idx"]].drop_duplicates()
+                .set_index("genotype")["genotype_idx"].to_dict())
+    if manual_titrant_df is None:
+        calc_df = (tm_df[["genotype", "titrant_name", *context_cols,
+                          "titrant_conc", "genotype_idx"]]
+                   .drop_duplicates().reset_index(drop=True))
+    else:
+        tfscreen.util.dataframe.check_columns(
+            manual_titrant_df, required_columns=["titrant_name", "titrant_conc"])
+        if "genotype" not in manual_titrant_df.columns:
+            calc_df = pd.concat([manual_titrant_df.assign(genotype=g)
+                                 for g in tm_df["genotype"].unique()],
+                                ignore_index=True)
+        else:
+            calc_df = manual_titrant_df.copy().reset_index(drop=True)
+        calc_df["genotype_idx"] = calc_df["genotype"].map(geno_map)
+        if calc_df["genotype_idx"].isna().any():
+            bad = calc_df.loc[calc_df["genotype_idx"].isna(),
+                              "genotype"].unique()
+            raise ValueError(f"Genotypes {list(bad)} in manual_titrant_df are "
+                             f"not in the model data.")
+        calc_df["genotype_idx"] = calc_df["genotype_idx"].astype(int)
+    calc_df = resolve_context_rows(calc_df, conditions)
+
+    extra = {"tf_total": float(model.priors.theta.theta_tf_total_M),
+             "conc_unit_scale": float(model.priors.theta.theta_conc_unit_scale),
+             "variant": variant_from_priors(model.priors.theta)}
+    internal = [c for c in _INTERNAL if c in calc_df.columns]
+    return calc_df, internal, extra
 
 
 def _loader(param_posteriors):
@@ -931,32 +1041,75 @@ def _loader(param_posteriors):
     return load
 
 
+def _apply_row_contexts(terms, rows, load, tf_total, variant):
+    """
+    Add each row's operator offset to the operator terms and return the
+    per-row total TF: (S, N) arrays, from the posterior's
+    ``theta_operator_shift``/``theta_operator_dev``/``theta_ln_tf_total``.
+    """
+    op = rows["_operator_idx"].to_numpy(int) if "_operator_idx" in rows \
+        else np.full(len(rows), -1)
+    if (op >= 0).any():
+        shift = load("theta_operator_shift")                   # (S, O)
+        dev = load("theta_operator_dev")                       # (S, O, K)
+        dev_terms = [t for t in OPERATOR_DEV_TERMS
+                     if t in sp.active_terms(variant)]
+        use = op >= 0
+        o = np.maximum(op, 0)
+        for k, t in enumerate(dev_terms):
+            off = dev[:, o, k] + (shift[:, o] if t in OPERATOR_SHIFT_TERMS
+                                  else 0.0)
+            terms[t] = terms[t] + np.where(use[None, :], off, 0.0)
+
+    tf = np.full(len(rows), float(tf_total))
+    lvl = rows["_tf_level_idx"].to_numpy(int) if "_tf_level_idx" in rows \
+        else np.full(len(rows), -1)
+    known = rows["_tf_total_M"].to_numpy(float) if "_tf_total_M" in rows \
+        else np.full(len(rows), np.nan)
+    if (lvl >= 0).any():
+        ln_tf = load("theta_ln_tf_total")                      # (S, L)
+        tf = np.where((lvl >= 0)[None, :],
+                      np.exp(ln_tf[:, np.maximum(lvl, 0)]), tf[None, :])
+    if np.isfinite(known).any():
+        tf = np.where(np.isfinite(known), np.nan_to_num(known, nan=1.0), tf)
+    return terms, tf
+
+
 def compute_theta_samples(calc_df, param_posteriors, *, tf_total,
                           conc_unit_scale=1.0, variant=None):
     """
     Posterior θ samples (S, N) at the rows of ``calc_df``.
 
-    Reads the per-genotype term sites ``theta_{term}``.
+    Reads the per-genotype term sites ``theta_{term}``, each row's effector
+    (``_effector_idx``, else ``titrant_name_idx``) and, with operators and
+    TF levels, the posterior's operator offsets and total TF.
     """
     variant = sp.Variant() if variant is None else variant
     load = _loader(param_posteriors)
     g = calc_df["genotype_idx"].values.astype(int)
-    ti = calc_df["titrant_name_idx"].values.astype(int)
+    ti = (calc_df["_effector_idx"] if "_effector_idx" in calc_df
+          else calc_df["titrant_name_idx"]).values.astype(int)
     tt = set(sp.titrant_terms(variant))
     terms = {}
     for t in sp.active_terms(variant):
         v = load(f"theta_{t}")
         terms[t] = v[:, ti, g] if t in tt else v[:, g]
+    terms, tf = _apply_row_contexts(terms, calc_df, load, tf_total, variant)
     conc = calc_df["titrant_conc"].values.astype(float) * conc_unit_scale
-    return sp.theta_np(terms, conc[None, :], tf_total, variant)
+    return sp.theta_np(terms, conc[None, :], tf, variant)
 
 
 def predict_unmeasured(target_genotypes, titrant_names, manual_titrant_df,
                        mut_labels, pair_labels, param_posteriors, q_to_get, *,
-                       tf_total, conc_unit_scale=1.0, theta_priors=None):
+                       tf_total, conc_unit_scale=1.0, theta_priors=None,
+                       theta_conditions=None):
     """
     θ quantiles for genotypes assembled from wt, per-mutation and per-pair
     posteriors (genotypes need not be in the training data).
+
+    With ``theta_conditions`` the grid's rows may name an operator, a TF
+    level or a known ``tf_total_uM`` (:func:`resolve_context_rows`), and
+    the output keeps those columns.
     """
     from tfscreen.tfmodel.analysis.predict_unmeasured import (
         _build_genotype_indicators,
@@ -967,8 +1120,20 @@ def predict_unmeasured(target_genotypes, titrant_names, manual_titrant_df,
     target_genotypes = list(target_genotypes)
     mut_mat, pair_mat, is_valid = _build_genotype_indicators(
         target_genotypes, mut_labels, pair_labels)
-    calc_df, geno_idx, titrant_idx = _build_prediction_grid(
-        target_genotypes, titrant_names, manual_titrant_df)
+    if theta_conditions is None:
+        calc_df, geno_idx, titrant_idx = _build_prediction_grid(
+            target_genotypes, titrant_names, manual_titrant_df)
+        out_cols = ["genotype", "titrant_name", "titrant_conc"]
+    else:
+        grid = manual_titrant_df.drop(columns=["genotype"], errors="ignore")
+        calc_df = pd.concat([grid.assign(genotype=gt)
+                             for gt in target_genotypes], ignore_index=True)
+        calc_df = resolve_context_rows(calc_df, theta_conditions)
+        geno_idx = np.repeat(np.arange(len(target_genotypes)), len(grid))
+        titrant_idx = calc_df["_effector_idx"].to_numpy(int)
+        out_cols = ["genotype", "titrant_name",
+                    *[c for c in (*CONTEXT_COLUMNS, "tf_total_uM")
+                      if c in calc_df.columns], "titrant_conc"]
     load = _loader(param_posteriors)
     tt = set(sp.titrant_terms(variant))
     has_pairs = len(pair_labels) > 0
@@ -977,7 +1142,7 @@ def predict_unmeasured(target_genotypes, titrant_names, manual_titrant_df,
     for t in sp.active_terms(variant):
         wt = load(f"theta_{t}_wt")
         d = load(f"theta_d_{t}")
-        if t in tt:                                   # wt (S, T), d (S, T, M)
+        if t in tt:                                   # wt (S, E), d (S, E, M)
             v = wt[:, :, None] + np.einsum("stm,nm->stn", d, mut_mat)
             if has_pairs:
                 v = v + np.einsum("sp,np->sn", load(f"theta_epi_{t}"),
@@ -989,11 +1154,12 @@ def predict_unmeasured(target_genotypes, titrant_names, manual_titrant_df,
                 v = v + np.einsum("sp,np->sn", load(f"theta_epi_{t}"), pair_mat)
             rows[t] = v[:, geno_idx]
 
+    rows, tf = _apply_row_contexts(rows, calc_df, load, tf_total, variant)
     conc = calc_df["titrant_conc"].values.astype(float) * conc_unit_scale
-    theta_samples = sp.theta_np(rows, conc[None, :], tf_total, variant)
+    theta_samples = sp.theta_np(rows, conc[None, :], tf, variant)
     theta_samples[:, ~is_valid[geno_idx]] = np.nan
 
-    result_df = calc_df[["genotype", "titrant_name", "titrant_conc"]].copy()
+    result_df = calc_df[out_cols].copy()
     for q_name, q_val in q_to_get.items():
         result_df[q_name] = np.quantile(theta_samples, q_val, axis=0)
     return result_df

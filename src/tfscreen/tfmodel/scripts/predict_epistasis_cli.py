@@ -1,7 +1,10 @@
 import pandas as pd
 from tfscreen.tfmodel.configuration_io import read_configuration
 from tfscreen.tfmodel.inference.checkpoint_io import resolve_param_file
-from tfscreen.tfmodel.analysis.extraction import extract_theta_epistasis
+from tfscreen.tfmodel.analysis.extraction import (
+    extract_theta_epistasis,
+    titrant_grid,
+)
 from tfscreen.util.cli import generalized_main, read_lines
 
 
@@ -164,19 +167,8 @@ def predict_epistasis(config_file,
             "titrant_name": titrant_names,
             "titrant_conc": titrant_concs,
         })
-        if only_files:
-            manual_titrant_df = file_titrant_df
-        else:
-            training_titrant_df = (
-                orchestrator.training_tm.df[["titrant_name", "titrant_conc"]]
-                .drop_duplicates()
-                .reset_index(drop=True)
-            )
-            manual_titrant_df = (
-                pd.concat([training_titrant_df, file_titrant_df])
-                .drop_duplicates()
-                .reset_index(drop=True)
-            )
+        manual_titrant_df = titrant_grid(orchestrator, file_titrant_df,
+                                         only_files=only_files)
     else:
         manual_titrant_df = None
 

@@ -1037,6 +1037,12 @@ tfs-predict-theta
    (genotype, titrant_name, titrant_conc) triple was in the training data,
    0 otherwise.
 
+   Data with operators or TF levels (tube-table columns operator and
+   tf_level) add those columns after titrant_name: every row is one
+   operator and TF level, in_training_data compares them too, and a
+   titrant file's points are predicted in each context its titrant was
+   measured in.
+
    A relative theta component (hill_relative) predicts the wt-relative
    growth variable X, not theta; its output gets a column theta_scale
    with the value X so nothing downstream takes it for an occupancy.

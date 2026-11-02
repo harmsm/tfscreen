@@ -341,3 +341,100 @@ def test_configure_contexts_file_check(capsys):
                                       tf_levels={}), "hill_geno")
     # a curve model needs no file
     assert _check_contexts_file(o, None, "hill_geno") is None
+
+
+# ---------------------------------------------------------------------------
+# Outputs (step 3c)
+# ---------------------------------------------------------------------------
+
+from tfscreen.tfmodel.analysis.extraction import (  # noqa: E402
+    extract_parameters,
+    extract_theta_curves,
+    titrant_grid,
+    training_keys,
+)
+from tfscreen.tfmodel.analysis.prediction import copy_orchestrator  # noqa: E402
+
+
+@pytest.fixture(scope="module")
+def curve_model():
+    """hill_geno, growth only, two operators: each its own curve."""
+    return ModelOrchestrator(growth_df=_two_operators(pd.read_csv(_GROWTH_CSV)),
+                             binding_df=None, batch_size=None)
+
+
+def _prior_draws(o, num=2):
+    data = o.get_batch(o.data, o.get_random_idx(batch_key=0))
+    out = {}
+    for i in range(num):
+        tr = trace(seed(o.jax_model, i)).get_trace(data=data, priors=o.priors)
+        for k, v in tr.items():
+            if v["type"] in ("sample", "deterministic"):
+                out.setdefault(k, []).append(np.asarray(v["value"]))
+    return {k: np.stack(v) for k, v in out.items()}
+
+
+def test_curve_model_parameter_tables_carry_the_operator(curve_model):
+    params = extract_parameters(curve_model, _prior_draws(curve_model))
+    hill = params["hill_n"]
+    assert list(hill.columns[:3]) == ["genotype", "titrant_name", "operator"]
+    assert set(hill["operator"]) == {"O1", "O2"}
+    assert not hill.duplicated(["genotype", "titrant_name", "operator"]).any()
+
+
+def test_curve_model_theta_curves_carry_the_operator(curve_model):
+    out = extract_theta_curves(curve_model, _prior_draws(curve_model),
+                               q_to_get=[0.5], num_samples=None)
+    assert list(out.columns[:3]) == ["genotype", "titrant_name", "operator"]
+    assert not out.duplicated(["genotype", "titrant_name", "operator",
+                               "titrant_conc"]).any()
+
+
+def test_curve_model_refuses_a_manual_grid_with_contexts(curve_model):
+    grid = pd.DataFrame({"titrant_name": ["iptg"], "titrant_conc": [0.1]})
+    with pytest.raises(ValueError, match="training grid"):
+        extract_theta_curves(curve_model, _prior_draws(curve_model),
+                             manual_titrant_df=grid)
+
+
+def test_titrant_grid_and_training_keys(curve_model):
+    grid = titrant_grid(curve_model)
+    assert list(grid.columns) == ["titrant_name", "operator", "titrant_conc"]
+    files = pd.DataFrame({"titrant_name": ["iptg"], "titrant_conc": [0.5]})
+    only = titrant_grid(curve_model, files, only_files=True)
+    assert sorted(only["operator"]) == ["O1", "O2"]
+    assert set(only["titrant_conc"]) == {0.5}
+    both = titrant_grid(curve_model, files)
+    assert len(both) == len(grid) + 2
+    cols, keys = training_keys(curve_model)
+    assert cols == ["genotype", "titrant_name", "operator", "titrant_conc"]
+    assert len(next(iter(keys))) == 4
+
+
+def test_without_contexts_the_grid_is_unchanged():
+    o = ModelOrchestrator(growth_df=_GROWTH_CSV, binding_df=None,
+                          batch_size=6)
+    assert list(titrant_grid(o).columns) == ["titrant_name", "titrant_conc"]
+    assert training_keys(o)[0] == ["genotype", "titrant_name", "titrant_conc"]
+
+
+def test_copy_orchestrator_keeps_the_contexts(curve_model):
+    genos = list(curve_model.growth_df["genotype"].astype(str).unique()[:3])
+    new = copy_orchestrator(curve_model, genotypes=genos)
+    assert new.theta_conditions.growth_labels == \
+        curve_model.theta_conditions.growth_labels
+    assert new.data.growth.theta_operator_idx == \
+        curve_model.data.growth.theta_operator_idx
+
+
+def test_summarize_theta_join_cols(capsys):
+    from tfscreen.tfmodel.scripts.summarize_fit_cli import _theta_join_cols
+    base = ["genotype", "titrant_name", "titrant_conc"]
+    pred = pd.DataFrame(columns=base + ["operator", "tf_level", "q0.5"])
+    truth = pd.DataFrame(columns=base + ["operator", "tf_level", "theta"])
+    assert _theta_join_cols(pred, truth) == base + ["operator", "tf_level"]
+    plain = pd.DataFrame(columns=base + ["theta"])
+    assert _theta_join_cols(pred, plain) == base
+    binding = pd.DataFrame(columns=base + ["operator", "tf_total_uM"])
+    assert _theta_join_cols(pred, binding) is None
+    assert "not compared" in capsys.readouterr().out

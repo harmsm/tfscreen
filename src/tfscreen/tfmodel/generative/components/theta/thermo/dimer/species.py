@@ -520,11 +520,13 @@ def theta_np(terms, e_total, tf_total, variant, chunk=2_000_000):
     :func:`theta` on numpy inputs, evaluated in chunks along the last axis.
 
     For posterior extraction, where the arrays are (samples, rows) and can
-    be large. Returns a numpy array.
+    be large; ``tf_total`` may be a scalar or broadcast like the rows.
+    Returns a numpy array.
     """
     arrs = {k: np.asarray(v) for k, v in terms.items()}
     e_total = np.asarray(e_total)
-    shape = np.broadcast_shapes(e_total.shape,
+    tf_total = np.asarray(tf_total, dtype=float)     # scalar or per row
+    shape = np.broadcast_shapes(e_total.shape, tf_total.shape,
                                 *[a.shape for a in arrs.values()])
     if len(shape) == 0:
         return np.asarray(_theta_jit(arrs, e_total, tf_total, variant))
@@ -542,6 +544,7 @@ def theta_np(terms, e_total, tf_total, variant, chunk=2_000_000):
         hi = min(n, lo + step)
         part = _theta_jit({k: jnp.asarray(cut(a, lo, hi))
                            for k, a in arrs.items()},
-                          jnp.asarray(cut(e_total, lo, hi)), tf_total, variant)
+                          jnp.asarray(cut(e_total, lo, hi)),
+                          jnp.asarray(cut(tf_total, lo, hi)), variant)
         out[..., lo:hi] = np.asarray(part)
     return out

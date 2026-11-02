@@ -117,6 +117,15 @@ The output is ``tfs_pred_theta.csv``, one row per ``genotype``,
 titrant name and concentration triple was in the training data and 0
 otherwise.
 
+When the data name operators or TF levels, each row also has ``operator``
+and ``tf_level`` columns after ``titrant_name``, and ``in_training_data``
+compares them too. For a ``thermo.dimer`` model each row is θ at that
+operator and TF level; a curve model (``hill_geno`` and the like) fits each
+context as its own curve and predicts only on the training grid.
+``tfs-predict-epistasis`` forms each mutant cycle within one context, and
+``tfs-compare-runs`` matches rows on the context columns without being
+told.
+
 By default the command predicts every training genotype at every training
 titrant point. Three plain-text files add to that grid, one value per line
 with ``#`` comments allowed. ``--genotypes_file`` adds genotypes, written as

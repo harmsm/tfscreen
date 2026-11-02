@@ -159,12 +159,20 @@ models refuse more than one operator or TF level.
   deviations and TF levels are non-centered (loc + scale · z), so a scale
   of 0 holds a value without changing the sites; the contexts file's
   values reach the priors CSV as `operator`/`tf_level`-tagged rows, joined
-  by label on read. θ prediction (`build_calc_df`,
-  `compute_theta_samples`, `predict_unmeasured`) still indexes by θ
-  condition, so it refuses data with contexts until 3c.
+  by label on read.
 - 3c. Outputs: `tfs-predict-theta`, extraction, `tfs-summarize-fit` and
   `tfs-compare-runs` carry the `operator` and `tf_level` columns; new
-  `operator_shift` and `tf_total` tables.
+  `operator_shift` and `tf_total` tables. Done 2026-11-02. The dimer's
+  θ prediction resolves each row's effector, operator and TF level
+  (`model.resolve_context_rows`), so a manual grid may also give
+  `tf_total_uM` to predict at any protein concentration; curve models'
+  tables gain the context columns in the generic extraction layer
+  (`extraction._with_context_columns`, `_attach_context_columns`,
+  `_split_condition_labels`) and refuse manual grids with contexts;
+  `copy_orchestrator` keeps the context columns; summarize-fit joins on
+  shared context columns and skips binding at a known protein
+  concentration against growth-context predictions. Its truth tables
+  get context columns with the simulator (3e).
 - 3d. Backgrounds: declared in the experiment's library YAML (below), with
   a `background` tube-table column; `tfs-process-fastq --background` names
   genotypes in absolute terms; the composition table, genotype check and
