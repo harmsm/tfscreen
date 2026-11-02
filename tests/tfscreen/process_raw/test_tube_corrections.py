@@ -55,6 +55,18 @@ def _apply(tmp_path, entries):
 # actions
 # ---------------------------------------------------------------------------
 
+def test_swap_moves_operator_and_tf_level(tmp_path):
+    # Context columns are design columns: a swap exchanges them.
+    tubes = pd.read_csv(TUBES)
+    tubes["operator"] = ["O1" if s == A else "O2" for s in tubes["sample"]]
+    tubes["tf_level"] = ["low" if s == A else "high" for s in tubes["sample"]]
+    corr = read_corrections(_write(tmp_path, [_entry()]))["corrections"]
+    out, _ = correct_tube_table(tubes, corr)
+    out = out.set_index("sample")
+    assert out.loc[A, "operator"] == "O2" and out.loc[B, "operator"] == "O1"
+    assert out.loc[A, "tf_level"] == "high" and out.loc[B, "tf_level"] == "low"
+
+
 def test_swap_moves_design_columns_only(tmp_path):
     tubes = pd.read_csv(TUBES)
     tubes["od600"] = range(len(tubes))
@@ -65,7 +77,7 @@ def test_swap_moves_design_columns_only(tmp_path):
     b0 = tubes.set_index("sample").loc[B]
     a1 = out.set_index("sample").loc[A]
     b1 = out.set_index("sample").loc[B]
-    for c in DESIGN_COLUMNS:
+    for c in [c for c in DESIGN_COLUMNS if c in tubes.columns]:
         assert a1[c] == b0[c]
         assert b1[c] == a0[c]
     # Measurements stay with the physical sample.

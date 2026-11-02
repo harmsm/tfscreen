@@ -2,6 +2,7 @@ import tfscreen
 
 from tfscreen.util.dataframe import add_group_columns
 from tfscreen.genetics import read_library_composition
+from tfscreen.tfmodel import contexts
 from tfscreen.tfmodel.tensors.tensor_manager import TensorManager
 from tfscreen.tfmodel.tensors.populate_dataclass import populate_dataclass
 
@@ -55,7 +56,8 @@ ZERO_CONC_VALUE = 1e-20
 def _read_growth_df(growth_df,
                     theta_group_cols=None,
                     treatment_cols=None,
-                    growth_likelihood="lncfu"):
+                    growth_likelihood="lncfu",
+                    conditions=None):
     """
     Reads and preprocesses a DataFrame containing growth curve data.
 
@@ -85,6 +87,9 @@ def _read_growth_df(growth_df,
         "lncfu" (default) or "counts". For "counts" the frame also needs
         ``counts``, each tube's total reads and total cells; see
         :func:`_add_count_columns`.
+    conditions : contexts.ThetaConditions, optional
+        The experiment's θ conditions (built from the growth and binding
+        data together). None: from the growth data alone.
 
     Returns
     -------
@@ -94,12 +99,14 @@ def _read_growth_df(growth_df,
     
     # Get default theta_group columns
     if theta_group_cols is None:
-        theta_group_cols = ["genotype","titrant_name"]
+        theta_group_cols = ["genotype","titrant_name",
+                            contexts.THETA_CONDITION_COLUMN]
 
     # Get default treatment columns
     if treatment_cols is None:
         treatment_cols =  ["library","condition_pre","condition_sel",
-                           "titrant_name","titrant_conc"]
+                           "titrant_name",contexts.THETA_CONDITION_COLUMN,
+                           "titrant_conc"]
 
     # Read dataframe, validate or calculate ln_cfu and ln_cfu_std
     growth_df = tfscreen.util.io.read_dataframe(growth_df)
@@ -119,6 +126,13 @@ def _read_growth_df(growth_df,
         raise ValueError(
             "growth_df is missing a required 'library' column."
         )
+
+    # The θ condition of each row: its titrant, or with contexts its
+    # (titrant, operator, TF level); see tfmodel/contexts.py.
+    if conditions is None:
+        conditions = contexts.theta_conditions(growth_df)
+    growth_df = contexts.assign_theta_condition(growth_df, conditions,
+                                                "growth")
 
     # check for all required columns
     required = theta_group_cols[:]
@@ -279,6 +293,13 @@ def _build_growth_tm(growth_df, growth_shares_replicates=False,
 
     """
 
+    # The titrant_name axis is the θ-condition axis (tfmodel/contexts.py):
+    # the titrant names themselves unless the data name operators or TF
+    # levels.
+    if contexts.THETA_CONDITION_COLUMN not in growth_df.columns:
+        growth_df = contexts.assign_theta_condition(
+            growth_df, contexts.theta_conditions(growth_df), "growth")
+
     # Add pivot column so we can both use this as a pivot and value
     growth_df["pivot_titrant_conc"] = growth_df["titrant_conc"]
 
@@ -297,7 +318,8 @@ def _build_growth_tm(growth_df, growth_shares_replicates=False,
                                      select_cols=['replicate','genotype','treatment'])
     growth_tm.add_pivot_index(tensor_dim_name="condition_pre", cat_column="_condition_pre_key")
     growth_tm.add_pivot_index(tensor_dim_name="condition_sel",cat_column="condition_sel_reduced")
-    growth_tm.add_pivot_index(tensor_dim_name="titrant_name",cat_column="titrant_name")
+    growth_tm.add_pivot_index(tensor_dim_name="titrant_name",
+                              cat_column=contexts.THETA_CONDITION_COLUMN)
     growth_tm.add_pivot_index(tensor_dim_name="titrant_conc",cat_column="pivot_titrant_conc")
     growth_tm.add_pivot_index(tensor_dim_name="genotype",cat_column="genotype")
     
@@ -331,7 +353,8 @@ def _build_growth_tm(growth_df, growth_shares_replicates=False,
     growth_tm.add_map_tensor(["replicate","library","condition_pre","genotype"],
                             name="ln_cfu0")
     growth_tm.add_map_tensor("genotype",name="genotype")
-    growth_tm.add_map_tensor(["titrant_name","titrant_conc","genotype"],name="theta")
+    growth_tm.add_map_tensor([contexts.THETA_CONDITION_COLUMN,"titrant_conc",
+                              "genotype"],name="theta")
 
     # Do final tensor creation
     growth_tm.create_tensors()
@@ -341,7 +364,8 @@ def _build_growth_tm(growth_df, growth_shares_replicates=False,
 
 def _read_binding_df(binding_df,
                      growth_df=None,
-                     theta_group_cols=None):
+                     theta_group_cols=None,
+                     conditions=None):
     """
     Reads and processes a DataFrame containing direct binding data.
 
@@ -363,11 +387,15 @@ def _read_binding_df(binding_df,
     theta_group_cols : list, optional
         Column names used to define unique theta parameter groups.
         If not specified, defaults to ["genotype", "titrant_name"].
+    conditions : contexts.ThetaConditions, optional
+        The experiment's θ conditions. None: built from ``growth_df`` and
+        this binding data.
 
     Returns
     -------
     pd.DataFrame
-        A copy of the processed binding DataFrame.
+        A copy of the processed binding DataFrame, with its
+        ``theta_condition`` column.
     """
 
     # Get default theta_group columns
@@ -387,8 +415,35 @@ def _read_binding_df(binding_df,
 
     # Drop pre-existing group columns so re-processing doesn't cause merge conflicts.
     binding_df = binding_df.drop(
-        columns=["map_theta_group", "map_theta_group_tuple"], errors="ignore"
+        columns=["map_theta_group", "map_theta_group_tuple",
+                 contexts.THETA_CONDITION_COLUMN], errors="ignore"
     )
+
+    if conditions is None:
+        conditions = contexts.theta_conditions(growth_df, binding_df)
+
+    if conditions.composite:
+        # With contexts a binding θ condition (titrant, operator, protein
+        # concentration) has no growth counterpart to inherit a group from:
+        # keep the genotypes and titrants the growth data have, and group
+        # on the binding data's own conditions.
+        binding_df = contexts.assign_theta_condition(binding_df, conditions,
+                                                     "binding")
+        if growth_df is not None:
+            keep = (binding_df["genotype"].astype(str).isin(
+                        set(growth_df["genotype"].astype(str)))
+                    & binding_df["titrant_name"].astype(str).isin(
+                        conditions.effector_names))
+            if (~keep).any():
+                print(f"Syncing binding_df to growth_df: {int((~keep).sum())} "
+                      f"row(s) whose genotype or titrant is not in growth_df "
+                      f"will be dropped.", flush=True)
+            binding_df = binding_df[keep].copy()
+        binding_df = add_group_columns(
+            binding_df, ["genotype", contexts.THETA_CONDITION_COLUMN],
+            "map_theta_group")
+        return tfscreen.genetics.set_categorical_genotype(binding_df,
+                                                          standardize=False)
 
     if growth_df is not None:
         cols = ["genotype","titrant_name"]
@@ -418,7 +473,7 @@ def _read_binding_df(binding_df,
     binding_df = tfscreen.genetics.set_categorical_genotype(binding_df,
                                                             standardize=False)
 
-    return binding_df
+    return contexts.assign_theta_condition(binding_df, conditions, "binding")
 
 def _build_binding_tm(binding_df):
     """
@@ -445,6 +500,10 @@ def _build_binding_tm(binding_df):
     # Create a titrant_conc column to use as a pivot for the tensor. The pivot
     # consumes the column. This move allows us to preserve titrant_conc and use
     # its values to populate a tensor.
+    if contexts.THETA_CONDITION_COLUMN not in binding_df.columns:
+        binding_df = contexts.assign_theta_condition(
+            binding_df, contexts.theta_conditions(binding_df=binding_df),
+            "binding")
     binding_df["pivot_titrant_conc"] = binding_df["titrant_conc"]
 
     # Create tensor manager
@@ -452,7 +511,8 @@ def _build_binding_tm(binding_df):
 
     # Add pivots on titrant_conc and theta_group to create [num_titrant,num_theta_group]
     # output tensors
-    binding_tm.add_pivot_index(tensor_dim_name="titrant_name",cat_column="titrant_name")
+    binding_tm.add_pivot_index(tensor_dim_name="titrant_name",
+                               cat_column=contexts.THETA_CONDITION_COLUMN)
     binding_tm.add_pivot_index(tensor_dim_name="titrant_conc",cat_column="pivot_titrant_conc")
     binding_tm.add_pivot_index(tensor_dim_name="genotype",cat_column="genotype")
 
@@ -795,6 +855,65 @@ _CONGRESSION_DK_RULES = ("dilution", "softmin", "min")
 # Theta components on the wt-relative X scale (roadmap step 5): real-valued,
 # defined up to an affine map, gauged on wt at two concentrations.
 _RELATIVE_THETA = ("hill_relative",)
+
+def _resolve_theta_conditions(growth_df, binding_df):
+    """
+    The experiment's θ conditions, from the processed growth and binding
+    frames together, with each frame's ``theta_condition`` column set to
+    them.
+
+    Each reader assigns the labels from what it saw; this sets the final
+    ones. The grouping never changes, since a growth frame with one
+    operator and one TF level maps its labels one to one onto titrants;
+    only the label text does (``iptg`` becomes ``iptg|O1|default`` once the
+    binding data give protein concentrations). Anything but a DataFrame (a
+    reader replaced by a test double) passes through with conditions None.
+    """
+    frames = [f for f in (growth_df, binding_df) if f is not None]
+    if not frames or not all(isinstance(f, pd.DataFrame) for f in frames):
+        return growth_df, binding_df, None
+    conditions = contexts.theta_conditions(growth_df, binding_df)
+    if growth_df is not None:
+        growth_df = contexts.assign_theta_condition(growth_df, conditions,
+                                                    "growth")
+    if binding_df is not None:
+        binding_df = contexts.assign_theta_condition(binding_df, conditions,
+                                                     "binding")
+    return growth_df, binding_df, conditions
+
+
+def _check_theta_contexts(theta, conditions, has_binding):
+    """
+    Refuse θ conditions with operators or TF levels that the θ component
+    cannot read.
+
+    A component that declares ``SUPPORTS_CONTEXTS`` reads the context
+    arrays. A thermodynamic model without it would take each context for a
+    different effector. A curve model (hill_geno and the like) fits each
+    growth θ condition as its own curve, but cannot link a binding
+    measurement to one.
+    """
+    if not conditions.composite:
+        return
+    module = model_registry["theta"].get(theta)
+    if getattr(module, "SUPPORTS_CONTEXTS", False):
+        return
+    what = (f"operators {list(conditions.operator_names)}, TF levels "
+            f"{list(conditions.tf_level_names)}"
+            + (" and binding protein concentrations" if has_binding else ""))
+    if str(theta).startswith("thermo."):
+        raise ValueError(
+            f"theta={theta!r} has no operator or TF-level axis, but the data "
+            f"name {what}. Use a thermo.dimer model, or data with one "
+            f"operator and one TF level.")
+    if has_binding:
+        raise ValueError(
+            f"theta={theta!r} fits each θ condition as its own curve and "
+            f"cannot link binding data to one when the data name {what}. "
+            f"Drop the binding data's '{contexts.OPERATOR_COLUMN}' and "
+            f"'{contexts.BINDING_TF_COLUMN}' columns, or use a thermo.dimer "
+            f"model.")
+
 
 _RETIRED_TRANSFORMATIONS = {
     "empirical": (
@@ -1289,6 +1408,18 @@ class ModelOrchestrator:
         self.growth_df = _read_growth_df(self._ln_cfu_df,
                                          growth_likelihood=self._growth_likelihood)
         _check_factored_ln_cfu0(self._ln_cfu0, self.growth_df)
+
+        # The binding data are read before the growth tensors are built:
+        # whether the θ conditions carry contexts depends on both.
+        if self._has_binding:
+            self.binding_df = _read_binding_df(self._binding_df,
+                                               self.growth_df)
+        (self.growth_df, self.binding_df,
+         self.theta_conditions) = _resolve_theta_conditions(
+            self.growth_df, self.binding_df if self._has_binding else None)
+        if self.theta_conditions is not None:
+            _check_theta_contexts(self._theta, self.theta_conditions,
+                                  self._has_binding)
         self.growth_tm = _build_growth_tm(self.growth_df,
                                           self._growth_shares_replicates,
                                           growth_likelihood=self._growth_likelihood)
@@ -1555,7 +1686,6 @@ class ModelOrchestrator:
             # only (titrant_conc,theta_group). Use the growth tensor manager to
             # make sure that the mapping to parameters matches between the
             # growth and the binding data.
-            self.binding_df = _read_binding_df(self._binding_df,self.growth_tm.df)
             self.binding_tm = _build_binding_tm(self.binding_df)
 
             # Grab the sizes
@@ -1653,11 +1783,17 @@ class ModelOrchestrator:
         # rejects.  Inject it directly via flax's immutable replace().
         if _struct_names_tuple is not None:
             growth_dataclass = growth_dataclass.replace(struct_names=_struct_names_tuple)
+        if self.theta_conditions is not None:
+            growth_dataclass = growth_dataclass.replace(
+                **self.theta_conditions.data_fields("growth"))
 
         # Populate a BindingData flax dataclass with all keys in `sources`
         if self._has_binding:
             binding_dataclass = populate_dataclass(BindingData,
                                                    sources=binding_data_sources)
+            if self.theta_conditions is not None:
+                binding_dataclass = binding_dataclass.replace(
+                    **self.theta_conditions.data_fields("binding"))
         else:
             binding_dataclass = None
 
@@ -1745,6 +1881,10 @@ class ModelOrchestrator:
 
         # Read binding data (no growth_df → subset check is skipped)
         self.binding_df = _read_binding_df(self._binding_df, growth_df=None)
+        _, self.binding_df, self.theta_conditions = _resolve_theta_conditions(
+            None, self.binding_df)
+        if self.theta_conditions is not None:
+            _check_theta_contexts(self._theta, self.theta_conditions, True)
         self.binding_tm = _build_binding_tm(self.binding_df)
 
         num_genotype = self.binding_tm.tensor_shape[-1]
@@ -1854,6 +1994,9 @@ class ModelOrchestrator:
         binding_dataclass = populate_dataclass(BindingData, sources=binding_data_sources)
         if _struct_names_tuple is not None:
             binding_dataclass = binding_dataclass.replace(struct_names=_struct_names_tuple)
+        if self.theta_conditions is not None:
+            binding_dataclass = binding_dataclass.replace(
+                **self.theta_conditions.data_fields("binding"))
 
         self._data = populate_dataclass(DataClass, sources=[{
             "growth":                 None,

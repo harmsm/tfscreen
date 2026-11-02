@@ -229,6 +229,27 @@ def _edit_priors(orchestrator, priors_path, set_priors=None, growth_priors=None,
             print(f"  prior {name} = {value:g}", flush=True)
 
 
+def _check_contexts_file(orchestrator, contexts_file, theta_model):
+    """
+    Read the contexts file and check it against the data's operators and
+    TF levels. A θ model without an operator and TF-level axis does not
+    read it, which is reported.
+    """
+    from tfscreen.tfmodel import contexts as ctx
+    from tfscreen.tfmodel.generative.registry import model_registry
+
+    conditions = orchestrator.theta_conditions
+    spec = ctx.read_contexts(contexts_file) if contexts_file else None
+    module = model_registry["theta"].get(theta_model)
+    reads_contexts = getattr(module, "SUPPORTS_CONTEXTS", False)
+    if conditions is not None and (reads_contexts or spec is not None):
+        ctx.check_contexts(spec, conditions)
+    if spec is not None and not reads_contexts:
+        print(f"Note: theta model {theta_model!r} has no operator or TF-level "
+              f"axis and does not read the contexts file.", flush=True)
+    return spec
+
+
 def configure_model(binding_df=None,
                     growth_df=None,
                     presplit_df=None,
@@ -268,6 +289,7 @@ def configure_model(binding_df=None,
                     growth_priors=None,
                     growth_priors_wt_rates=None,
                     growth_priors_sd_floor=0.002,
+                    contexts=None,
                     allow_missing_spikes=False,
                     skip_model_stats=False):
     """
@@ -527,6 +549,15 @@ def configure_model(binding_df=None,
     growth_priors_sd_floor : float, optional
         Smallest k and m prior SD (per minute) derived from
         growth_priors_wt_rates. Default 0.002.
+    contexts : str, optional
+        YAML file of priors for the operators and TF levels the data name
+        (tube-table columns ``operator`` and ``tf_level``): one reference
+        operator and each other operator's ΔΔG ``shift`` and ``shift_sd``
+        (in ``units``, kT by default), and each TF level's ``conc_uM`` (µM
+        protomer) and ``ln_sd``. Required by a θ model with an operator and
+        TF-level axis once the data have more than one operator or TF
+        level; every label in the data must be in it. See
+        ``tfscreen.tfmodel.contexts``.
     allow_missing_spikes : bool, optional
         By default, a spiked genotype named in library_config with no growth
         data is an error: it usually means the counts were called with a
@@ -657,6 +688,8 @@ def configure_model(binding_df=None,
                      batch_size=batch_size,
                      binding_weight=binding_weight)
 
+    _check_contexts_file(orchestrator, contexts, theta_model)
+
     # Write the model configuration to a file. This includes the model component
     # names, the data file paths, and the parameter guesses/priors.
     growth_path = None if binding_only else (growth_df if isinstance(growth_df, str) else "growth.csv")
@@ -712,7 +745,8 @@ def main():
                                               "set_priors":str,
                                               "transformation_lambda":float,
                                               "congression_sets":int,
-                                              "theta_gauge_conc":float},
+                                              "theta_gauge_conc":float,
+                                              "contexts":str},
                             manual_arg_nargs={"set_priors":"+",
                                               "transformation_lambda":2,
                                               "congression_sets":"+",

@@ -228,7 +228,8 @@ tfs-configure-model
                               [--growth_priors GROWTH_PRIORS]
                               [--growth_priors_wt_rates GROWTH_PRIORS_WT_RATES]
                               [--growth_priors_sd_floor GROWTH_PRIORS_SD_FLOOR]
-                              [--allow_missing_spikes] [--skip_model_stats]
+                              [--contexts CONTEXTS] [--allow_missing_spikes]
+                              [--skip_model_stats]
 
    Build and write the YAML configuration files needed by tfs-fit-model.
 
@@ -508,6 +509,14 @@ tfs-configure-model
      --growth_priors_sd_floor GROWTH_PRIORS_SD_FLOOR
                            Smallest k and m prior SD (per minute) derived from
                            growth_priors_wt_rates. Default 0.002.
+     --contexts CONTEXTS   YAML file of priors for the operators and TF levels the data
+                           name (tube-table columns operator and tf_level): one reference
+                           operator and each other operator's ΔΔG shift and shift_sd (in
+                           units, kT by default), and each TF level's conc_uM (µM
+                           protomer) and ln_sd. Required by a θ model with an operator
+                           and TF-level axis once the data have more than one operator or
+                           TF level; every label in the data must be in it. See
+                           tfscreen.tfmodel.contexts.
      --allow_missing_spikes
                            By default, a spiked genotype named in library_config with no
                            growth data is an error: it usually means the counts were

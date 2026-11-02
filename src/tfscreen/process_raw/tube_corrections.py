@@ -11,7 +11,8 @@ corrections file lives with the experiment's data, under version control.
 
 **Design and measurement columns.** A tube table mixes two kinds of column.
 The design columns (``DESIGN_COLUMNS``: replicate, conditions, times,
-titrant) say what was meant to be in the tube. Every other column is a
+titrant and, when the table has them, operator and TF level) say what
+was meant to be in the tube. Every other column is a
 measurement of, or a fact about, the physical sample: its ``sample`` name
 (which picks its count file), its OD600 and tube totals, its barcodes, its
 sequencing run. A correction moves only design columns. A swap exchanges
@@ -83,7 +84,8 @@ from tfscreen.util import provenance
 # Columns that say what a tube was meant to be. A correction moves only
 # these; every other column stays with the physical sample.
 DESIGN_COLUMNS = ("replicate", "condition_pre", "t_pre", "condition_sel",
-                  "t_sel", "titrant_name", "titrant_conc")
+                  "t_sel", "titrant_name", "titrant_conc", "operator",
+                  "tf_level")
 
 # Never changed by a correction: the sample's own name and its library.
 TUBE_ID_COLUMN = "sample"

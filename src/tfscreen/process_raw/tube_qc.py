@@ -67,7 +67,8 @@ import pandas as pd
 from tfscreen.util.dataframe import check_columns
 
 # Panel and row keys, used when present in the growth table.
-PANEL_COLUMNS = ["library", "condition_pre", "condition_sel", "titrant_name"]
+PANEL_COLUMNS = ["library", "condition_pre", "condition_sel", "titrant_name",
+                 "operator", "tf_level"]
 ROW_COLUMNS = ["replicate", "t_pre", "t_sel"]
 
 _UNKNOWN = "__unknown__"

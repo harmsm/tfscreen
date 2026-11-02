@@ -254,6 +254,19 @@ class GrowthData:
     struct_contact_pair_idx: Any = field(pytree_node=False, default=None)
     struct_contact_distances: Any = field(pytree_node=False, default=None)
 
+    # θ conditions (tfmodel/contexts.py): what each index of the titrant_name
+    # axis is. Static tuples, injected with replace() after population (as
+    # struct_names). Without contexts the effectors are the titrant names in
+    # axis order and there is one operator and one TF level ("default").
+    theta_contexts: bool = field(pytree_node=False, default=False)
+    theta_effector_names: Any = field(pytree_node=False, default=None)
+    theta_operator_names: Any = field(pytree_node=False, default=None)
+    theta_tf_level_names: Any = field(pytree_node=False, default=None)
+    theta_effector_idx: Any = field(pytree_node=False, default=None)
+    theta_operator_idx: Any = field(pytree_node=False, default=None)
+    theta_tf_level_idx: Any = field(pytree_node=False, default=None)
+    theta_tf_total_M: Any = field(pytree_node=False, default=None)
+
     # Precomputed theta at growth titrant concentrations for *every* genotype
     # in the library (shape (num_titrant_name, num_titrant_conc, true_num_genotype)),
     # used only by transformation components that need a population-wide
@@ -325,6 +338,19 @@ class BindingData:
     struct_n_chains: Any = field(pytree_node=False, default=None)
     struct_contact_pair_idx: Any = field(pytree_node=False, default=None)
     struct_contact_distances: Any = field(pytree_node=False, default=None)
+
+    # θ conditions (tfmodel/contexts.py): what each index of the titrant_name
+    # axis is. Static tuples, injected with replace() after population (as
+    # struct_names). Without contexts the effectors are the titrant names in
+    # axis order and there is one operator and one TF level ("default").
+    theta_contexts: bool = field(pytree_node=False, default=False)
+    theta_effector_names: Any = field(pytree_node=False, default=None)
+    theta_operator_names: Any = field(pytree_node=False, default=None)
+    theta_tf_level_names: Any = field(pytree_node=False, default=None)
+    theta_effector_idx: Any = field(pytree_node=False, default=None)
+    theta_operator_idx: Any = field(pytree_node=False, default=None)
+    theta_tf_level_idx: Any = field(pytree_node=False, default=None)
+    theta_tf_total_M: Any = field(pytree_node=False, default=None)
 
     # Each batch position's ordinal among the binding genotypes (their order
     # on the binding tensors' genotype axis), for latents that exist only

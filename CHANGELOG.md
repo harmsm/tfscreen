@@ -53,6 +53,24 @@ fall into two kinds:
   while the offsets shrink, or falls to 0 for an unseen term; σ_s collapses
   to 0), so `planning/studies/dimer-utility/dimer_em.py` holds them in every
   MAP and sets them by EM with a Laplace E-step.
+- **Operator and TF-level contexts in the data** (`tfmodel/contexts.py`;
+  `planning/dimer-thermo-model.md` step 3a). The tube table, and so the
+  growth table, takes optional `operator` and `tf_level` text columns;
+  binding data take `operator` and `tf_total_uM` (the pipetted protein
+  concentration, µM protomer). Inside the fit (titrant, operator, TF level)
+  fold into one θ-condition index on the `titrant_name` tensor axis, so
+  tubes stay distinct cells and no growth component changes shape;
+  `GrowthData`/`BindingData` carry what each index is
+  (`theta_effector_idx`, `theta_operator_idx`, `theta_tf_level_idx`,
+  `theta_tf_total_M` and the name tuples) for θ components that declare
+  `SUPPORTS_CONTEXTS`. Data without these columns build the same tensors as
+  before. Curve models (`hill_geno` and the like) fit each context as its
+  own curve and refuse binding data with contexts; thermodynamic models
+  without the axis refuse contexts outright (the `thermo.dimer` axis is
+  step 3b). `tfs-configure-model --contexts` reads and checks the file of
+  operator offsets and TF-level concentrations against the data's labels.
+  `tfs-correct-tubes` treats the two columns as design columns and
+  `tfs-check-tubes` as panel keys.
 
 ### Changed
 
@@ -63,6 +81,15 @@ fall into two kinds:
   `predict_unmeasured` when it takes a `theta_priors` argument.
 
 ### Fixed
+
+- **Binding data that measure only some of the growth titrants line up
+  with them.** The binding tensors' titrant axis was built from the binding
+  data's own titrant names, while the θ parameters are indexed by the
+  growth data's: with growth at IPTG and TMG and binding at TMG only, the
+  binding data's TMG index (0) was the growth data's IPTG index. The
+  binding axis now
+  uses the growth titrants (empty slices masked); data whose binding
+  titrants match the growth's are unchanged.
 
 - **A second mutation-decomposed fit in one process works.** Fitting two
   models whose data carry the static mutation or structure arrays

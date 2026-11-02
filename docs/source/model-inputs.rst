@@ -53,6 +53,10 @@ growth-only model; with binding only, a binding-only model.
    * - ``--set_priors``, ``--growth_priors``, ``--growth_priors_wt_rates``
      - Optional
      - Prior values, without editing the priors CSV
+   * - ``--contexts``
+     - Data with several operators or TF levels
+     - Priors on each operator's offset and each TF level's concentration;
+       see `Operators and TF levels`_
 
 Growth data
 -----------
@@ -86,6 +90,9 @@ The model reads these columns:
      - Minutes of pre-selection and selection growth.
    * - ``titrant_name``, ``titrant_conc``
      - Titrant and its concentration.
+   * - ``operator``, ``tf_level``
+     - Optional text labels: the tube's operator and TF level. Absent, the
+       experiment has one of each. See `Operators and TF levels`_.
    * - ``ln_cfu``, ``ln_cfu_var``
      - The genotype's cells in the tube, in log form, and its variance.
        ``ln_cfu_std`` may be given instead of the variance, or ``cfu`` with
@@ -150,6 +157,12 @@ from a lab table of single measurements.
      - Measured fractional occupancy.
    * - ``theta_std``
      - SD of ``theta_obs``.
+   * - ``operator``
+     - Optional: the operator measured. Absent, the growth data's only
+       operator.
+   * - ``tf_total_uM``
+     - Optional: the protein concentration, µM protomer. It is pipetted,
+       so the fit takes it as known.
 
 In a joint model, binding rows whose genotype and titrant do not appear in
 the growth table are dropped with a message.
@@ -167,6 +180,41 @@ stays unset. ``tfs-prefit-calibration`` calibrates the growth link on the
 binding genotypes, so it refuses a growth-only model. The growth-only route
 is ``--theta_model hill_relative`` with its growth priors set from wt
 monoculture rates; see `Prior inputs`_ and :doc:`fitting`.
+
+Operators and TF levels
+-----------------------
+
+A screen can measure the same library against more than one operator or
+at more than one TF level. Each tube's are text labels in the tube table's
+optional ``operator`` and ``tf_level`` columns; ``tfs-process-counts``
+carries them into the growth table, and ``tfs-correct-tubes`` treats them
+as design columns. Binding rows may name an ``operator`` and give their
+protein concentration in ``tf_total_uM``. Without these columns there is
+one operator and one TF level, and nothing changes.
+
+The labels' values are priors, in a YAML file given to
+``tfs-configure-model --contexts``:
+
+.. code-block:: yaml
+
+    units: kcal/mol            # operator shifts: kT, kcal/mol or kJ/mol
+    temperature_K: 310.15
+    operators:
+      O1: {reference: true}
+      O2: {shift: 1.5, shift_sd: 0.3}     # ΔΔG of operator binding vs O1
+    tf_levels:                 # total TF per cell, µM protomer
+      low:  {conc_uM: 3,  ln_sd: 0.5}
+      high: {conc_uM: 30, ln_sd: 0.5}
+
+One operator is the reference, where the wild-type constants are defined.
+Each other operator's shift comes from the literature or a measurement,
+with its uncertainty. A TF level's concentration is learned about its prior
+unless ``ln_sd`` is 0. Every label in the data must be in the file, and the
+file must not name labels the data lack. Only a *θ* model with an operator
+and TF-level axis reads it; the curve models (``hill_geno`` and the like)
+fit each operator and TF level as its own curve, and refuse binding data
+with these columns. The thermodynamic models' axis is in progress
+(``planning/dimer-thermo-model.md``, step 3).
 
 Library description
 -------------------

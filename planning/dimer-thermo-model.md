@@ -4,9 +4,9 @@ status: active
 filed: 2026-10-31
 area: tfmodel
 revisit_when: >-
-  Active. Step 1 (the port) is done; step 2, feasibility in the full
-  pipeline on the laptop, is under way; the data axes (step 3) come
-  before any cluster grid.
+  Active. Steps 1 (the port) and 2 (laptop feasibility) are done; step 3,
+  the data axes, is designed (2026-11-02) and comes before any cluster
+  grid.
 related:
   - planning/studies/thermo-identifiability/README.md
   - src/tfscreen/tfmodel/generative/components/theta/thermo/dimer/
@@ -27,7 +27,8 @@ sampler rather than a Laplace.
 
 1. The data axes stay as they are: one operator, one known TF level, the wt
    background. Operator, TF-level and background axes need theta to depend
-   on condition, a data-model change of its own.
+   on condition, a data-model change of its own. (For the port only; step
+   3 adds them, see **Step 3 design**.)
 2. The species set is chosen by static priors flags, not by registry names.
 3. The terms are referenced to the dimer and reuse the O2_C12 names, so the
    default model nests O2_C12 U1.
@@ -72,7 +73,104 @@ sampler rather than a Laplace.
    at one operator, one TF level and wt only, a failed utility test cannot
    tell a wrong model from an under-measured one (saturation hides the
    effector-site shifts; study step 3), and the backgrounds analysis feeds
-   the NSF preliminary data.
+   the NSF preliminary data. Design below (**Step 3 design**); sub-steps
+   3a-3g.
+
+## Step 3 design (Mike, 2026-11-02)
+
+Each axis is declared where the lab already records the physical thing it
+belongs to. The effector axis exists already as `titrant_name`.
+
+**Decisions.**
+
+1. Backgrounds are genotypes, not an axis. A genotype is named in absolute
+   terms, relative to the reference `wt_seq`: A100V made in the K84L/M42I
+   background is `K84L/M42I/A100V`. The θ model needs nothing new: a
+   background's shift is the sum of its mutations' shifts plus their pair
+   terms, its own parent is a measured genotype, and background x library
+   coupling is the existing pair horseshoe.
+2. Operator and TF level are text labels in two optional tube-table
+   columns, `operator` and `tf_level`. A table without them is one operator
+   and one level, as now.
+3. TF levels are given in absolute concentration (µM protomer), as the
+   location of a prior on each level's total TF, not as a fold over a
+   reference. They are learned unless the prior SD is 0.
+4. Operators carry literature or measured offsets as priors. One operator
+   is the reference, where the wt constants are defined.
+
+**The contexts file.** `tfs-configure-model --contexts contexts.yaml`,
+snapshotted into the priors CSV like `--growth_priors`, so the CSV stays
+the place to override it:
+
+```yaml
+units: kcal/mol            # operator shifts; as thermo_options ddG_units
+temperature_K: 310.15
+operators:
+  O1: {reference: true}
+  O2: {shift: 1.5, shift_sd: 0.3}     # ΔΔG of operator binding vs O1
+tf_levels:                 # total TF per cell, µM protomer
+  low:  {conc_uM: 3,  ln_sd: 0.5}
+  high: {conc_uM: 30, ln_sd: 0.5}
+```
+
+An operator's `shift` moves every operator-engagement term (first and
+second engagement, H and L) by the same ΔΔG, which is what one literature
+number per operator describes. Each term also gets a per-operator deviation
+about that shift, N(0, 0.5 kT), as the per-titrant effector deviations do.
+Mutation effects are shared across operators and TF levels. Labels in the
+tube table that the file does not name are an error; a file is required
+once there is more than one label of either kind.
+
+**Binding data.** `binding_df` gains optional `operator` and `tf_total_uM`
+columns: the in vitro protein concentration is pipetted, so it is known,
+not learned. `tfs-process-binding` writes `tf_total_uM` and keeps every
+protein concentration instead of filtering to one (`--protein_conc`
+becomes an optional filter). This fixes a present mismatch: binding
+measured at 2 µM protein is now fit at the in vivo TF total.
+
+**Implementation.** Inside the fit, (`titrant_name`, `operator`,
+`tf_level`) fold into one θ-condition index on the existing `titrant_name`
+tensor dimension. Every growth component already indexes tubes by that
+dimension, so tube identity stays unique and nothing outside the θ layer
+changes shape. Static per-index arrays (`effector_idx`, `operator_idx`,
+`tf_level_idx`) tell the θ components what each index is. Every output
+splits the index back into `titrant_name`, `operator` and `tf_level`
+columns. Per-genotype curve models (`hill_geno` and the like) fit each
+context as its own curve, which is what they mean; the O2 thermodynamic
+models refuse more than one operator or TF level.
+
+**Sub-steps.**
+
+- 3a. Data: tube-table and `growth_df` columns, `binding_df` columns, the
+  contexts file and its priors rows, the folded θ-condition index in the
+  orchestrator. Without the columns, configs and fits are unchanged
+  (regression tests on an existing config). Done 2026-11-02 except the
+  priors rows, which need the dimer's per-operator and per-level fields
+  and move to 3b (`tfmodel/contexts.py`, `tests/.../test_contexts.py`).
+  Found on the way: binding data measuring a subset of the growth
+  titrants were indexed against the wrong titrant; fixed by aligning the
+  binding axis with the growth titrants.
+- 3b. thermo.dimer: per-operator shift and deviations, per-level total TF,
+  binding at its known `tf_total_uM`.
+- 3c. Outputs: `tfs-predict-theta`, extraction, `tfs-summarize-fit` and
+  `tfs-compare-runs` carry the `operator` and `tf_level` columns; new
+  `operator_shift` and `tf_total` tables.
+- 3d. Backgrounds: declared in the experiment's library YAML (below), with
+  a `background` tube-table column; `tfs-process-fastq --background` names
+  genotypes in absolute terms; the composition table, genotype check and
+  congression pools work per background, since each background is its own
+  transformation.
+- 3e. Simulator: the design table's new columns, the contexts and
+  backgrounds in the truth, truth tables for operator shifts and TF levels.
+- 3f. `tfs-process-binding` as above.
+- 3g. Laptop validation: A2 again with two operators, two TF levels and
+  two backgrounds, checked against the identifiability study's step 1.
+
+**Open: how a background is declared.** Proposed: one library YAML per
+experiment stays the rule, with an optional `backgrounds` block naming each
+background's mutations (relative to `wt_seq`) and, if it differs, its
+`library_mixture`. Background mutations outside the amplicon never appear
+in the reads, so the names must come from this block.
 4. Utility in full simulations, on the cluster, on the axis-capable model:
    the ΔΔG prior (PK, PddG learned σ_s, PddG σ_s held at the dial, over the
    table error) and combinations (planted distance-scaled pair coupling,
