@@ -292,3 +292,29 @@ def background_library_df(library_config, base_dir=None):
     if not cf.get("backgrounds"):
         return build_library(cf, base_dir=base_dir)[0]
     return build_background_library(cf, base_dir=base_dir)[0]
+
+
+def background_mutations(library_df):
+    """
+    The mutations of every non-reference background's parent, from a
+    library table with a ``background`` column (the composition table or
+    the simulator's library). A background's parent mutations are the ones
+    every genotype of that background carries.
+
+    These mutations add to every genotype without a pair term
+    (planning/dimer-thermo-model.md, step 3g): a background genotype is a
+    pair of the background's mutation with a library mutation, and a free
+    pair term would let the background tell nothing about the library
+    mutation's own effect. Empty without backgrounds.
+    """
+    if library_df is None or BACKGROUND_COLUMN not in library_df.columns:
+        return frozenset()
+    out = set()
+    for name, block in library_df.groupby(BACKGROUND_COLUMN, sort=False):
+        if str(name) == REFERENCE:
+            continue
+        sets = [frozenset(m for m in str(g).split("/") if m != "wt")
+                for g in block["genotype"]]
+        if sets:
+            out |= frozenset.intersection(*sets)
+    return frozenset(out)

@@ -1644,6 +1644,8 @@ class ModelOrchestrator:
             _genotypes = list(self.growth_tm.tensor_dim_labels[_geno_idx])
             from tfscreen.genetics import build_mut_geno_matrix
             from tfscreen.genetics.build_mut_geno_matrix import build_mut_sparse_indices
+            from tfscreen.genetics.backgrounds import background_mutations
+            # A background's own mutations add without a pair term.
             (mut_labels, pair_labels,
              mut_geno_matrix,
              pair_nnz_pair_idx,
@@ -1651,6 +1653,7 @@ class ModelOrchestrator:
                 _genotypes, skip_pairs=not self._epistasis,
                 mut_labels=self._fixed_mut_labels,
                 pair_labels=self._fixed_pair_labels,
+                additive_mutations=background_mutations(self._library_df),
             )
             mut_nnz_mut_idx, mut_nnz_geno_idx = build_mut_sparse_indices(mut_geno_matrix)
             # Expose labels as model attributes for downstream interpretation

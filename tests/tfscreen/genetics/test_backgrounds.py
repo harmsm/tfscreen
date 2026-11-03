@@ -227,3 +227,14 @@ def test_check_backgrounds_in_data():
     # refuses a background column without them)
     check_backgrounds_in_data(library_composition_table(_base()),
                               _growth(["wt"], "kanR", "bgA"))
+
+
+def test_background_mutations_are_the_parents():
+    table = pd.DataFrame({
+        "background": ["reference"] * 3 + ["far"] * 3 + ["near"] * 2,
+        "genotype": ["wt", "A1V", "A1V/K2L",
+                     "T276N", "A1V/T276N", "A1V/K2L/T276N",
+                     "K2L/M9I", "K2L/M9I/L20F"]})
+    assert B.background_mutations(table) == {"T276N", "K2L", "M9I"}
+    assert B.background_mutations(table.drop(columns="background")) == set()
+    assert B.background_mutations(None) == set()

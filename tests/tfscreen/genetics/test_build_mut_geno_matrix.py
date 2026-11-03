@@ -212,3 +212,16 @@ class TestBuildMutGenoMatrix:
         assert len(pl) == 1
         P = _coo_to_dense(pi, gi, len(pl), len(genotypes))
         assert P.shape[0] == len(pl)
+
+
+def test_additive_mutations_get_no_pair_term():
+    from tfscreen.genetics import build_mut_geno_matrix
+    genotypes = ["wt", "T276N", "A1V/T276N", "A1V/K2L/T276N", "A1V/K2L"]
+    ml, pl, M, pi, gi = build_mut_geno_matrix(
+        genotypes, additive_mutations={"T276N"})
+    assert "T276N" in ml
+    assert pl == ["A1V/K2L"]
+    assert sorted(gi.tolist()) == [3, 4]
+    # a fixed pair index space without the background's pairs is accepted
+    build_mut_geno_matrix(genotypes, mut_labels=ml, pair_labels=pl,
+                          additive_mutations={"T276N"})

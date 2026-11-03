@@ -18,6 +18,9 @@ inputs/.
                                   design at (reference, O1, lo) plus five
                                   star arms (inputs/design_A3.csv), the
                                   contexts in inputs/contexts_A3.yaml
+    runs/A4/tfs_sim_config.yaml   A3's config, rerun after the background's
+                                  own mutations stopped getting a pair term
+                                  (2026-11-03), in simulation and fit alike
 
 Both draw the truth from the AF3 state table (kcal/mol at 310.15 K) plus
 ddG_truth_sd per mutation and state, with wt held at the model defaults
@@ -161,14 +164,15 @@ def main():
                       "w") as f:
                 f.write("# A3 contexts: written by make_configs.py\n")
                 yaml.safe_dump(A3_CONTEXTS, f, sort_keys=False)
-            out = os.path.join(HERE, "runs", "A3")
-            os.makedirs(out, exist_ok=True)
-            with open(os.path.join(out, "tfs_sim_config.yaml"), "w") as f:
-                f.write("# Run A3 (plan step 3g): written by "
-                        "make_configs.py\n")
-                yaml.safe_dump(a3_config(cf, a3), f, sort_keys=False)
-            print(f"wrote runs/A3/tfs_sim_config.yaml ({len(a3)} tubes, "
-                  f"{a3['library'].nunique()} libraries)")
+            for run in ("A3", "A4"):
+                out = os.path.join(HERE, "runs", run)
+                os.makedirs(out, exist_ok=True)
+                with open(os.path.join(out, "tfs_sim_config.yaml"), "w") as f:
+                    f.write(f"# Run {run} (plan step 3g): written by "
+                            "make_configs.py\n")
+                    yaml.safe_dump(a3_config(cf, a3), f, sort_keys=False)
+                print(f"wrote runs/{run}/tfs_sim_config.yaml ({len(a3)} "
+                      f"tubes, {a3['library'].nunique()} libraries)")
 
 
 if __name__ == "__main__":

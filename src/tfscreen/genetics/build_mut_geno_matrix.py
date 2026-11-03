@@ -3,7 +3,7 @@ import numpy as np
 
 
 def build_mut_geno_matrix(genotypes, skip_pairs=False, mut_labels=None,
-                          pair_labels=None):
+                          pair_labels=None, additive_mutations=None):
     """
     Build binary indicator matrices mapping mutations and mutation pairs to
     genotypes, from an ordered list of genotype strings.
@@ -32,6 +32,11 @@ def build_mut_geno_matrix(genotypes, skip_pairs=False, mut_labels=None,
         Fixed pair index space, as for ``mut_labels`` (ignored when
         ``skip_pairs=True``). A pair in ``genotypes`` that is not in this
         list raises ``ValueError``.
+    additive_mutations : collection of str, optional
+        Mutations that get no pair term: a pair with one of them is left
+        out of the pair labels and the pair matrix. The genetic
+        backgrounds' own mutations (``backgrounds.background_mutations``),
+        which add to every genotype of their background.
 
     Returns
     -------
@@ -100,22 +105,27 @@ def build_mut_geno_matrix(genotypes, skip_pairs=False, mut_labels=None,
         pair_nnz_geno_idx = np.zeros(0, dtype=np.int32)
         return mut_labels, pair_labels, mut_geno_matrix, pair_nnz_pair_idx, pair_nnz_geno_idx
 
+    additive = frozenset(additive_mutations or ())
+
+    def _pairs(muts):
+        for i in range(len(muts)):
+            for j in range(i + 1, len(muts)):
+                if muts[i] in additive or muts[j] in additive:
+                    continue
+                a, b = sorted([muts[i], muts[j]])
+                yield f"{a}/{b}"
+
     pair_seen = {}
     if pair_labels is not None:
         pair_seen = {p: i for i, p in enumerate(pair_labels)}
     unknown = set()
     for muts in geno_muts:
-        if len(muts) < 2:
-            continue
-        for i in range(len(muts)):
-            for j in range(i + 1, len(muts)):
-                a, b = sorted([muts[i], muts[j]])
-                label = f"{a}/{b}"
-                if label not in pair_seen:
-                    if pair_labels is not None:
-                        unknown.add(label)
-                    else:
-                        pair_seen[label] = len(pair_seen)
+        for label in _pairs(muts):
+            if label not in pair_seen:
+                if pair_labels is not None:
+                    unknown.add(label)
+                else:
+                    pair_seen[label] = len(pair_seen)
     if unknown:
         raise ValueError(
             f"Genotypes contain mutation pair(s) not in the fixed pair "
@@ -131,14 +141,9 @@ def build_mut_geno_matrix(genotypes, skip_pairs=False, mut_labels=None,
     rows = []
     cols = []
     for g_idx, muts in enumerate(geno_muts):
-        if len(muts) < 2:
-            continue
-        for i in range(len(muts)):
-            for j in range(i + 1, len(muts)):
-                a, b = sorted([muts[i], muts[j]])
-                label = f"{a}/{b}"
-                rows.append(pair_seen[label])
-                cols.append(g_idx)
+        for label in _pairs(muts):
+            rows.append(pair_seen[label])
+            cols.append(g_idx)
 
     pair_nnz_pair_idx = np.array(rows, dtype=np.int32)
     pair_nnz_geno_idx = np.array(cols, dtype=np.int32)

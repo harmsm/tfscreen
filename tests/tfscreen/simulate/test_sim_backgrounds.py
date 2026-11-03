@@ -116,6 +116,9 @@ def test_context_truth_is_written(run):
     ln_tf = pd.read_csv(d / "sim_ln_tf_total.csv").set_index("tf_level")
     assert np.exp(ln_tf.loc["high", "ln_tf_total"]) > \
         np.exp(ln_tf.loc["low", "ln_tf_total"])
+    # the background's own mutation adds without a pair term
+    pairs = pd.read_csv(d / "sim_pair_parameters.csv")["pair"].astype(str)
+    assert len(pairs) and not pairs.str.contains(OUTSIDE).any()
     theta = pd.read_csv(d / "sim_genotype_theta.csv")
     assert {"operator", "tf_level"} <= set(theta.columns)
     assert theta.groupby(["operator", "tf_level"]).ngroups == 4

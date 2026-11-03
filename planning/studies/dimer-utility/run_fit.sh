@@ -6,20 +6,31 @@
 #
 # Arms: O2PK (thermo.O2_C12_K5_U1_a.PK), dimerPK_nested (thermo.dimer.PK,
 # second engagement off), dimerPK and dimerPddG (default variant). A1 fits
-# without the pair term, A2 and A3 with it. A3 (plan step 3g) adds the
+# without the pair term, A2-A4 with it. A3 (plan step 3g) adds the
 # contexts file and holds every hierarchical scale at 1 kT, as the EM
 # iteration 1 fits of A2 did (dimer_em.py). Each step is skipped if its marker in
 # fit_<arm>/.done exists. MAP_CAP (default 50000) caps every MAP stage.
-# LAPLACE sets the posterior: full for A1 and A2, arrowhead for A3, whose
-# 32,001 MAP parameters made the dense full Laplace need about 67 GB.
+# LAPLACE sets the posterior: full for A1 and A2, arrowhead for A3 and A4,
+# whose 32,001 MAP parameters made the dense full Laplace need about 67 GB.
+# A4 is A3 rerun after the background's own mutations stopped getting a
+# pair term. STOP_AFTER=<step> ends the script after that step, so a
+# cluster job can stop after the MAP (dimer_utility.srun). The tfs-*
+# commands come from ~/miniconda3/bin (the laptop) or else from PATH.
 set -euo pipefail
 
 run=$1; arm=$2
 here=$(cd "$(dirname "$0")" && pwd)
-bin=~/miniconda3/bin
+if [[ -x ~/miniconda3/bin/tfs-fit-model ]]; then
+    bin=~/miniconda3/bin
+else
+    bin=$(dirname "$(command -v tfs-fit-model)")
+fi
 MAP_CAP=${MAP_CAP:-50000}
 NUM_DRAWS=${NUM_DRAWS:-500}
-[[ ${run} == A3 ]] && default_laplace=arrowhead || default_laplace=full
+STOP_AFTER=${STOP_AFTER:-}
+contexts=false
+[[ ${run} == A3 || ${run} == A4 ]] && contexts=true
+${contexts} && default_laplace=arrowhead || default_laplace=full
 LAPLACE=${LAPLACE:-${default_laplace}}
 
 cd "${here}/runs/${run}"
@@ -28,9 +39,25 @@ mkdir -p "fit_${arm}/.done"
 cd "fit_${arm}"
 exec > >(tee -a job.log) 2>&1
 
-done_step() { [[ -f ".done/$1" ]]; }
-mark() { touch ".done/$1"; }
-timed() { /usr/bin/time -l "$@"; }
+done_step() {
+    [[ -f ".done/$1" ]] || return 1
+    if [[ "${STOP_AFTER}" == "$1" ]]; then
+        echo ">>> $1 already done, stopping $(date)"; exit 0
+    fi
+}
+mark() {
+    touch ".done/$1"
+    if [[ "${STOP_AFTER}" == "$1" ]]; then
+        echo ">>> stopping after $1 $(date)"; exit 0
+    fi
+}
+if [[ $(uname) == Darwin ]]; then
+    timed() { /usr/bin/time -l "$@"; }
+elif [[ -x /usr/bin/time ]]; then
+    timed() { /usr/bin/time -v "$@"; }
+else
+    timed() { "$@"; }
+fi
 
 thermo=../../../inputs/2026-10-11_laci-state-ddg.csv
 case "${arm}" in
@@ -45,8 +72,9 @@ case "${arm}" in
     *) echo "unknown arm ${arm}"; exit 1 ;;
 esac
 epi=()
-[[ "${run}" == A2 || "${run}" == A3 ]] && epi=(--epistasis)
-if [[ "${run}" == A3 ]]; then
+[[ "${run}" == A2 ]] && epi=(--epistasis)
+${contexts} && epi=(--epistasis)
+if ${contexts}; then
     held=(theta_sigma_d_ln_K_h_oii_fixed=1 theta_sigma_d_ln_K_l_oii_fixed=1)
     if [[ "${arm}" == dimerPK ]]; then
         held+=(theta_sigma_d_ln_K_h_l_fixed=1 theta_sigma_d_ln_K_h_o_fixed=1

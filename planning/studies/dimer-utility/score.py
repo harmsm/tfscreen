@@ -17,7 +17,7 @@ are in kT.
 - nesting (A1): the O2_C12 U1 PK fit against the dimer PK fit with the
   second engagement off, MAP point against MAP point.
 - sigma (A2 PddG): learned sigma_s per state against the truth's.
-- contexts (A3): the operator shifts, per-operator deviations and TF
+- contexts (A3, A4): the operator shifts, per-operator deviations and TF
   levels against the truth, and theta scored per (background, operator,
   TF level) block.
 """
@@ -31,6 +31,7 @@ import pandas as pd
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RUNS = os.path.join(HERE, "runs")
+CONTEXT_RUNS = ("A3", "A4")
 OUT = os.path.join(HERE, "results")
 
 
@@ -125,6 +126,16 @@ def _timings(log):
             m = re.match(r"\s+(\d+)\s+maximum resident set size", line)
             if m:
                 out.append((step, wall, int(m.group(1)) / 1e9))
+            # GNU time -v (the cluster): wall clock, then the peak in kB
+            m = re.match(r"\s+Elapsed \(wall clock\) time .*: ([\d:.]+)",
+                         line)
+            if m:
+                parts = [float(x) for x in m.group(1).split(":")]
+                wall = sum(x * 60 ** i for i, x in enumerate(parts[::-1]))
+            m = re.match(r"\s+Maximum resident set size \(kbytes\): (\d+)",
+                         line)
+            if m:
+                out.append((step, wall, int(m.group(1)) / 1e6))
     return out
 
 
@@ -216,7 +227,7 @@ def contexts():
                              "q0.025": float(est.loc[k, "q0.025"]),
                              "q0.975": float(est.loc[k, "q0.975"])})
         lib = os.path.join(RUNS, run, "sim", "tfs_sim_growth.csv")
-        if run != "A3" or not os.path.exists(lib):
+        if run not in CONTEXT_RUNS or not os.path.exists(lib):
             continue
         blocks = (pd.read_csv(lib, usecols=["genotype", "background",
                                             "operator", "tf_level"])

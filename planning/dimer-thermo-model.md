@@ -217,8 +217,13 @@ models refuse more than one operator or TF level.
   u stayed unresolved. A background genotype is a pair, and the pair
   horseshoe gives it free epistasis, so the background cannot inform the
   singles. Its pair terms have prior-wide intervals, which makes θ for
-  every double and background genotype about [0, 1]. Open, for Mike:
-  should background mutations add without a pair term?
+  every double and background genotype about [0, 1]. Decided (Mike,
+  2026-11-03): a background's own mutations add without a pair term, in
+  the fit and the simulator (`backgrounds.background_mutations`). Run A4
+  repeats A3 with that rule, on the cluster (`submit.sh`). These runs are
+  pilots that ask whether the axes gain anything, so undercoverage is
+  acceptable short of a collapse. Coverage gets its own work on realistic
+  libraries with multiple mutations.
 
 **How a background is declared (Mike, 2026-11-02).** One library YAML per
 experiment stays the rule, with an optional `backgrounds` block. Each

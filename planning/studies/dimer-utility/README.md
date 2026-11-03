@@ -58,6 +58,22 @@ bash -c 'for ra in "A1 O2PK" "A1 dimerPK_nested" "A2 dimerPK" "A2 dimerPddG"; do
 
 `runs/` is untracked; `results/stageA_*.csv` hold the scores.
 
+On the cluster (A4 onward), from this directory in the cluster checkout:
+
+```bash
+bash submit.sh A4
+```
+
+It simulates the run if `runs/A4/sim` is missing, then submits two 6 h
+GPU jobs per arm, chained with `afterok`: configure and the MAP, then the
+Laplace and the rest. Logs go to `runs/A4/logs/`. Resubmitting resumes the
+run, since `run_fit.sh` skips finished steps. Copy `runs/A4` back to the
+laptop and run `score.py` there.
+
+These runs are pilots: they ask whether a model or an axis gains anything.
+Undercoverage is fine short of a collapse; coverage is worked on with
+realistic libraries with multiple mutations.
+
 ## Stage A results
 
 **Cost.** 5,095 parameters for the A2 fits (3,002 theta, 784 of them pair
@@ -283,3 +299,9 @@ what the operator and TF-level arms add. The step-2 θ overconfidence in
 the reference blocks is still open.
 
 `score.py` writes the context scores to `results/stageA_contexts.csv`.
+
+**Decision (Mike, 2026-11-03).** A background's own mutations now add
+without a pair term, in the fit and the simulator
+(`backgrounds.background_mutations`). Run A4 is A3's config rerun with
+that rule, on the cluster. It also leaves out a pair term for any pair
+with T276N in the reference library, where there is none.

@@ -126,7 +126,14 @@ fall into two kinds:
   mutations (`backgrounds.design_names`), and the reference's spikes are
   protected in every background, so one seed keeps the same members in
   each (`backgrounds.build_background_library`). `tfs-simulate` scales
-  each background's `library_mixture` by its own kept fractions.
+  each background's `library_mixture` by its own kept fractions. A
+  background's own mutations add to every genotype of that background
+  without a pair term (`backgrounds.background_mutations`,
+  `build_mut_geno_matrix(additive_mutations=)`), in the fit and the
+  simulator alike: with a free pair term per background genotype, the
+  background told the fit nothing about the library mutations' own effects
+  (`planning/studies/dimer-utility/`, run A3). A pair with such a mutation
+  is left out even in reference genotypes.
 - **Operators, TF levels and backgrounds in the simulator** (step 3e).
   Condition blocks and design tables take optional `operator`, `tf_level`
   and `background` columns, and tubes that differ in one are different

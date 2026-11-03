@@ -15,6 +15,7 @@ from flax.struct import dataclass, field
 from typing import Any
 
 from tfscreen.tfmodel.data_class import wrap_static_arrays
+from tfscreen.genetics.backgrounds import background_mutations
 from tfscreen.genetics.build_mut_geno_matrix import (
     build_mut_geno_matrix,
     build_mut_sparse_indices,
@@ -85,6 +86,8 @@ class SimData:
     mut_nnz_geno_idx:  Any = field(pytree_node=False, default=None)
     pair_nnz_pair_idx: Any = field(pytree_node=False, default=None)
     pair_nnz_geno_idx: Any = field(pytree_node=False, default=None)
+    # Mutations without a pair term (the backgrounds' own mutations).
+    additive_mutations: Any = field(pytree_node=False, default=())
 
     # ── Optional: structural ensemble ─────────────────────────────────────────
     num_struct:               int = field(pytree_node=False, default=0)
@@ -193,8 +196,11 @@ def build_sim_data(library_df,
     C = len(concs)
 
     # ── Mutation-genotype COO mapping ─────────────────────────────────────────
+    # A background's own mutations add without a pair term, as in the fit.
+    additive = tuple(sorted(background_mutations(library_df)))
     mut_labels, pair_labels, mut_geno_matrix, pair_nnz_pair_idx, pair_nnz_geno_idx = \
-        build_mut_geno_matrix(genotypes, skip_pairs=skip_pairs)
+        build_mut_geno_matrix(genotypes, skip_pairs=skip_pairs,
+                              additive_mutations=additive)
     mut_nnz_mut_idx, mut_nnz_geno_idx = build_mut_sparse_indices(mut_geno_matrix)
     M = len(mut_labels)
     P = len(pair_labels)
@@ -249,6 +255,7 @@ def build_sim_data(library_df,
         mut_nnz_geno_idx=mut_nnz_geno_idx,
         pair_nnz_pair_idx=pair_nnz_pair_idx,
         pair_nnz_geno_idx=pair_nnz_geno_idx,
+        additive_mutations=additive,
         **struct_kw,
         **theta_kw,
     )

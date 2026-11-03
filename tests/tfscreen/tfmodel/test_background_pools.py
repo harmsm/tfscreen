@@ -152,3 +152,28 @@ def test_background_column_without_declared_backgrounds(tmp_path):
     with pytest.raises(ValueError, match="library table has none"):
         ModelOrchestrator(growth_df=_growth(), binding_df=_BINDING_CSV,
                           library_file=plain, batch_size=None)
+
+
+def _with_parent(genotypes, parent="A500V"):
+    return [parent if str(g) == "wt" else f"{g}/{parent}" for g in genotypes]
+
+
+def test_background_mutation_gets_no_pair_term(tmp_path):
+    ref = library_composition_table(_LIBRARY_YAML)
+    bg = ref.copy()
+    bg["genotype"] = _with_parent(bg["genotype"])
+    bg["in_spiked_origin"] = False
+    table = pd.concat([ref.assign(background="reference"),
+                       bg.assign(background="bg2")], ignore_index=True)
+    path = tmp_path / "parent.csv"
+    write_library_composition(table, path)
+    g = _growth()
+    pheS = g["library"] == "pheS"
+    g.loc[pheS, "genotype"] = _with_parent(g.loc[pheS, "genotype"])
+    o = ModelOrchestrator(growth_df=g, binding_df=_BINDING_CSV,
+                          library_file=str(path), batch_size=None,
+                          theta="hill_mut", epistasis=True)
+    assert "A500V" in o.mut_labels
+    # every pheS single would otherwise be a pair with the parent
+    assert (g.loc[pheS, "genotype"].str.count("/") >= 1).any()
+    assert not any("A500V" in p for p in o.pair_labels)

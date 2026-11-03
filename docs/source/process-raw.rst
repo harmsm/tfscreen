@@ -189,6 +189,13 @@ counts as the design member named without the background's own mutations,
 so one seed keeps the same members in every background, and
 ``library_genotypes`` lists design members by their reference names.
 
+A background's own mutations add to every genotype of that background:
+the fit gives no pair term to a pair that includes one, so K84L/A100V is
+K84L's effect plus A100V's. That is what lets a background inform the
+library mutations' own effects. It also holds for such a pair in the
+reference library, so a mutation used as a background should not also be
+studied there for its epistasis.
+
 Counting reads: tfs-process-fastq
 ---------------------------------
 

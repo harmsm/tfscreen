@@ -359,7 +359,8 @@ def _mutation_truth_tables(deterministic, genotypes, sim_data, name="theta",
         return None, None
 
     mut_labels, pair_labels, *_ = build_mut_geno_matrix(
-        list(genotypes), skip_pairs=(num_pair == 0))
+        list(genotypes), skip_pairs=(num_pair == 0),
+        additive_mutations=getattr(sim_data, "additive_mutations", ()))
     if len(mut_labels) != num_mut or len(pair_labels) != num_pair:
         raise ValueError(
             f"Mutation/pair labels ({len(mut_labels)}/{len(pair_labels)}) do "

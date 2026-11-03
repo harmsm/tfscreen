@@ -1,0 +1,39 @@
+#!/bin/bash -l
+#SBATCH --account=harmslab
+#SBATCH --partition=gpu
+#SBATCH --time=06:00:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --gpus=1
+#SBATCH --mem=0
+#SBATCH --ntasks-per-node=1
+
+# One step of a dimer-utility run on the cluster, submitted by submit.sh,
+# which sets the job name, log files and dependencies.
+#
+#   HERE        this study's directory (absolute)
+#   RUN         the run, e.g. A4
+#   STEP        simulate | fit
+#   ARM         the fit's arm (fit only), e.g. dimerPK
+#   STOP_AFTER  passed to run_fit.sh (fit only): map ends the job after
+#               the MAP, so the MAP and the Laplace get a 6 h job each
+
+module load cuda/12.4.1
+set -euo pipefail
+HERE="${HERE:?set HERE}"
+RUN="${RUN:?set RUN}"
+STEP="${STEP:?set STEP}"
+echo ">>> ${STEP} ${RUN} ${ARM:-} $(date) on $(hostname)"
+case "${STEP}" in
+    simulate)
+        cd "${HERE}"
+        python make_configs.py
+        cd "runs/${RUN}"
+        tfs-simulate tfs_sim_config.yaml --out_prefix sim/tfs_sim \
+            --no_write_raw ;;
+    fit)
+        STOP_AFTER="${STOP_AFTER:-}" bash "${HERE}/run_fit.sh" "${RUN}" \
+            "${ARM:?set ARM}" ;;
+    *) echo "unknown STEP ${STEP}"; exit 1 ;;
+esac
+echo ">>> Done ${STEP} ${RUN} ${ARM:-} $(date)"
