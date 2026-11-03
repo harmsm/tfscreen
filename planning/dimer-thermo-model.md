@@ -186,8 +186,8 @@ models refuse more than one operator or TF level.
   orchestrator draws one pool per library (`_congression_pools`;
   `GrowthData.pool_bulk_fraction`, `pool_coresident_idx`,
   `condition_pre_pool`) and the mixture picks each condition_pre slot's
-  pool. Pool 0 draws exactly as a single pool did. Not yet: the library
-  subsample keys with backgrounds, and backgrounds in the simulator (3e).
+  pool. Pool 0 draws exactly as a single pool did. Backgrounds in the
+  simulator came in 3e and the subsample keys with backgrounds in 3g.
 - 3e. Simulator: the design table's new columns, the contexts and
   backgrounds in the truth, truth tables for operator shifts and TF levels.
   Done 2026-11-02. The simulator's θ axis is the fit's θ conditions
@@ -210,6 +210,15 @@ models refuse more than one operator or TF level.
   curve models, which cannot link binding to a protein concentration.
 - 3g. Laptop validation: A2 again with two operators, two TF levels and
   two backgrounds, checked against the identifiability study's step 1.
+  Done 2026-11-03 (`planning/studies/dimer-utility/`, A3). The axes run
+  end to end and the MAP θ point improved (RMSE 0.07 from 0.10). The
+  arrowhead Laplace replaced the full Laplace, which needed 67 GB at 32,001
+  parameters. The per-mutation constants did not improve, and PK's l_o and
+  u stayed unresolved. A background genotype is a pair, and the pair
+  horseshoe gives it free epistasis, so the background cannot inform the
+  singles. Its pair terms have prior-wide intervals, which makes θ for
+  every double and background genotype about [0, 1]. Open, for Mike:
+  should background mutations add without a pair term?
 
 **How a background is declared (Mike, 2026-11-02).** One library YAML per
 experiment stays the rule, with an optional `backgrounds` block. Each

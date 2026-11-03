@@ -17,6 +17,9 @@ are in kT.
 - nesting (A1): the O2_C12 U1 PK fit against the dimer PK fit with the
   second engagement off, MAP point against MAP point.
 - sigma (A2 PddG): learned sigma_s per state against the truth's.
+- contexts (A3): the operator shifts, per-operator deviations and TF
+  levels against the truth, and theta scored per (background, operator,
+  TF level) block.
 """
 
 import glob
@@ -80,9 +83,13 @@ def constants():
     return pd.DataFrame(rows)
 
 
+_CONTEXT = ["operator", "tf_level"]
+
+
 def _theta_frame(path):
     df = pd.read_csv(path)
-    return df.set_index(["genotype", "titrant_conc"])
+    keys = ["genotype"] + [c for c in _CONTEXT if c in df.columns]
+    return df.set_index(keys + ["titrant_conc"])
 
 
 def theta():
@@ -188,13 +195,56 @@ def sigma():
     return pd.DataFrame(rows)
 
 
+def contexts():
+    """A3: context parameters, and theta per design block."""
+    rows = []
+    for run, arm, d in _fits():
+        for name, keys in (("operator_shift", ["operator"]),
+                           ("operator_dev", ["operator", "term"]),
+                           ("ln_tf_total", ["tf_level"])):
+            f = os.path.join(d, f"tfs_params_{name}.csv")
+            t = os.path.join(RUNS, run, "sim", f"tfs_sim_{name}.csv")
+            if not (os.path.exists(f) and os.path.exists(t)):
+                continue
+            est = pd.read_csv(f).set_index(keys)
+            ref = pd.read_csv(t).set_index(keys)[name]
+            for k in est.index:
+                rows.append({"run": run, "arm": arm, "quantity": name,
+                             "label": k if isinstance(k, str) else "/".join(k),
+                             "truth": float(ref.get(k, np.nan)),
+                             "q0.5": float(est.loc[k, "q0.5"]),
+                             "q0.025": float(est.loc[k, "q0.025"]),
+                             "q0.975": float(est.loc[k, "q0.975"])})
+        lib = os.path.join(RUNS, run, "sim", "tfs_sim_growth.csv")
+        if run != "A3" or not os.path.exists(lib):
+            continue
+        blocks = (pd.read_csv(lib, usecols=["genotype", "background",
+                                            "operator", "tf_level"])
+                  .drop_duplicates())
+        truth = _theta_frame(os.path.join(RUNS, run, "sim",
+                                          "tfs_sim_genotype_theta.csv"))
+        post = _theta_frame(os.path.join(d, "tfs_pred_theta.csv"))
+        post = post[post["in_training_data"] == 1]
+        post = post.reset_index().merge(blocks, on=["genotype", *_CONTEXT])
+        for (bg, op, lvl), p in post.groupby(["background", *_CONTEXT]):
+            p = p.set_index(["genotype", *_CONTEXT, "titrant_conc"])
+            idx = p.index.intersection(truth.index)
+            r = _scores(p.loc[idx, "q0.5"].to_numpy(),
+                        truth.loc[idx, "theta"].to_numpy(),
+                        p.loc[idx, "q0.025"].to_numpy(),
+                        p.loc[idx, "q0.975"].to_numpy())
+            rows.append({"run": run, "arm": arm, "quantity": "theta",
+                         "label": f"{bg}/{op}/{lvl}", **r})
+    return pd.DataFrame(rows)
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     pd.set_option("display.width", 200)
     pd.set_option("display.max_columns", 30)
     for name, fn in (("runs", runs), ("constants", constants),
                      ("theta", theta), ("nesting", nesting),
-                     ("sigma", sigma)):
+                     ("sigma", sigma), ("contexts", contexts)):
         df = fn()
         df.to_csv(os.path.join(OUT, f"stageA_{name}.csv"), index=False)
         print(f"\n== {name}")

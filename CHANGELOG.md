@@ -120,8 +120,13 @@ fall into two kinds:
   condition_pre slot's classes from its pool (`mixture._pool_classes`).
   Each pool draws its own co-resident sets from its background's table;
   λ stays global. The first library draws exactly as the single pool did.
-  `copy_orchestrator` keeps the `background` column. Backgrounds cannot yet
-  be combined with the library subsample keys.
+  `copy_orchestrator` keeps the `background` column. The library subsample
+  keys apply to every background alike (step 3g): a background genotype is
+  matched to its design member, its name without the background's own
+  mutations (`backgrounds.design_names`), and the reference's spikes are
+  protected in every background, so one seed keeps the same members in
+  each (`backgrounds.build_background_library`). `tfs-simulate` scales
+  each background's `library_mixture` by its own kept fractions.
 - **Operators, TF levels and backgrounds in the simulator** (step 3e).
   Condition blocks and design tables take optional `operator`, `tf_level`
   and `background` columns, and tubes that differ in one are different

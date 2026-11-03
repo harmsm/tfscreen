@@ -36,6 +36,7 @@ import os
 import zlib
 
 import numpy as np
+import pandas as pd
 
 from .genotype_sorting import standardize_genotypes
 
@@ -151,11 +152,21 @@ def subsample_library_df(library_df, config, base_dir=None):
         return library_df, None
 
     df = library_df.copy()
-    geno = df["genotype"].astype(str)
+    # A background's genotypes are drawn by their design member (the name
+    # without the background's own mutations), so every background keeps
+    # the same members (genetics/backgrounds.py).
+    from .backgrounds import (
+        design_names,
+        parent_mutations,
+        reference_spiked_members,
+    )
+    geno = pd.Series(design_names(df["genotype"], parent_mutations(config)),
+                     index=df.index)
     origin = df["library_origin"].astype(str)
     origins = set(origin)
 
-    protected = set(geno[origin == SPIKED_ORIGIN]) | {"wt"}
+    protected = (set(geno[origin == SPIKED_ORIGIN]) | {"wt"}
+                 | reference_spiked_members(config))
     keep = np.ones(len(df), dtype=bool)
 
     list_path = config.get("library_genotypes")

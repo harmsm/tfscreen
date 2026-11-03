@@ -183,8 +183,11 @@ its own ``library`` name. Call each tube's reads with its background,
 library, writes ``{out_prefix}_library.csv`` with one block of rows per
 background (a leading ``background`` column), and gives each library its
 own congression pool: one background and one marker, so kanR and pheS in
-one background are two pools drawn from the same table. Backgrounds cannot
-yet be combined with the library subsample keys.
+one background are two pools drawn from the same table. The library
+subsample keys apply to every background alike: a background genotype
+counts as the design member named without the background's own mutations,
+so one seed keeps the same members in every background, and
+``library_genotypes`` lists design members by their reference names.
 
 Counting reads: tfs-process-fastq
 ---------------------------------

@@ -6,8 +6,12 @@
 #
 # Arms: O2PK (thermo.O2_C12_K5_U1_a.PK), dimerPK_nested (thermo.dimer.PK,
 # second engagement off), dimerPK and dimerPddG (default variant). A1 fits
-# without the pair term, A2 with it. Each step is skipped if its marker in
+# without the pair term, A2 and A3 with it. A3 (plan step 3g) adds the
+# contexts file and holds every hierarchical scale at 1 kT, as the EM
+# iteration 1 fits of A2 did (dimer_em.py). Each step is skipped if its marker in
 # fit_<arm>/.done exists. MAP_CAP (default 50000) caps every MAP stage.
+# LAPLACE sets the posterior: full for A1 and A2, arrowhead for A3, whose
+# 32,001 MAP parameters made the dense full Laplace need about 67 GB.
 set -euo pipefail
 
 run=$1; arm=$2
@@ -15,6 +19,8 @@ here=$(cd "$(dirname "$0")" && pwd)
 bin=~/miniconda3/bin
 MAP_CAP=${MAP_CAP:-50000}
 NUM_DRAWS=${NUM_DRAWS:-500}
+[[ ${run} == A3 ]] && default_laplace=arrowhead || default_laplace=full
+LAPLACE=${LAPLACE:-${default_laplace}}
 
 cd "${here}/runs/${run}"
 [[ -f sim/tfs_sim_growth.csv ]] || { echo "runs/${run} is not simulated"; exit 1; }
@@ -39,7 +45,20 @@ case "${arm}" in
     *) echo "unknown arm ${arm}"; exit 1 ;;
 esac
 epi=()
-[[ "${run}" == A2 ]] && epi=(--epistasis)
+[[ "${run}" == A2 || "${run}" == A3 ]] && epi=(--epistasis)
+if [[ "${run}" == A3 ]]; then
+    held=(theta_sigma_d_ln_K_h_oii_fixed=1 theta_sigma_d_ln_K_l_oii_fixed=1)
+    if [[ "${arm}" == dimerPK ]]; then
+        held+=(theta_sigma_d_ln_K_h_l_fixed=1 theta_sigma_d_ln_K_h_o_fixed=1
+               theta_sigma_d_ln_K_l_o_fixed=1 theta_sigma_d_ln_K_u_fixed=1
+               theta_sigma_d_ln_K_h_e_fixed=1 theta_sigma_d_ln_K_l_e_fixed=1)
+    else
+        held+=(theta_ddG_sigma_H_fixed=1 theta_ddG_sigma_HO_fixed=1
+               theta_ddG_sigma_L_fixed=1 theta_ddG_sigma_LO_fixed=1
+               theta_ddG_sigma_HE2_fixed=1 theta_ddG_sigma_LE2_fixed=1)
+    fi
+    epi+=(--contexts ../../../inputs/contexts_A3.yaml --set_priors "${held[@]}")
+fi
 
 if ! done_step configure; then
     echo ">>> configure ${run} ${arm} $(date)"
@@ -59,9 +78,9 @@ if ! done_step map; then
     mark map
 fi
 if ! done_step laplace; then
-    echo ">>> full Laplace $(date)"
+    echo ">>> ${LAPLACE} Laplace $(date)"
     timed ${bin}/tfs-sample-posterior tfs_configure_config.yaml \
-        tfs_fit_model_checkpoint.pkl --laplace full \
+        tfs_fit_model_checkpoint.pkl --laplace "${LAPLACE}" \
         --num_posterior_samples "${NUM_DRAWS}" --skip_growth_observations
     mark laplace
 fi
@@ -84,7 +103,8 @@ if ! done_step extract; then
 fi
 if ! done_step summarize; then
     for f in parameters mutation_parameters pair_parameters genotype_theta \
-             growth_parameters transformation_lam ddG_sigma; do
+             growth_parameters transformation_lam ddG_sigma operator_shift \
+             operator_dev ln_tf_total; do
         [[ -f "../sim/tfs_sim_${f}.csv" ]] \
             && ln -sf "../sim/tfs_sim_${f}.csv" "tfs_sim_${f}.csv"
     done

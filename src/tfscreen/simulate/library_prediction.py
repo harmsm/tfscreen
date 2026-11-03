@@ -440,7 +440,7 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
     if library_df is None:
         if has_backgrounds(cf):
             # one library per genetic background, named absolutely
-            library_df = background_library_df(cf)
+            library_df = background_library_df(cf, base_dir=base_dir)
         else:
             lm = library_manager.LibraryManager(cf)
             library_df, _ = subsample_library_df(lm.build_library_df(), cf,

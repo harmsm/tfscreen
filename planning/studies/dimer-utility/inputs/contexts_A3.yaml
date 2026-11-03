@@ -1,0 +1,15 @@
+# A3 contexts: written by make_configs.py
+units: kT
+operators:
+  O1:
+    reference: true
+  O2:
+    shift: 1.5
+    shift_sd: 0.5
+tf_levels:
+  lo:
+    conc_uM: 10.0
+    ln_sd: 0.0
+  hi:
+    conc_uM: 30.0
+    ln_sd: 0.5

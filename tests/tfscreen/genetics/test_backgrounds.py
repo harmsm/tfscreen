@@ -110,11 +110,37 @@ def test_reference_name_is_reserved():
         B.read_backgrounds(cf)
 
 
-def test_subsample_keys_are_refused_with_backgrounds():
+def test_design_names_strip_the_parent():
+    parent = frozenset({"L90A"})
+    assert B.design_names(["L90A", "M42I/L90A", "L90V", "wt"], parent) == [
+        "wt", "M42I", "L90V", "wt"]
+    assert B.parent_mutations(B.background_config(_config(), "bgA")) == {"L90A"}
+    assert B.parent_mutations(B.background_config(_config(), "bgFar")) == {
+        "M1A"}
+    assert B.parent_mutations(_base()) == frozenset()
+
+
+def test_subsample_keeps_the_same_members_in_every_background():
     cf = _config()
-    cf["library_subsample"] = {"single-1": 3}
-    with pytest.raises(ValueError, match="subsample"):
-        B.read_backgrounds(cf)
+    cf["library_subsample"] = {"single-1": 3, "double-1-2": 4}
+    cf["library_subsample_seed"] = 11
+    lib, summaries = B.build_background_library(cf)
+    members = {}
+    for bg, block in lib.groupby("background"):
+        parent = B.parent_mutations(B.background_config(cf, bg))
+        members[bg] = set(B.design_names(block["genotype"], parent))
+    assert members["bgA"] == members["bgFar"]
+    # the same draw as the reference's, which also keeps its spikes
+    spikes = B.reference_spiked_members(B.background_config(cf, "bgA"))
+    assert spikes
+    assert members["bgA"] - spikes == members["reference"] - spikes
+    assert len(members["bgA"] - spikes) > 3 + 4
+    assert set(summaries) == {"reference", "bgA", "bgFar"}
+    # the composition table subsamples each background the same way
+    table = library_composition_table(cf)
+    for bg, block in table.groupby("background"):
+        parent = B.parent_mutations(B.background_config(cf, bg))
+        assert set(B.design_names(block["genotype"], parent)) == members[bg]
 
 
 def test_outside_mutation_inside_the_amplicon_is_an_error():

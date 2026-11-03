@@ -209,8 +209,10 @@ library table gains a ``background`` column. Each ``library`` of the design
 is transformed from its background's sub-libraries with that background's
 ``library_mixture``, so a library must keep to one background, as in the
 fit. A tube's counts file lists only its background's genotypes, as
-``tfs-process-fastq --background`` writes it. Backgrounds cannot yet be
-combined with the library subsample keys.
+``tfs-process-fastq --background`` writes it. With the library subsample
+keys, every background keeps the same design members (:doc:`process-raw`),
+and each background's ``library_mixture`` is scaled by its own kept
+fractions.
 
 ``growth_transition`` is an optional list with one entry per
 ``condition_pre``, describing the switch from pre-growth to selection.

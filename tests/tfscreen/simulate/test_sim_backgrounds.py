@@ -119,3 +119,41 @@ def test_context_truth_is_written(run):
     theta = pd.read_csv(d / "sim_genotype_theta.csv")
     assert {"operator", "tf_level"} <= set(theta.columns)
     assert theta.groupby(["operator", "tf_level"]).ngroups == 4
+
+
+def test_subsample_keeps_the_same_members_in_each_background(tmp_path):
+    from tfscreen.genetics import backgrounds as B
+    with open(os.path.join(EXAMPLE, "simulate_config.yaml")) as fh:
+        cf = yaml.safe_load(fh)
+    cf.pop("condition_blocks")
+    for k in ("binding_data", "presplit_data"):
+        cf.pop(k, None)
+    design = _design()
+    design = design[(design["operator"] == "O1")
+                    & (design["tf_level"] == "low")]
+    design.to_csv(tmp_path / "design.csv", index=False)
+    cf.update(design=str(tmp_path / "design.csv"), total_num_reads=500_000,
+              backgrounds={"far": {"outside_mutations": [OUTSIDE]}},
+              library_subsample={"double-1-2": 20},
+              library_subsample_seed=5)
+    path = tmp_path / "config.yaml"
+    path.write_text(yaml.safe_dump(cf))
+    cwd = os.getcwd()
+    os.chdir(EXAMPLE)
+    try:
+        run_simulation_from_config(str(path), out_prefix=str(tmp_path / "s"),
+                                   seed=1, write_raw=False)
+    finally:
+        os.chdir(cwd)
+    lib = pd.read_csv(tmp_path / "s_library.csv")
+    far = lib[lib["background"] == "far"]
+    ref = lib[lib["background"] == "reference"]
+    far_members = set(B.design_names(far["genotype"], frozenset({OUTSIDE})))
+    ref_dbl = set(ref.loc[ref["library_origin"] == "double-1-2", "genotype"])
+    far_dbl = set(B.design_names(
+        far.loc[far["library_origin"] == "double-1-2", "genotype"],
+        frozenset({OUTSIDE})))
+    assert far_dbl == ref_dbl and len(far_dbl - {"wt"}) <= 20 + 9
+    assert far_members <= set(ref["genotype"]) | {"wt"}
+    growth = pd.read_csv(tmp_path / "s_growth.csv")
+    check_backgrounds_in_data(library_composition_table(str(path)), growth)

@@ -1,3 +1,4 @@
+import copy
 import os
 import yaml
 import numpy as np
@@ -22,6 +23,12 @@ from tfscreen.genetics.library_subsample import (
 from tfscreen.simulate.raw_output import (
     undetectable_tubes,
     write_raw_experiment,
+)
+from tfscreen.genetics.backgrounds import (
+    REFERENCE,
+    background_config,
+    build_background_library,
+    has_backgrounds,
 )
 from tfscreen.simulate.build_sample_dataframes import (
     OPTIONAL_COLUMNS,
@@ -192,13 +199,30 @@ def run_simulation_from_config(
     sim_cf = dict(cf)
     library_kwargs = {}
     if has_subsample(cf):
-        library_df, subsample_summary = build_library(
-            cf, base_dir=os.path.dirname(os.path.abspath(config_file)))
+        base_dir = os.path.dirname(os.path.abspath(config_file))
+        if has_backgrounds(cf):
+            # every background carries the same subsample; each one's
+            # mixture is scaled by its own kept fractions
+            library_df, summaries = build_background_library(
+                cf, base_dir=base_dir)
+            subsample_summary = summaries[REFERENCE]
+        else:
+            library_df, subsample_summary = build_library(cf, base_dir=base_dir)
         design_update = subsample_design(cf, subsample_summary)
         sim_cf.update({k: v for k, v in design_update.items()
                        if k != "kept_pool_share"})
         print(format_subsample_summary(cf, subsample_summary, design_update),
               flush=True)
+        if has_backgrounds(cf):
+            sim_cf["backgrounds"] = copy.deepcopy(cf["backgrounds"])
+            for bg, summary in summaries.items():
+                if bg == REFERENCE:
+                    continue
+                upd = subsample_design(background_config(cf, bg), summary)
+                spec = dict(sim_cf["backgrounds"][bg] or {})
+                if "library_mixture" in upd:
+                    spec["library_mixture"] = upd["library_mixture"]
+                sim_cf["backgrounds"][bg] = spec
         library_kwargs["library_df"] = library_df
 
     # -------------------------------------------------------------------------

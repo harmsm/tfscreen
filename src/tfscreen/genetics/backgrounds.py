@@ -29,7 +29,11 @@ in-amplicon background mutation is named from the sequence.
 the amplicon, which the reads never show (protein numbering, as in the
 genotype names). ``library_mixture`` and ``spiked_seqs`` default to the
 reference's, without the spiked origin when the background gives no spikes
-of its own. A tube's background is its tube-table ``background`` column
+of its own. The library subsample keys apply to every background alike: a
+background genotype is matched to its design member by its name without the
+background's own mutations (:func:`design_names`), so the same seed keeps
+the same design members in every background, and ``library_genotypes``
+names design members (reference names). A tube's background is its tube-table ``background`` column
 (absent: :data:`REFERENCE`); ``tfs-process-fastq --background`` calls its
 reads.
 """
@@ -45,12 +49,13 @@ BACKGROUND_COLUMN = "background"
 _BACKGROUND_KEYS = {"wt_seq", "outside_mutations", "library_mixture",
                     "spiked_seqs"}
 _MUTATION = re.compile(r"^([A-Z*])(-?\d+)([A-Z*])$")
-_SUBSAMPLE_KEYS = ("library_genotypes", "library_subsample",
-                   "library_subsample_seed", "library_subsample_depth")
 
 # LibraryManager keys this module sets for a background's config.
 NAME_REFERENCE_KEY = "name_reference_seq"
 NAME_EXTRA_KEY = "name_extra_mutations"
+# The reference's spiked sequences, so a background's subsample keeps the
+# design members the reference keeps (library_subsample protects spikes).
+REFERENCE_SPIKES_KEY = "reference_spiked_seqs"
 
 
 def _mutation_list(value, where):
@@ -106,10 +111,6 @@ def read_backgrounds(library_config):
     if not isinstance(raw, dict):
         raise ValueError("'backgrounds' must map each background name to its "
                          "settings.")
-    present = [k for k in _SUBSAMPLE_KEYS if k in cf]
-    if raw and present:
-        raise ValueError(f"backgrounds cannot be combined with the library "
-                         f"subsample keys {present} yet.")
     ref_seq = "".join(str(cf.get("wt_seq", "")).split())
     out = {}
     for name, spec in raw.items():
@@ -173,6 +174,8 @@ def background_config(library_config, background=REFERENCE):
         cf["wt_seq"] = spec["wt_seq"]
     cf[NAME_REFERENCE_KEY] = ref_seq
     cf[NAME_EXTRA_KEY] = list(spec["outside_mutations"])
+    if cf.get("spiked_seqs"):
+        cf[REFERENCE_SPIKES_KEY] = list(cf["spiked_seqs"])
     if spec["spiked_seqs"] is not None:
         cf["spiked_seqs"] = spec["spiked_seqs"]
     else:
@@ -195,26 +198,97 @@ def background_parent(library_config, background):
     return standardize_genotypes(lm._convert_to_aa([lm.wt_seq]))[0]
 
 
-def background_library_df(library_config):
+def parent_mutations(config):
     """
-    The library of every background, for the simulator.
+    The mutations of a library config's parent, relative to the reference:
+    empty for the reference, else the background parent's (``config`` from
+    :func:`background_config`).
+    """
+    if NAME_REFERENCE_KEY not in config:
+        return frozenset()
+    from tfscreen.genetics.library_manager import LibraryManager
+    from tfscreen.genetics import standardize_genotypes
+    lm = LibraryManager(config)
+    parent = standardize_genotypes(lm._convert_to_aa([lm.wt_seq]))[0]
+    return frozenset() if parent == "wt" else frozenset(parent.split("/"))
 
-    Each background's ``LibraryManager.build_library_df`` (absolute genotype
-    names), with a leading ``background`` column, reference first. Without
-    a ``backgrounds`` block, the reference library alone and no column.
+
+def reference_spiked_members(config):
+    """
+    The design members the reference's spikes encode, for a background
+    config (empty for the reference itself, whose subsample reads its own
+    spiked origin).
+    """
+    seqs = config.get(REFERENCE_SPIKES_KEY)
+    if NAME_REFERENCE_KEY not in config or not seqs:
+        return frozenset()
+    from tfscreen.genetics.library_manager import LibraryManager
+    from tfscreen.genetics import standardize_genotypes
+    ref = {k: v for k, v in config.items()
+           if k not in (NAME_REFERENCE_KEY, NAME_EXTRA_KEY,
+                        REFERENCE_SPIKES_KEY)}
+    ref["wt_seq"] = config[NAME_REFERENCE_KEY]
+    ref["spiked_seqs"] = list(seqs)
+    lm = LibraryManager(ref)
+    return frozenset(str(g) for g in
+                     standardize_genotypes(lm._get_spiked_seqs(seqs)[1]))
+
+
+def design_names(genotypes, parent):
+    """
+    Each genotype's design member: its absolute name without the parent's
+    mutations (``"wt"`` for the parent itself). A mutation at a parent site
+    to another residue keeps its absolute name, as in the reference.
+    """
+    out = []
+    for g in genotypes:
+        g = str(g)
+        kept = [m for m in ([] if g == "wt" else g.split("/"))
+                if m not in parent]
+        out.append("/".join(kept) if kept else "wt")
+    return out
+
+
+def build_background_library(library_config, base_dir=None):
+    """
+    The library of every background, each with the config's subsample.
+
+    Parameters
+    ----------
+    library_config : str or dict
+    base_dir : str, optional
+        Directory for a relative ``library_genotypes``.
 
     Returns
     -------
-    pandas.DataFrame
+    library_df : pandas.DataFrame
+        Each background's library (absolute genotype names) with a leading
+        ``background`` column, reference first.
+    summaries : dict
+        ``{background: summary or None}`` from
+        ``library_subsample.subsample_library_df``.
     """
     import pandas as pd
-    from tfscreen.genetics.library_manager import LibraryManager
+    from tfscreen.genetics.library_subsample import build_library
     cf = read_yaml(library_config) or {}
-    if not cf.get("backgrounds"):
-        return LibraryManager(cf).build_library_df()
-    parts = []
+    parts, summaries = [], {}
     for name in background_names(cf):
-        df = LibraryManager(background_config(cf, name)).build_library_df()
+        df, summaries[name] = build_library(background_config(cf, name),
+                                            base_dir=base_dir)
+        df = df.copy()
         df.insert(0, BACKGROUND_COLUMN, name)
         parts.append(df)
-    return pd.concat(parts, ignore_index=True)
+    return pd.concat(parts, ignore_index=True), summaries
+
+
+def background_library_df(library_config, base_dir=None):
+    """
+    The library of every background, for the simulator: the library table
+    of :func:`build_background_library`. Without a ``backgrounds`` block,
+    the reference library alone and no ``background`` column.
+    """
+    from tfscreen.genetics.library_subsample import build_library
+    cf = read_yaml(library_config) or {}
+    if not cf.get("backgrounds"):
+        return build_library(cf, base_dir=base_dir)[0]
+    return build_background_library(cf, base_dir=base_dir)[0]

@@ -210,3 +210,76 @@ parameters (k, m, dk_geno) the full Laplace holds near a MAP short of its
 optimum (every MAP here hit its epoch cap), and the per-genotype dk_geno
 and ln_cfu0 trading with θ. It is the next thing to diagnose before plan
 step 3, and it bears on O2 fits as much as on the dimer.
+
+## A3: operators, TF levels and a background (2026-11-03)
+
+Plan step 3g. A2's simulation (truth `thermo.dimer.PddG`) with a star
+design (`make_configs.py`, `inputs/design_A3.csv`,
+`inputs/contexts_A3.yaml`). A2's whole design is the base block (reference
+background, operator O1, TF level lo). Five arms add T276N as a background
+outside the amplicon (L +1.34, H +0.18 kcal/mol in the AF3 table), O2
+(shift 1.5 ± 0.5 kT, a per-operator deviation on every operator term) and
+TF level hi (30 µM, learned; lo held at 10 µM). Each arm is its own strain,
+so its own library per marker, with 20 tubes: replicate 1 and the middle
+time of each condition and concentration. In all: 218 tubes and 516
+genotype x background combinations. PK and PddG fits with every scale held at 1 kT, as in EM
+iteration 1. The MAP took 6.4 h per fit with both running.
+
+The dense full Laplace over 32,001 MAP parameters needed a 67 GB peak and
+swapped the laptop, so A3 uses the arrowhead Laplace (`run_fit.sh`'s
+`LAPLACE`, default `arrowhead` for A3 and `full` for A1 and A2). It took
+another 6.4 h at a 15 GB peak. It held 954 (PK) and 272 (PddG) of 12,909
+shared directions at the MAP as negative. The comparator is EM iteration 1
+(`results/em_iter1_scores.csv`), which used the full Laplace.
+
+**Per-mutation constants did not improve.** RMSE against EM iteration 1:
+
+| term | EM1 PK | A3 PK | EM1 PddG | A3 PddG |
+|---|---|---|---|---|
+| h_e | 0.84 | 0.84 | 0.56 | 0.51 |
+| h_l | 1.58 | 1.61 | 1.00 | 1.01 |
+| h_o | 2.50 | 2.58 | 1.10 | 1.21 |
+| l_e | 0.85 | 0.80 | 0.72 | 0.59 |
+| l_o (r) | 1.53 (-0.03) | 1.63 (-0.02) | 1.16 (0.65) | 1.16 (0.70) |
+| u (r) | 4.49 (0.06) | 4.46 (0.04) | 0.72 (0.97) | 0.73 (0.97) |
+
+Identifiability step 1 predicted that a background, a second operator and
+a second TF level resolve l_o and u. They did not, for PK. Coverage is
+about EM1's: PK 0.52-1.0 (u 0.37), PddG 0.74-1.0.
+
+**The background cannot inform the singles as the model stands.** Every
+background genotype T276N/X is a pair, and the pair horseshoe gives it its
+own epistasis on every term. The truth has none and the MAP finds about
+none, but nothing ties X's effect in T276N to X's effect in the reference
+except the shrinkage. Step 1 assumed backgrounds add without epistasis.
+Under the Laplace the pair terms are as wide as the prior: their 95% widths
+are 35-78 kT on epi ln K_h_o (PK) and up to 157 kT (PddG), in the reference
+doubles as much as the T276N pairs. So every genotype with a pair has a θ
+interval of about [0, 1]: median width 0.97-1.0 for doubles and for
+background genotypes, against 0.019 for reference singles. Stage A's
+doubles under the full Laplace were as wide (0.98), so this is the pair
+term, not the arrowhead.
+
+**θ.** The MAP point is the best yet: θ RMSE 0.070 (PK) and 0.073 (PddG)
+over 12,352 genotype x context x concentration cells, against 0.106 and
+0.104 in stage A. The reference blocks are overconfident as before
+(coverage 0.55-0.75, width 0.01-0.04), and the background blocks cover
+(0.87-0.95) only because their intervals are the whole range.
+
+**Contexts.** The TF level hi is -10.07 in ln M against a truth of
+-10.04, with a 95% interval 0.02 wide that excludes the truth in both arms.
+The O2 shift is 1.60 (0.95-2.34) in PK, covering the truth of 1.18.
+PddG puts it at 2.59 (1.86-3.36) and offsets it with O2's h_oii deviation
+at +2.34 (truth -0.11). The Oi/Oii split is unidentified, as step 1
+predicted, and PddG settles it differently from PK.
+
+**Reading.** The axes work end to end. The simulator's contexts and
+background flow through processing, configure, the MAP, the Laplace and
+the context truth tables. For the background lever to do what step 1 says,
+the model needs background mutations to add without a pair term, or a
+pair term the data can pin. That is a model decision (plan step 3,
+follow-up). The thin arms (20 tubes, one time each) may also limit
+what the operator and TF-level arms add. The step-2 θ overconfidence in
+the reference blocks is still open.
+
+`score.py` writes the context scores to `results/stageA_contexts.csv`.
