@@ -12,7 +12,7 @@ from tfscreen.util.cli import generalized_main
 
 
 def process_binding(binding_file,
-                    protein_conc=2.0,
+                    protein_conc=None,
                     protein_conc_units="uM",
                     genotype_col="genotype",
                     protein_col="protein_dimer_conc_molar",
@@ -23,9 +23,11 @@ def process_binding(binding_file,
                     titrant_name="iptg",
                     theta_std=None,
                     sig_digits=6,
+                    protein_species="dimer",
+                    write_tf_total=True,
                     out_prefix="tfs_binding"):
     """
-    Average a lab binding table into a binding_df at one protein
+    Average a lab binding table into a binding_df, keeping every protein
     concentration.
 
     The table has one row per measurement (genotype, protein and titrant
@@ -33,13 +35,16 @@ def process_binding(binding_file,
     without theta are dropped; concentrations are rounded to sig_digits
     significant digits so replicates from different days line up;
     measurements within a replicate are averaged, then replicates per
-    genotype and titrant concentration (theta_obs). theta_std is the
-    standard error of that mean from one replicate SD pooled over every
-    replicated point at this protein concentration, or from --theta_std.
-    The titrant is written in mM.
+    genotype, protein and titrant concentration (theta_obs). theta_std is
+    the standard error of that mean from one replicate SD pooled over every
+    replicated point at that protein concentration (over every protein
+    concentration when it has none), or from --theta_std. The titrant is
+    written in mM and the protein as tf_total_uM, µM protomer, so the fit
+    evaluates each measurement at its known protein concentration.
 
-    Writes {out_prefix}.csv (genotype, titrant_name, titrant_conc,
-    theta_obs, theta_std; for tfs-configure-model --binding_df) and
+    Writes {out_prefix}.csv (genotype, titrant_name, tf_total_uM,
+    titrant_conc, theta_obs, theta_std; for tfs-configure-model
+    --binding_df) and
     {out_prefix}_summary.csv (replicate and measurement counts and each
     point's own replicate SD).
 
@@ -47,8 +52,9 @@ def process_binding(binding_file,
     ----------
     binding_file : str
         The lab's binding table (CSV, TSV or Excel).
-    protein_conc : float
-        Protein concentration to keep, in protein_conc_units.
+    protein_conc : float, optional
+        Keep only this protein concentration, in protein_conc_units and in
+        the protein column's species; default keeps every one.
     protein_conc_units : str
         Unit of protein_conc: M, mM, uM or nM.
     genotype_col : str
@@ -70,6 +76,13 @@ def process_binding(binding_file,
         Fixed per-replicate SD instead of the pooled one.
     sig_digits : int
         Significant digits the concentrations are rounded to.
+    protein_species : str
+        What the protein column counts, dimer or protomer; tf_total_uM is
+        protomer, so a dimer concentration is doubled.
+    write_tf_total : bool
+        Write the tf_total_uM column. --no_write_tf_total writes the older
+        table, which a curve theta model (hill_geno) needs; it then takes
+        one protein concentration (--protein_conc).
     out_prefix : str
         Output prefix.
     """
@@ -81,7 +94,8 @@ def process_binding(binding_file,
         titrant_col=titrant_col, theta_col=theta_col,
         conc_units=conc_units, replicate_cols=reps,
         titrant_name=titrant_name, theta_std=theta_std,
-        sig_digits=sig_digits)
+        sig_digits=sig_digits, protein_species=protein_species,
+        write_tf_total=write_tf_total)
 
     out = f"{out_prefix}.csv"
     if os.path.abspath(out) == os.path.abspath(binding_file):
@@ -95,7 +109,8 @@ def process_binding(binding_file,
 
 def main():
     return generalized_main(process_binding,
-                            manual_arg_types={"theta_std": float})
+                            manual_arg_types={"theta_std": float,
+                                              "protein_conc": float})
 
 
 if __name__ == "__main__":

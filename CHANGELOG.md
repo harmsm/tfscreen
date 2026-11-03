@@ -153,6 +153,14 @@ fall into two kinds:
   libraries now draws each library's co-resident sets separately, so every
   library after the first gets new draws and its results move within the
   draw noise. The first library, and a one-library fit, are unchanged.
+- **`tfs-process-binding` keeps every protein concentration** (step 3f)
+  and writes it as `tf_total_uM`, µM protomer (twice the lab's dimer
+  column; `--protein_species`), so `thermo.dimer` fits each measurement at
+  its known protein concentration instead of the in vivo TF total.
+  `--protein_conc` is now an optional filter (it defaulted to 2 µM).
+  Theta SDs are pooled per protein concentration, falling back to the pool
+  over all of them. `--no_write_tf_total` writes the old five-column table,
+  which curve θ models such as `hill_geno` need.
 - **A simulation with several titrants gives each its own θ curve.** The
   simulator had one θ axis over concentration, so every titrant shared one
   curve. One-titrant simulations without contexts draw as before. A curve

@@ -26,7 +26,11 @@ def test_process_binding_writes_tables(tmpdir):
     out = os.path.join(tmpdir, "b")
     process_binding(src, out_prefix=out)
     df = pd.read_csv(f"{out}.csv")
-    assert list(df.columns) == BINDING_COLUMNS
+    assert list(df.columns) == ["genotype", "titrant_name", "tf_total_uM",
+                                *BINDING_COLUMNS[2:]]
+    process_binding(src, out_prefix=out, write_tf_total=False,
+                    protein_conc=2.0)
+    assert list(pd.read_csv(f"{out}.csv").columns) == BINDING_COLUMNS
     assert set(df["genotype"]) == {"wt", "M42I"}
     summary = pd.read_csv(f"{out}_summary.csv")
     assert "n_replicates" in summary.columns

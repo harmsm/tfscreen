@@ -139,7 +139,12 @@ of curves, a handful of genotypes each measured at 5 to 10 concentrations.
 Growth rows outnumber binding rows by orders of magnitude. The binding
 log-likelihood is weighted by ``--binding_weight``, 1 by default, so each
 binding observation counts once. ``tfs-process-binding`` makes this table
-from a lab table of single measurements.
+from a lab table of single measurements. It keeps every protein
+concentration and writes each as ``tf_total_uM``, doubling the lab's
+dimer concentration to protomers (``--protein_species``).
+``--protein_conc`` keeps one concentration instead. A curve θ model such as
+``hill_geno`` cannot use ``tf_total_uM``, so for one give
+``--protein_conc`` and ``--no_write_tf_total``.
 
 .. list-table::
    :header-rows: 1

@@ -202,7 +202,12 @@ models refuse more than one operator or TF level.
   its background's origins and mixture, and its tubes' counts list only
   its background's genotypes. Found on the way: the operator shift had the
   wrong sign (below). Not yet: presplit with backgrounds.
-- 3f. `tfs-process-binding` as above.
+- 3f. `tfs-process-binding` as above. Done 2026-11-02. The lab's protein
+  column is a dimer concentration, so `tf_total_uM` is twice it
+  (`--protein_species dimer`, the default). Theta SDs pool per protein
+  concentration, and a concentration with no replicated point takes the
+  pool over all of them. `--no_write_tf_total` writes the old table for
+  curve models, which cannot link binding to a protein concentration.
 - 3g. Laptop validation: A2 again with two operators, two TF levels and
   two backgrounds, checked against the identifiability study's step 1.
 

@@ -4,6 +4,7 @@ import pytest
 
 from tfscreen.process_raw.binding import (
     BINDING_COLUMNS,
+    TF_TOTAL_COLUMN,
     _round_sig,
     binding_table,
     format_info,
@@ -45,7 +46,10 @@ def test_round_sig():
 
 def test_binding_table_averages_and_pools():
     df, summary, info = binding_table(_wells(), 2.0)
-    assert list(df.columns) == BINDING_COLUMNS
+    assert list(df.columns) == ["genotype", "titrant_name", TF_TOTAL_COLUMN,
+                                *BINDING_COLUMNS[2:]]
+    # 2 uM dimer is 4 uM protomer
+    assert (df[TF_TOTAL_COLUMN] == 4.0).all()
     assert info["rows_in"] == 10
     assert info["rows_no_theta"] == 1
     assert info["rows_kept"] == 8
@@ -116,3 +120,43 @@ def test_no_replicate_cols_makes_each_row_a_replicate():
     df, summary, _ = binding_table(_wells(), 2.0, replicate_cols=())
     sm = summary.set_index(["genotype", "titrant_conc"])
     assert sm.loc[("wt", 0.0), "n_replicates"] == 2
+
+
+def test_every_protein_concentration_is_kept():
+    df, summary, info = binding_table(_wells())
+    assert sorted(set(df[TF_TOTAL_COLUMN])) == [4.0, 40.0]
+    assert info["rows_kept"] == 9
+    by = info["by_protein"].set_index(TF_TOTAL_COLUMN)
+    # 20 uM dimer has no replicated point: it takes the SD pooled over all
+    assert by.loc[40.0, "pooled_dof"] == 0
+    assert by.loc[40.0, "replicate_sd_used"] == pytest.approx(info["pooled_sd"])
+    assert by.loc[4.0, "replicate_sd_used"] == pytest.approx(
+        np.sqrt(6 * 0.05 ** 2 / 3))
+    hi = df[df[TF_TOTAL_COLUMN] == 40.0]
+    assert len(hi) == 1 and hi["theta_obs"].iloc[0] == pytest.approx(0.99)
+    assert "replicate_sd_used" not in info      # more than one concentration
+    assert "40 uM protomer" in format_info(info)
+
+
+def test_protomer_column_is_not_doubled():
+    df, _, _ = binding_table(_wells(), 2.0, protein_species="protomer")
+    assert (df[TF_TOTAL_COLUMN] == 2.0).all()
+    with pytest.raises(ValueError, match="protein_species"):
+        binding_table(_wells(), protein_species="tetramer")
+
+
+def test_without_tf_total_column():
+    df, _, _ = binding_table(_wells(), 2.0, write_tf_total=False)
+    assert list(df.columns) == BINDING_COLUMNS
+    with pytest.raises(ValueError, match="can hold only one"):
+        binding_table(_wells(), write_tf_total=False)
+
+
+def test_binding_df_reads_as_contexts():
+    """The written column is the one the fit's θ conditions read."""
+    from tfscreen.tfmodel.contexts import theta_conditions
+    df, _, _ = binding_table(_wells())
+    growth = pd.DataFrame({"titrant_name": ["iptg"]})
+    c = theta_conditions(growth_df=growth, binding_df=df)
+    assert c.composite
+    assert sorted(c.binding_tf_total_M) == pytest.approx([4e-6, 40e-6])

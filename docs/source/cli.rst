@@ -2187,10 +2187,12 @@ tfs-process-binding
                               [--titrant_col TITRANT_COL] [--theta_col THETA_COL]
                               [--conc_units CONC_UNITS] [--replicate_cols REPLICATE_COLS]
                               [--titrant_name TITRANT_NAME] [--theta_std THETA_STD]
-                              [--sig_digits SIG_DIGITS] [--out_prefix OUT_PREFIX]
+                              [--sig_digits SIG_DIGITS]
+                              [--protein_species PROTEIN_SPECIES] [--no_write_tf_total]
+                              [--out_prefix OUT_PREFIX]
                               binding_file
 
-   Average a lab binding table into a binding_df at one protein
+   Average a lab binding table into a binding_df, keeping every protein
    concentration.
 
    The table has one row per measurement (genotype, protein and titrant
@@ -2198,13 +2200,16 @@ tfs-process-binding
    without theta are dropped; concentrations are rounded to sig_digits
    significant digits so replicates from different days line up;
    measurements within a replicate are averaged, then replicates per
-   genotype and titrant concentration (theta_obs). theta_std is the
-   standard error of that mean from one replicate SD pooled over every
-   replicated point at this protein concentration, or from --theta_std.
-   The titrant is written in mM.
+   genotype, protein and titrant concentration (theta_obs). theta_std is
+   the standard error of that mean from one replicate SD pooled over every
+   replicated point at that protein concentration (over every protein
+   concentration when it has none), or from --theta_std. The titrant is
+   written in mM and the protein as tf_total_uM, µM protomer, so the fit
+   evaluates each measurement at its known protein concentration.
 
-   Writes {out_prefix}.csv (genotype, titrant_name, titrant_conc,
-   theta_obs, theta_std; for tfs-configure-model --binding_df) and
+   Writes {out_prefix}.csv (genotype, titrant_name, tf_total_uM,
+   titrant_conc, theta_obs, theta_std; for tfs-configure-model
+   --binding_df) and
    {out_prefix}_summary.csv (replicate and measurement counts and each
    point's own replicate SD).
 
@@ -2214,8 +2219,8 @@ tfs-process-binding
    options:
      -h, --help            show this help message and exit
      --protein_conc PROTEIN_CONC
-                           Protein concentration to keep, in protein_conc_units.
-                           (default: 2.0)
+                           Keep only this protein concentration, in protein_conc_units
+                           and in the protein column's species; default keeps every one.
      --protein_conc_units PROTEIN_CONC_UNITS
                            Unit of protein_conc: M, mM, uM or nM. (default: 'uM')
      --genotype_col GENOTYPE_COL
@@ -2242,5 +2247,13 @@ tfs-process-binding
      --sig_digits SIG_DIGITS
                            Significant digits the concentrations are rounded to.
                            (default: 6)
+     --protein_species PROTEIN_SPECIES
+                           What the protein column counts, dimer or protomer; tf_total_uM
+                           is protomer, so a dimer concentration is doubled. (default:
+                           'dimer')
+     --no_write_tf_total   Turn off (on by default): Write the tf_total_uM column.
+                           --no_write_tf_total writes the older table, which a curve
+                           theta model (hill_geno) needs; it then takes one protein
+                           concentration (--protein_conc).
      --out_prefix OUT_PREFIX
                            Output prefix. (default: 'tfs_binding')
