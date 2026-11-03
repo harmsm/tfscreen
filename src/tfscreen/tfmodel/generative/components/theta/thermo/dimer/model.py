@@ -59,9 +59,10 @@ and TF levels.
 
 Each operator other than the reference (``theta_operator_reference``) has
 a shift, ``{name}_operator_shift`` = loc + scale · ``{name}_operator_shift_z``
-(kT), added to ln_K_h_o and ln_K_l_o, so it moves the effective operator
-constant of both conformations by the same ΔΔG (one literature or measured
-number per operator); a scale of 0 holds it at loc. It also has a deviation
+(kT), the ΔΔG of operator binding (positive binds more weakly), subtracted
+from ln_K_h_o and ln_K_l_o, so it moves the effective operator constant of
+both conformations by the same ΔΔG (one literature or measured number per
+operator); a scale of 0 holds it at loc. It also has a deviation
 on every active operator term (:data:`OPERATOR_DEV_TERMS`),
 ``{name}_operator_dev`` = ``theta_operator_dev_scale`` ·
 ``{name}_operator_dev_z``. Each named TF level has
@@ -626,7 +627,8 @@ def _sample_contexts(name, priors, variant, operator_names, guide):
                 dev = dev.at[free].set(priors.theta_operator_dev_scale * zd.T)
         is_shift = jnp.asarray([t in OPERATOR_SHIFT_TERMS for t in dev_terms],
                                dtype=float)
-        offset = shift[:, None] * is_shift[None, :] + dev
+        # a shift is a ΔΔG of operator binding: positive binds more weakly
+        offset = -shift[:, None] * is_shift[None, :] + dev
         if not guide:
             pyro.deterministic(f"{name}_operator_shift", shift)
             pyro.deterministic(f"{name}_operator_dev", dev)
@@ -1057,7 +1059,7 @@ def _apply_row_contexts(terms, rows, load, tf_total, variant):
         use = op >= 0
         o = np.maximum(op, 0)
         for k, t in enumerate(dev_terms):
-            off = dev[:, o, k] + (shift[:, o] if t in OPERATOR_SHIFT_TERMS
+            off = dev[:, o, k] - (shift[:, o] if t in OPERATOR_SHIFT_TERMS
                                   else 0.0)
             terms[t] = terms[t] + np.where(use[None, :], off, 0.0)
 

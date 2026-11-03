@@ -2880,3 +2880,44 @@ class TestSummarizeDdGSigmaFailures:
             with pytest.warns(UserWarning, match="Could not write"):
                 _summarize_ddG_sigma(str(tmp_path), out_prefix)
         calib.assert_not_called()
+
+
+class TestSummarizeContextParams:
+    """The simulator's operator and TF-level truth (step 3e)."""
+
+    def test_joins_each_table_and_skips_held_rows(self, tmp_path):
+        from tfscreen.tfmodel.scripts.summarize_fit_cli import (
+            _summarize_context_params,
+        )
+        pd.DataFrame({"operator": ["O1", "O2"],
+                      "operator_shift": [0.0, 1.4]}).to_csv(
+            tmp_path / "tfs_sim_operator_shift.csv", index=False)
+        pd.DataFrame({"operator": ["O1", "O1", "O2", "O2"],
+                      "term": ["h_o", "l_o"] * 2,
+                      "operator_dev": [0.0, 0.0, 0.2, -0.1]}).to_csv(
+            tmp_path / "tfs_sim_operator_dev.csv", index=False)
+        pd.DataFrame({"tf_level": ["high", "low"],
+                      "ln_tf_total": [-10.8, -13.1]}).to_csv(
+            tmp_path / "tfs_sim_ln_tf_total.csv", index=False)
+        q = {"q0.025": [0.0, 1.0], "q0.5": [0.0, 1.5], "q0.975": [0.0, 2.0]}
+        pd.DataFrame({"operator": ["O1", "O2"], **q}).to_csv(
+            tmp_path / "tfs_params_operator_shift.csv", index=False)
+        pd.DataFrame({"operator": ["O2", "O2"], "term": ["l_o", "h_o"],
+                      "q0.025": [-1.0, -1.0], "q0.5": [0.0, 0.1],
+                      "q0.975": [1.0, 1.0]}).to_csv(
+            tmp_path / "tfs_params_operator_dev.csv", index=False)
+        out = tmp_path / "summary"
+        out.mkdir()
+        prefix = str(out / "tfs_summarize")
+        with patch("tfscreen.tfmodel.scripts.summarize_fit_cli._try_calibration"
+                   ) as calib:
+            _summarize_context_params(str(tmp_path), prefix)
+        shift = pd.read_csv(f"{prefix}_params_operator_shift.csv")
+        assert list(shift["ref"]) == [0.0, 1.4]
+        dev = pd.read_csv(f"{prefix}_params_operator_dev.csv")
+        assert list(dev["ref"]) == [-0.1, 0.2]
+        # no fit table for the TF levels: nothing written for them
+        assert not os.path.exists(f"{prefix}_params_ln_tf_total.csv")
+        # the held reference operator is not scored
+        scored = {c.args[3]: len(c.args[0]) for c in calib.call_args_list}
+        assert scored == {"operator_shift": 1, "operator_dev": 2}

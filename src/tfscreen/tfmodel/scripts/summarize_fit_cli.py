@@ -897,6 +897,60 @@ def _summarize_ddG_sigma(run_dir, out_prefix):
     _try_calibration(out_df, "ref", out_name[:-4], "ddG_sigma")
 
 
+# thermo.dimer context tables: the simulator's *_sim_{name}.csv truth
+# (thermo_to_growth._context_truth_tables) joined to the fit's
+# *_params_{name}.csv on these keys.
+_CONTEXT_TABLES = (("operator_shift", ["operator"]),
+                   ("operator_dev", ["operator", "term"]),
+                   ("ln_tf_total", ["tf_level"]))
+
+
+def _summarize_context_params(run_dir, out_prefix):
+    """
+    Annotate the operator and TF-level tables with the simulation's truth.
+
+    Each of ``*_params_operator_shift.csv`` (kT), ``*_params_operator_dev.csv``
+    (kT) and ``*_params_ln_tf_total.csv`` (ln M) gains a ``ref`` column from
+    the matching ``*_sim_{name}.csv``. Silently skips a table without truth
+    or fit output. The reference operator's shift and deviations are held
+    at 0, so they are left out of the calibration (rows whose fit interval
+    has no width).
+    """
+    for name, keys in _CONTEXT_TABLES:
+        sim_path = _find_unique(run_dir, f"_sim_{name}.csv", f"sim {name}",
+                                warn_missing=False)
+        param_file = _find_unique(run_dir, f"_params_{name}.csv",
+                                  f"{name} params", warn_missing=False)
+        if sim_path is None or param_file is None:
+            continue
+        try:
+            truth = pd.read_csv(sim_path)
+            params_df = pd.read_csv(param_file)
+            for k in keys:
+                truth[k] = truth[k].astype(str)
+                params_df[k] = params_df[k].astype(str)
+            ref = truth.set_index(keys)[name]
+            idx = pd.MultiIndex.from_frame(params_df[keys]) if len(keys) > 1 \
+                else params_df[keys[0]]
+            out_df = params_df.copy()
+            out_df["ref"] = ref.reindex(idx).to_numpy()
+        except Exception as exc:
+            warnings.warn(f"Could not join {name} truth: {exc}")
+            continue
+        out_name = f"{out_prefix}_params_{name}.csv"
+        try:
+            out_df.to_csv(out_name, index=False)
+            print(f"Wrote parameter summary to {out_name}")
+        except Exception as exc:
+            warnings.warn(f"Could not write {out_name}: {exc}")
+            continue
+        free = out_df
+        if {"q0.025", "q0.975"} <= set(out_df.columns):
+            free = out_df[out_df["q0.975"] > out_df["q0.025"]]
+        if len(free):
+            _try_calibration(free, "ref", out_name[:-4], name)
+
+
 # Fit-side extract names for the condition_growth component (see
 # generative/components/growth/{linear,power,saturation}.py's
 # get_extract_specs and simulate/growth_parameters_output.py, which writes
@@ -1638,6 +1692,7 @@ def summarize_fit(run_dir,
     # --- Sim-parameter correlation CSVs ---
     _summarize_params(run_dir, out_prefix, config_yaml)
     _summarize_ddG_sigma(run_dir, out_prefix)
+    _summarize_context_params(run_dir, out_prefix)
     _summarize_growth_params(run_dir, out_prefix, x_gauge)
     _summarize_transformation_lam(run_dir, out_prefix)
 

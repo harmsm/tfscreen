@@ -94,6 +94,7 @@ from tfscreen.util.grid_utils import (
 _SIM_PATH_KEYS = (
     ("thermo_data",),
     ("design",),
+    ("contexts",),
     ("library_genotypes",),
     ("calibration_file",),
     ("empirical", "phenotype_model"),

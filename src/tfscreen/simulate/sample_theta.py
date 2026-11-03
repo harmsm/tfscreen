@@ -48,7 +48,8 @@ def sample_theta_prior(component_name,
                        sim_priors_overrides=None,
                        force_prior_predictive=False,
                        return_deterministic=False,
-                       conditions=None):
+                       conditions=None,
+                       contexts=None):
     """
     Draw one sample of theta from a registered theta component.
 
@@ -104,6 +105,11 @@ def sample_theta_prior(component_name,
         conditioned site draws no random number; every other site draws as
         it would with the same value sampled.  A name that is not a sample
         site of the model is an error.
+    contexts : str or dict or None
+        A contexts file (``tfmodel.contexts.read_contexts``): the operator
+        shifts and TF levels the draw takes as its prior, for a component
+        with ``SUPPORTS_CONTEXTS`` when ``sim_data`` carries operator or
+        TF-level labels. Without one, the fit's defaults.
 
     Returns
     -------
@@ -145,6 +151,10 @@ def sample_theta_prior(component_name,
         sim_priors = module.SimPriors(**sim_params)
         theta_gc, theta_param = module.simulate("theta", sim_data, sim_priors,
                                                 rng_key)
+        # One curve per genotype: every θ condition gets the same one.
+        T = getattr(sim_data, "num_titrant_name", 1)
+        if isinstance(T, int) and T > 1:
+            theta_gc = np.tile(np.asarray(theta_gc), (1, T))
         if return_deterministic:
             return theta_gc, theta_param, {}
         return theta_gc, theta_param
@@ -157,6 +167,9 @@ def sample_theta_prior(component_name,
     params = module.get_hyperparameters()
     if priors_overrides:
         params.update(priors_overrides)
+    if getattr(sim_data, "theta_contexts", False) is True:
+        params.update(_context_priors(module, component_name, sim_data,
+                                      contexts, params))
     priors = module.ModelPriors(**params)
 
     # Conditioned sample sites (e.g. the ddG truth-noise SD sigma_s) take
@@ -190,9 +203,9 @@ def sample_theta_prior(component_name,
                 f"conditions {unknown} are not sample sites of theta "
                 f"component '{component_name}'.")
 
-    # run_model returns (T=1, C, G) for simulation (scatter_theta=0).
-    theta_tcg = module.run_model(theta_param, sim_data)
-    theta_gc = np.array(theta_tcg[0]).T   # (G, C)
+    # run_model returns (T, C, G) for simulation (scatter_theta=0); the
+    # columns of theta_gc are θ condition-major: t * C + c.
+    theta_gc = theta_columns(module.run_model(theta_param, sim_data))
 
     if return_deterministic:
         deterministic = {name: np.asarray(site["value"])
@@ -204,6 +217,40 @@ def sample_theta_prior(component_name,
             deterministic["theta_ddG"] = per_state_ddG
         return theta_gc, theta_param, deterministic
     return theta_gc, theta_param
+
+
+def theta_columns(theta_tcg):
+    """(T, C, G) theta as (G, T * C), θ condition-major columns."""
+    theta = np.asarray(theta_tcg)
+    T, C, G = theta.shape
+    return np.moveaxis(theta, -1, 0).reshape(G, T * C)
+
+
+def _context_priors(module, component_name, sim_data, contexts, params):
+    """
+    The operator and TF-level prior arrays of a draw with contexts.
+
+    Raises
+    ------
+    ValueError
+        For a thermodynamic component without an operator or TF-level axis.
+    """
+    if not getattr(module, "SUPPORTS_CONTEXTS", False):
+        if str(component_name).startswith("thermo."):
+            raise ValueError(
+                f"theta_component {component_name!r} has no operator or "
+                f"TF-level axis, but the design names operators "
+                f"{list(sim_data.theta_operator_names)} and TF levels "
+                f"{list(sim_data.theta_tf_level_names)}. Use a thermo.dimer "
+                f"model.")
+        return {}
+    from tfscreen.tfmodel.contexts import read_contexts
+    from tfscreen.tfmodel.generative.components.theta.thermo.dimer import (
+        model as dimer_model,
+    )
+    read = read_contexts(contexts) if contexts is not None else None
+    return dimer_model.context_hyperparameters(
+        sim_data, read, params["theta_tf_total_M"])
 
 
 def _per_state_truth_conditions(module, trace, conditions, rng_key,

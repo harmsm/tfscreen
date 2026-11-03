@@ -209,7 +209,8 @@ The labels' values are priors, in a YAML file given to
 One operator is the reference, where the wild-type constants are defined.
 Each other operator's shift comes from the literature or a measurement,
 with its uncertainty, and moves the effective operator affinity of both
-conformations by that ΔΔG; each operator term also takes a small learned
+conformations by that ΔΔG. A positive shift binds more weakly than the
+reference; each operator term also takes a small learned
 deviation per operator (``theta_operator_dev_scale``, 0.5 kT). A TF level's
 concentration is learned about its prior unless ``ln_sd`` is 0. Mutation
 effects are shared across operators and TF levels. Every label in the data
@@ -254,8 +255,8 @@ spike that really dropped out.
 With genetic backgrounds (:doc:`process-raw`), the table has a leading
 ``background`` column and one block of rows per background, each with its
 own fractions; a genotype is checked against its own background's library,
-and the ``mixture`` model draws each library's co-resident plasmids from
-its background's pool.
+and the ``mixture`` model gives each library its own pool, drawing its
+co-resident plasmids from its background's block.
 
 ``library_mixture`` cannot be checked: no data file ever saw it. It is
 recorded as given in the configuration's ``library`` block, and that record

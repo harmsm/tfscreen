@@ -181,9 +181,10 @@ its own ``library`` name. Call each tube's reads with its background,
 ``tfs-process-fastq library_config.yaml R1 R2 --background bgL90A``.
 ``tfs-configure-model`` checks every genotype against its own background's
 library, writes ``{out_prefix}_library.csv`` with one block of rows per
-background (a leading ``background`` column), and gives each background its
-own congression pool. Backgrounds cannot yet be combined with the library
-subsample keys.
+background (a leading ``background`` column), and gives each library its
+own congression pool: one background and one marker, so kanR and pheS in
+one background are two pools drawn from the same table. Backgrounds cannot
+yet be combined with the library subsample keys.
 
 Counting reads: tfs-process-fastq
 ---------------------------------

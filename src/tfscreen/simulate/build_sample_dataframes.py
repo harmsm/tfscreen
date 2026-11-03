@@ -1,6 +1,24 @@
 import pandas as pd
 import itertools
 
+# Optional design columns: the θ contexts (tfmodel/contexts.py) and the
+# genetic background (genetics/backgrounds.py). A table or block set without
+# them is one operator, one TF level and the reference background.
+OPTIONAL_COLUMNS = ["operator", "tf_level", "background"]
+
+
+def _optional_present(blocks):
+    """The optional keys the condition blocks give; all blocks or none."""
+    present = []
+    for key in OPTIONAL_COLUMNS:
+        have = [key in b for b in blocks]
+        if any(have) and not all(have):
+            raise ValueError(f"'{key}' is given in some condition_blocks but "
+                             f"not others; give it in every block or none.")
+        if all(have):
+            present.append(key)
+    return present
+
 def build_sample_dataframes(condition_blocks, replicate=1):
     """
     Build a DataFrame of experimental conditions from a list of blocks.
@@ -16,7 +34,8 @@ def build_sample_dataframes(condition_blocks, replicate=1):
     condition_blocks : list of dict
         A list where each dictionary defines a block of related experimental
         conditions. Each dictionary must contain keys defining the experimental
-        parameters.
+        parameters, and may give ``operator``, ``tf_level`` and
+        ``background`` (each a single label, in every block or none).
     replicate : int, optional
         The replicate number to assign to all generated conditions, by default 1.
 
@@ -57,6 +76,8 @@ def build_sample_dataframes(condition_blocks, replicate=1):
     if not all(isinstance(c, dict) for c in condition_blocks):
         raise ValueError("All items in condition_blocks must be dictionaries.")
 
+    optional = _optional_present(condition_blocks)
+
     # --- DataFrame Construction ---
     all_block_dfs = []
     for block in condition_blocks:
@@ -76,7 +97,8 @@ def build_sample_dataframes(condition_blocks, replicate=1):
                 "t_pre": block["t_pre"],
                 "condition_sel": block["condition_sel"],
                 "titrant_conc": conc,
-                "t_sel": t
+                "t_sel": t,
+                **{key: str(block[key]) for key in optional},
             }
             for conc, t in variable_params
         ]
@@ -88,7 +110,7 @@ def build_sample_dataframes(condition_blocks, replicate=1):
     # Sort in a stereotyped way
     sort_columns = [
         "replicate", "library", "condition_pre", "condition_sel",
-        "titrant_name", "titrant_conc", "t_sel"
+        "titrant_name", *optional, "titrant_conc", "t_sel"
     ]
     sample_df = sample_df.sort_values(sort_columns).reset_index(drop=True)
 
@@ -121,7 +143,8 @@ def read_design(design):
     Returns
     -------
     pandas.DataFrame
-        The ``DESIGN_COLUMNS``, ``sample`` as str and ``replicate`` as int.
+        The ``DESIGN_COLUMNS`` and any of ``OPTIONAL_COLUMNS`` the table
+        has (as str), ``sample`` as str and ``replicate`` as int.
 
     Raises
     ------
@@ -138,13 +161,18 @@ def read_design(design):
     if missing:
         raise ValueError(f"design is missing column(s) {missing}; it needs "
                          f"{DESIGN_COLUMNS} (a tube table).")
-    df = df[DESIGN_COLUMNS].copy()
+    optional = [c for c in OPTIONAL_COLUMNS if c in df.columns]
+    df = df[DESIGN_COLUMNS + optional].copy()
+    for c in optional:
+        if df[c].isna().any():
+            raise ValueError(f"design column '{c}' has empty values.")
+        df[c] = df[c].astype(str)
     df["sample"] = df["sample"].astype(str)
     df["replicate"] = df["replicate"].astype(int)
     dups = df["sample"][df["sample"].duplicated()].unique().tolist()
     if dups:
         raise ValueError(f"design repeats sample name(s): {dups[:10]}")
-    key = ["replicate"] + CONDITION_COLUMNS
+    key = ["replicate"] + CONDITION_COLUMNS + optional
     clash = df[df.duplicated(subset=key, keep=False)]
     if not clash.empty:
         raise ValueError("design has more than one tube with the same "
@@ -153,16 +181,23 @@ def read_design(design):
     return df.reset_index(drop=True)
 
 
+def design_keys(design_df):
+    """The columns that make two tubes of a design the same condition."""
+    return CONDITION_COLUMNS + [c for c in OPTIONAL_COLUMNS
+                                if c in design_df.columns]
+
+
 def design_conditions(design_df):
     """
     The distinct growth conditions of a design, in ``build_sample_dataframes``
     form (``replicate`` 1): the union over replicates, whose phenotypes the
     simulator computes once before each replicate takes its own tubes.
     """
-    conds = (design_df[CONDITION_COLUMNS].drop_duplicates()
+    optional = [c for c in OPTIONAL_COLUMNS if c in design_df.columns]
+    conds = (design_df[CONDITION_COLUMNS + optional].drop_duplicates()
              .assign(replicate=1))
     sort_columns = ["replicate", "library", "condition_pre", "condition_sel",
-                    "titrant_name", "titrant_conc", "t_sel"]
+                    "titrant_name", *optional, "titrant_conc", "t_sel"]
     cols = ["replicate", "library", "titrant_name", "condition_pre", "t_pre",
-            "condition_sel", "titrant_conc", "t_sel"]
+            "condition_sel", "titrant_conc", "t_sel", *optional]
     return conds[cols].sort_values(sort_columns).reset_index(drop=True)

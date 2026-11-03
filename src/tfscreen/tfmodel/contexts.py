@@ -314,6 +314,14 @@ def _join(context, composite, binding):
     return titrant + SEPARATOR + op + SEPARATOR + last
 
 
+def growth_condition_labels(df, composite):
+    """
+    The growth θ-condition label of each row of a frame (a Series), plain
+    titrant names unless ``composite``.
+    """
+    return _join(_growth_context(df), composite, binding=False)
+
+
 def assign_theta_condition(df, conditions, which):
     """
     Add the categorical ``theta_condition`` column to a growth or binding

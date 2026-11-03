@@ -193,3 +193,28 @@ def background_parent(library_config, background):
         return "wt"
     lm = LibraryManager(background_config(library_config, background))
     return standardize_genotypes(lm._convert_to_aa([lm.wt_seq]))[0]
+
+
+def background_library_df(library_config):
+    """
+    The library of every background, for the simulator.
+
+    Each background's ``LibraryManager.build_library_df`` (absolute genotype
+    names), with a leading ``background`` column, reference first. Without
+    a ``backgrounds`` block, the reference library alone and no column.
+
+    Returns
+    -------
+    pandas.DataFrame
+    """
+    import pandas as pd
+    from tfscreen.genetics.library_manager import LibraryManager
+    cf = read_yaml(library_config) or {}
+    if not cf.get("backgrounds"):
+        return LibraryManager(cf).build_library_df()
+    parts = []
+    for name in background_names(cf):
+        df = LibraryManager(background_config(cf, name)).build_library_df()
+        df.insert(0, BACKGROUND_COLUMN, name)
+        parts.append(df)
+    return pd.concat(parts, ignore_index=True)

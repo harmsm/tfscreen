@@ -114,9 +114,11 @@ tf_levels:                 # total TF per cell, µM protomer
 ```
 
 An operator's `shift` moves the effective operator constant of H and L by
-the same ΔΔG, which is what one literature number per operator describes;
-it is added to the first engagement (`ln_K_h_o`, `ln_K_l_o`), so the
-effective constant K_o (1 + K_oii) moves by exactly the shift. Every
+the same ΔΔG, which is what one literature number per operator describes
+(positive binds more weakly); it is subtracted from the first engagement
+(`ln_K_h_o`, `ln_K_l_o`), so the effective constant K_o (1 + K_oii) moves
+by exactly the shift. 3b added it; the 3e simulator test caught the sign
+on 2026-11-02. Every
 operator term (first and second engagement, monomer half-sites) also gets
 a per-operator deviation, N(0, 0.5 kT), as the per-titrant effector
 deviations do.
@@ -181,13 +183,25 @@ models refuse more than one operator or TF level.
   `LibraryManager` names against the reference (`name_reference_seq`,
   `name_extra_mutations`); the composition table gains a `background`
   column; configure checks each growth row against its background; the
-  orchestrator draws pools per background (`_congression_pools`;
+  orchestrator draws one pool per library (`_congression_pools`;
   `GrowthData.pool_bulk_fraction`, `pool_coresident_idx`,
   `condition_pre_pool`) and the mixture picks each condition_pre slot's
   pool. Pool 0 draws exactly as a single pool did. Not yet: the library
   subsample keys with backgrounds, and backgrounds in the simulator (3e).
 - 3e. Simulator: the design table's new columns, the contexts and
   backgrounds in the truth, truth tables for operator shifts and TF levels.
+  Done 2026-11-02. The simulator's θ axis is the fit's θ conditions
+  (`sim_data_class.sim_theta_conditions`; `theta_gc` columns are θ
+  condition-major), so several titrants also get their own curves; a
+  `contexts` key reads the contexts file; a `thermo.dimer` draw writes
+  `{out_prefix}_operator_shift.csv`, `_operator_dev.csv` and
+  `_ln_tf_total.csv`, which `tfs-summarize-fit` joins to the fit's
+  tables; `binding_data` takes `operator` and `tf_total_uM`. A
+  `backgrounds` block builds one library per background
+  (`backgrounds.background_library_df`); each library is transformed from
+  its background's origins and mixture, and its tubes' counts list only
+  its background's genotypes. Found on the way: the operator shift had the
+  wrong sign (below). Not yet: presplit with backgrounds.
 - 3f. `tfs-process-binding` as above.
 - 3g. Laptop validation: A2 again with two operators, two TF levels and
   two backgrounds, checked against the identifiability study's step 1.
@@ -196,9 +210,11 @@ models refuse more than one operator or TF level.
 experiment stays the rule, with an optional `backgrounds` block. Each
 background gives its amplicon DNA (`wt_seq`) so the expected reads match
 its real codons, and `outside_mutations` for the mutations the reads never
-show. Congression uses one pool per background, since each is its own
-transformation: co-resident sets and bulk fractions are drawn per pool and
-each library's condition_pre slots use their background's.
+show. Congression uses one pool per library, since a library is one
+transformation of one background's plasmids into one marker strain
+(Mike, 2026-11-02: per background and per marker, with one global λ). Each
+pool draws its own co-resident sets from its background's table, and each
+library's condition_pre slots use their library's pool.
 4. Utility in full simulations, on the cluster, on the axis-capable model:
    the ΔΔG prior (PK, PddG learned σ_s, PddG σ_s held at the dial, over the
    table error) and combinations (planted distance-scaled pair coupling,

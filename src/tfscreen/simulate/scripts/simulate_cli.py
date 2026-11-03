@@ -24,7 +24,8 @@ from tfscreen.simulate.raw_output import (
     write_raw_experiment,
 )
 from tfscreen.simulate.build_sample_dataframes import (
-    CONDITION_COLUMNS,
+    OPTIONAL_COLUMNS,
+    design_keys,
     read_design,
 )
 from tfscreen.util.cli.generalized_main import generalized_main
@@ -271,8 +272,9 @@ def run_simulation_from_config(
 
         rep_phenotype_df = phenotype_df.copy()
         if design is not None:
-            tubes = design.loc[design["replicate"] == rep, CONDITION_COLUMNS]
-            rep_phenotype_df = rep_phenotype_df.merge(tubes, on=CONDITION_COLUMNS)
+            keys = design_keys(design)
+            tubes = design.loc[design["replicate"] == rep, keys]
+            rep_phenotype_df = rep_phenotype_df.merge(tubes, on=keys)
         rep_phenotype_df["replicate"] = rep
 
         sample_df_rep, counts_df_rep = selection_experiment(
@@ -303,7 +305,8 @@ def run_simulation_from_config(
                           + od_only_parts, ignore_index=True)
         keep = [c for c in ["replicate", "library", "condition_pre", "t_pre",
                             "condition_sel", "t_sel", "titrant_name",
-                            "titrant_conc", "sequenced", "od600",
+                            "titrant_conc", *OPTIONAL_COLUMNS,
+                            "sequenced", "od600",
                             "od600_detectable", "od600_in_range",
                             "sample_cfu_true", "sample_cfu", "sample_cfu_std"]
                 if c in od_df.columns]
@@ -312,7 +315,7 @@ def run_simulation_from_config(
 
     if design is not None:
         # The design's tube names, for the raw output.
-        key = ["replicate"] + CONDITION_COLUMNS
+        key = ["replicate"] + design_keys(design)
         named = combined_sample_df[key].merge(
             design[key + ["sample"]].rename(columns={"sample": "design_sample"}),
             on=key, how="left")
@@ -351,9 +354,15 @@ def run_simulation_from_config(
             growth_counts_df)
 
     if write_raw:
+        background_genotypes = None
+        if "background" in library_df.columns:
+            background_genotypes = {
+                bg: df["genotype"].tolist()
+                for bg, df in library_df.groupby("background", sort=False)}
         raw = write_raw_experiment(combined_sample_df, combined_counts_df,
                                    library_df["genotype"], out_prefix,
-                                   od600_config=cf.get("od600"))
+                                   od600_config=cf.get("od600"),
+                                   background_genotypes=background_genotypes)
         print(f"\nWrote the raw experiment: {raw['tubes']}, "
               f"{raw['counts_dir']}/"
               + (f", {raw['od600']}, {raw['calibration']}"
@@ -379,7 +388,10 @@ def run_simulation_from_config(
     # from their prior (the thermodynamic models); absent otherwise.
     for key, name in (("mutation", "mutation_parameters"),
                       ("pair", "pair_parameters"),
-                      ("ddG_sigma", "ddG_sigma")):
+                      ("ddG_sigma", "ddG_sigma"),
+                      ("operator_shift", "operator_shift"),
+                      ("operator_dev", "operator_dev"),
+                      ("ln_tf_total", "ln_tf_total")):
         truth_df = (mutation_truth or {}).get(key)
         if truth_df is not None:
             truth_df.to_csv(out_path(name), index=False)
@@ -414,6 +426,11 @@ def run_simulation_from_config(
             binding_df = pd.concat([binding_df, lib_binding_df], ignore_index=True)
             lib_manifest.to_csv(out_path("library_binding"), index=False)
             print(f"Wrote: {out_path('library_binding')}")
+        # The measurement's operator and protein concentration, as the fit
+        # reads them (tfmodel/contexts.py).
+        for column in ("operator", "tf_total_uM"):
+            if binding_cfg.get(column) is not None:
+                binding_df[column] = binding_cfg[column]
         binding_df, offset_truth = apply_genotype_offsets(
             binding_df, binding_cfg.get("genotype_offset_sd", 0.0), rng)
         if offset_truth is not None:

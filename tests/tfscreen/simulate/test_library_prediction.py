@@ -1,7 +1,7 @@
 import pytest
 import pandas as pd
 import tfscreen.util
-from unittest.mock import MagicMock
+from unittest.mock import ANY, MagicMock
 from tfscreen.simulate.library_prediction import library_prediction
 
 
@@ -65,6 +65,7 @@ def test_library_prediction_success(mocker, mock_config):
         thermo_data=None,
         thermo_options=None,
         theta_component="mock_theta",
+        conditions=ANY,
     )
     mock_jax_key.assert_called_once_with(7)   # seed value
 

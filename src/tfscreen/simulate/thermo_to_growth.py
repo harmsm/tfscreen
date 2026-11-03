@@ -236,7 +236,8 @@ _HILL_KEYS = ("theta_low", "theta_high", "log_hill_K", "hill_n")
 
 def _theta_at_concs(theta_component, theta_param, sim_data, titrant_conc,
                     unique_genotypes, unique_sim_indices,
-                    theta_gc_override=None, theta_params_override=None):
+                    theta_gc_override=None, theta_params_override=None,
+                    binding_sim_data=None):
     """
     Ground-truth theta of every genotype at arbitrary concentrations.
 
@@ -248,7 +249,9 @@ def _theta_at_concs(theta_component, theta_param, sim_data, titrant_conc,
     effective Hill parameters from ``theta_params_override`` when those are
     complete, and are NaN otherwise (their curve exists only at the growth
     concentrations; the spiked stratified Hill path supplies their binding
-    theta separately).
+    theta separately).  The θ condition is ``binding_sim_data``'s (the
+    binding measurement's effector, operator and protein concentration),
+    else ``sim_data``'s first.
 
     Returns
     -------
@@ -261,7 +264,8 @@ def _theta_at_concs(theta_component, theta_param, sim_data, titrant_conc,
 
     concs = np.sort(np.unique(np.asarray(titrant_conc, dtype=float)))
     module = model_registry["theta"][theta_component]
-    conc_data = with_titrant_conc(sim_data, concs)
+    conc_data = with_titrant_conc(
+        binding_sim_data if binding_sim_data is not None else sim_data, concs)
     theta_cg = np.asarray(module.run_model(theta_param, conc_data)[0],
                           dtype=float)                        # (C, G_sim)
     theta = theta_cg.T[np.asarray(unique_sim_indices)].copy()  # (G, C)
@@ -545,6 +549,67 @@ def growth_rates(condition_array, theta_array, activity_array, dk_geno_array,
     return result
 
 
+def _context_truth_tables(deterministic, sim_data, theta_param):
+    """
+    The true operator shifts, per-operator deviations and TF levels.
+
+    From the ``theta_operator_shift`` (O,), ``theta_operator_dev`` (O, K)
+    and ``theta_ln_tf_total`` (L,) deterministic sites of a thermo.dimer
+    draw with contexts, keyed like the fit's extracted tables
+    (``operator``; ``operator``, ``term``; ``tf_level``). Shifts and
+    deviations are in kT, ``ln_tf_total`` in ln M.
+
+    Returns
+    -------
+    dict
+        ``operator_shift``, ``operator_dev`` and ``ln_tf_total``, each a
+        DataFrame or None.
+    """
+    out = {"operator_shift": None, "operator_dev": None, "ln_tf_total": None}
+    ops = list(getattr(sim_data, "theta_operator_names", None) or ())
+    levels = list(getattr(sim_data, "theta_tf_level_names", None) or ())
+    shift = deterministic.get("theta_operator_shift")
+    if shift is not None and np.size(shift) == len(ops) > 0:
+        out["operator_shift"] = pd.DataFrame(
+            {"operator": ops, "operator_shift": np.asarray(shift, float)})
+        dev = np.asarray(deterministic.get("theta_operator_dev"), float)
+        terms = list(getattr(theta_param, "operator_terms", ()) or ())
+        if dev.ndim == 2 and dev.shape == (len(ops), len(terms)) and terms:
+            out["operator_dev"] = pd.DataFrame(
+                [{"operator": o, "term": t, "operator_dev": dev[i, k]}
+                 for i, o in enumerate(ops) for k, t in enumerate(terms)])
+    ln_tf = deterministic.get("theta_ln_tf_total")
+    if ln_tf is not None and np.size(ln_tf) == len(levels) > 0:
+        out["ln_tf_total"] = pd.DataFrame(
+            {"tf_level": levels, "ln_tf_total": np.asarray(ln_tf, float)})
+    return out
+
+
+def _every_condition(row, width):
+    """A theta row at the concentrations, repeated over the θ conditions."""
+    row = np.asarray(row, dtype=float).ravel()
+    if row.size == width or width % row.size:
+        return row
+    return np.tile(row, width // row.size)
+
+
+def _condition_index(sample_df, sim_data):
+    """Each sample row's θ-condition index in ``sim_data``."""
+    labels = getattr(sim_data, "theta_condition_labels", None)
+    if not isinstance(labels, (tuple, list)) or len(labels) == 1:
+        return np.zeros(len(sample_df), dtype=int)
+    from tfscreen.tfmodel.contexts import growth_condition_labels
+    label = growth_condition_labels(sample_df,
+                                    bool(getattr(sim_data, "theta_contexts",
+                                                 False)))
+    index = {lab: i for i, lab in enumerate(labels)}
+    missing = sorted(set(label) - set(index))
+    if missing:
+        raise ValueError(f"sample_df has θ conditions {missing} that the "
+                         f"SimData does not ({list(labels)}).")
+    return label.map(index).to_numpy(dtype=int)
+
+
 def _pin_wt_reference(theta_gc, theta_param, sim_data, wt_idx,
                       sim_priors_overrides=None):
     """
@@ -568,7 +633,8 @@ def _pin_wt_reference(theta_gc, theta_param, sim_data, wt_idx,
     log_conc = np.asarray(sim_data.log_titrant_conc, dtype=float)
     occupancy = 1.0 / (1.0 + np.exp(-n * (log_conc - log_K)))
     theta_gc = np.array(theta_gc)
-    theta_gc[wt_idx, :] = low + (high - low) * occupancy
+    theta_gc[wt_idx, :] = _every_condition(low + (high - low) * occupancy,
+                                           theta_gc.shape[1])
 
     theta_param = theta_param.replace(
         theta_low=theta_param.theta_low.at[:, wt_idx].set(low),
@@ -605,6 +671,8 @@ def thermo_to_growth(
     return_mutation_truth: bool = False,
     binding_titrant_conc: Optional[Iterable[float]] = None,
     theta_conditions: Optional[dict] = None,
+    contexts=None,
+    binding_sim_data=None,
 ) -> tuple:
     """
     Generate phenotypes from genotypes via prior-predictive theta sampling.
@@ -719,6 +787,13 @@ def thermo_to_growth(
         Sample-site values fixed in the prior-predictive draw
         (``sample_theta_prior``'s ``conditions``), e.g. ``theta_ddG_sigma``
         from ``sample_theta.ddG_truth_conditions``.
+    contexts : str or dict or None
+        The contexts file (operator shifts, TF levels) the draw takes as
+        its prior; see ``sample_theta_prior``.
+    binding_sim_data : SimData or None
+        The binding measurement's θ condition (``sim_data_class.
+        binding_sim_data``), at which the binding theta is evaluated.
+        Default: ``sim_data``'s first θ condition.
 
     Returns
     -------
@@ -791,6 +866,7 @@ def thermo_to_growth(
             sim_priors_overrides=theta_sim_priors_overrides,
             return_deterministic=True,
             conditions=theta_conditions,
+            contexts=contexts,
         )
     else:
         theta_gc, theta_param = sample_theta_prior(
@@ -800,6 +876,7 @@ def thermo_to_growth(
             priors_overrides=theta_priors_overrides,
             sim_priors_overrides=theta_sim_priors_overrides,
             conditions=theta_conditions,
+            contexts=contexts,
         )
 
     print("Done.", flush=True)
@@ -824,11 +901,13 @@ def thermo_to_growth(
             theta_sim_priors_overrides)
 
     # ── Inject stratified theta for calibration genotypes ─────────────────────
+    # A row given at the concentrations alone applies in every θ condition.
     if theta_gc_override:
         theta_gc = np.array(theta_gc)  # ensure a mutable copy
         for g, theta_row in theta_gc_override.items():
             if g in geno_to_sim_idx:
-                theta_gc[geno_to_sim_idx[g], :] = theta_row
+                theta_gc[geno_to_sim_idx[g], :] = _every_condition(
+                    theta_row, theta_gc.shape[1])
 
     # ── Apply logit-normal noise to theta ─────────────────────────────────────
     if theta_noise_sigma_logit > 0.0:
@@ -843,23 +922,30 @@ def thermo_to_growth(
     # Use float64 values from sample_df directly (same source as build_sim_data)
     # rather than sim_data.titrant_conc, which is float32 from the JAX array and
     # would cause dict-lookup misses due to float32→float64 precision loss.
+    # Columns are θ condition-major (t * C + c; sample_theta.theta_columns).
     sorted_concs_f64 = np.sort(sample_df["titrant_conc"].unique()).astype(float)
     conc_to_col = {c: i for i, c in enumerate(sorted_concs_f64)}
-    sample_conc_idx = sample_df["titrant_conc"].map(conc_to_col).values.astype(int)
+    num_conc = len(sorted_concs_f64)
+    sample_cond_idx = _condition_index(sample_df, sim_data)
+    sample_conc_idx = (sample_cond_idx * num_conc
+                       + sample_df["titrant_conc"].map(conc_to_col)
+                       .values.astype(int))
 
     # ── Build genotype_theta_df (ground-truth theta per unique genotype) ──────
-    # Long form: one row per (genotype, titrant_name, titrant_conc).
-    # unique_sim_indices maps each unique genotype to its representative row in
-    # theta_gc, eliminating duplicates from tiles.
+    # Long form: one row per (genotype, titrant_name[, operator, tf_level],
+    # titrant_conc). unique_sim_indices maps each unique genotype to its
+    # representative row in theta_gc, eliminating duplicates from tiles.
+    context_cols = [c for c in ("operator", "tf_level")
+                    if c in sample_df.columns]
+    pair_cols = ["titrant_name", *context_cols, "titrant_conc"]
     tn_conc_pairs = (
-        sample_df[["titrant_name", "titrant_conc"]]
+        sample_df[pair_cols]
+        .assign(_col=sample_conc_idx)
         .drop_duplicates()
-        .sort_values(["titrant_name", "titrant_conc"])
+        .sort_values(pair_cols)
         .reset_index(drop=True)
     )
-    pair_col_indices = np.array(
-        [conc_to_col[float(c)] for c in tn_conc_pairs["titrant_conc"]]
-    )
+    pair_col_indices = tn_conc_pairs["_col"].to_numpy(dtype=int)
     # theta_vals shape: (n_unique_geno, n_pairs)
     theta_vals = theta_gc[unique_sim_indices][:, pair_col_indices]
 
@@ -868,13 +954,14 @@ def thermo_to_growth(
     genotype_theta_df = pd.DataFrame({
         "genotype":     np.repeat(list(unique_genotypes), n_pairs),
         "titrant_name": np.tile(tn_conc_pairs["titrant_name"].values, n_geno),
+        **{c: np.tile(tn_conc_pairs[c].values, n_geno) for c in context_cols},
         "titrant_conc": np.tile(tn_conc_pairs["titrant_conc"].values.astype(float),
                                 n_geno),
         "theta":        theta_vals.ravel(),
     })
     genotype_theta_df = set_categorical_genotype(genotype_theta_df)
     genotype_theta_df = genotype_theta_df.sort_values(
-        ["genotype", "titrant_name", "titrant_conc"]
+        ["genotype", *pair_cols]
     ).reset_index(drop=True)
 
     print("Calculating growth rates and building phenotype dataframe... ",
@@ -889,7 +976,7 @@ def thermo_to_growth(
 
     # Theta matrix aligned to unique_genotypes order, shape (n_geno, n_samples)
     # (unique_sim_indices already computed above)
-    theta_ordered = theta_gc[unique_sim_indices]          # (n_geno, C)
+    theta_ordered = theta_gc[unique_sim_indices]          # (n_geno, T * C)
     theta_for_samples = theta_ordered[:, sample_conc_idx]  # (n_geno, n_samples)
 
     # Build long-form theta dataframe matching the old theta_out.stack() shape
@@ -1020,10 +1107,13 @@ def thermo_to_growth(
             deterministic, all_genotypes, sim_data, struct_names=struct_names)
         out += ({"mutation": mutation_df, "pair": pair_df,
                  "ddG_sigma": _ddG_sigma_truth_table(deterministic,
-                                                     struct_names)},)
+                                                     struct_names),
+                 **_context_truth_tables(deterministic, sim_data,
+                                         theta_param)},)
     if binding_titrant_conc is not None:
         out += (_theta_at_concs(theta_component, theta_param, sim_data,
                                 binding_titrant_conc, unique_genotypes,
                                 unique_sim_indices, theta_gc_override,
-                                theta_params_override),)
+                                theta_params_override,
+                                binding_sim_data=binding_sim_data),)
     return out

@@ -114,13 +114,33 @@ fall into two kinds:
   checks each row against its background's library and one background per
   library, writes `{out_prefix}_library.csv` with one block per background,
   and records the block in the config's `library` provenance. Congression
-  uses one pool per background: `GrowthData.pool_bulk_fraction`,
-  `pool_coresident_idx` and `condition_pre_pool`, and the `mixture`
-  component takes each condition_pre slot's classes from its pool
-  (`mixture._pool_classes`). Data without backgrounds are unchanged, and the
-  first pool draws exactly as the single pool did. `copy_orchestrator`
-  keeps the `background` column. Backgrounds cannot yet be combined with
-  the library subsample keys.
+  uses one pool per library, which is one background and one marker:
+  `GrowthData.pool_bulk_fraction`, `pool_coresident_idx` and
+  `condition_pre_pool`, and the `mixture` component takes each
+  condition_pre slot's classes from its pool (`mixture._pool_classes`).
+  Each pool draws its own co-resident sets from its background's table;
+  λ stays global. The first library draws exactly as the single pool did.
+  `copy_orchestrator` keeps the `background` column. Backgrounds cannot yet
+  be combined with the library subsample keys.
+- **Operators, TF levels and backgrounds in the simulator** (step 3e).
+  Condition blocks and design tables take optional `operator`, `tf_level`
+  and `background` columns, and tubes that differ in one are different
+  tubes. The simulator's θ axis is the fit's θ conditions
+  (`sim_data_class.sim_theta_conditions`, `SimData.theta_*`; `theta_gc`
+  columns are θ condition-major, `sample_theta.theta_columns`). A
+  `contexts` key reads the contexts file, checked as `tfs-configure-model`
+  checks it; a `thermo.dimer` draw takes its operator shifts and TF levels
+  from it and writes `{out_prefix}_operator_shift.csv`,
+  `_operator_dev.csv` and `_ln_tf_total.csv`, which `tfs-summarize-fit`
+  joins to the fit's tables (`_summarize_context_params`). The θ truth
+  table gains `operator` and `tf_level` columns. `binding_data` takes
+  `operator` and `tf_total_uM`, and binding θ is evaluated at that
+  condition (`sim_data_class.binding_sim_data`). A `backgrounds` block
+  builds one library per background (`backgrounds.background_library_df`,
+  with a `background` column); each library is transformed from its
+  background's origins with its background's `library_mixture`, and each
+  tube's counts list only its background's genotypes, in the raw files
+  too. `O2_*` models refuse contexts.
 
 ### Changed
 
@@ -129,9 +149,23 @@ fall into two kinds:
   of listing the `O2_*` models.
 - `extract_theta_unmeasured` passes the theta priors to a component's
   `predict_unmeasured` when it takes a `theta_priors` argument.
+- **Congression pools are per library.** A fit with kanR and pheS
+  libraries now draws each library's co-resident sets separately, so every
+  library after the first gets new draws and its results move within the
+  draw noise. The first library, and a one-library fit, are unchanged.
+- **A simulation with several titrants gives each its own θ curve.** The
+  simulator had one θ axis over concentration, so every titrant shared one
+  curve. One-titrant simulations without contexts draw as before. A curve
+  model drawn through its `simulate` path still uses one curve per genotype
+  in every θ condition.
 
 ### Fixed
 
+- **An operator's shift had the wrong sign in `thermo.dimer`** (since step
+  3b, unreleased). The contexts file gives the ΔΔG of operator binding, so a
+  positive shift binds more weakly, but the model and the θ prediction
+  added it to ln K. Both now subtract it. Found by the simulator's test that
+  a weaker operator lowers repression (`test_sim_contexts.py`).
 - **Binding data that measure only some of the growth titrants line up
   with them.** The binding tensors' titrant axis was built from the binding
   data's own titrant names, while the θ parameters are indexed by the

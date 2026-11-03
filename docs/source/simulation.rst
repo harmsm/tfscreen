@@ -186,6 +186,32 @@ design cannot be combined with ``condition_blocks`` or with
 ``od600.num_od_only_replicates``. Like every path in the config, it is read
 relative to the directory ``tfs-simulate`` runs in.
 
+Operators, TF levels and genetic backgrounds come in as three optional
+columns of the design, or keys of every condition block: ``operator``,
+``tf_level`` and ``background``. Tubes that differ only in one of them are
+different tubes. The simulator folds (titrant, operator, TF level) into θ
+conditions exactly as the fit does (:doc:`model-inputs`), so each tube's θ
+is its own condition's. With more than one operator or TF level the config
+needs ``contexts``, the same contexts file ``tfs-configure-model
+--contexts`` reads. A ``thermo.dimer`` draw takes its operator shifts and TF
+levels from that file's priors, and the truth is written to
+``{out_prefix}_operator_shift.csv`` and ``{out_prefix}_operator_dev.csv``
+in kT and ``{out_prefix}_ln_tf_total.csv`` in ln M. The θ truth table
+gains ``operator`` and ``tf_level`` columns. The ``O2_*`` models refuse
+contexts. A curve model draws one curve per genotype and uses it in every
+context. A ``binding_data`` block may give the measurement's ``operator``
+and ``tf_total_uM``: binding θ is then evaluated at that protein
+concentration and operator, and the binding table carries both columns.
+
+A ``backgrounds`` block, as in the library YAML
+(:doc:`process-raw`), simulates each background as its own library. The
+library table gains a ``background`` column. Each ``library`` of the design
+is transformed from its background's sub-libraries with that background's
+``library_mixture``, so a library must keep to one background, as in the
+fit. A tube's counts file lists only its background's genotypes, as
+``tfs-process-fastq --background`` writes it. Backgrounds cannot yet be
+combined with the library subsample keys.
+
 ``growth_transition`` is an optional list with one entry per
 ``condition_pre``, describing the switch from pre-growth to selection.
 The simulator supports ``instant`` (no lag), ``memory`` (``tau0``, ``k1``,

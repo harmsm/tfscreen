@@ -36,7 +36,8 @@ import pandas as pd
 from tfscreen.genetics import UNKNOWN_GENOTYPE
 
 TUBE_COLUMNS = ["sample", "library", "replicate", "condition_pre", "t_pre",
-                "condition_sel", "t_sel", "titrant_name", "titrant_conc"]
+                "condition_sel", "t_sel", "titrant_name", "titrant_conc",
+                "operator", "tf_level", "background"]
 
 
 def sample_names(n):
@@ -90,7 +91,7 @@ def undetectable_tubes(sample_df, od600_config):
 
 
 def write_raw_experiment(sample_df, counts_df, library_genotypes, out_prefix,
-                         od600_config=None):
+                         od600_config=None, background_genotypes=None):
     """
     Write a simulated experiment in the raw formats (see the module docstring).
 
@@ -109,6 +110,10 @@ def write_raw_experiment(sample_df, counts_df, library_genotypes, out_prefix,
     od600_config : dict or None
         The simulate config's ``od600`` block (``calibration``,
         ``tube_volume_mL``), or None.
+    background_genotypes : dict or None
+        With genetic backgrounds, ``{background: genotypes}``: a tube's file
+        lists its own background's library (its ``background`` column), as
+        ``tfs-process-fastq --background`` writes it.
 
     Returns
     -------
@@ -135,8 +140,16 @@ def write_raw_experiment(sample_df, counts_df, library_genotypes, out_prefix,
     counts_dir = f"{out_prefix}_counts"
     os.makedirs(counts_dir, exist_ok=True)
 
-    genotypes = list(dict.fromkeys(str(g) for g in library_genotypes))
-    genotypes = [g for g in genotypes if g != UNKNOWN_GENOTYPE]
+    def _listed(values):
+        out = list(dict.fromkeys(str(g) for g in values))
+        return [g for g in out if g != UNKNOWN_GENOTYPE]
+
+    genotypes = _listed(library_genotypes)
+    per_background = {str(k): _listed(v)
+                      for k, v in (background_genotypes or {}).items()}
+    tube_background = (tubes["background"].astype(str).to_dict()
+                       if per_background and "background" in tubes.columns
+                       else {})
     counts = counts_df.copy()
     counts["genotype"] = counts["genotype"].astype(str)
     extra = sorted(set(counts["genotype"]) - set(genotypes) - {UNKNOWN_GENOTYPE})
@@ -148,7 +161,9 @@ def write_raw_experiment(sample_df, counts_df, library_genotypes, out_prefix,
             continue
         c = (counts.loc[counts["sample"] == sim_id]
              .groupby("genotype", sort=False)["counts"].sum())
-        out = pd.DataFrame({"genotype": genotypes + [UNKNOWN_GENOTYPE]})
+        listed = (per_background[tube_background[sim_id]]
+                  if sim_id in tube_background else genotypes)
+        out = pd.DataFrame({"genotype": listed + [UNKNOWN_GENOTYPE]})
         out["counts"] = (out["genotype"].map(c).fillna(0)
                          .astype(np.int64).to_numpy())
         out.to_csv(os.path.join(counts_dir, f"counts_{name}.csv"), index=False)

@@ -30,7 +30,8 @@ class SimData:
 
     Required scalar fields
     ----------------------
-    num_titrant_name : int  — always 1 for simulation.
+    num_titrant_name : int  — T, number of θ conditions (titrant, operator,
+                              TF level); 1 for one titrant and no contexts.
     num_titrant_conc : int  — C, number of unique effector concentrations.
     num_genotype     : int  — G.
     batch_size       : int  — G (all genotypes in one batch).
@@ -93,9 +94,47 @@ class SimData:
     struct_contact_pair_idx:  Any = field(pytree_node=False, default=None)
     struct_contact_distances: Any = field(pytree_node=False, default=None)
 
+    # ── θ conditions (tfmodel/contexts.py; GrowthData's fields) ──────────────
+    # One θ condition per (titrant_name, operator, tf_level) of the design,
+    # in the order of theta_condition_labels; the titrant axis of theta.
+    theta_condition_labels: Any = field(pytree_node=False, default=None)
+    theta_contexts:       bool = field(pytree_node=False, default=False)
+    theta_effector_names: Any = field(pytree_node=False, default=None)
+    theta_operator_names: Any = field(pytree_node=False, default=None)
+    theta_tf_level_names: Any = field(pytree_node=False, default=None)
+    theta_effector_idx:   Any = field(pytree_node=False, default=None)
+    theta_operator_idx:   Any = field(pytree_node=False, default=None)
+    theta_tf_level_idx:   Any = field(pytree_node=False, default=None)
+    theta_tf_total_M:     Any = field(pytree_node=False, default=None)
+
     def __post_init__(self):
         wrap_static_arrays(self)
 
+
+
+def sim_theta_conditions(sample_df, binding_df=None):
+    """
+    The θ conditions of a simulation, as the fit builds them.
+
+    Parameters
+    ----------
+    sample_df : pandas.DataFrame
+        The design: ``titrant_name`` and the optional ``operator`` and
+        ``tf_level`` columns.
+    binding_df : pandas.DataFrame, optional
+        One row per binding measurement condition (``titrant_name`` and the
+        optional ``operator`` and ``tf_total_uM``).
+
+    Returns
+    -------
+    tfmodel.contexts.ThetaConditions
+    """
+    from tfscreen.tfmodel.contexts import theta_conditions
+    if "titrant_name" not in sample_df.columns:
+        name = (str(binding_df["titrant_name"].iloc[0])
+                if binding_df is not None else "titrant")
+        sample_df = sample_df.assign(titrant_name=name)
+    return theta_conditions(growth_df=sample_df, binding_df=binding_df)
 
 
 def build_sim_data(library_df,
@@ -103,7 +142,8 @@ def build_sim_data(library_df,
                    thermo_data=None,
                    skip_pairs=False,
                    theta_component=None,
-                   thermo_options=None):
+                   thermo_options=None,
+                   conditions=None):
     """
     Build a SimData from the simulation pipeline's core inputs.
 
@@ -134,6 +174,9 @@ def build_sim_data(library_df,
     thermo_options : dict or None
         Loader options (ΔΔG units, column map, residue offset, coverage
         threshold); see ``thermo.io.normalize_thermo_options``.
+    conditions : tfmodel.contexts.ThetaConditions, optional
+        The θ conditions (:func:`sim_theta_conditions`). Default: built
+        from ``sample_df`` alone.
 
     Returns
     -------
@@ -184,8 +227,14 @@ def build_sim_data(library_df,
             struct_contact_distances=raw["struct_contact_distances"],
         )
 
+    # ── θ conditions ──────────────────────────────────────────────────────────
+    if conditions is None:
+        conditions = sim_theta_conditions(sample_df)
+    theta_kw = conditions.data_fields("growth")
+    theta_kw["theta_condition_labels"] = tuple(conditions.growth_labels)
+
     return SimData(
-        num_titrant_name=1,
+        num_titrant_name=len(conditions.growth_labels),
         num_titrant_conc=C,
         num_genotype=G,
         batch_size=G,
@@ -201,7 +250,37 @@ def build_sim_data(library_df,
         pair_nnz_pair_idx=pair_nnz_pair_idx,
         pair_nnz_geno_idx=pair_nnz_geno_idx,
         **struct_kw,
+        **theta_kw,
     )
+
+
+def binding_sim_data(sim_data, conditions, label):
+    """
+    Copy of a SimData whose one θ condition is a binding condition.
+
+    The binding measurement's effector, operator and known protein
+    concentration replace the growth conditions, so a θ component's
+    ``run_model`` evaluates the drawn parameters in vitro.
+
+    Parameters
+    ----------
+    sim_data : SimData
+    conditions : tfmodel.contexts.ThetaConditions
+        Built with the binding conditions.
+    label : str
+        The binding θ-condition label.
+
+    Returns
+    -------
+    SimData
+    """
+    i = list(conditions.binding_labels).index(label)
+    per_condition = ("theta_effector_idx", "theta_operator_idx",
+                     "theta_tf_level_idx", "theta_tf_total_M")
+    one = {k: (tuple(v[i:i + 1]) if k in per_condition else v)
+           for k, v in conditions.data_fields("binding").items()}
+    return sim_data.replace(num_titrant_name=1,
+                            theta_condition_labels=(label,), **one)
 
 
 def with_titrant_conc(sim_data, titrant_conc):

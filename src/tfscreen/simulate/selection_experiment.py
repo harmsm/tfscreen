@@ -64,6 +64,10 @@ SIMULATE_KNOWN_KEYS = frozenset({
     "theta_rescale",
     "theta_sim_priors",
     "growth_titrant_scale",
+    # Operator shifts and TF levels (tfmodel/contexts.py)
+    "contexts",
+    # Genetic backgrounds (genetics/backgrounds.py)
+    "backgrounds",
     # Empirical phenotype source (resample from a fitted PopulationModel)
     "phenotype_source", "empirical",
     # Conditions and growth
@@ -1774,6 +1778,50 @@ def _unassigned_fraction(cf, sub_df):
         return float(frac[libs[0]])
     return float(frac)
 
+def _background_origins(library_df, origin_cols, cf):
+    """
+    ``{background: ({origin: df}, cf)}``: each background's origins and the
+    config its libraries are simulated with (its own ``library_mixture``).
+    Without backgrounds, one entry keyed None.
+    """
+    if "background" not in origin_cols:
+        return {None: (dict(list(library_df.groupby(["library_origin"]))), cf)}
+    from tfscreen.genetics.backgrounds import background_config
+    out = {}
+    for bg, bg_df in library_df.groupby("background", observed=True):
+        bg = str(bg)
+        origins = {o: d for o, d in bg_df.groupby("library_origin")
+                   if d["weight"].sum() > 0}
+        mixture = background_config(cf, bg).get("library_mixture") or {}
+        missing = sorted(set(origins) - set(mixture))
+        if missing:
+            raise ValueError(f"background '{bg}' has library origins "
+                             f"{missing} without a library_mixture entry.")
+        missing = sorted(set(origins) - set(cf["transform_sizes"]))
+        if missing:
+            raise ValueError(f"background '{bg}' has library origins "
+                             f"{missing} without a transform_sizes entry.")
+        out[bg] = (origins, {**cf, "library_mixture": dict(mixture)})
+    return out
+
+
+def _group_background(sub_df, background_origins):
+    """The one background of a library group (None without backgrounds)."""
+    if None in background_origins:
+        return None
+    from tfscreen.genetics.backgrounds import REFERENCE
+    found = (sorted(set(sub_df["background"].astype(str)))
+             if "background" in sub_df.columns else [REFERENCE])
+    if len(found) != 1:
+        raise ValueError(f"Library {sorted(set(sub_df['library']))} has tubes "
+                         f"in more than one background {found}; each library "
+                         f"is one transformation, so one background.")
+    if found[0] not in background_origins:
+        raise ValueError(f"Background {found[0]!r} is not a background of "
+                         f"the library ({sorted(background_origins)}).")
+    return found[0]
+
+
 def selection_experiment(
     cf: dict[str, Any] | str | Path,
     library_df: pd.DataFrame | str | Path,
@@ -1847,6 +1895,13 @@ def selection_experiment(
     # Integrated check and update for library specification
     cf = _check_lib_spec(cf,library_df,phenotype_df)
 
+    # Tubes that differ only in operator, TF level or background are
+    # different tubes.
+    from tfscreen.simulate.build_sample_dataframes import OPTIONAL_COLUMNS
+    cf["condition_selector"] = list(cf["condition_selector"]) + [
+        c for c in OPTIONAL_COLUMNS
+        if c in phenotype_df.columns and c not in cf["condition_selector"]]
+
     # Co-transformed cells rebuild their growth from theta/activity/dk_geno.
     lam = cf["transformation_poisson_lambda"]
     if lam is not None and lam > 0:
@@ -1865,15 +1920,19 @@ def selection_experiment(
     # to keep indexing consistent when we mix libraries. The .fillna(0) in this
     # chain sets the weights of added genotypes to 0 so they are not actually
     # transformed. 
+    # With genetic backgrounds each background is its own set of origins
+    # (genetics/backgrounds.py), so origins are keyed by (background, origin).
+    origin_cols = (["background", "library_origin"]
+                   if "background" in library_df.columns else ["library_origin"])
     library_df = (library_df
                   .pivot_table(index="genotype",
-                               columns=["library_origin"],
+                               columns=origin_cols,
                                values="weight",
                                observed=True)
                   .fillna(0)
-                  .stack()
+                  .stack(origin_cols)
                   .reset_index() # break open multi-index
-                  .sort_values(["library_origin","genotype"])
+                  .sort_values(origin_cols + ["genotype"])
                   .rename(columns={0:"weight"})
                   .reset_index(drop=True))
     
@@ -1882,11 +1941,8 @@ def selection_experiment(
     # calculation. 
     ordered_genotypes = pd.unique(library_df["genotype"])
     
-    # groupby on library_df that lets us select individual library origins
-    lib_origin_dict = dict(list(library_df.groupby(["library_origin"])))
-
     # Create a temporary grouper to iterate for calculation
-    lib_origin_grouper = library_df.groupby(["library_origin"])
+    lib_origin_grouper = library_df.groupby(origin_cols)
 
     # Build base probabilities for library transformation. By putting skew here
     # we are modeling skew that occurs during library construction, not skew 
@@ -1900,7 +1956,7 @@ def selection_experiment(
     else:
         library_df["probs"] = 0.0
         for origin, origin_sub_df in lib_origin_grouper:
-            origin = origin[0] if isinstance(origin, tuple) else origin
+            origin = origin[-1] if isinstance(origin, tuple) else origin
             skew = cf["lib_assembly_skew_sigma"]
             if isinstance(skew, dict):
                 if origin not in skew:
@@ -1913,8 +1969,9 @@ def selection_experiment(
         if share:
             shared_state["assembly_probs"] = library_df["probs"].to_numpy().copy()
 
-    # Create a dictionary of grouped DataFrames. 
-    lib_origin_dict = dict(list(library_df.groupby(["library_origin"])))
+    # Create a dictionary of grouped DataFrames, one per background when the
+    # library has backgrounds ({background: {origin: df}}).
+    background_origins = _background_origins(library_df, origin_cols, cf)
 
     # Remove genotypes from phenotype_df that are not in the library
     phenotype_df = phenotype_df[phenotype_df["genotype"].isin(ordered_genotypes)]
@@ -1958,16 +2015,27 @@ def selection_experiment(
     counts_df_batches = []
     for _, sub_df in tqdm(lib_grouper,desc="replicate/library"):
 
+        # A library is transformed from its own background's origins.
+        background = _group_background(sub_df, background_origins)
+        lib_origin_dict, group_cf = background_origins[background]
+
         # Do a complete transform + grow + sequence for this block of conditions
         sample_df, counts_df = _simulate_library_group(sub_df,
                                                        index_offset,
                                                        lib_origin_dict,
                                                        ordered_genotypes,
                                                        reads_per_sample,
-                                                       cf,
+                                                       group_cf,
                                                        rng,
                                                        shared_state=shared_state,
                                                        sequence=sequence)
+        if background is not None and not counts_df.empty:
+            # the tube's reads name only its background's genotypes, as
+            # tfs-process-fastq --background calls them
+            own = set(library_df.loc[(library_df["background"] == background)
+                                     & (library_df["weight"] > 0),
+                                     "genotype"].astype(str))
+            counts_df = counts_df[counts_df["genotype"].astype(str).isin(own)]
 
         sample_df_batches.append(sample_df)
         counts_df_batches.append(counts_df)

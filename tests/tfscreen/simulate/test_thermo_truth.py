@@ -189,7 +189,9 @@ def test_mutation_truth_does_not_change_the_draw():
 def test_hill_components_have_no_mutation_truth():
     """Components sampled through simulate() have no trace to read."""
     _, _, params, truth = _draw("hill_geno")
-    assert truth == {"mutation": None, "pair": None, "ddG_sigma": None}
+    assert truth == {"mutation": None, "pair": None, "ddG_sigma": None,
+                     "operator_shift": None, "operator_dev": None,
+                     "ln_tf_total": None}
     assert "log_hill_K" in params.columns
 
 

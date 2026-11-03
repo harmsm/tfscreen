@@ -7,7 +7,11 @@ from tfscreen.simulate import (
     read_design,
     thermo_to_growth,
 )
-from tfscreen.simulate.sim_data_class import build_sim_data
+from tfscreen.simulate.sim_data_class import (
+    binding_sim_data,
+    build_sim_data,
+    sim_theta_conditions,
+)
 from tfscreen.simulate.sample_theta import (
     ddG_truth_conditions,
     sample_theta_prior,
@@ -30,6 +34,13 @@ from tfscreen.simulate.empirical.population import PopulationModel
 from tfscreen.genetics import library_manager
 from tfscreen.genetics.library_subsample import subsample_library_df
 from tfscreen.genetics import standardize_genotypes
+from tfscreen.tfmodel.contexts import assign_theta_condition
+from tfscreen.genetics.backgrounds import (
+    BACKGROUND_COLUMN,
+    background_library_df,
+    background_names,
+    has_backgrounds,
+)
 
 import jax
 import numpy as np
@@ -279,6 +290,70 @@ def _spiked_stratified_binding(binding_genotypes, cf, sample_df, binding_sample_
     return override, rows
 
 
+def check_design_backgrounds(cf, named):
+    """
+    Refuse design backgrounds the library does not declare.
+
+    Raises
+    ------
+    ValueError
+    """
+    if not named:
+        return
+    declared = background_names(cf)
+    unknown = sorted(set(named) - set(declared))
+    if unknown:
+        raise ValueError(f"The design names background(s) {unknown}; the "
+                         f"library declares {declared}.")
+
+
+def binding_condition_frame(binding_cfg):
+    """
+    The binding measurement's θ condition as a one-row frame
+    (``titrant_name`` and, when the block gives them, ``operator`` and
+    ``tf_total_uM``), or None without a ``binding_data`` block.
+    """
+    if binding_cfg is None:
+        return None
+    row = {"titrant_name": str(binding_cfg["titrant_name"])}
+    if binding_cfg.get("operator") is not None:
+        row["operator"] = str(binding_cfg["operator"])
+    if binding_cfg.get("tf_total_uM") is not None:
+        row["tf_total_uM"] = float(binding_cfg["tf_total_uM"])
+    return pd.DataFrame([row])
+
+
+def check_sim_contexts(cf, conditions, binding_frame=None):
+    """
+    The read contexts file of a simulation (None without one), checked
+    against its θ conditions as ``tfs-configure-model`` checks a fit's.
+
+    Raises
+    ------
+    ValueError
+        When the design names more than one operator or TF level without a
+        ``contexts`` file, the file misses a label, or a curve model would
+        have to link binding data to one context.
+    """
+    from tfscreen.tfmodel.contexts import check_contexts, read_contexts
+    from tfscreen.tfmodel.generative.registry import model_registry
+
+    path = cf.get('contexts')
+    contexts = read_contexts(path) if path is not None else None
+    check_contexts(contexts, conditions)
+    theta = cf.get('theta_component')
+    module = model_registry["theta"].get(theta)
+    if (conditions.composite and binding_frame is not None
+            and not getattr(module, "SUPPORTS_CONTEXTS", False)
+            and cf.get('phenotype_source', 'prior') != 'empirical'):
+        raise ValueError(
+            f"theta_component {theta!r} cannot link binding data to one "
+            f"operator or TF level. Use a thermo.dimer model, or a design "
+            f"with one operator and one TF level and a binding_data block "
+            f"without operator and tf_total_uM.")
+    return contexts
+
+
 def library_prediction(cf: Union[Dict[str, Any], str, Path],
                        override_keys: dict=None,
                        return_mutation_truth: bool=False,
@@ -363,9 +438,13 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
 
     # Build library_df (restricted to the config's subsample, if any)
     if library_df is None:
-        lm = library_manager.LibraryManager(cf)
-        library_df, _ = subsample_library_df(lm.build_library_df(), cf,
-                                             base_dir=base_dir)
+        if has_backgrounds(cf):
+            # one library per genetic background, named absolutely
+            library_df = background_library_df(cf)
+        else:
+            lm = library_manager.LibraryManager(cf)
+            library_df, _ = subsample_library_df(lm.build_library_df(), cf,
+                                                 base_dir=base_dir)
 
     # Build sample_df (holds all conditions for the experiment): from the
     # condition blocks, or from a design tube table (the union of its
@@ -381,6 +460,16 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
             replicate=1
         )
 
+    if BACKGROUND_COLUMN in sample_df.columns:
+        check_design_backgrounds(cf, set(sample_df[BACKGROUND_COLUMN]))
+
+    # θ conditions: (titrant, operator, TF level) of the design, and the
+    # binding measurement's (titrant, operator, protein concentration), as
+    # the fit builds them (tfmodel/contexts.py).
+    binding_frame = binding_condition_frame(cf.get('binding_data'))
+    conditions = sim_theta_conditions(sample_df, binding_frame)
+    contexts = check_sim_contexts(cf, conditions, binding_frame)
+
     # Build SimData: lightweight container for the theta model
     sim_data = build_sim_data(
         library_df=library_df,
@@ -388,7 +477,13 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
         thermo_data=cf.get('thermo_data'),
         thermo_options=cf.get('thermo_options'),
         theta_component=cf.get('theta_component'),
+        conditions=conditions,
     )
+    binding_data = None
+    if binding_frame is not None:
+        label = assign_theta_condition(binding_frame, conditions, "binding")
+        binding_data = binding_sim_data(
+            sim_data, conditions, str(label["theta_condition"].iloc[0]))
 
     # In vivo titrant: growth sees each curve at s times the nominal
     # concentration, binding at the nominal one (the fit's
@@ -575,6 +670,9 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
         dk_geno_override=dk_geno_override,
         return_mutation_truth=return_mutation_truth,
         theta_conditions=theta_conditions,
+        contexts=contexts,
+        **({"binding_sim_data": binding_data} if binding_data is not None
+           else {}),
         **({"binding_titrant_conc": binding_cfg['titrant_conc']}
            if need_binding_theta else {}),
     )

@@ -173,6 +173,13 @@ theta_component: "thermo.O2_C12_K5_U0_a.PK"
 #   design: tube_table.csv
 # a tube table in the format tfs-process-counts reads; each replicate then
 # gets exactly its own tubes, under the table's names.
+#
+# Optional, in every block or none (or as design columns): operator,
+# tf_level and background. With more than one operator or TF level, give
+#   contexts: contexts.yaml
+# the contexts file tfs-configure-model --contexts reads; a thermo.dimer
+# draw takes its operator shifts and TF levels from it. Backgrounds are
+# declared in a backgrounds block, as in the library YAML.
 condition_blocks:
   - library: "kanR"
     titrant_name: "iptg"
@@ -419,6 +426,10 @@ seed: null
 #   titrant_name: iptg
 #   titrant_conc: [0, 0.0001, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1.0]
 #   noise: 0.02
+#   # The measurement's operator and protein concentration (µM protomer),
+#   # both optional; written to the binding table as the fit reads them.
+#   operator: O1
+#   tf_total_uM: 2.0
 #   # One offset per binding genotype added to its whole curve,
 #   # Normal(0, genotype_offset_sd) (the fit's genotype_offset); truth in
 #   # {out_prefix}_binding_offsets.csv. Default 0.
