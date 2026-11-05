@@ -488,6 +488,40 @@ def required_struct_names(theta_name):
     return tuple(names) if names is not None else None
 
 
+def model_struct_names(theta_name, priors=None):
+    """
+    The structures a PddG/PnnC component's block uses for ``priors``, in
+    the order of its σ_s and per-state sites, or None.
+
+    A component with ``structure_names_for`` (thermo.dimer PddG, whose
+    monomer states come in with ``theta_monomers``) picks them by its
+    variant; ``priors`` is a ModelPriors, a dict of priors fields or None.
+    Otherwise :func:`required_struct_names`.
+    """
+    if theta_name is None:
+        return None
+    from tfscreen.tfmodel.generative.registry import model_registry
+    module = model_registry["theta"].get(theta_name)
+    pick = getattr(module, "structure_names_for", None)
+    if pick is not None:
+        return tuple(pick(priors))
+    return required_struct_names(theta_name)
+
+
+def optional_struct_names(theta_name):
+    """
+    Structures a PddG component reads when the file has them, or ().
+
+    Read from the component's ``OPTIONAL_STRUCTURE_NAMES`` (thermo.dimer
+    PddG's monomer states, used only by a variant with monomers).
+    """
+    if theta_name is None:
+        return ()
+    from tfscreen.tfmodel.generative.registry import model_registry
+    module = model_registry["theta"].get(theta_name)
+    return tuple(getattr(module, "OPTIONAL_STRUCTURE_NAMES", ()) or ())
+
+
 def load_thermo_data(path, mut_labels, pair_labels=None, theta_name=None,
                      thermo_options=None):
     """
@@ -505,9 +539,11 @@ def load_thermo_data(path, mut_labels, pair_labels=None, theta_name=None,
     else:
         is_csv = str(path).lower().endswith(".csv")
     if is_csv:
-        return load_ddG_prior_csv(path, mut_labels,
-                                  struct_names=required_struct_names(theta_name),
-                                  thermo_options=thermo_options)
+        return load_ddG_prior_csv(
+            path, mut_labels,
+            struct_names=required_struct_names(theta_name),
+            optional_struct_names=optional_struct_names(theta_name),
+            thermo_options=thermo_options)
     return load_struct_ensemble(path, mut_labels, pair_labels,
                                 thermo_options=thermo_options)
 
@@ -517,7 +553,7 @@ def load_thermo_data(path, mut_labels, pair_labels=None, theta_name=None,
 # ──────────────────────────────────────────────────────────────────────────────
 
 def load_ddG_prior_csv(csv_path, mut_labels, struct_names=None,
-                       thermo_options=None):
+                       thermo_options=None, optional_struct_names=()):
     """
     Load per-mutation per-structure ΔΔG prior means from a CSV file.
 
@@ -560,6 +596,10 @@ def load_ddG_prior_csv(csv_path, mut_labels, struct_names=None,
         Mutation labels in the order expected by the model (e.g. "A42G").
     struct_names : sequence of str, optional
         Structures the theta model needs, returned in this order.
+    optional_struct_names : sequence of str, optional
+        Structures returned after ``struct_names`` when the file has them
+        (or ``column_map`` names a column for them), and left out
+        otherwise. Used only with ``struct_names``.
     thermo_options : dict, optional
         See :func:`normalize_thermo_options`.
 
@@ -628,6 +668,9 @@ def load_ddG_prior_csv(csv_path, mut_labels, struct_names=None,
                 src_cols.append(c)
     else:
         out_names = list(struct_names)
+        for s_opt in optional_struct_names or ():
+            if s_opt not in out_names and column_map.get(s_opt, s_opt) in df.columns:
+                out_names.append(s_opt)
         unknown_map = set(column_map) - set(out_names)
         if unknown_map:
             raise ValueError(

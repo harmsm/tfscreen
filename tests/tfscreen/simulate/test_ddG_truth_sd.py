@@ -436,3 +436,44 @@ def test_setup_sim_grid_varies_it(tmp_path):
     runs = setup_sim_grid(str(grid), out_dir=out2)
     with open(os.path.join(out2, runs[0]["run"], "tfs_sim_config.yaml")) as fh:
         assert yaml.safe_load(fh)["ddG_truth_sd"] == mapping
+
+
+# ── thermo.dimer PddG with monomer states ───────────────────────────────────
+
+DIMER = "thermo.dimer.PddG"
+MONO = ["H_monomer", "L_monomer", "HO_monomer", "LO_monomer"]
+MONO_PRIORS = {"theta_monomers": True, "theta_unfolded_monomer": True}
+
+
+def test_dimer_monomer_truth_is_the_projection(tmp_path):
+    genotypes, muts = _library(2)
+    path, _ = _table(tmp_path / "ddG.csv", muts, C12_STRUCTS + MONO)
+    lib = pd.DataFrame({"genotype": genotypes})
+    sim_data = build_sim_data(lib, SAMPLE_DF, thermo_data=path,
+                              theta_component=DIMER)
+    conditions = ddG_truth_conditions(0.4, DIMER, theta_priors=MONO_PRIORS)
+    np.testing.assert_allclose(conditions["theta_ddG_sigma"], [0.4] * 10)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        out = thermo_to_growth(lib["genotype"], sim_data, SAMPLE_DF, DIMER,
+                               jax.random.PRNGKey(0), GROWTH,
+                               rng=np.random.default_rng(0),
+                               theta_priors_overrides=MONO_PRIORS,
+                               return_mutation_truth=True,
+                               theta_conditions=conditions)
+    mut = out[3]["mutation"]
+    structs = C12_STRUCTS + MONO
+    ddG = mut[[f"ddG_{s}" for s in structs]].to_numpy()
+    module = model_registry["theta"][DIMER]
+    dlnK = ddG @ module.DLNK_PROJ_MONOMER.T
+    terms = module.struct_terms_for(MONO_PRIORS)
+    got = mut[[f"d_{t}" for t in terms]].to_numpy()
+    np.testing.assert_allclose(got, dlnK, atol=1e-4)
+    hm = mut["ddG_H_monomer"].to_numpy()
+    np.testing.assert_allclose(mut["d_ln_K_m_u"].to_numpy(), hm, atol=1e-4)
+    assert list(out[3]["ddG_sigma"]["structure"]) == structs
+
+
+def test_dimer_without_monomers_keeps_six_sigmas():
+    got = ddG_truth_conditions(0.4, DIMER)
+    assert got["theta_ddG_sigma"].shape == (6,)

@@ -669,7 +669,19 @@ in the per-mutation shifts:
   ``O2_C12`` constants. The CSV has columns H, HO, L, LO, HE2 and LE2. The
   structural ΔΔG of HO and LO sets the shift of the first engagement. Every
   other term gets the ``PK`` prior.
-* ``PnnC`` is ``PddG`` with the prior means from the structure MLP.
+* With ``theta_monomers`` on, ``PddG`` also reads the monomer states
+  H_monomer, L_monomer, HO_monomer and LO_monomer from the CSV and puts the
+  structural prior on four more terms. A dimer state's ΔΔG is for the whole
+  dimer and a monomer state's for one chain, with both unfolded states at
+  0, so Δln K_d_h = 2 ΔΔG\ :sub:`Hm` − ΔΔG\ :sub:`H`, Δln K_m_h_l =
+  ΔΔG\ :sub:`Hm` − ΔΔG\ :sub:`Lm`, and the monomer operator terms follow
+  as the dimer ones do. With the unfolded monomer as well, Δln K_m_u =
+  ΔΔG\ :sub:`Hm` is set from that block. The effector terms are shared by
+  monomer and dimer and keep the dimer rows. A CSV without the monomer
+  columns still serves every variant without monomers.
+* ``PnnC`` is ``PddG`` with the prior means from the structure MLP. Its
+  block stays at the six dimer states, so its monomer terms get the ``PK``
+  prior.
 
 ``ln_K_u`` is always part of the structural block, so the post-hoc
 per-structure ΔΔG is exact. Without the unfolded dimer that row reaches no

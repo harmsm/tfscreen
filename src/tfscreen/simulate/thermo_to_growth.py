@@ -1101,9 +1101,10 @@ def thermo_to_growth(
     out = (phenotype_df, genotype_theta_df, parameters_df)
     if return_mutation_truth:
         from tfscreen.tfmodel.generative.components.theta.thermo.io import (
-            required_struct_names,
+            model_struct_names,
         )
-        struct_names = required_struct_names(theta_component)
+        struct_names = model_struct_names(theta_component,
+                                          theta_priors_overrides)
         mutation_df, pair_df = _mutation_truth_tables(
             deterministic, all_genotypes, sim_data, struct_names=struct_names)
         out += ({"mutation": mutation_df, "pair": pair_df,

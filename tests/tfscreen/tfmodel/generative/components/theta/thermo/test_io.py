@@ -840,3 +840,56 @@ class TestIoEdgeCases:
         with pytest.raises(ValueError, match="maps 'HD' to column 'HO'"):
             load_ddG_prior_csv(p, ["A10G"],
                                thermo_options={"column_map": {"HD": "HO"}})
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Optional structures (thermo.dimer PddG's monomer states)
+# ──────────────────────────────────────────────────────────────────────────────
+
+_MONO = ["H_monomer", "L_monomer", "HO_monomer", "LO_monomer"]
+_SIX = ["H", "HO", "L", "LO", "HE2", "LE2"]
+
+
+def _mono_csv(path, with_monomers=True):
+    cols = ["mut"] + _SIX + (_MONO + ["HE_monomer"] if with_monomers else [])
+    rows = [[m] + [float(i + j) for j in range(len(cols) - 1)]
+            for i, m in enumerate(["A10G", "C20R"])]
+    _write_ddG_csv(path, rows, columns=cols)
+
+
+def test_optional_structures_follow_the_required_ones(tmp_path):
+    p = str(tmp_path / "ddG.csv")
+    _mono_csv(p)
+    out = load_ddG_prior_csv(p, ["A10G", "C20R"], struct_names=_SIX,
+                             optional_struct_names=_MONO)
+    assert out["struct_names"] == tuple(_SIX + _MONO)
+    # HE_monomer is not asked for, so it is dropped
+    np.testing.assert_allclose(out["struct_features"][1, 6:], [7, 8, 9, 10])
+
+
+def test_absent_optional_structures_are_left_out(tmp_path):
+    p = str(tmp_path / "ddG.csv")
+    _mono_csv(p, with_monomers=False)
+    out = load_ddG_prior_csv(p, ["A10G", "C20R"], struct_names=_SIX,
+                             optional_struct_names=_MONO)
+    assert out["struct_names"] == tuple(_SIX)
+
+
+def test_dimer_pddg_reads_its_monomer_states(tmp_path):
+    from tfscreen.tfmodel.generative.components.theta.thermo.io import (
+        load_thermo_data,
+        model_struct_names,
+        optional_struct_names,
+    )
+    p = str(tmp_path / "ddG.csv")
+    _mono_csv(p)
+    assert optional_struct_names("thermo.dimer.PddG") == tuple(_MONO)
+    assert optional_struct_names("thermo.dimer.PnnC") == ()
+    out = load_thermo_data(p, ["A10G", "C20R"], theta_name="thermo.dimer.PddG")
+    assert out["struct_names"] == tuple(_SIX + _MONO)
+    assert model_struct_names("thermo.dimer.PddG") == tuple(_SIX)
+    assert model_struct_names("thermo.dimer.PddG",
+                              {"theta_monomers": True}) == tuple(_SIX + _MONO)
+    assert model_struct_names("thermo.dimer.PnnC",
+                              {"theta_monomers": True}) == tuple(_SIX)
+    assert model_struct_names(None) is None

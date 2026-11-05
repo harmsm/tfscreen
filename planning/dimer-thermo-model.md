@@ -4,9 +4,9 @@ status: active
 filed: 2026-10-31
 area: tfmodel
 revisit_when: >-
-  Active. Steps 1 (the port) and 2 (laptop feasibility) are done; step 3,
-  the data axes, is designed (2026-11-02) and comes before any cluster
-  grid.
+  Active. Steps 1-3 are done (port, laptop feasibility, data axes).
+  Step 4, the full-model test of the NSF proposal's background design,
+  is next (rewritten 2026-11-04).
 related:
   - planning/studies/thermo-identifiability/README.md
   - src/tfscreen/tfmodel/generative/components/theta/thermo/dimer/
@@ -238,12 +238,60 @@ transformation of one background's plasmids into one marker strain
 (Mike, 2026-11-02: per background and per marker, with one global λ). Each
 pool draws its own co-resident sets from its background's table, and each
 library's condition_pre slots use their library's pool.
-4. Utility in full simulations, on the cluster, on the axis-capable model:
-   the ΔΔG prior (PK, PddG learned σ_s, PddG σ_s held at the dial, over the
-   table error) and combinations (planted distance-scaled pair coupling,
-   close-doubles library, pair term on and off, scored on five-mutants),
-   with `wt_only` as one design arm. PnnC once its LigandMPNN features are
-   built. Revalidates the study's steps 3-5.
+4. Full-model test of the background design (rewritten 2026-11-04,
+   Mike: yes). The NSF proposal's design analysis
+   (`~/work/Documents/writing/grants/2026-11-20_nsf-grant/analyses/2026-11-04_results-narrative.md`)
+   picks five separated double backgrounds and TF levels by Fisher
+   information on a reduced seven-primitive ensemble, evaluated at wt. Its
+   handoff asks for the same calculation on the full topology, averaged
+   over the library. Step 4 is that check: simulate its design with
+   `thermo.dimer` as truth, fit it, and compare the recovered constants
+   with its predicted standard errors (0.09-0.19 kcal/mol). A3 and A4
+   already agree with it on two points: T276N, a mostly H/L background,
+   could not resolve PK's u, and the weak operator only gave PddG a trade
+   against the Oii deviation. The results feed the proposal, due
+   2026-11-20, so the grid is scoped to the arms below and launched the
+   week of 2026-11-09 at the latest.
+   - 4a. Monomer terms from the table. The 2026-11-03 state table
+     (`analyses/2026-11-03_laci-state-ddg.csv`) adds 8 monomer states to
+     the 12 dimer states, which are unchanged. With `theta_monomers` on,
+     PddG currently gives `ln_K_d_h` and the monomer terms the PK prior, so
+     the simulator cannot plant a folding or interface background. Extend
+     the PddG projection to the monomer states when the variant has them.
+     Done 2026-11-04: four more rows on H_monomer, L_monomer, HO_monomer
+     and LO_monomer (Δln K_d_h = 2 ΔΔG_Hm − ΔΔG_H, the narrative's
+     dimerization), square and invertible; with the unfolded monomer,
+     Δln K_m_u = ΔΔG_Hm from the same block. The effector terms keep the
+     dimer rows (monomer and dimer share them). PnnC stays at six states.
+     Checked by unit tests and a small simulate, configure, MAP, arrowhead
+     Laplace, extract and summarize run with the 2026-11-03 table.
+   - 4b. A compressed-table truth arm. The narrative found the table
+     over-predicts the apo effects 3-20 fold. Add a simulate key that draws
+     truth as c times the table plus `ddG_truth_sd` noise (c per structure
+     or one scalar), so the ΔΔG-prior arms are also scored against a biased
+     table.
+   - 4c. Design arms on one fixed read budget, 12-16 conditions in all:
+     wt only; the narrative's five separated doubles (L114T+I289D,
+     R51P+C281D, S61P+D149M, S97A+G187E, R51S+D149M) at its TF levels; and,
+     as the count control, a larger panel of unchosen backgrounds. TF
+     levels measured at zero titrant only, about five-fold apart; the weak
+     operator dropped. R51P, S61P, S97A and R51S fall inside the amplicon
+     (residues 27-106), where the library mutates the same sites. Check how
+     a library mutation at a background's own site is named and simulated
+     before using them.
+   - 4d. Truth with monomers and unfolded monomer on, and a dial for wt
+     dimerization (-15, and one looser and one tighter value) and the
+     folding margin, since the narrative takes both as guesses and
+     dimerization decides whether the monomer terms are visible at all.
+   - 4e. Fits: PK, PddG with learned σ_s, PddG with σ_s held at the dial.
+     Score per-mutation constants against the narrative's predicted
+     standard errors, by design arm, and θ as in A4. These are pilots in
+     the A3/A4 sense: undercoverage is acceptable short of a collapse.
+   - 4f. Later, not in the proposal grid: combinations (planted
+     distance-scaled pair coupling, close-doubles library, pair term on
+     and off, scored on five-mutants), the partial inducer (needs a second
+     titrant's physics in the simulator), and PnnC once its LigandMPNN
+     features are built.
 5. Sampler-based intervals for combinations (NUTS on the sites a prediction
    touches), or a guide checked against a sampler.
 6. Retire the O2 models once the general model reproduces their fits.

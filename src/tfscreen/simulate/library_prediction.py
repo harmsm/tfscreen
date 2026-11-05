@@ -538,7 +538,8 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
                              "phenotype_source: empirical.")
     else:
         theta_conditions = ddG_truth_conditions(
-            ddG_truth_sd, cf.get('theta_component'), cf.get('thermo_options'))
+            ddG_truth_sd, cf.get('theta_component'), cf.get('thermo_options'),
+            theta_priors=cf.get('theta_priors'))
 
     theta_gc_override = {}
     theta_params_override = {}

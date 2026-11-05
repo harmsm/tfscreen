@@ -45,6 +45,15 @@ fall into two kinds:
   scaled by contact distance when the structure file gives one. PddG and PnnC
   put the existing structural ΔΔG prior on the six `O2_C12` constants.
   Documented in `docs/source/model.rst` ("The general dimer model").
+- thermo.dimer PddG with `theta_monomers` reads the monomer states
+  (`H_monomer`, `L_monomer`, `HO_monomer`, `LO_monomer`) from the ΔΔG CSV
+  and puts the structural prior on the dimerization and monomer terms
+  (Δln K_d_h = 2 ΔΔG_Hm − ΔΔG_H; with the unfolded monomer, Δln K_m_u =
+  ΔΔG_Hm). Before, those terms got the PK prior, so the simulator could not
+  plant a folding or interface background from the table. The CSV loader
+  keeps a component's `OPTIONAL_STRUCTURE_NAMES` when the file has them;
+  the simulator's truth noise, truth tables and per-state draw follow the
+  variant's states (`io.model_struct_names`). PnnC is unchanged.
 - thermo.dimer scales can be held: `theta_sigma_d_{term}_fixed` > 0 holds
   one term's per-mutation scale σ_d (PK, and the non-structural terms of
   PddG/PnnC), and `theta_ddG_sigma_{state}_fixed` holds each state's σ_s in

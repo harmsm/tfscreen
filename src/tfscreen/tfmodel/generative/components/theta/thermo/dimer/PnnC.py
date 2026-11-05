@@ -7,7 +7,9 @@ prior means come from per-structure MLPs on LigandMPNN features
 H, HO, L, LO, HE2, LE2, extras ignored), learned as empirical-Bayes
 model-side params. When the ensemble carries contact distances, each
 pair's horseshoe scale is exp(−d/d0) with d its closest contact over the
-six structures.
+six structures. The block stays at the six dimer states with or
+without monomers in the variant, so the monomer terms keep the PK prior
+(PddG reads them from the table's monomer states).
 """
 
 import jax.numpy as jnp
@@ -101,7 +103,8 @@ def _build(name, data, priors, guide):
     init = jnp.zeros((data.num_mutation, len(STRUCTURE_NAMES)))
     return dm.define(name, data, priors, guide=guide,
                      structural=_structural(name, data, priors, means,
-                                            guide_init=init),
+                                            guide_init=init,
+                                            monomer_states=False),
                      pair_distances=_pair_distances(data))
 
 

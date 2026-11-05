@@ -41,7 +41,8 @@ def _data(T=1, epistasis=True, genotypes=GENOTYPES, distances=True):
     mi, mg = build_mut_sparse_indices(mgm)
     M, P, G = len(mut_labels), len(pair_labels), len(genotypes)
     rng = np.random.default_rng(0)
-    S = len(PddG.STRUCTURE_NAMES)
+    names = tuple(PddG.STRUCTURE_NAMES) + PddG.MONOMER_STRUCTURE_NAMES
+    S = len(names)
     return types.SimpleNamespace(
         num_titrant_name=T, num_titrant_conc=len(CONC), num_genotype=G,
         titrant_conc=jnp.asarray(CONC), log_titrant_conc=None,
@@ -49,7 +50,7 @@ def _data(T=1, epistasis=True, genotypes=GENOTYPES, distances=True):
         scatter_theta=0, num_mutation=M, num_pair=P,
         mut_nnz_mut_idx=mi, mut_nnz_geno_idx=mg,
         pair_nnz_pair_idx=pp, pair_nnz_geno_idx=pg,
-        struct_names=tuple(PddG.STRUCTURE_NAMES) + ("extra",),
+        struct_names=names + ("extra",),
         struct_features=None, struct_n_chains=(2,) * (S + 1),
         struct_contact_distances=(rng.uniform(3, 30, (P, S + 1))
                                   .astype(np.float32) if distances and P else None),
@@ -182,6 +183,76 @@ def test_pddg_structural_block_at_zero_sigma_is_the_projection():
     # the non-structural terms get the hierarchical prior
     assert tr["theta_d_offset"]["value"].shape[0] == 2   # Oii H and L
     assert "theta_ddG" in tr and "theta_ddG_prior_mean" in tr
+
+
+MONOMER_FLAGS = {"theta_monomers": True, "theta_unfolded_monomer": True}
+
+
+def test_monomer_projection_is_square_and_invertible():
+    P = PddG.DLNK_PROJ_MONOMER
+    assert P.shape == (10, 10)
+    assert np.linalg.matrix_rank(P) == 10
+    # the dimer rows are the six-state block, with nothing on the monomers
+    np.testing.assert_array_equal(P[:6, :6], PddG.DLNK_PROJ)
+    np.testing.assert_array_equal(P[:6, 6:], 0.0)
+
+
+def test_structure_names_follow_the_variant():
+    six = tuple(PddG.STRUCTURE_NAMES)
+    assert PddG.structure_names_for() == six
+    assert PddG.structure_names_for({"theta_monomers": False}) == six
+    ten = six + PddG.MONOMER_STRUCTURE_NAMES
+    assert PddG.structure_names_for({"theta_monomers": 1}) == ten
+    assert PddG.structure_names_for({"theta.theta_monomers": True}) == ten
+    assert PddG.structure_names_for(_priors(PddG, **MONOMER_FLAGS)) == ten
+    assert PddG.struct_terms_for(_priors(PddG, **MONOMER_FLAGS)) == (
+        dm.STRUCT_TERMS + PddG.MONOMER_TERMS)
+    assert PddG.dlnk_proj_for(_priors(PddG)) is PddG.DLNK_PROJ
+
+
+def test_pddg_monomer_block_at_zero_sigma_is_the_projection():
+    data = _for("PddG", _data())
+    priors = _priors(PddG, **MONOMER_FLAGS)
+    tr = _trace(PddG.define_model, PddG, data, priors,
+                cond={"theta_ddG_sigma": jnp.zeros(10)})
+    names = PddG.structure_names_for(priors)
+    perm = PddG.struct_perm(data, names)
+    ddG = np.asarray(data.struct_features)[:, perm]
+    dlnK = ddG @ PddG.DLNK_PROJ_MONOMER.T
+    M = data.num_mutation
+    for i, t in enumerate(PddG.struct_terms_for(priors)):
+        got = np.asarray(tr[f"theta_d_{t}"]["value"]).reshape(-1, M)[0]
+        np.testing.assert_allclose(got, dlnK[:, i], atol=1e-5)
+    # Δln K_d_h = 2 ΔΔG_Hm − ΔΔG_H; Δln K_m_u = ΔΔG_Hm (both U at 0)
+    Hm = ddG[:, names.index("H_monomer")]
+    np.testing.assert_allclose(np.asarray(tr["theta_d_ln_K_d_h"]["value"]),
+                               2 * Hm - ddG[:, 0], atol=1e-5)
+    np.testing.assert_allclose(np.asarray(tr["theta_d_ln_K_m_u"]["value"]),
+                               Hm, atol=1e-5)
+    # only the Oii terms take the hierarchical prior
+    assert tr["theta_d_offset"]["value"].shape[0] == 2
+    assert tr["theta_ddG"]["value"].shape == (M, 10)
+    guide_tr = _trace(PddG.guide, PddG, data, priors)
+    model_tr = _trace(PddG.define_model, PddG, data, priors)
+    assert _samples(guide_tr) == _samples(model_tr)
+
+
+def test_monomers_without_the_monomer_states_are_an_error():
+    data = _for("PddG", _data())
+    data.struct_names = tuple(PddG.STRUCTURE_NAMES)
+    data.struct_features = data.struct_features[:, :6]
+    _trace(PddG.define_model, PddG, data, _priors(PddG))
+    with pytest.raises(ValueError, match="monomer states"):
+        _trace(PddG.define_model, PddG, data, _priors(PddG, **MONOMER_FLAGS))
+
+
+def test_pnnc_keeps_six_states_with_monomers():
+    data = _for("PnnC", _data())
+    priors = _priors(PnnC, **MONOMER_FLAGS)
+    tr = _trace(PnnC.define_model, PnnC, data, priors)
+    assert tr["theta_ddG_sigma"]["value"].shape == (6,)
+    # the four monomer terms and m_u take the hierarchical prior (+ Oii)
+    assert tr["theta_d_offset"]["value"].shape[0] == 7
 
 
 def test_pnnc_registers_mlp_params_and_uses_contact_distances():

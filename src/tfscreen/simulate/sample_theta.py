@@ -189,7 +189,8 @@ def sample_theta_prior(component_name,
     # Structural models (PddG/PnnC) put their prior on Δln K; the truth is
     # drawn per state instead, so the per-state ΔΔG truth exists.
     per_state_ddG = None
-    redraw = _per_state_truth_conditions(module, trace, conditions, rng_key)
+    redraw = _per_state_truth_conditions(module, trace, conditions, rng_key,
+                                         priors=priors)
     if redraw is not None:
         per_state_ddG, redraw_conditions = redraw
         trace, theta_param = _draw(redraw_conditions)
@@ -254,7 +255,7 @@ def _context_priors(module, component_name, sim_data, contexts, params):
 
 
 def _per_state_truth_conditions(module, trace, conditions, rng_key,
-                                name="theta"):
+                                name="theta", priors=None):
     """
     Conditions that make a structural model's Δln K a per-state draw.
 
@@ -270,13 +271,17 @@ def _per_state_truth_conditions(module, trace, conditions, rng_key,
     Parameters
     ----------
     module : module
-        The theta component; it has ``DLNK_PROJ`` when it is structural.
+        The theta component; it has ``DLNK_PROJ`` when it is structural
+        (``dlnk_proj_for(priors)`` when the projection depends on the
+        variant, as thermo.dimer PddG's does with monomers).
     trace : dict
         Trace of the first draw.
     conditions : dict
         The caller's conditions.
     rng_key : jax.random.PRNGKey
         The draw's key; the truth uses ``fold_in(rng_key, 7919)``.
+    priors : ModelPriors or None
+        The draw's priors, for a variant-dependent projection.
 
     Returns
     -------
@@ -292,6 +297,9 @@ def _per_state_truth_conditions(module, trace, conditions, rng_key,
     )
 
     proj = getattr(module, "DLNK_PROJ", None)
+    pick = getattr(module, "dlnk_proj_for", None)
+    if pick is not None:
+        proj = pick(priors)
     site = dlnK_site(name)
     if (proj is None or site not in trace or site in conditions
             or trace[site]["type"] != "sample"):
@@ -306,7 +314,8 @@ def _per_state_truth_conditions(module, trace, conditions, rng_key,
     return ddG, {**conditions, ddG_sigma_site(name): sigma, site: dlnK}
 
 
-def ddG_truth_conditions(ddG_truth_sd, theta_component, thermo_options=None):
+def ddG_truth_conditions(ddG_truth_sd, theta_component, thermo_options=None,
+                         theta_priors=None):
     """
     Site conditions that set the SD of the simulated per-structure ΔΔG.
 
@@ -330,6 +339,9 @@ def ddG_truth_conditions(ddG_truth_sd, theta_component, thermo_options=None):
         Registered theta component.
     thermo_options : dict or None
         Supplies ``ddG_units`` and ``temperature_K``.
+    theta_priors : dict or None
+        The simulation's ``theta_priors``; with ``theta_monomers`` a
+        thermo.dimer PddG block has the monomer states too.
 
     Returns
     -------
@@ -348,13 +360,13 @@ def ddG_truth_conditions(ddG_truth_sd, theta_component, thermo_options=None):
     from tfscreen.tfmodel.generative.components.theta.thermo.io import (
         ddG_to_kT_factor,
         normalize_thermo_options,
-        required_struct_names,
+        model_struct_names,
     )
     from tfscreen.tfmodel.generative.components.theta.thermo.prior import (
         ddG_sigma_site,
     )
 
-    struct_names = (required_struct_names(theta_component)
+    struct_names = (model_struct_names(theta_component, theta_priors)
                     if theta_component is not None else None)
     if struct_names is None:
         if ddG_truth_sd is None:
