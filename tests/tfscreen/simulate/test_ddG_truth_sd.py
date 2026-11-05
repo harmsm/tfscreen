@@ -20,7 +20,11 @@ import pytest
 import yaml
 from numpyro import handlers
 
-from tfscreen.simulate.sample_theta import ddG_truth_conditions, sample_theta_prior
+from tfscreen.simulate.sample_theta import (
+    ddG_truth_conditions,
+    ddG_truth_scale_values,
+    sample_theta_prior,
+)
 from tfscreen.simulate.sim_data_class import build_sim_data
 from tfscreen.simulate.thermo_to_growth import thermo_to_growth
 from tfscreen.tfmodel.generative.registry import model_registry
@@ -58,7 +62,7 @@ def _table(path, muts, structs, scale=1.0, seed=3):
 
 
 def _draw(component, genotypes, thermo_data, thermo_options=None,
-          ddG_truth_sd=None, seed=0):
+          ddG_truth_sd=None, seed=0, ddG_truth_scale=None):
     lib = pd.DataFrame({"genotype": genotypes})
     sim_data = build_sim_data(lib, SAMPLE_DF, thermo_data=thermo_data,
                               theta_component=component,
@@ -70,7 +74,9 @@ def _draw(component, genotypes, thermo_data, thermo_options=None,
                                 component, jax.random.PRNGKey(seed), GROWTH,
                                 rng=np.random.default_rng(seed),
                                 return_mutation_truth=True,
-                                theta_conditions=conditions)
+                                theta_conditions=conditions,
+                                ddG_truth_scale=ddG_truth_scale_values(
+                                    ddG_truth_scale, component))
 
 
 def _truth_minus_table(truth, table, structs, factor=1.0):
@@ -477,3 +483,94 @@ def test_dimer_monomer_truth_is_the_projection(tmp_path):
 def test_dimer_without_monomers_keeps_six_sigmas():
     got = ddG_truth_conditions(0.4, DIMER)
     assert got["theta_ddG_sigma"].shape == (6,)
+
+
+# ── ddG_truth_scale: the truth's slope on the table ─────────────────────────
+
+def test_scale_with_zero_sd_gives_the_scaled_table(tmp_path):
+    genotypes, muts = _library(2)
+    path, table = _table(tmp_path / "ddG.csv", muts, C12_STRUCTS)
+    truth = _draw(C12, genotypes, path, ddG_truth_sd=0,
+                  ddG_truth_scale=0.2)[3]
+    diff = _truth_minus_table(truth, table, C12_STRUCTS, factor=0.2)
+    np.testing.assert_allclose(diff.to_numpy(), 0.0, atol=1e-5)
+
+
+def test_scale_moves_the_mean_and_keeps_the_noise(tmp_path):
+    """Same seed: truth − c·table is the same noise draw for any c."""
+    genotypes, muts = _library(3)
+    path, table = _table(tmp_path / "ddG.csv", muts, C12_STRUCTS)
+    base = _draw(C12, genotypes, path, ddG_truth_sd=0.5)[3]
+    one = _draw(C12, genotypes, path, ddG_truth_sd=0.5,
+                ddG_truth_scale=1.0)[3]
+    pd.testing.assert_frame_equal(base["mutation"], one["mutation"])
+    scaled = _draw(C12, genotypes, path, ddG_truth_sd=0.5,
+                   ddG_truth_scale={s: 0.1 * (i + 1)
+                                    for i, s in enumerate(C12_STRUCTS)})[3]
+    c = np.array([0.1 * (i + 1) for i in range(len(C12_STRUCTS))])
+    noise_base = _truth_minus_table(base, table, C12_STRUCTS).to_numpy()
+    mut = scaled["mutation"].set_index("mutation")
+    noise_scaled = (mut[[f"ddG_{s}" for s in C12_STRUCTS]].to_numpy()
+                    - table.loc[mut.index, C12_STRUCTS].to_numpy() * c)
+    np.testing.assert_allclose(noise_scaled, noise_base, atol=1e-5)
+    # the constants are still the projection of the scaled truth
+    proj = model_registry["theta"][C12].DLNK_PROJ
+    d_cols = ["d_ln_K_h_l", "d_ln_K_h_o", "d_ln_K_h_e", "d_ln_K_l_o",
+              "d_ln_K_l_e"]
+    np.testing.assert_allclose(
+        mut[d_cols].to_numpy(),
+        (mut[[f"ddG_{s}" for s in C12_STRUCTS]].to_numpy() @ proj.T)[:, :5],
+        atol=1e-4)
+    # σ_s is still the SD about the (scaled) table
+    np.testing.assert_allclose(
+        np.asarray(scaled["ddG_sigma"]["ddG_sigma"]), 0.5, rtol=1e-6)
+
+
+def test_scale_values_follow_the_dimer_variant():
+    got = ddG_truth_scale_values(0.3, "thermo.dimer.PddG",
+                                 theta_priors={"theta_monomers": True})
+    np.testing.assert_allclose(got, [0.3] * 10)
+    assert ddG_truth_scale_values(None, "thermo.dimer.PddG") is None
+
+
+@pytest.mark.parametrize("value, match", [
+    ("x", "must be a number"),
+    (True, "must be a number"),
+    (float("nan"), "finite"),
+    ({"H": 0.5}, "missing"),
+    ({**{s: 1.0 for s in C12_STRUCTS}, "Q": 1.0}, "unknown"),
+])
+def test_bad_scale_values_raise(value, match):
+    with pytest.raises(ValueError, match=match):
+        ddG_truth_scale_values(value, C12)
+
+
+def test_scale_for_a_non_structural_component_raises():
+    with pytest.raises(ValueError, match="structural"):
+        ddG_truth_scale_values(0.5, "hill_geno")
+
+
+def test_scale_is_a_known_simulate_key():
+    from tfscreen.simulate.selection_experiment import SIMULATE_KNOWN_KEYS
+    assert "ddG_truth_scale" in SIMULATE_KNOWN_KEYS
+
+
+def test_library_prediction_passes_the_scale(mocker):
+    from tfscreen.simulate.library_prediction import library_prediction
+    thermo = _mock_library_prediction(mocker, {**_CF, "ddG_truth_scale": 0.25})
+    library_prediction(cf="config.yaml")
+    np.testing.assert_allclose(thermo.call_args.kwargs["ddG_truth_scale"],
+                               [0.25] * 6)
+    thermo = _mock_library_prediction(mocker, _CF)
+    library_prediction(cf="config.yaml")
+    assert thermo.call_args.kwargs["ddG_truth_scale"] is None
+
+
+def test_library_prediction_rejects_the_scale_with_empirical(mocker):
+    from tfscreen.simulate.library_prediction import library_prediction
+    thermo = _mock_library_prediction(
+        mocker, {**_CF, "phenotype_source": "empirical",
+                 "ddG_truth_scale": 0.5})
+    with pytest.raises(ValueError, match="ddG_truth_scale"):
+        library_prediction(cf="config.yaml")
+    thermo.assert_not_called()

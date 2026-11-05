@@ -672,6 +672,7 @@ def thermo_to_growth(
     return_mutation_truth: bool = False,
     binding_titrant_conc: Optional[Iterable[float]] = None,
     theta_conditions: Optional[dict] = None,
+    ddG_truth_scale=None,
     contexts=None,
     binding_sim_data=None,
 ) -> tuple:
@@ -788,6 +789,9 @@ def thermo_to_growth(
         Sample-site values fixed in the prior-predictive draw
         (``sample_theta_prior``'s ``conditions``), e.g. ``theta_ddG_sigma``
         from ``sample_theta.ddG_truth_conditions``.
+    ddG_truth_scale : array (S,) or None
+        The per-state ΔΔG truth's slope on the table
+        (``sample_theta.ddG_truth_scale_values``); None is 1.
     contexts : str or dict or None
         The contexts file (operator shifts, TF levels) the draw takes as
         its prior; see ``sample_theta_prior``.
@@ -868,6 +872,7 @@ def thermo_to_growth(
             return_deterministic=True,
             conditions=theta_conditions,
             contexts=contexts,
+            ddG_truth_scale=ddG_truth_scale,
         )
     else:
         theta_gc, theta_param = sample_theta_prior(
@@ -878,6 +883,7 @@ def thermo_to_growth(
             sim_priors_overrides=theta_sim_priors_overrides,
             conditions=theta_conditions,
             contexts=contexts,
+            ddG_truth_scale=ddG_truth_scale,
         )
 
     print("Done.", flush=True)

@@ -54,6 +54,12 @@ fall into two kinds:
   keeps a component's `OPTIONAL_STRUCTURE_NAMES` when the file has them;
   the simulator's truth noise, truth tables and per-state draw follow the
   variant's states (`io.model_struct_names`). PnnC is unchanged.
+- Simulate key `ddG_truth_scale` (PddG/PnnC): the per-state ΔΔG truth is
+  c times the table plus the `ddG_truth_sd` noise, one c per structure or
+  one for all (default 1, the old draw). It tests the structural prior
+  against a biased table: the NSF design analysis found the table
+  over-predicts the apo effects 3-20 fold. The fit still centers its prior
+  on the unscaled table.
 - thermo.dimer scales can be held: `theta_sigma_d_{term}_fixed` > 0 holds
   one term's per-mutation scale σ_d (PK, and the non-structural terms of
   PddG/PnnC), and `theta_ddG_sigma_{state}_fixed` holds each state's σ_s in

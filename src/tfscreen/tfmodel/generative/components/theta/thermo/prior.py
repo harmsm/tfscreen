@@ -428,11 +428,13 @@ def dlnK_guesses(name, prior_means, proj):
             ddG_sigma_site(name): jnp.ones(prior_means.shape[1])}
 
 
-def per_state_truth(prior_means, sigma, proj, rng_key):
+def per_state_truth(prior_means, sigma, proj, rng_key, scale=None):
     """
     Draw per-state ΔΔG truth and its projection (simulator).
 
-    ΔΔG = prior_mean + σ_s · z, z ~ Normal(0, 1) per mutation and state, and
+    ΔΔG = c_s · prior_mean + σ_s · z, z ~ Normal(0, 1) per mutation and
+    state, c_s = ``scale`` (1 when None: a table that is right on average),
+    and
     Δln K = P · ΔΔG, which is distributed exactly as the model's
     MultivariateNormal on Δln K.  The simulator conditions ``{name}_dlnK``
     on the projection, so the per-state truth it writes is the draw itself
@@ -442,9 +444,14 @@ def per_state_truth(prior_means, sigma, proj, rng_key):
     ----------
     prior_means : array, shape (M, S)
     sigma : array, shape (S,)
-        σ_s; 0 gives the prior means exactly.
+        σ_s; 0 gives the (scaled) prior means exactly.
     proj : array, shape (C, S)
     rng_key : jax.random.PRNGKey
+    scale : array, shape (S,), or None
+        c_s, the truth's slope on the table per state. Below 1 the table
+        over-predicts (the NSF design analysis found the apo effects 3-20
+        fold compressed); with c_s != 1 the model's prior is biased. The
+        draw of z does not depend on it.
 
     Returns
     -------
@@ -453,7 +460,8 @@ def per_state_truth(prior_means, sigma, proj, rng_key):
     """
     prior_means = np.asarray(prior_means, dtype=float)
     z = np.asarray(jax.random.normal(rng_key, prior_means.shape))
-    ddG = prior_means + np.asarray(sigma, dtype=float)[None, :] * z
+    c = 1.0 if scale is None else np.asarray(scale, dtype=float)[None, :]
+    ddG = c * prior_means + np.asarray(sigma, dtype=float)[None, :] * z
     dlnK = ddG @ np.asarray(proj, dtype=float).T
     return ddG.astype(np.float32), dlnK.astype(np.float32)
 

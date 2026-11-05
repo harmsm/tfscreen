@@ -60,6 +60,7 @@ SIMULATE_KNOWN_KEYS = frozenset({
     "library_subsample_depth",
     # Phenotype / theta calculation
     "theta_component", "thermo_data", "thermo_options", "ddG_truth_sd",
+    "ddG_truth_scale",
     "theta_priors",
     "theta_rescale",
     "theta_sim_priors",

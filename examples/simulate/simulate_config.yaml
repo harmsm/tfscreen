@@ -105,6 +105,11 @@ theta_component: "thermo.O2_C12_K5_U0_a.PK"
 # Omit for 1 kT per structure. The true SDs go to tfs_sim_ddG_sigma.csv.
 # ddG_truth_sd: 0.5
 
+# Optional (PddG/PnnC only): the truth's slope on the table, so the truth is
+# c * thermo_data + the ddG_truth_sd noise. A number for every structure, or
+# {structure: c} naming each one. Below 1 the table over-predicts. Omit for 1.
+# ddG_truth_scale: 0.3
+
 # Optional: overrides for the theta component's default model hyperparameters.
 # Any key returned by the component's get_hyperparameters() can be overridden.
 # Used by thermodynamic/hierarchical components; ignored when theta_component

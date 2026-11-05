@@ -49,7 +49,8 @@ def sample_theta_prior(component_name,
                        force_prior_predictive=False,
                        return_deterministic=False,
                        conditions=None,
-                       contexts=None):
+                       contexts=None,
+                       ddG_truth_scale=None):
     """
     Draw one sample of theta from a registered theta component.
 
@@ -190,7 +191,8 @@ def sample_theta_prior(component_name,
     # drawn per state instead, so the per-state ΔΔG truth exists.
     per_state_ddG = None
     redraw = _per_state_truth_conditions(module, trace, conditions, rng_key,
-                                         priors=priors)
+                                         priors=priors,
+                                         scale=ddG_truth_scale)
     if redraw is not None:
         per_state_ddG, redraw_conditions = redraw
         trace, theta_param = _draw(redraw_conditions)
@@ -255,7 +257,7 @@ def _context_priors(module, component_name, sim_data, contexts, params):
 
 
 def _per_state_truth_conditions(module, trace, conditions, rng_key,
-                                name="theta", priors=None):
+                                name="theta", priors=None, scale=None):
     """
     Conditions that make a structural model's Δln K a per-state draw.
 
@@ -282,6 +284,9 @@ def _per_state_truth_conditions(module, trace, conditions, rng_key,
         The draw's key; the truth uses ``fold_in(rng_key, 7919)``.
     priors : ModelPriors or None
         The draw's priors, for a variant-dependent projection.
+    scale : array (S,) or None
+        The truth's slope on the table per state
+        (:func:`ddG_truth_scale_values`); None is 1.
 
     Returns
     -------
@@ -310,7 +315,7 @@ def _per_state_truth_conditions(module, trace, conditions, rng_key,
     prior_means = np.asarray(trace[f"{name}_ddG_prior_mean"]["value"])
     ddG, dlnK = per_state_truth(
         prior_means, sigma, proj,
-        jax.random.fold_in(rng_key, _PER_STATE_TRUTH_FOLD))
+        jax.random.fold_in(rng_key, _PER_STATE_TRUTH_FOLD), scale=scale)
     return ddG, {**conditions, ddG_sigma_site(name): sigma, site: dlnK}
 
 
@@ -406,6 +411,76 @@ def ddG_truth_conditions(ddG_truth_sd, theta_component, thermo_options=None,
     opts = normalize_thermo_options(thermo_options)
     factor = ddG_to_kT_factor(opts["ddG_units"], opts["temperature_K"])
     return {ddG_sigma_site(): sd * factor}
+
+
+def ddG_truth_scale_values(ddG_truth_scale, theta_component,
+                           theta_priors=None):
+    """
+    The truth's slope on the ΔΔG table, one per state, or None.
+
+    The simulator draws the per-state truth as c_s · table + σ_s · z
+    (``prior.per_state_truth``). c_s < 1 makes the table over-predict, as
+    the NSF design analysis found for the apo effects; the fit's prior
+    mean stays the unscaled table, so its prior is then biased. σ_s
+    (``ddG_truth_sd``) is the SD about the scaled table.
+
+    Parameters
+    ----------
+    ddG_truth_scale : float, dict or None
+        One slope for every structure, or ``{structure: c}`` naming every
+        structure of the component (:func:`io.model_struct_names`).
+        Unitless; finite. None (or 1 everywhere) leaves the draw as it was.
+    theta_component : str
+    theta_priors : dict or None
+        The simulation's ``theta_priors``, for the variant's states.
+
+    Returns
+    -------
+    np.ndarray (S,) or None
+        In the order of the component's per-state sites; None when not set.
+
+    Raises
+    ------
+    ValueError
+        Set for a component without a ΔΔG table, not a finite number, or a
+        mapping that does not name exactly the component's structures.
+    """
+    if ddG_truth_scale is None:
+        return None
+    from tfscreen.tfmodel.generative.components.theta.thermo.io import (
+        model_struct_names,
+    )
+    struct_names = (model_struct_names(theta_component, theta_priors)
+                    if theta_component is not None else None)
+    if struct_names is None:
+        raise ValueError(
+            f"ddG_truth_scale applies only to the structural thermo "
+            f"components (thermo.*.PddG, thermo.*.PnnC); theta_component is "
+            f"'{theta_component}'.")
+
+    def _c(value, label):
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"ddG_truth_scale{label} must be a number; got "
+                             f"{value!r}.")
+        value = float(value)
+        if not np.isfinite(value):
+            raise ValueError(f"ddG_truth_scale{label} must be finite; got "
+                             f"{value}.")
+        return value
+
+    if isinstance(ddG_truth_scale, dict):
+        given = {str(k): v for k, v in ddG_truth_scale.items()}
+        unknown = sorted(set(given) - set(struct_names))
+        missing = [s for s in struct_names if s not in given]
+        if unknown or missing:
+            raise ValueError(
+                f"ddG_truth_scale mapping must name every structure of "
+                f"'{theta_component}' ({list(struct_names)}); "
+                + (f"unknown {unknown}" if unknown else "")
+                + ("; " if unknown and missing else "")
+                + (f"missing {missing}" if missing else "") + ".")
+        return np.array([_c(given[s], f"[{s}]") for s in struct_names])
+    return np.full(len(struct_names), _c(ddG_truth_scale, ""))
 
 
 def _greedy_maximin(theta_gc, n_select):

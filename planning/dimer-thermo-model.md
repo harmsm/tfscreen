@@ -269,7 +269,9 @@ library's condition_pre slots use their library's pool.
      over-predicts the apo effects 3-20 fold. Add a simulate key that draws
      truth as c times the table plus `ddG_truth_sd` noise (c per structure
      or one scalar), so the ΔΔG-prior arms are also scored against a biased
-     table.
+     table. Done 2026-11-04: `ddG_truth_scale` (scalar or per structure;
+     truth = c·table + σ_s·z with the same z for any c; the fit's prior
+     mean stays the table).
    - 4c. Design arms on one fixed read budget, 12-16 conditions in all:
      wt only; the narrative's five separated doubles (L114T+I289D,
      R51P+C281D, S61P+D149M, S97A+G187E, R51S+D149M) at its TF levels; and,

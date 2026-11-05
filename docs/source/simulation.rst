@@ -133,6 +133,17 @@ components refuse the key, as does ``phenotype_source: empirical``. In a
 ``tfs-setup-sim-grid`` grid it is an ordinary top-level variable, and a
 mapping is given whole as one variant.
 
+``ddG_truth_scale`` makes the CSV biased rather than only noisy: the truth
+is c times the structural value plus the ``ddG_truth_sd`` noise, with one c
+for every structure or a mapping that names each structure, as for
+``ddG_truth_sd``. c is unitless. Below 1 the CSV over-predicts, as the NSF
+design analysis of 2026-11-04 found for the apo effects, which the screen
+showed 3 to 20 fold compressed. Without the key c is 1. A fit still centers
+its prior on the unscaled CSV, so the key tests how a structural prior
+copes with a miscalibrated table. The noise draw does not depend on c, so
+two simulations with the same seed differ only in the scaled mean. The same
+components and phenotype sources refuse it as refuse ``ddG_truth_sd``.
+
 ``theta_sim_priors`` overrides the simulation priors of ``hill_geno`` and
 ``hill_mut`` (wild-type curve, perturbation widths, epistasis scale), and
 ``theta_priors`` overrides the hyperparameters of the other components. The

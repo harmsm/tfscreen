@@ -14,6 +14,7 @@ from tfscreen.simulate.sim_data_class import (
 )
 from tfscreen.simulate.sample_theta import (
     ddG_truth_conditions,
+    ddG_truth_scale_values,
     sample_theta_prior,
     sample_theta_stratified,
 )
@@ -530,15 +531,23 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
     # ddG_truth_sd: SD of the simulated per-structure ΔΔG around the table
     # (PddG/PnnC), conditioned as the draw's sigma_s (1 kT when absent);
     # checked before any sampling.
+    # ddG_truth_scale: the truth's slope on the table (1 when absent).
     ddG_truth_sd = cf.get('ddG_truth_sd')
+    truth_scale_cfg = cf.get('ddG_truth_scale')
     theta_conditions = None
+    truth_scale = None
     if phenotype_source == 'empirical':
-        if ddG_truth_sd is not None:
-            raise ValueError("ddG_truth_sd does not apply with "
-                             "phenotype_source: empirical.")
+        for key, val in (("ddG_truth_sd", ddG_truth_sd),
+                         ("ddG_truth_scale", truth_scale_cfg)):
+            if val is not None:
+                raise ValueError(f"{key} does not apply with "
+                                 "phenotype_source: empirical.")
     else:
         theta_conditions = ddG_truth_conditions(
             ddG_truth_sd, cf.get('theta_component'), cf.get('thermo_options'),
+            theta_priors=cf.get('theta_priors'))
+        truth_scale = ddG_truth_scale_values(
+            truth_scale_cfg, cf.get('theta_component'),
             theta_priors=cf.get('theta_priors'))
 
     theta_gc_override = {}
@@ -671,6 +680,7 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
         dk_geno_override=dk_geno_override,
         return_mutation_truth=return_mutation_truth,
         theta_conditions=theta_conditions,
+        ddG_truth_scale=truth_scale,
         contexts=contexts,
         **({"binding_sim_data": binding_data} if binding_data is not None
            else {}),
