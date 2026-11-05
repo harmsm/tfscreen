@@ -148,7 +148,10 @@ fall into two kinds:
   simulator alike: with a free pair term per background genotype, the
   background told the fit nothing about the library mutations' own effects
   (`planning/studies/dimer-utility/`, run A3). A pair with such a mutation
-  is left out even in reference genotypes.
+  is left out even in reference genotypes. A background's own mutations
+  are the ones most of its genotypes carry, not all of them: a library
+  mutation at a parent site inside the amplicon (R51X in an R51P
+  background) is named without the parent's residue.
 - **Operators, TF levels and backgrounds in the simulator** (step 3e).
   Condition blocks and design tables take optional `operator`, `tf_level`
   and `background` columns, and tubes that differ in one are different

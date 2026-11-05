@@ -299,7 +299,12 @@ def background_mutations(library_df):
     The mutations of every non-reference background's parent, from a
     library table with a ``background`` column (the composition table or
     the simulator's library). A background's parent mutations are the ones
-    every genotype of that background carries.
+    more than half of that background's genotypes carry. Not every genotype
+    carries them: a library mutation at a parent site inside the amplicon
+    replaces the parent's residue (R51X in an R51P background is named
+    R51X), so the intersection would drop the parent mutation. A library
+    mutates each site in a small share of its genotypes, so the majority
+    is the parent.
 
     These mutations add to every genotype without a pair term
     (planning/dimer-thermo-model.md, step 3g): a background genotype is a
@@ -313,8 +318,11 @@ def background_mutations(library_df):
     for name, block in library_df.groupby(BACKGROUND_COLUMN, sort=False):
         if str(name) == REFERENCE:
             continue
-        sets = [frozenset(m for m in str(g).split("/") if m != "wt")
-                for g in block["genotype"]]
-        if sets:
-            out |= frozenset.intersection(*sets)
+        counts = {}
+        n = 0
+        for g in block["genotype"]:
+            n += 1
+            for m in set(str(g).split("/")) - {"wt"}:
+                counts[m] = counts.get(m, 0) + 1
+        out |= {m for m, c in counts.items() if 2 * c > n}
     return frozenset(out)

@@ -231,10 +231,19 @@ def test_check_backgrounds_in_data():
 
 def test_background_mutations_are_the_parents():
     table = pd.DataFrame({
-        "background": ["reference"] * 3 + ["far"] * 3 + ["near"] * 2,
+        "background": ["reference"] * 3 + ["far"] * 4 + ["near"] * 3,
         "genotype": ["wt", "A1V", "A1V/K2L",
-                     "T276N", "A1V/T276N", "A1V/K2L/T276N",
-                     "K2L/M9I", "K2L/M9I/L20F"]})
+                     "T276N", "A1V/T276N", "K2L/T276N", "A1V/K2L/T276N",
+                     "K2L/M9I", "K2L/M9I/L20F", "A5V/K2L/M9I"]})
     assert B.background_mutations(table) == {"T276N", "K2L", "M9I"}
     assert B.background_mutations(table.drop(columns="background")) == set()
     assert B.background_mutations(None) == set()
+
+
+def test_background_mutations_survive_a_library_mutation_at_a_parent_site():
+    """R51X in an R51P background is named R51X: it lacks R51P, which must
+    still count as the parent's."""
+    lib = (["R51P/C281D"] + [f"R51P/C281D/A{i}V" for i in range(30, 40)]
+           + ["C281D/R51A", "C281D/R51G"])
+    table = pd.DataFrame({"background": ["bg"] * len(lib), "genotype": lib})
+    assert B.background_mutations(table) == {"R51P", "C281D"}

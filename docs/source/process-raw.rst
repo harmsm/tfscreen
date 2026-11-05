@@ -194,7 +194,10 @@ the fit gives no pair term to a pair that includes one, so K84L/A100V is
 K84L's effect plus A100V's. That is what lets a background inform the
 library mutations' own effects. It also holds for such a pair in the
 reference library, so a mutation used as a background should not also be
-studied there for its epistasis.
+studied there for its epistasis. A background's own mutations are the
+ones most of its genotypes carry. A library mutation at one of its sites
+replaces the parent's residue and is named without it, so R51X in an R51P
+background is R51X.
 
 Counting reads: tfs-process-fastq
 ---------------------------------

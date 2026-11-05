@@ -281,11 +281,23 @@ library's condition_pre slots use their library's pool.
      (residues 27-106), where the library mutates the same sites. Check how
      a library mutation at a background's own site is named and simulated
      before using them.
+     Built 2026-11-04 (`planning/studies/dimer-design/`, Mike chose the
+     24-fit grid): arms W (reference, 118 tubes), N (the five doubles,
+     218) and R (15 random singles outside the amplicon, 418) on the N
+     arm's read budget; table slope c 1 and 0.3 for every arm, and the N
+     arm at dimerization -12 and -18 as well. The in-amplicon backgrounds
+     edit `wt_seq`; `background_mutations` now takes the majority, since a
+     library mutation at a parent site (R51X) is named without the
+     parent's residue. Truth has the unfolded dimer off: with it on, ΔΔG_H
+     also drives Δln K_u and the folding background unfolds completely.
    - 4d. Truth with monomers and unfolded monomer on, and a dial for wt
      dimerization (-15, and one looser and one tighter value) and the
      folding margin, since the narrative takes both as guesses and
      dimerization decides whether the monomer terms are visible at all.
    - 4e. Fits: PK, PddG with learned σ_s, PddG with σ_s held at the dial.
+     As built: PK, PddG σ_s held at 1 kT, PddG σ_s held at the truth
+     noise (0.811 kT); joint MAP collapses a learned σ_s (A2), and EM
+     would cost several MAPs per fit.
      Score per-mutation constants against the narrative's predicted
      standard errors, by design arm, and θ as in A4. These are pilots in
      the A3/A4 sense: undercoverage is acceptable short of a collapse.
