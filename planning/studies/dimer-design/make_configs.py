@@ -188,7 +188,7 @@ def run_config(base, arm, scale, dimer_kcal, design_file, bgs, design):
     cf["ddG_truth_sd"] = DDG_TRUTH_SD
     if scale != 1.0:
         cf["ddG_truth_scale"] = scale
-    cf["contexts"] = "../../inputs/contexts.yaml"
+    cf["contexts"] = f"../../inputs/contexts_{arm}.yaml"
     cf["binding_data"].update(BINDING)
     cf["od600"]["calibration"] = "../../inputs/od600_calibration.yaml"
     cf["library_subsample"] = dict(SUBSAMPLE)
@@ -217,10 +217,6 @@ def main():
     base.pop("theta_priors", None)
     design = pd.read_csv(os.path.join(HERE, "inputs", "design.csv"))
     assert len(design) == A2_TUBES
-    with open(os.path.join(HERE, "inputs", "contexts.yaml"), "w") as f:
-        f.write("# dimer-design contexts: written by make_configs.py\n")
-        yaml.safe_dump(CONTEXTS, f, sort_keys=False)
-
     arms = {}
     for arm in ("W", "N", "R"):
         bgs = arm_backgrounds(arm, base)
@@ -228,6 +224,17 @@ def main():
         name = f"design_{arm}.csv"
         d.to_csv(os.path.join(HERE, "inputs", name), index=False)
         arms[arm] = (bgs, d, name)
+        # check_contexts refuses a level no data row has, so each arm's
+        # contexts file names only the TF levels its design uses
+        used = set(d["tf_level"])
+        ctx = dict(CONTEXTS, tf_levels={k: v for k, v in
+                                        CONTEXTS["tf_levels"].items()
+                                        if k in used})
+        with open(os.path.join(HERE, "inputs", f"contexts_{arm}.yaml"),
+                  "w") as f:
+            f.write(f"# dimer-design contexts, arm {arm}: written by "
+                    "make_configs.py\n")
+            yaml.safe_dump(ctx, f, sort_keys=False)
         print(f"arm {arm}: {len(d)} tubes, {len(bgs)} backgrounds"
               + (f" ({', '.join(b for b, _, _ in bgs)})" if bgs else ""))
 

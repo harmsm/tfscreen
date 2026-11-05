@@ -88,7 +88,7 @@ if ! done_step configure; then
         --binding_df ../sim/tfs_sim_binding.csv \
         --library_config ../tfs_sim_config.yaml \
         --growth_shares_replicates --epistasis \
-        --contexts ../../../inputs/contexts.yaml \
+        --contexts "../../../inputs/contexts_${run%%_*}.yaml" \
         "${theta[@]}" --set_priors "${variant[@]}" "${held[@]}"
     mark configure
 fi

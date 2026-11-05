@@ -1,0 +1,9 @@
+# dimer-design contexts, arm R: written by make_configs.py
+units: kT
+operators:
+  O1:
+    reference: true
+tf_levels:
+  mid:
+    conc_uM: 10.0
+    ln_sd: 0.0

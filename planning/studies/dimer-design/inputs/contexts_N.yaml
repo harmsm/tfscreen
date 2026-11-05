@@ -1,4 +1,4 @@
-# dimer-design contexts: written by make_configs.py
+# dimer-design contexts, arm N: written by make_configs.py
 units: kT
 operators:
   O1:

@@ -89,7 +89,8 @@ capped at 50,000 epochs a stage, then the arrowhead Laplace.
 ## How to run
 
 `make_configs.py` writes the run configs (`runs/`, not tracked) and the
-arm designs and contexts in `inputs/`, which also holds the base config,
+arm designs and contexts (one per arm, naming only the TF levels
+its design uses) in `inputs/`, which also holds the base config,
 the A2 design, the OD600 calibration and the state table. `submit.sh`
 runs it once before it submits anything. On the cluster, from this directory:
 
