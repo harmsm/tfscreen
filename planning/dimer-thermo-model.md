@@ -220,7 +220,11 @@ models refuse more than one operator or TF level.
   every double and background genotype about [0, 1]. Decided (Mike,
   2026-11-03): a background's own mutations add without a pair term, in
   the fit and the simulator (`backgrounds.background_mutations`). Run A4
-  repeats A3 with that rule, on the cluster (`submit.sh`). These runs are
+  repeats A3 with that rule (2026-11-04, on the laptop; `submit.sh` runs
+  it on the cluster). In A4 θ RMSE fell to 0.06 (PK) and 0.05 (PddG) from 0.17, and background
+  genotypes now have intervals as narrow as the reference's, with coverage
+  0.46-0.70 (overconfident, not collapsed). The effector constants gained
+  0.1-0.2 kT; PK's l_o and u stayed unresolved. These runs are
   pilots that ask whether the axes gain anything, so undercoverage is
   acceptable short of a collapse. Coverage gets its own work on realistic
   libraries with multiple mutations.

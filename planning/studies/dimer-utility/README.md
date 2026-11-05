@@ -305,3 +305,50 @@ without a pair term, in the fit and the simulator
 (`backgrounds.background_mutations`). Run A4 is A3's config rerun with
 that rule, on the cluster. It also leaves out a pair term for any pair
 with T276N in the reference library, where there is none.
+
+## A4: backgrounds without a pair term (2026-11-04)
+
+A3's config and simulation seed, with the new rule in the simulator and
+the fit. The 336 pairs of A3 drop to 53, all reference doubles, so the fit
+has 27,473 MAP parameters against 32,001. The cluster was congested, so
+both fits ran on the laptop: the MAP took 6.6 h and the arrowhead Laplace
+2.8 h (A3: 6.4 h), at a 2.5-2.9 GB peak. The Laplace held 29 (PK) and 137
+(PddG) of 8,381 shared directions at the MAP as negative.
+
+**θ improved a lot.** Posterior-median θ RMSE fell from 0.169 to 0.064
+(PK) and from 0.176 to 0.052 (PddG); the MAP point fell from 0.070 to
+0.039 and from 0.073 to 0.045. The background blocks gained most: RMSE
+0.04-0.09, from 0.19-0.25, with r 0.96-0.99. Their intervals are no longer
+[0, 1]; the median 95% width is 0.004-0.031, the same as the reference
+blocks. Coverage is 0.46-0.70 in every block, overconfident like the
+reference blocks in A3 and EM1 (0.44 PK, 0.63 PddG), and not a collapse.
+
+**Constants gained a little.** RMSE:
+
+| term | EM1 PK | A3 PK | A4 PK | EM1 PddG | A3 PddG | A4 PddG |
+|---|---|---|---|---|---|---|
+| h_e | 0.84 | 0.84 | 0.69 | 0.56 | 0.51 | 0.45 |
+| h_l | 1.58 | 1.61 | 1.52 | 1.00 | 1.01 | 1.10 |
+| h_o | 2.50 | 2.58 | 2.49 | 1.10 | 1.21 | 1.07 |
+| l_e | 0.85 | 0.80 | 0.74 | 0.72 | 0.59 | 0.48 |
+| l_o (r) | 1.53 (-0.03) | 1.63 (-0.02) | 1.62 (0.13) | 1.16 (0.65) | 1.16 (0.70) | 1.17 (0.69) |
+| u (r) | 4.49 (0.06) | 4.46 (0.04) | 4.46 (0.09) | 0.72 (0.97) | 0.73 (0.97) | 0.76 (0.97) |
+
+The effector terms improved in both arms (h_e, l_e by 0.1-0.2 kT). PK's
+l_o and u are still unresolved, so the background, O2 and the hi TF level
+did not supply what step 1 predicted, at least with 20 tubes per arm.
+Coverage is 0.37-1.0 (PK u 0.37 as before), PddG 0.76-1.0.
+
+**Contexts.** The O2 shift is 1.41 (0.72-2.18) in PK, closer to the truth
+of 1.18 than A3's 1.60. PddG moved from 2.59 to 2.04 (1.32-2.74), still
+excluding the truth, and still offsets it with O2's h_oii deviation, now
++1.27 (1.12-1.46; truth -0.11). The hi TF level is -10.06 (PK) and -10.08
+(PddG) against -10.04, with intervals 0.02 wide that exclude the truth.
+
+**Reading.** The rule does what it should: a background now carries
+information about the singles into θ, and θ for background genotypes is
+as good as for the reference. It does not resolve PK's l_o and u. Whether
+richer arms (more tubes and times per arm, both TF levels on O2) would is
+a question for the full simulations of plan step 4. The θ overconfidence
+of step 2 is the same as before and belongs to the coverage work on
+realistic libraries.
