@@ -30,8 +30,22 @@ Arms (one read budget, TOTAL_TUBES_BUDGET tubes' worth of A2 reads):
     R   W plus RANDOM_N random single-mutant backgrounds at TF mid, the
         count control ("composition beats count")
 
+    G   W plus the ten greedy backgrounds of background_count.py (greedy
+        on predicted θ error in held-out contexts), each a 20-tube block
+
 Runs: {W,N,R}_c1 and {W,N,R}_c03 (table slope ddG_truth_scale 1 and 0.3,
-dimerization -15), N_c1_d12 and N_c1_d18 (dimerization -12 and -18).
+dimerization -15), N_c1_d12 and N_c1_d18 (dimerization -12 and -18): the
+pilots, seed 1.
+
+The error panel (2026-11-07), dimerization -15, seeds 1-3 (seed 1 is the
+pilot's run name with no suffix, seeds 2 and 3 add _s2/_s3):
+    {W,N,G}_c1     random table error only (DDG_TRUTH_SD), c = 1
+    {W,N,G}_c03    plus systematic compression, c = 0.3
+    {W,N,G}_ep     c = 1 plus random pair epistasis in the truth: the pair
+                   horseshoe's global scale prior at EPI_TAU_SCALE instead of
+                   1e-9 (independent across terms; no distances in PddG)
+Model mis-specification is a fit arm on the c1 runs (run_fit.sh, *_m0),
+not a simulation.
 
 Run from this directory:  ~/miniconda3/bin/python make_configs.py
 """
@@ -90,6 +104,16 @@ WT_SITES = ["ln_K_h_l", "ln_K_h_o_eff", "ln_K_l_o_eff", "ln_K_u",
             "ln_K_h_oii", "ln_K_l_oii", "ln_K_h_e", "ln_K_l_e",
             "ln_K_d_h", "ln_K_m_h_l", "ln_K_m_h_o", "ln_K_m_l_o", "ln_K_m_u"]
 
+EPI_TAU_SCALE = 0.3         # truth pair horseshoe global scale (ep runs)
+
+# background_count.py, greedy on held_out (2026-11-07, c = 1, sigma 0.1)
+GREEDY = [
+    (("V9R", "K290D"), "hi"), (("Q117L", "F293A"), "hi"), (("Y17P",), "hi"),
+    (("Q117T",), "lo"), (("A116D", "K314P"), "hi"), (("V324R", "D129V"), "lo"),
+    (("P3F",), "lo"), (("V99G",), "lo"), (("T5I",), "lo"),
+    (("V4L", "P3R"), "hi"),
+]
+
 RUNS = {
     "W_c1": ("W", 1.0, -15.0), "N_c1": ("N", 1.0, -15.0),
     "R_c1": ("R", 1.0, -15.0),
@@ -97,6 +121,14 @@ RUNS = {
     "R_c03": ("R", 0.3, -15.0),
     "N_c1_d12": ("N", 1.0, -12.0), "N_c1_d18": ("N", 1.0, -18.0),
 }
+# The error panel: (arm, slope, dimerization, epistasis, seed).
+PANEL = {}
+for _arm in ("W", "N", "G"):
+    for _cond in ("c1", "c03", "ep"):
+        for _seed in (1, 2, 3):
+            _run = f"{_arm}_{_cond}" + (f"_s{_seed}" if _seed > 1 else "")
+            PANEL[_run] = (_arm, 0.3 if _cond == "c03" else 1.0, -15.0,
+                           _cond == "ep", _seed)
 
 
 def amplicon(cf):
@@ -154,9 +186,9 @@ def arm_backgrounds(arm, cf):
     """[(name, spec, tf_level)] for an arm's non-reference backgrounds."""
     if arm == "W":
         return []
-    if arm == "N":
+    if arm in ("N", "G"):
         return [("bg" + "_".join(muts), background_spec(muts, cf), lvl)
-                for muts, lvl in NARRATIVE]
+                for muts, lvl in (NARRATIVE if arm == "N" else GREEDY)]
     return [(f"bg{m}", background_spec((m,), cf), "mid")
             for m in random_backgrounds(cf)]
 
@@ -179,7 +211,8 @@ def arm_design(design, bgs):
     return pd.concat(blocks, ignore_index=True)
 
 
-def run_config(base, arm, scale, dimer_kcal, design_file, bgs, design):
+def run_config(base, arm, scale, dimer_kcal, design_file, bgs, design,
+               epistasis=False, seed=None):
     cf = copy.deepcopy(base)
     cf["design"] = f"../../inputs/{design_file}"
     cf["theta_component"] = "thermo.dimer.PddG"
@@ -197,11 +230,13 @@ def run_config(base, arm, scale, dimer_kcal, design_file, bgs, design):
     priors = {f"theta_{s}_wt_scale": WT_PIN for s in WT_SITES}
     priors["theta_ln_K_d_h_wt_loc"] = dimer_kcal * -KT_PER_KCAL
     priors["theta_ln_K_m_u_wt_loc"] = FOLD_KCAL * KT_PER_KCAL
-    priors["theta_epi_tau_scale"] = 1.0e-9
+    priors["theta_epi_tau_scale"] = EPI_TAU_SCALE if epistasis else 1.0e-9
     priors["theta_monomers"] = True
     priors["theta_unfolded_monomer"] = True
     priors["theta_unfolded_dimer"] = False
     cf["theta_priors"] = priors
+    if seed is not None and seed != 1:
+        cf["seed"] = int(seed)
     libraries = sorted(set(design["library"]))
     for key in ("cfu0", "unassigned_read_fraction"):
         cf[key] = {lib: base[key][lib.split("_")[0]] for lib in libraries}
@@ -218,7 +253,7 @@ def main():
     design = pd.read_csv(os.path.join(HERE, "inputs", "design.csv"))
     assert len(design) == A2_TUBES
     arms = {}
-    for arm in ("W", "N", "R"):
+    for arm in ("W", "N", "R", "G"):
         bgs = arm_backgrounds(arm, base)
         d = arm_design(design, bgs)
         name = f"design_{arm}.csv"
@@ -238,15 +273,19 @@ def main():
         print(f"arm {arm}: {len(d)} tubes, {len(bgs)} backgrounds"
               + (f" ({', '.join(b for b, _, _ in bgs)})" if bgs else ""))
 
-    for run, (arm, scale, dimer_kcal) in RUNS.items():
+    runs = {r: (a, s, k, False, None) for r, (a, s, k) in RUNS.items()}
+    runs.update(PANEL)
+    for run, (arm, scale, dimer_kcal, epi, seed) in runs.items():
         bgs, d, name = arms[arm]
-        cf = run_config(base, arm, scale, dimer_kcal, name, bgs, d)
+        cf = run_config(base, arm, scale, dimer_kcal, name, bgs, d, epi, seed)
         out = os.path.join(HERE, "runs", run)
         os.makedirs(out, exist_ok=True)
         with open(os.path.join(out, "tfs_sim_config.yaml"), "w") as f:
             f.write(f"# dimer-design run {run}: arm {arm}, table slope "
-                    f"{scale}, dimerization {dimer_kcal} kcal/mol; written "
-                    "by make_configs.py\n")
+                    f"{scale}, dimerization {dimer_kcal} kcal/mol"
+                    + (", pair epistasis" if epi else "")
+                    + (f", seed {seed}" if seed and seed != 1 else "")
+                    + "; written by make_configs.py\n")
             yaml.safe_dump(cf, f, sort_keys=False)
         print(f"wrote runs/{run}/tfs_sim_config.yaml")
 

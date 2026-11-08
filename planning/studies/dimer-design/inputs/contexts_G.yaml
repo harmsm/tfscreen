@@ -1,0 +1,15 @@
+# dimer-design contexts, arm G: written by make_configs.py
+units: kT
+operators:
+  O1:
+    reference: true
+tf_levels:
+  mid:
+    conc_uM: 10.0
+    ln_sd: 0.0
+  lo:
+    conc_uM: 3.3333333333333335
+    ln_sd: 0.5
+  hi:
+    conc_uM: 30.0
+    ln_sd: 0.5

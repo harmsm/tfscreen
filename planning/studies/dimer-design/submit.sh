@@ -10,11 +10,19 @@
 # Each step skips finished work, so resubmitting resumes a run. The
 # configs (runs/, not tracked) are written here, once, by make_configs.py
 # before anything is submitted; it needs the tfscreen environment's python.
+#
+# PARTITION=cpu (default) uses dimer_design_cpu.srun (compute, 24 h, 16
+# cores, 32G); PARTITION=gpu uses dimer_design.srun. MEM overrides the
+# job's memory (e.g. MEM=48G for the ten-background G arm on CPU).
 set -e
 RUNS="${*:-W_c1 N_c1 R_c1 W_c03 N_c03 R_c03 N_c1_d12 N_c1_d18}"
 ARMS="${ARMS:-PK PddG_s1 PddG_dial}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
-SRUN="${HERE}/dimer_design.srun"
+case "${PARTITION:-cpu}" in
+    cpu) SRUN="${HERE}/dimer_design_cpu.srun" ;;
+    gpu) SRUN="${HERE}/dimer_design.srun" ;;
+    *) echo "PARTITION is cpu or gpu"; exit 1 ;;
+esac
 (cd "${HERE}" && python make_configs.py)
 for RUN in ${RUNS}; do
     LOGS="${HERE}/runs/${RUN}/logs"
@@ -24,7 +32,7 @@ for RUN in ${RUNS}; do
         sbatch --parsable --job-name="dd_${RUN}_${name}" \
             --output="${LOGS}/${name}_%j.out" \
             --error="${LOGS}/${name}_%j.err" \
-            ${dep:+--dependency=afterok:${dep}} \
+            ${dep:+--dependency=afterok:${dep}} ${MEM:+--mem=${MEM}} \
             --export=ALL,HERE="${HERE}",RUN="${RUN}",${exports} "${SRUN}"
     }
     sim=""

@@ -13,6 +13,10 @@
 #   PddG_dial   thermo.dimer.PddG, sigma_s held at the truth's ddG_truth_sd
 #               (0.5 kcal/mol = 0.811 kT): the noise is known, a table
 #               slope (ddG_truth_scale) is not
+# Mis-specification arms (2026-11-07): PK_m0 and PddG_s1_m0 are PK and
+# PddG_s1 fit without the monomer states (theta_monomers off, so no
+# unfolded monomer), with the unfolded dimer on instead: the standard
+# MWC-dimer view, folding as dimer unfolding. The truth keeps monomers.
 # Joint MAP does not estimate these scales (dimer-utility, A2: sigma_s
 # collapsed to 0), so every arm holds them.
 #
@@ -65,15 +69,22 @@ else
 fi
 
 thermo=../../../inputs/2026-11-03_laci-state-ddg.csv
-variant=(theta_monomers=1 theta_unfolded_monomer=1 theta_unfolded_dimer=0
-         theta_sigma_d_ln_K_h_oii_fixed=1 theta_sigma_d_ln_K_l_oii_fixed=1)
+base_arm=${arm%_m0}
+if [[ "${arm}" == *_m0 ]]; then
+    variant=(theta_monomers=0 theta_unfolded_monomer=0 theta_unfolded_dimer=1)
+    pk_terms="h_l h_o l_o h_e l_e u"
+else
+    variant=(theta_monomers=1 theta_unfolded_monomer=1 theta_unfolded_dimer=0)
+    pk_terms="h_l h_o l_o h_e l_e d_h m_h_l m_h_o m_l_o m_u"
+fi
+variant+=(theta_sigma_d_ln_K_h_oii_fixed=1 theta_sigma_d_ln_K_l_oii_fixed=1)
 pddg=(--theta_model thermo.dimer.PddG --thermo_data "${thermo}"
       --thermo_ddG_units kcal/mol --thermo_temperature_K 310.15)
-case "${arm}" in
+case "${base_arm}" in
     PK)
         theta=(--theta_model thermo.dimer.PK)
         held=()
-        for t in h_l h_o l_o h_e l_e d_h m_h_l m_h_o m_l_o m_u; do
+        for t in ${pk_terms}; do
             held+=("theta_sigma_d_ln_K_${t}_fixed=1")
         done ;;
     PddG_s1)   theta=("${pddg[@]}"); held=(theta_ddG_sigma_fixed=1) ;;

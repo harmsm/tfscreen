@@ -1,0 +1,36 @@
+#!/bin/bash -l
+#SBATCH --account=harmslab
+#SBATCH --partition=compute
+#SBATCH --time=24:00:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=32G
+#SBATCH --ntasks-per-node=1
+
+# One step of a dimer-design run on a CPU node (compute), submitted by submit.sh,
+# which sets the job name, log files and dependencies.
+#
+#   HERE        this study's directory (absolute)
+#   RUN         the run, e.g. N_c1
+#   STEP        simulate | fit
+#   ARM         the fit's arm (fit only): PK, PddG_s1 or PddG_dial
+#   STOP_AFTER  passed to run_fit.sh (fit only): map ends the job after
+#               the MAP, so the MAP and the Laplace get a job each
+
+export JAX_PLATFORMS=cpu
+set -euo pipefail
+HERE="${HERE:?set HERE}"
+RUN="${RUN:?set RUN}"
+STEP="${STEP:?set STEP}"
+echo ">>> ${STEP} ${RUN} ${ARM:-} $(date) on $(hostname)"
+case "${STEP}" in
+    simulate)
+        cd "${HERE}/runs/${RUN}"
+        tfs-simulate tfs_sim_config.yaml --out_prefix sim/tfs_sim \
+            --no_write_raw ;;
+    fit)
+        STOP_AFTER="${STOP_AFTER:-}" bash "${HERE}/run_fit.sh" "${RUN}" \
+            "${ARM:?set ARM}" ;;
+    *) echo "unknown STEP ${STEP}"; exit 1 ;;
+esac
+echo ">>> Done ${STEP} ${RUN} ${ARM:-} $(date)"
