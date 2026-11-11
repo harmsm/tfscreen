@@ -46,6 +46,7 @@ from tfscreen.tfmodel.generative.components.theta.thermo.prior import (
 def _static_defaults():
     s = dm.flag_defaults()
     s.update(dm.sigma_fixed_defaults(_FREE_TERMS))
+    s.update(dm.epi_fixed_defaults())
     s["theta_ddG_sigma_fixed"] = 0.0
     s.update(ddG_sigma_state_fixed_defaults())
     s.update(dm.context_static_defaults())

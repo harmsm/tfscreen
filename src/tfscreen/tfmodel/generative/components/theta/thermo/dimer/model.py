@@ -48,6 +48,13 @@ titrants: a regularized horseshoe, ``{name}_epi_tau``, ``{name}_epi_c2``,
 ``{name}_epi_lambda`` and ``{name}_epi_offset`` (K, P), with the local
 scale's prior HalfCauchy(exp(−d/d0)), d the pair's closest contact over
 the structures when the data carry contact distances (PnnC), else 1.
+Static ``theta_epi_tau_fixed`` and ``theta_epi_c2_fixed`` > 0 hold the
+global scale τ and the slab variance c2 at those values: the site becomes
+a deterministic and the guide has no parameters for it. Joint MAP does
+not estimate them (planning/studies/dimer-design, tau test, 2026-11-10:
+τ runs to about 800 and c2 to about 600 even when the truth has no
+epistasis, turning the horseshoe into a free 25 kT slab on every pair),
+so a MAP fit should hold both.
 
 Operators and TF levels (``tfmodel/contexts.py``)
 -------------------------------------------------
@@ -284,6 +291,16 @@ def sigma_hyperparameters(terms):
 def sigma_fixed_defaults(terms):
     """``theta_sigma_d_{term}_fixed`` (static; > 0 holds σ, kT) per term."""
     return {f"theta_sigma_d_{t}_fixed": 0.0 for t in terms}
+
+
+def epi_fixed_defaults():
+    """``theta_epi_tau_fixed``/``theta_epi_c2_fixed`` (static; > 0 holds)."""
+    return {"theta_epi_tau_fixed": 0.0, "theta_epi_c2_fixed": 0.0}
+
+
+def held_epi(priors, which):
+    """The held pair-horseshoe τ or c2 (``which``), or 0.0 when sampled."""
+    return float(getattr(priors, f"theta_epi_{which}_fixed", 0.0))
 
 
 def held_sigma_d(priors, term):
@@ -652,13 +669,17 @@ def _sample_contexts(name, priors, variant, operator_names, guide):
 def _sample_pair_shifts(name, priors, terms, num_pair, distances, guide):
     """Horseshoe pair shifts on every term: dict term → (P,)."""
     K = len(terms)
+    tau_held = held_epi(priors, "tau")
+    c2_held = held_epi(priors, "c2")
     if guide:
-        tau_loc = pyro.param(f"{name}_epi_tau_loc", jnp.array(-2.0))
-        tau_scale = pyro.param(f"{name}_epi_tau_scale", jnp.array(0.5),
-                               constraint=constraints.positive)
-        c2_loc = pyro.param(f"{name}_epi_c2_loc", jnp.array(1.4))
-        c2_scale = pyro.param(f"{name}_epi_c2_scale", jnp.array(0.5),
-                              constraint=constraints.positive)
+        if tau_held <= 0:
+            tau_loc = pyro.param(f"{name}_epi_tau_loc", jnp.array(-2.0))
+            tau_scale = pyro.param(f"{name}_epi_tau_scale", jnp.array(0.5),
+                                   constraint=constraints.positive)
+        if c2_held <= 0:
+            c2_loc = pyro.param(f"{name}_epi_c2_loc", jnp.array(1.4))
+            c2_scale = pyro.param(f"{name}_epi_c2_scale", jnp.array(0.5),
+                                  constraint=constraints.positive)
         lam_loc = pyro.param(f"{name}_epi_lambda_locs",
                              jnp.zeros((K, num_pair)))
         lam_scale = pyro.param(f"{name}_epi_lambda_scales",
@@ -669,14 +690,23 @@ def _sample_pair_shifts(name, priors, terms, num_pair, distances, guide):
         off_scale = pyro.param(f"{name}_epi_offset_scales",
                                jnp.ones((K, num_pair)),
                                constraint=constraints.positive)
-        tau = pyro.sample(f"{name}_epi_tau", dist.LogNormal(tau_loc, tau_scale))
-        c2 = pyro.sample(f"{name}_epi_c2", dist.LogNormal(c2_loc, c2_scale))
+        tau = (jnp.asarray(tau_held) if tau_held > 0 else
+               pyro.sample(f"{name}_epi_tau",
+                           dist.LogNormal(tau_loc, tau_scale)))
+        c2 = (jnp.asarray(c2_held) if c2_held > 0 else
+              pyro.sample(f"{name}_epi_c2", dist.LogNormal(c2_loc, c2_scale)))
     else:
-        tau = pyro.sample(f"{name}_epi_tau",
-                          HalfCauchy(priors.theta_epi_tau_scale))
-        df = priors.theta_epi_slab_df
-        c2 = pyro.sample(f"{name}_epi_c2", dist.InverseGamma(
-            df / 2.0, df * priors.theta_epi_slab_scale ** 2 / 2.0))
+        if tau_held > 0:
+            tau = pyro.deterministic(f"{name}_epi_tau", jnp.asarray(tau_held))
+        else:
+            tau = pyro.sample(f"{name}_epi_tau",
+                              HalfCauchy(priors.theta_epi_tau_scale))
+        if c2_held > 0:
+            c2 = pyro.deterministic(f"{name}_epi_c2", jnp.asarray(c2_held))
+        else:
+            df = priors.theta_epi_slab_df
+            c2 = pyro.sample(f"{name}_epi_c2", dist.InverseGamma(
+                df / 2.0, df * priors.theta_epi_slab_scale ** 2 / 2.0))
         if distances is None:
             prior_lam = jnp.ones((num_pair,))
         else:

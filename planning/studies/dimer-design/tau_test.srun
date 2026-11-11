@@ -1,0 +1,21 @@
+#!/bin/bash -l
+#SBATCH --account=harmslab
+#SBATCH --partition=gpu
+#SBATCH --time=12:00:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --gpus=1
+#SBATCH --mem=0
+#SBATCH --ntasks-per-node=1
+
+# One tau_test.sh refit. Submit from the study directory:
+#
+#   sbatch --job-name=tt_N_c1_PK_flip --output=runs/N_c1/logs/tt_PK_flip_%j.out \
+#       --export=ALL,HERE=$PWD,RUN=N_c1,ARM=PK,MODE=flip tau_test.srun
+#
+# tau_test_submit.sh submits the whole set.
+
+module load cuda/12.4.1
+set -euo pipefail
+bash "${HERE:?set HERE}/tau_test.sh" "${RUN:?set RUN}" "${ARM:?set ARM}" \
+    "${MODE:?set MODE}"

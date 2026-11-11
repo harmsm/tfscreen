@@ -39,6 +39,7 @@ def get_hyperparameters():
 
 
 _STATIC = {**flag_defaults(), **sigma_fixed_defaults(sp.ALL_TERMS),
+           **dm.epi_fixed_defaults(),
            **dm.context_static_defaults()}
 ModelPriors = make_priors_class(
     __name__, [k for k in get_hyperparameters() if k not in _STATIC], _STATIC)

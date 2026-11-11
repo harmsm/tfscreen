@@ -517,6 +517,49 @@ def test_partly_held_sigma_d_samples_the_free_terms_only():
     assert guide_tr["theta_sigma_d"]["value"].shape == sigma.shape
 
 
+@pytest.mark.parametrize("key", list(MODULES))
+def test_held_epi_tau_and_c2_are_deterministic_and_set_the_pair_shifts(key):
+    module = MODULES[key]
+    data = _for(key, _data())
+    priors = _priors(module, theta_epi_tau_fixed=0.05, theta_epi_c2_fixed=4.0)
+    tr = _trace(module.define_model, module, data, priors)
+    assert tr["theta_epi_tau"]["type"] == "deterministic"
+    assert tr["theta_epi_c2"]["type"] == "deterministic"
+    lam = np.asarray(tr["theta_epi_lambda"]["value"])
+    off = np.asarray(tr["theta_epi_offset"]["value"])
+    lt = np.sqrt(4.0 * lam ** 2 / (4.0 + 0.05 ** 2 * lam ** 2))
+    epi = off * 0.05 * lt
+    terms = sp.active_terms(dm.variant_from_priors(priors))
+    for i, t in enumerate(terms):
+        np.testing.assert_allclose(np.asarray(tr[f"theta_epi_{t}"]["value"]),
+                                   epi[i], rtol=1e-4)
+    guide_tr = _trace(module.guide, module, data, priors)
+    assert _samples(guide_tr) == _samples(tr)
+    assert not any(n.startswith(("theta_epi_tau_", "theta_epi_c2_"))
+                   for n in guide_tr if guide_tr[n]["type"] == "param")
+
+
+def test_held_epi_tau_alone_keeps_c2_sampled():
+    data = _data()
+    priors = _priors(PK, theta_epi_tau_fixed=0.05)
+    tr = _trace(PK.define_model, PK, data, priors)
+    assert tr["theta_epi_tau"]["type"] == "deterministic"
+    assert tr["theta_epi_c2"]["type"] == "sample"
+    guide_tr = _trace(PK.guide, PK, data, priors)
+    assert "theta_epi_c2_loc" in guide_tr
+    assert "theta_epi_tau_loc" not in guide_tr
+
+
+def test_held_epi_fields_default_off_and_round_trip_as_static():
+    for module in MODULES.values():
+        p = module.get_hyperparameters()
+        assert p["theta_epi_tau_fixed"] == 0.0
+        assert p["theta_epi_c2_fixed"] == 0.0
+    tr = _trace(PK.define_model, PK, _data(), _priors(PK))
+    assert tr["theta_epi_tau"]["type"] == "sample"
+    assert tr["theta_epi_c2"]["type"] == "sample"
+
+
 @pytest.mark.parametrize("key", ["PddG", "PnnC"])
 def test_per_state_held_ddG_sigma(key):
     module = MODULES[key]

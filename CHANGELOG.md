@@ -31,6 +31,15 @@ fall into two kinds:
 
 ### Added
 
+- `theta_epi_tau_fixed` and `theta_epi_c2_fixed` on `thermo.dimer.PK`,
+  `PddG` and `PnnC` (static, default 0): a value above 0 holds the pair
+  horseshoe's global scale τ or slab variance c2, recording it as a
+  deterministic site with no guide parameters (`dimer/model.py`,
+  `_sample_pair_shifts`). Joint MAP ran τ to about 800 and c2 to about 600
+  even on truths with no epistasis, a free 25 kT slab on every pair, and the
+  dimer-design tau test found that regime to be the objective's optimum,
+  not an optimizer trap. Set with `tfs-configure-model --set_priors
+  theta_epi_tau_fixed=... theta_epi_c2_fixed=...`.
 - `thermo.dimer.PK`, `thermo.dimer.PddG` and `thermo.dimer.PnnC`
   (`tfmodel/generative/components/theta/thermo/dimer/`): one general
   thermodynamic model of a dimeric transcription factor, ported from the

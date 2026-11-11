@@ -20,6 +20,15 @@
 # Joint MAP does not estimate these scales (dimer-utility, A2: sigma_s
 # collapsed to 0), so every arm holds them.
 #
+# Any arm with the suffix _he (PK_he, PddG_s1_he, PK_m0_he, ...) also holds
+# the pair horseshoe's global scale tau and slab variance c2 at the values
+# that generated the truth (2026-11-10): the tau test found that joint MAP
+# runs both away (tau about 800, c2 about 600) even on additive truths, and
+# that this is the objective's optimum. EPI_TAU defaults to the truth's
+# HalfCauchy scale, 0.3 for the *_ep runs and 1e-9 otherwise (effectively
+# an additive fit); EPI_C2 defaults to 4, the slab scale squared
+# (theta_epi_slab_scale 2 in truth and fit). Each is overridable.
+#
 # Each step is skipped if its marker in fit_<arm>/.done exists. MAP_CAP
 # (default 50000) caps every MAP stage; CKPT (default 5000) is the MAP's
 # checkpoint interval in epochs, so a MAP killed at a job's time limit
@@ -69,8 +78,20 @@ else
 fi
 
 thermo=../../../inputs/2026-11-03_laci-state-ddg.csv
-base_arm=${arm%_m0}
-if [[ "${arm}" == *_m0 ]]; then
+epi_held=()
+model_arm=${arm}
+if [[ "${arm}" == *_he ]]; then
+    model_arm=${arm%_he}
+    if [[ "${run}" == *_ep || "${run}" == *_ep_* ]]; then
+        EPI_TAU=${EPI_TAU:-0.3}
+    else
+        EPI_TAU=${EPI_TAU:-1e-9}
+    fi
+    EPI_C2=${EPI_C2:-4}
+    epi_held=(theta_epi_tau_fixed="${EPI_TAU}" theta_epi_c2_fixed="${EPI_C2}")
+fi
+base_arm=${model_arm%_m0}
+if [[ "${model_arm}" == *_m0 ]]; then
     variant=(theta_monomers=0 theta_unfolded_monomer=0 theta_unfolded_dimer=1)
     pk_terms="h_l h_o l_o h_e l_e u"
 else
@@ -100,14 +121,20 @@ if ! done_step configure; then
         --library_config ../tfs_sim_config.yaml \
         --growth_shares_replicates --epistasis \
         --contexts "../../../inputs/contexts_${run%%_*}.yaml" \
-        "${theta[@]}" --set_priors "${variant[@]}" "${held[@]}"
+        "${theta[@]}" --set_priors "${variant[@]}" "${held[@]}" ${epi_held[@]+"${epi_held[@]}"}
     mark configure
 fi
 if ! done_step map; then
     echo ">>> MAP (cap ${MAP_CAP} per stage) $(date)"
+    # Stages 1 and 2 of the staged MAP resume from their own files; a job
+    # that timed out in stage 3 left the final checkpoint, which
+    # tfs-fit-model resumes only when it is named.
+    resume=()
+    [[ -f tfs_fit_model_checkpoint.pkl ]] && \
+        resume=(--checkpoint_file tfs_fit_model_checkpoint.pkl)
     timed ${bin}/tfs-fit-model tfs_configure_config.yaml \
         --analysis_method map --seed 1 --epoch_checkpoint_interval "${CKPT}" \
-        --max_num_epochs "${MAP_CAP}"
+        --max_num_epochs "${MAP_CAP}" "${resume[@]}"
     mark map
 fi
 if ! done_step laplace; then
